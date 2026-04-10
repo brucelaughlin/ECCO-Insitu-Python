@@ -26,16 +26,16 @@ def NCEI_pipeline(dest_dir, input_dir):
 
     # Needed paths:
     # Set grid_dir
-    grid_dir = '/home/sweet/Desktop/Dependents/grid_llc90'
+    grid_dir = '/Users/brucel/ecco/yip/sample_data/ecco-insitu/tmp-dd-orig/grid_llc90'
 
-    # Path to llc090_sphere_point_n_10242_ids.bin and llc090_sphere_point_n_02562_ids.bin
-    sphere_bin = '/home/sweet/Desktop/Dependents/sphere_point_distribution'
+    # Path to dir containing llc090_sphere_point_n_10242_ids.bin and llc090_sphere_point_n_02562_ids.bin
+    sphere_dir = '/Users/brucel/ecco/yip/sample_data/ecco-insitu/tmp-dd-orig/grid_llc90/sphere_point_distribution'
 
     # Path to WOA13_v2_TS_clim_merged_with_potential_T.nc
-    clim_dir = '/home/sweet/Desktop/Dependents/TS_climatology'
+    clim_dir = '/Users/brucel/ecco/yip/sample_data/ecco-insitu/tmp-dd-orig/TS_Climatology'
 
     # Path to Salt_sigma_smoothed_method_02_masked_merged_capped_extrapolated.bin and Theta_sigma_smoothed_method_02_masked_merged_capped_extrapolated.bin
-    CTD_TS_bin = '/home/sweet/Desktop/Dependents/CTD_sigma_TS'
+    CTD_TS_bin = '/Users/brucel/ecco/yip/sample_data/ecco-insitu/tmp-dd-orig/CTD_sigma_TS'
 
     # Step 1: update_prof_and_tile_points_on_profiles
     llcN = 90                       # Which grid to use, 90 or 270
@@ -75,7 +75,8 @@ def NCEI_pipeline(dest_dir, input_dir):
         for file in netCDF_files:
             MITprofs = MITprof_read(file, 0)
             basename = os.path.basename(file)
-            if MITprofs != 0 :
+            #if MITprofs != 0 : #??? a dictionary is never equal to an integer... so this runs every time... so why....?
+            if len(MITprofs) != 0: 
                 if 1 in steps_to_run:
                     # Updates prof_points and tile interpolation points so that the MITgcm knows which grid points to use for the cost 
                     update_prof_and_tile_points_on_profiles.main(MITprofs, grid_dir, llcN, wet_or_all)
@@ -83,7 +84,7 @@ def NCEI_pipeline(dest_dir, input_dir):
                         MITprof_write_to_nc(dest_dir, MITprofs, 1, basename)
                 if 2 in steps_to_run:
                     # Updates each profile with a bin index that is specified from some file.
-                    update_spatial_bin_index_on_prepared_profiles.main(sphere_bin, MITprofs, grid_dir)
+                    update_spatial_bin_index_on_prepared_profiles.main(sphere_dir, MITprofs, grid_dir)
                     if 2 in steps_to_save:
                         MITprof_write_to_nc(dest_dir, MITprofs, 2, basename)
                 if 3 in steps_to_run:
@@ -135,7 +136,7 @@ def main(dest_dir, input_dir):
 
 if __name__ == '__main__':
   
-   
+    ''' 
     parser = argparse.ArgumentParser()
 
     parser.add_argument("-i", "--input_dir", action= "store",
@@ -152,7 +153,8 @@ if __name__ == '__main__':
 
     input_dir = args.input_dir
     dest_dir = args.dest_dir
+    '''
 
-    input_dir = "/home/sweet/Desktop/New Data/PYTHON/test"
-    dest_dir = "/home/sweet/Desktop/Final NETCDF/PYTHON"
+    input_dir = "/Users/brucel/ecco/yip/sample_data/ecco-insitu/tmp-dd-orig/CTD_data_at_end_of_processing_chain"
+    dest_dir = "/Users/brucel/ecco/yip/sample_data/test_output"
     main(dest_dir, input_dir)
