@@ -28,13 +28,13 @@ def mynanmean(x, dim = None):
     if dim is None: # let sum deal with figuring out which dimension to use
         # Count up non-NaNs.
         n = np.sum(~nans, axis = 0).astype(np.float64) # first row: all 0's in python
-        n[np.where(n == 0)] = np.NaN # prevent divideByZero warnings
+        n[np.where(n == 0)] = np.nan # prevent divideByZero warnings
         # Sum up non-NaNs, and divide by the number of non-NaNs.
         m = np.sum(x, axis = 0) / n
     else:
         # Count up non-NaNs.
         n = np.sum(~nans, dim).astype(np.float64)
-        n[np.where(n==0)] = np.NaN # prevent divideByZero warnings
+        n[np.where(n==0)] = np.nan # prevent divideByZero warnings
         # Sum up non-NaNs, and divide by the number of non-NaNs.
         m = np.sum(x,dim) / n
 
@@ -388,13 +388,13 @@ def update_zero_weight_points_on_prepared_profiles(run_code, MITprofs):
             tmpC = MITprofs['prof_Tclim']
             tmpW = MITprofs['prof_Tweight']
             
-            tmpT[np.where(tmpT < checkVal)] = np.NaN
-            tmpT[np.where(tmpT == 0)] = np.NaN
+            tmpT[np.where(tmpT < checkVal)] = np.nan
+            tmpT[np.where(tmpT == 0)] = np.nan
             
-            tmpC[np.where(tmpC < checkVal)] = np.NaN
-            tmpC[np.where(tmpC == 0)] = np.NaN
+            tmpC[np.where(tmpC < checkVal)] = np.nan
+            tmpC[np.where(tmpC == 0)] = np.nan
             
-            tmpW[np.where(tmpW < 0)] = np.NaN
+            tmpW[np.where(tmpW < 0)] = np.nan
             
             T_cost_vs_clim = (tmpT - tmpC)**2 * tmpW
 
@@ -403,13 +403,13 @@ def update_zero_weight_points_on_prepared_profiles(run_code, MITprofs):
                 tmpC = MITprofs['prof_Sclim']
                 tmpW = MITprofs['prof_Sweight']
                 
-                tmpS[np.where(tmpS < checkVal)] = np.NaN
-                tmpS[np.where(tmpS == 0)] = np.NaN
+                tmpS[np.where(tmpS < checkVal)] = np.nan
+                tmpS[np.where(tmpS == 0)] = np.nan
                 
-                tmpC[np.where(tmpC < checkVal)] = np.NaN
-                tmpC[np.where(tmpC == 0)] = np.NaN
+                tmpC[np.where(tmpC < checkVal)] = np.nan
+                tmpC[np.where(tmpC == 0)] = np.nan
                 
-                tmpW[np.where(tmpW < 0)] = np.NaN
+                tmpW[np.where(tmpW < 0)] = np.nan
 
                 S_cost_vs_clim = (tmpS - tmpC)**2 * tmpW
              

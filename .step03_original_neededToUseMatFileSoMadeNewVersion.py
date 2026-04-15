@@ -6,7 +6,6 @@ import scipy.io as sio
 import netCDF4 as nc
 from scipy.interpolate import griddata
 from tools import MITprof_read, intrep_check, sph2cart
-import pymatreader
 
 def update_monthly_mean_TS_clim_WOA13v2_on_prepared_profiles(TS_clim_dir, MITprofs):
     """
@@ -23,32 +22,21 @@ def update_monthly_mean_TS_clim_WOA13v2_on_prepared_profiles(TS_clim_dir, MITpro
 
     fillVal=-9999
 
-    #TS_clim_fname = 'WOA13_v2_TS_clim_merged_with_potential_T.nc'
-    TS_clim_fname = 'WOA13_v2_TS_clim_merged_with_potential_T.mat'
+    TS_clim_fname = 'WOA13_v2_TS_clim_merged_with_potential_T.nc'
     TS_clim_filename = os.path.join(TS_clim_dir, TS_clim_fname)
-    #TS_data = nc.Dataset(TS_clim_filename)
-    TS_data_top_level = pymatreader.read_mat(TS_clim_filename)
-    TS_data = TS_data_top_level['WOA_2013_v2_clim']
+    TS_data = nc.Dataset(TS_clim_filename)
 
-    #T_clim = TS_data.variables['potential_T_monthly'][:].filled(np.nan)
-    #S_clim = TS_data.variables['S_monthly'][:].filled(np.nan)
-    #T_clim = TS_data['potential_T_monthly'][:].fill(np.nan)
-    #S_clim = TS_data['S_monthly'][:].fill(np.nan)
-    T_clim = TS_data['potential_T_monthly'][:]
-    S_clim = TS_data['S_monthly'][:]
+    T_clim = TS_data.variables['potential_T_monthly'][:].filled(np.nan)
+    S_clim = TS_data.variables['S_monthly'][:].filled(np.nan)
 
-    ##lon = TS_data.variables['lon'][:]
-    ##lat = TS_data.variables['lat'][:]
-    lon = TS_data['lon']['data'][:]
-    lat = TS_data['lat']['data'][:]
+    lon = TS_data.variables['lon'][:]
+    lat = TS_data.variables['lat'][:]
     
-    #clim_depths =  TS_data.variables['depth'][:]
-    clim_depths =  TS_data['depth']['data'][:]
+    clim_depths =  TS_data.variables['depth'][:]
     num_clim_depths = len(clim_depths)
 
     # mesh the climatology lon and lats
-    #lon_woam, lat_woam = np.meshgrid(lon.data, lat.data)
-    lon_woam, lat_woam = np.meshgrid(lon, lat)
+    lon_woam, lat_woam = np.meshgrid(lon.data, lat.data)
     deg2rad = np.float64(np.pi/180.0)
  
     # POINTS TO USE ARE THOSE POINTS WITH VALID DATA at the surface

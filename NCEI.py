@@ -26,16 +26,17 @@ def NCEI_pipeline(dest_dir, input_dir):
 
     # Needed paths:
     # Set grid_dir
-    grid_dir = '/Users/brucel/ecco/yip/sample_data/ecco-insitu/tmp-dd-orig/grid_llc90'
+    grid_dir = '/Users/brucel/ecco/yip/sample_data/ecco-insitu/sweet_gdrive/grid_llc90'
 
     # Path to dir containing llc090_sphere_point_n_10242_ids.bin and llc090_sphere_point_n_02562_ids.bin
-    sphere_dir = '/Users/brucel/ecco/yip/sample_data/ecco-insitu/tmp-dd-orig/grid_llc90/sphere_point_distribution'
+    sphere_dir = '/Users/brucel/ecco/yip/sample_data/ecco-insitu/sweet_gdrive/grid_llc90/sphere_point_distribution'
 
     # Path to WOA13_v2_TS_clim_merged_with_potential_T.nc
-    clim_dir = '/Users/brucel/ecco/yip/sample_data/ecco-insitu/tmp-dd-orig/TS_Climatology'
+    clim_dir = '/Users/brucel/ecco/yip/sample_data/ecco-insitu/sweet_gdrive/TS_Climatology'
+    #clim_dir = '/Users/brucel/ecco/yip/sample_data/ecco-insitu/sweet_gdrive/TS_Climatology/WOA13_v2_TS_clim_merged_with_potential_T'
 
     # Path to Salt_sigma_smoothed_method_02_masked_merged_capped_extrapolated.bin and Theta_sigma_smoothed_method_02_masked_merged_capped_extrapolated.bin
-    CTD_TS_bin = '/Users/brucel/ecco/yip/sample_data/ecco-insitu/tmp-dd-orig/CTD_sigma_TS'
+    CTD_TS_bin = '/Users/brucel/ecco/yip/sample_data/ecco-insitu/sweet_gdrive/CTD_sigma_TS'
 
     # Step 1: update_prof_and_tile_points_on_profiles
     llcN = 90                       # Which grid to use, 90 or 270
@@ -155,6 +156,7 @@ if __name__ == '__main__':
     dest_dir = args.dest_dir
     '''
 
-    input_dir = "/Users/brucel/ecco/yip/sample_data/ecco-insitu/tmp-dd-orig/CTD_data_at_end_of_processing_chain"
+    input_dir = "/Users/brucel/ecco/yip/sample_data/ecco-insitu/sweet_gdrive/CTD_data_ECCO_2024-06-20"
     dest_dir = "/Users/brucel/ecco/yip/sample_data/test_output"
+
     main(dest_dir, input_dir)

@@ -261,7 +261,8 @@ def MITprof_write_to_nc(dest_dir, MITprofs, step, basename):
     output_DS.attrs['description'] = 'test file'
 
     # Save to netCDF
-    parts = basename.split('.')
+    #parts = basename.split('.')
+    parts = basename.split('_')
     name = "{}{}_step_{}_{}.nc".format(parts[0], parts[1], step, parts[2])
     nc_path = os.path.join(dest_dir, name)
     output_DS.to_netcdf(nc_path, encoding= encoding)
@@ -1244,7 +1245,8 @@ def intrep_check(xyz, AI, X, Y, Z, lat_vals, lon_vals, step, **kwargs):
             test_lon = 60
 
         test_x, test_y, test_z = sph2cart(test_lon*deg2rad, test_lat*deg2rad, 1)
-        test_ind = int(griddata(xyz, AI, np.asarray([test_x, test_y, test_z]), 'nearest'))
+        #test_ind = int(griddata(xyz, AI, np.asarray([test_x, test_y, test_z]), 'nearest'))
+        test_ind = griddata(xyz, AI, np.asarray([test_x, test_y, test_z]), 'nearest').astype(int)
         
         if step == 2:
             
