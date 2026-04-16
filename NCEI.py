@@ -156,7 +156,8 @@ if __name__ == '__main__':
     dest_dir = args.dest_dir
     '''
 
-    input_dir = "/Users/brucel/ecco/yip/sample_data/ecco-insitu/sweet_gdrive/CTD_data_ECCO_2024-06-20"
+    input_dir = "/Users/brucel/ecco/yip/scripps_data/CTD_WOD"
+    #input_dir = "/Users/brucel/ecco/yip/sample_data/ecco-insitu/sweet_gdrive/CTD_data_ECCO_2024-06-20"
     dest_dir = "/Users/brucel/ecco/yip/sample_data/test_output"
 
     main(dest_dir, input_dir)

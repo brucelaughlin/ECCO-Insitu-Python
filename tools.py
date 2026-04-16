@@ -37,11 +37,6 @@ def MITprof_write_to_nc(dest_dir, MITprofs, step, basename):
     df_lon.name = 'prof_lon'
     df_lon.encoding
 
-    # NOTE: not populated 
-    df_basin = xr.DataArray(MITprofs['prof_basin'], dims = ['iPROF'])
-    df_basin.name = 'prof_basin'
-    df_basin.encoding
-
     df_date = xr.DataArray(MITprofs['prof_date'], dims = ['iPROF'],                                
                             attrs=dict(
                                 description = "Julian day since Jan-1-2000"
@@ -100,7 +95,7 @@ def MITprof_write_to_nc(dest_dir, MITprofs, step, basename):
 
     # Output file with correct variables 
     if step == 0:
-        output_DS = xr.merge([df_HHMMSS, df_YYYYMMDD, df_lat, df_lon, df_basin, df_date, df_depth, df_descr, df_point, df_S, df_S_flag, df_T, df_T_flag])
+        output_DS = xr.merge([df_HHMMSS, df_YYYYMMDD, df_lat, df_lon, df_date, df_depth, df_descr, df_point, df_S, df_S_flag, df_T, df_T_flag])
     if step >= 1:
         df_interp_XC11 = xr.DataArray(MITprofs['prof_interp_XC11'], dims = ['iPROF'])
         df_interp_XC11.name = 'prof_interp_XC11'
@@ -139,7 +134,7 @@ def MITprof_write_to_nc(dest_dir, MITprofs, step, basename):
         df_interp_lat.encoding
 
         if step == 1:
-            output_DS = xr.merge([df_HHMMSS, df_YYYYMMDD, df_lat, df_lon, df_basin, df_date, df_depth, df_descr, df_point, df_S, df_S_flag, df_T, df_T_flag, 
+            output_DS = xr.merge([df_HHMMSS, df_YYYYMMDD, df_lat, df_lon, df_date, df_depth, df_descr, df_point, df_S, df_S_flag, df_T, df_T_flag, 
                                   df_interp_XC11, df_interp_YC11, df_interp_XCNINJ, df_interp_YCNINJ, df_interp_i, df_interp_j, df_interp_weights, df_interp_lon, df_interp_lat])
     if step >= 2:
         df_bin_id_a = xr.DataArray(MITprofs['prof_bin_id_a'], dims = ['iPROF'],
@@ -156,7 +151,7 @@ def MITprof_write_to_nc(dest_dir, MITprofs, step, basename):
         df_bin_id_b.name = 'prof_bin_id_b'
         df_bin_id_b.encoding
         if step == 2:
-            output_DS = xr.merge([df_HHMMSS, df_YYYYMMDD, df_lat, df_lon, df_basin, df_date, df_depth, df_descr, df_point, df_S, df_S_flag, df_T, df_T_flag, 
+            output_DS = xr.merge([df_HHMMSS, df_YYYYMMDD, df_lat, df_lon, df_date, df_depth, df_descr, df_point, df_S, df_S_flag, df_T, df_T_flag, 
                                   df_interp_XC11, df_interp_YC11, df_interp_XCNINJ, df_interp_YCNINJ, df_interp_i, df_interp_j, df_interp_weights, df_interp_lon, df_interp_lat,
                                   df_bin_id_a, df_bin_id_b])
     if step >= 3:
@@ -176,7 +171,7 @@ def MITprof_write_to_nc(dest_dir, MITprofs, step, basename):
         df_Sclim.name = 'prof_Sclim'
         df_Sclim.encoding
         if step == 3:
-            output_DS = xr.merge([df_HHMMSS, df_YYYYMMDD, df_lat, df_lon, df_basin, df_date, df_depth, df_descr, df_point, df_S, df_S_flag, df_T, df_T_flag, 
+            output_DS = xr.merge([df_HHMMSS, df_YYYYMMDD, df_lat, df_lon, df_date, df_depth, df_descr, df_point, df_S, df_S_flag, df_T, df_T_flag, 
                                   df_interp_XC11, df_interp_YC11, df_interp_XCNINJ, df_interp_YCNINJ, df_interp_i, df_interp_j, df_interp_weights, df_interp_lon, df_interp_lat,
                                   df_bin_id_a, df_bin_id_b,
                                   df_Tclim, df_Sclim])
@@ -211,7 +206,7 @@ def MITprof_write_to_nc(dest_dir, MITprofs, step, basename):
         df_Sweight.name = 'prof_Sweight'
         df_Sweight.encoding
         if step == 4:
-            output_DS = xr.merge([df_HHMMSS, df_YYYYMMDD, df_lat, df_lon, df_basin, df_date, df_depth, df_descr, df_point, df_S, df_S_flag, df_T, df_T_flag, 
+            output_DS = xr.merge([df_HHMMSS, df_YYYYMMDD, df_lat, df_lon, df_date, df_depth, df_descr, df_point, df_S, df_S_flag, df_T, df_T_flag, 
                                   df_interp_XC11, df_interp_YC11, df_interp_XCNINJ, df_interp_YCNINJ, df_interp_i, df_interp_j, df_interp_weights, df_interp_lon, df_interp_lat,
                                   df_bin_id_a, df_bin_id_b,
                                   df_Tclim, df_Sclim,
@@ -224,7 +219,7 @@ def MITprof_write_to_nc(dest_dir, MITprofs, step, basename):
         df_area_gamma.name = 'prof_area_gamma'
         df_area_gamma.encoding
         if step == 5 or step == 6:
-            output_DS = xr.merge([df_HHMMSS, df_YYYYMMDD, df_lat, df_lon, df_basin, df_date, df_depth, df_descr, df_point, df_S, df_S_flag, df_T, df_T_flag, 
+            output_DS = xr.merge([df_HHMMSS, df_YYYYMMDD, df_lat, df_lon, df_date, df_depth, df_descr, df_point, df_S, df_S_flag, df_T, df_T_flag, 
                                   df_interp_XC11, df_interp_YC11, df_interp_XCNINJ, df_interp_YCNINJ, df_interp_i, df_interp_j, df_interp_weights, df_interp_lon, df_interp_lat,
                                   df_bin_id_a, df_bin_id_b,
                                   df_Tclim, df_Sclim,
@@ -246,7 +241,7 @@ def MITprof_write_to_nc(dest_dir, MITprofs, step, basename):
         df_Sweight_code.name = 'prof_Sweight_code'
         df_Sweight_code.encoding
         if step >=7 :
-            output_DS = xr.merge([df_HHMMSS, df_YYYYMMDD, df_lat, df_lon, df_basin, df_date, df_depth, df_descr, df_point, df_S, df_S_flag, df_T, df_T_flag, 
+            output_DS = xr.merge([df_HHMMSS, df_YYYYMMDD, df_lat, df_lon, df_date, df_depth, df_descr, df_point, df_S, df_S_flag, df_T, df_T_flag, 
                                   df_interp_XC11, df_interp_YC11, df_interp_XCNINJ, df_interp_YCNINJ, df_interp_i, df_interp_j, df_interp_weights, df_interp_lon, df_interp_lat,
                                   df_bin_id_a, df_bin_id_b,
                                   df_Tclim, df_Sclim,
@@ -296,9 +291,6 @@ def MITprof_read(file, step):
     MITprofs.update({"prof_lat": df_lat})
     df_lon = dataset.variables['prof_lon'][:]
     MITprofs.update({"prof_lon": df_lon})
-
-    df_basin = dataset.variables['prof_basin'][:]
-    MITprofs.update({"prof_basin": df_basin})
 
     df_date = dataset.variables['prof_date'][:]
     MITprofs.update({"prof_date": df_date})
