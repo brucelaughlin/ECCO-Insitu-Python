@@ -1,6 +1,8 @@
 import argparse
 import glob
 import os
+import logging
+
 import step01 as update_prof_and_tile_points_on_profiles
 import step02 as update_spatial_bin_index_on_prepared_profiles
 import step03 as update_monthly_mean_TS_clim_WOA13v2_on_prepared_profiles
@@ -12,6 +14,11 @@ import step08 as update_remove_zero_T_S_weighted_profiles_from_MITprof
 import step09 as update_remove_extraneous_depth_levels
 import step10 as update_decimate_profiles_subdaily_to_once_daily
 from tools import MITprof_read, MITprof_write_to_nc
+
+logging.basicConfig(filename="runtime_NCEI.log", level=logging.DEBUG,
+                    format='%(asctime)s - %(levelname)s - %(name)s - %(message)s')
+
+logger = logging.getLogger(__name__)
 
 def NCEI_pipeline(dest_dir, input_dir):
 
@@ -80,51 +87,111 @@ def NCEI_pipeline(dest_dir, input_dir):
             if len(MITprofs) != 0: 
                 if 1 in steps_to_run:
                     # Updates prof_points and tile interpolation points so that the MITgcm knows which grid points to use for the cost 
-                    update_prof_and_tile_points_on_profiles.main(MITprofs, grid_dir, llcN, wet_or_all)
+                    try:
+                        update_prof_and_tile_points_on_profiles.main(MITprofs, grid_dir, llcN, wet_or_all)
+                    except Exception as e:
+                        logger.info(f"file: {file}")
+                        logger.error(e)
+                        logger.info("")
+                        continue
                     if 1 in steps_to_save:
                         MITprof_write_to_nc(dest_dir, MITprofs, 1, basename)
                 if 2 in steps_to_run:
                     # Updates each profile with a bin index that is specified from some file.
-                    update_spatial_bin_index_on_prepared_profiles.main(sphere_dir, MITprofs, grid_dir)
+                    try:
+                        update_spatial_bin_index_on_prepared_profiles.main(sphere_dir, MITprofs, grid_dir)
+                    except Exception as e:
+                        logger.info(f"file: {file}")
+                        logger.error(e)
+                        logger.info("")
+                        continue
                     if 2 in steps_to_save:
                         MITprof_write_to_nc(dest_dir, MITprofs, 2, basename)
                 if 3 in steps_to_run:
                     # Assigns the WOA13 T and S climatology values to MITprof objects. 
-                    update_monthly_mean_TS_clim_WOA13v2_on_prepared_profiles.main(clim_dir, MITprofs)
+                    try:
+                        update_monthly_mean_TS_clim_WOA13v2_on_prepared_profiles.main(clim_dir, MITprofs)
+                    except Exception as e:
+                        logger.info(f"file: {file}")
+                        logger.error(e)
+                        logger.info("")
+                        continue
                     if 3 in steps_to_save:
                         MITprof_write_to_nc(dest_dir, MITprofs, 3, basename)
                 # Update MITprof objects with new T and S uncertainity fields
                 if 4 in steps_to_run:
-                    update_sigmaTS_on_prepared_profiles.main(MITprofs, grid_dir, CTD_TS_bin, respect_existing_zero_weights, new_S_floor, new_T_floor)
+                    try:
+                        update_sigmaTS_on_prepared_profiles.main(MITprofs, grid_dir, CTD_TS_bin, respect_existing_zero_weights, new_S_floor, new_T_floor)
+                    except Exception as e:
+                        logger.info(f"file: {file}")
+                        logger.error(e)
+                        logger.info("")
+                        continue
                     if 4 in steps_to_save:
                         MITprof_write_to_nc(dest_dir, MITprofs, 4, basename)
                 if 5 in steps_to_run:
                     # Updates the MITprof profiles with a new sigma based on whether we are applying or removing the 'gamma' factor
-                    update_gamma_factor_on_prepared_profiles.main(MITprofs, grid_dir, apply_gamma_factor, llcN)
+                    try:
+                        update_gamma_factor_on_prepared_profiles.main(MITprofs, grid_dir, apply_gamma_factor, llcN)
+                    except Exception as e:
+                        logger.info(f"file: {file}")
+                        logger.error(e)
+                        logger.info("")
+                        continue
                     if 5 in steps_to_save:
                         MITprof_write_to_nc(dest_dir, MITprofs, 5, basename)
                 if 6 in steps_to_run:
                     # Updates profile insitu temperatures so that they are in portential temperatures
-                    update_prof_insitu_T_to_potential_T.main(MITprofs, replace_missing_S_with_clim_S)
+                    try:
+                        update_prof_insitu_T_to_potential_T.main(MITprofs, replace_missing_S_with_clim_S)
+                    except Exception as e:
+                        logger.info(f"file: {file}")
+                        logger.error(e)
+                        logger.info("")
+                        continue
                     if 6 in steps_to_save:
                         MITprof_write_to_nc(dest_dir, MITprofs, 6, basename)
                 if 7 in steps_to_run:
                     # Zeros out profile profTweight and profSweight on points that match some criteria 
-                    update_zero_weight_points_on_prepared_profiles.main('adjust', MITprofs)
+                    try:
+                        update_zero_weight_points_on_prepared_profiles.main('adjust', MITprofs)
+                    except Exception as e:
+                        logger.info(f"file: {file}")
+                        logger.error(e)
+                        logger.info("")
+                        continue
                     if 7 in steps_to_save:
                         MITprof_write_to_nc(dest_dir, MITprofs, 7, basename)
                 if 8 in steps_to_run:  
                     # Remove profiles that whose T and S weights are all zero from from MITprof structures
-                    update_remove_zero_T_S_weighted_profiles_from_MITprof.main(MITprofs)
+                    try:
+                        update_remove_zero_T_S_weighted_profiles_from_MITprof.main(MITprofs)
+                    except Exception as e:
+                        logger.info(f"file: {file}")
+                        logger.error(e)
+                        logger.info("")
+                        continue
                     if 8 in steps_to_save:
                         MITprof_write_to_nc(dest_dir, MITprofs, 8, basename)
                 if 9 in steps_to_run:    
-                    update_remove_extraneous_depth_levels.main(MITprofs)
+                    try:
+                        update_remove_extraneous_depth_levels.main(MITprofs)
+                    except Exception as e:
+                        logger.info(f"file: {file}")
+                        logger.error(e)
+                        logger.info("")
+                        continue
                     if 9 in steps_to_save:
                         MITprof_write_to_nc(dest_dir, MITprofs, 9, basename)
                 if 10 in steps_to_run:    
                     # Decimates profiles with subdaily sampling at the same location to once-daily sampling
-                    update_decimate_profiles_subdaily_to_once_daily.main(MITprofs, distance_tolerance, closest_time, method)
+                    try:
+                        update_decimate_profiles_subdaily_to_once_daily.main(MITprofs, distance_tolerance, closest_time, method)
+                    except Exception as e:
+                        logger.info(f"file: {file}")
+                        logger.error(e)
+                        logger.info("")
+                        continue
                     if 10 in steps_to_save:
                         MITprof_write_to_nc(dest_dir, MITprofs, 10, basename)
             else:
@@ -156,8 +223,8 @@ if __name__ == '__main__':
     dest_dir = args.dest_dir
     '''
 
-    input_dir = "/Users/brucel/ecco/yip/scripps_data/CTD_WOD"
-    #input_dir = "/Users/brucel/ecco/yip/sample_data/ecco-insitu/sweet_gdrive/CTD_data_ECCO_2024-06-20"
-    dest_dir = "/Users/brucel/ecco/yip/sample_data/test_output"
+    #input_dir = "/Users/brucel/ecco/yip/scripps_data/CTD_WOD"
+    ####input_dir = "/Users/brucel/ecco/yip/sample_data/ecco-insitu/sweet_gdrive/CTD_data_ECCO_2024-06-20"
+    #dest_dir = "/Users/brucel/ecco/yip/sample_data/test_output"
 
     main(dest_dir, input_dir)

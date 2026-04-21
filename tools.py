@@ -51,7 +51,9 @@ def MITprof_write_to_nc(dest_dir, MITprofs, step, basename):
     df_depth.name = 'prof_depth'
     df_depth.encoding
 
-    df_descr = xr.DataArray(MITprofs['prof_descr'], dims = ['iPROF', 'iTXT'],
+    #df_descr = xr.DataArray(MITprofs['prof_descr'], dims = ['iPROF', 'iTXT'],
+    #df_descr = xr.DataArray(MITprofs['prof_descr'], dims = ['iPROF', 'lTXT'],
+    df_descr = xr.DataArray(MITprofs['prof_descr'], dims = ['iPROF'],
                             attrs=dict(
                                 description = "Information regarding: cast, NODC Cruise ID, Country, Probe_type, Insitute, DB origin"
                             ))
@@ -71,10 +73,20 @@ def MITprof_write_to_nc(dest_dir, MITprofs, step, basename):
     df_S.name = 'prof_S'
     df_S.encoding
 
-    df_S_flag = xr.DataArray(MITprofs['prof_Sflag'], dims = ['iPROF', 'iDEPTH'],
+    try:
+        df_S_flag = xr.DataArray(MITprofs['prof_Sflag'], dims = ['iPROF', 'iDEPTH'],
                              attrs=dict(
                                 description = "flag = i > 0 means test i rejected data."
                             ))
+    except ValueError:
+        try:
+            df_S_flag = xr.DataArray(MITprofs['prof_Sflag'], dims = ['iPROF'],
+                                     attrs=dict(
+                                        description = "flag = i > 0 means test i rejected data."
+                                    ))
+        except ValueError as err:
+                print(f"ValueError: {err}")
+
     df_S_flag.name = 'prof_Sflag'
     df_S_flag.encoding
 
@@ -86,10 +98,20 @@ def MITprof_write_to_nc(dest_dir, MITprofs, step, basename):
     df_T.name = 'prof_T'
     df_T.encoding
 
-    df_T_flag = xr.DataArray(MITprofs['prof_Tflag'], dims = ['iPROF', 'iDEPTH'],
+    try:
+        df_T_flag = xr.DataArray(MITprofs['prof_Tflag'], dims = ['iPROF', 'iDEPTH'],
                              attrs=dict(
                                 description = "flag = i > 0 means test i rejected data."
                             ))
+    except ValueError:
+        try:
+            df_T_flag = xr.DataArray(MITprofs['prof_Tflag'], dims = ['iPROF'],
+                                     attrs=dict(
+                                        description = "flag = i > 0 means test i rejected data."
+                                    ))
+        except ValueError as err:
+                print(f"ValueError: {err}")
+
     df_T_flag.name = 'prof_Tflag'
     df_T_flag.encoding
 
@@ -178,15 +200,42 @@ def MITprof_write_to_nc(dest_dir, MITprofs, step, basename):
     if step >= 4:
 
         # NOTE: not populated
-        df_Terr = xr.DataArray(MITprofs['prof_Terr'], dims = ['iPROF', 'iDEPTH'])
+
+        try:
+            df_Terr = xr.DataArray(MITprofs['prof_Terr'], dims = ['iPROF', 'iDEPTH'],
+                                 attrs=dict(
+                                    description = "pot. temp. instrumental error",
+                                    units = "degree C"
+                                ))
+        except ValueError:
+            try:
+                df_Terr = xr.DataArray(MITprofs['prof_Terr'], dims = ['iPROF'],
+                                         attrs=dict(
+                                            description = "pot. temp. instrumental error",
+                                            units = "degree C"
+                                        ))
+            except ValueError as err:
+                print(f"ValueError: {err}")
+
         df_Terr.name = 'prof_Terr'
         df_Terr.encoding
+        
+        try:
+            df_Serr = xr.DataArray(MITprofs['prof_Serr'], dims = ['iPROF', 'iDEPTH'],
+                                 attrs=dict(
+                                    description = "salinity instrumental error",
+                                    units = "psu"
+                                ))
+        except ValueError:
+            try:
+                df_Serr = xr.DataArray(MITprofs['prof_Serr'], dims = ['iPROF'],
+                                         attrs=dict(
+                                            description = "salinity instrumental error",
+                                            units = "psu"
+                                        ))
+            except ValueError as err:
+                print(f"ValueError: {err}")
 
-        df_Serr = xr.DataArray(MITprofs['prof_Serr'], dims = ['iPROF', 'iDEPTH'],
-                            attrs=dict(
-                                description = "salinity instrumental error",
-                                units = "psu"
-                            ))
         df_Serr.name = 'prof_Serr'
         df_Serr.encoding
 
@@ -279,128 +328,230 @@ READS THE MATLAB GENERATED FILES
 def MITprof_read(file, step):
 
     MITprofs = {}
-    dataset = nc.Dataset(file)
+
+    dataset = xr.open_dataset(file)
         
-    df_HHMMSS = dataset.variables['prof_HHMMSS'][:]
+    df_HHMMSS = dataset['prof_HHMMSS'].to_masked_array()
     MITprofs.update({"prof_HHMMSS": df_HHMMSS})
 
-    df_YYMMDD = dataset.variables['prof_YYYYMMDD'][:]
+    df_YYMMDD = dataset['prof_YYYYMMDD'].to_masked_array()
     MITprofs.update({"prof_YYYYMMDD": df_YYMMDD})
     
-    df_lat = dataset.variables['prof_lat'][:]
+    df_lat = dataset['prof_lat'].to_masked_array()
     MITprofs.update({"prof_lat": df_lat})
-    df_lon = dataset.variables['prof_lon'][:]
+    df_lon = dataset['prof_lon'].to_masked_array()
     MITprofs.update({"prof_lon": df_lon})
 
-    df_date = dataset.variables['prof_date'][:]
+    arr_zeros = np.ma.zeros(df_HHMMSS.shape)
+    arr_zeros_2d = np.ma.zeros(df_lat.shape)
+
+    # Hackedness
+    n_lTXT = 30
+    arr_zeros_txt = np.ma.zeros((len(arr_zeros), n_lTXT))
+
+
+    try:
+        df_date = dataset['prof_date'].to_masked_array()
+    except KeyError:
+        df_date = arr_zeros
     MITprofs.update({"prof_date": df_date})
 
-    df_depth = dataset.variables['prof_depth'][:]
+    try:
+        df_depth = dataset['prof_depth'].to_masked_array()
+    except KeyError:
+        df_depth = arr_zeros_2d
     MITprofs.update({"prof_depth": df_depth})
 
-    #df_depth_f_flag = dataset.variables['prof_depth_wod_flag'][:]
-    #df_depth_o_flag = dataset.variables['prof_depth_orig_flag'][:]
+    #df_depth_f_flag = dataset['prof_depth_wod_flag'].to_masked_array()
+    #df_depth_o_flag = dataset['prof_depth_orig_flag'].to_masked_array()
     #MITprofs.update({"prof_depth_wod_flag": df_depth_f_flag})
     #MITprofs.update({"prof_depth_orig_flag": df_depth_o_flag})
 
-    df_desc = dataset.variables['prof_descr'][:] 
+    try:
+        df_desc = dataset['prof_descr'].to_masked_array() 
+    except KeyError:
+        #df_descr = arr_zeros_txt
+        df_descr = arr_zeros
+        #df_descr = arr_zeros_2d
     MITprofs.update({"prof_descr": df_desc})
-    df_point = dataset.variables['prof_point'][:]
+    try:
+        df_point = dataset['prof_point'].to_masked_array()
+    except KeyError:
+        df_point = arr_zeros
     MITprofs.update({"prof_point": df_point})
 
     #=========== PROF_S VARS ===========
-    df_S = dataset.variables['prof_S'][:]
+    try:
+        df_S = dataset['prof_S'].to_masked_array()
+    except KeyError:
+        df_S = arr_zeros_2d
     MITprofs.update({"prof_S": df_S})
 
     # NOTE: not populated
-    df_Sestim = dataset.variables['prof_Sestim'][:]
+    try:
+        df_Sestim = dataset['prof_Sestim'].to_masked_array()
+    except KeyError:
+        df_Sestim = arr_zeros_2d
     MITprofs.update({"prof_Sestim": df_Sestim})
     # NOTE: not populated
-    df_S_f_flag = dataset.variables['prof_Sflag'][:]   # prof_S_wod_flag
+    try:
+        df_S_f_flag = dataset['prof_Sflag'].to_masked_array()   # prof_S_wod_flag
+    except KeyError:
+        df_S_f_flag = arr_zeros
+        #df_S_f_flag = arr_zeros_2d
     MITprofs.update({"prof_Sflag": df_S_f_flag}) 
 
-    #df_S_o_flag = dataset.variables['prof_S_orig_flag'][:]
+    #df_S_o_flag = dataset['prof_S_orig_flag'].to_masked_array()
     #MITprofs.update({"prof_S_orig_flag": df_S_o_flag})
 
     #=========== PROF_S VARS END ===========
     
     #=========== PROF_T VARS ===========
-    df_T = dataset.variables['prof_T'][:]
+    try:
+        df_T = dataset['prof_T'].to_masked_array()
+    except KeyError:
+        df_T = arr_zeros_2d
     MITprofs.update({"prof_T": df_T})
 
-    df_Testim = dataset.variables['prof_Testim'][:]
+    try:
+        df_Testim = dataset['prof_Testim'].to_masked_array()
+    except KeyError:
+        df_Testim = arr_zeros_2d
     MITprofs.update({"prof_Testim": df_Testim})
 
-    df_T_f_flag = dataset.variables['prof_Tflag'][:]   #  prof_T_wod_flag
+    try:
+        df_T_f_flag = dataset['prof_Tflag'].to_masked_array()   #  prof_T_wod_flag
+    except KeyError:
+        df_T_f_flag = arr_zeros_2d
     MITprofs.update({"prof_Tflag": df_T_f_flag})       #  prof_Tflag
 
-    #df_T_o_flag = dataset.variables['prof_T_orig_flag'][:]
+    #df_T_o_flag = dataset['prof_T_orig_flag'].to_masked_array()
     #MITprofs.update({"prof_T_orig_flag": df_T_o_flag}) 
     #=========== PROF_T VARS END ===========
 
     # NOTE: added in step 1
     if step > 1:
-        df_interp_i = dataset.variables['prof_interp_i'][:]
+        try:
+            df_interp_i = dataset['prof_interp_i'].to_masked_array()
+        except KeyError:
+            df_interp_i = arr_zeros
         MITprofs.update({"prof_interp_i": df_interp_i})
-        df_interp_j = dataset.variables['prof_interp_j'][:]
+        try:
+            df_interp_j = dataset['prof_interp_j'].to_masked_array()
+        except KeyError:
+            df_interp_j = arr_zeros
         MITprofs.update({"prof_interp_j": df_interp_j})
         
-        df_interp_lon = dataset.variables['prof_interp_lon'][:]
+        try:
+            df_interp_lon = dataset['prof_interp_lon'].to_masked_array()
+        except KeyError:
+            df_interp_lon = arr_zeros
         MITprofs.update({"prof_interp_lon": df_interp_lon})
-        df_interp_lat = dataset.variables['prof_interp_lat'][:]
+        try:
+            df_interp_lat = dataset['prof_interp_lat'].to_masked_array()
+        except KeyError:
+            df_interp_lat = arr_zeros
         MITprofs.update({"prof_interp_lat": df_interp_lat})
     
-        df_interp_weight = dataset.variables['prof_interp_weights'][:]
+        try:
+            df_interp_weight = dataset['prof_interp_weights'].to_masked_array()
+        except KeyError:
+            df_inter_weight = arr_zeros
         MITprofs.update({"prof_interp_weights": df_interp_weight})
         
-        df_interp_XC11 = dataset.variables['prof_interp_XC11'][:]
+        try:
+            df_interp_XC11 = dataset['prof_interp_XC11'].to_masked_array()
+        except KeyError:
+            df_interp_XC11 = arr_zeros
         MITprofs.update({"prof_interp_XC11": df_interp_XC11})
 
-        df_interp_XCNINJ = dataset.variables['prof_interp_XCNINJ'][:]
+        try:
+            df_interp_XCNINJ = dataset['prof_interp_XCNINJ'].to_masked_array()
+        except KeyError:
+            df_interp_XCNINJ = arr_zeros
         MITprofs.update({"prof_interp_XCNINJ": df_interp_XCNINJ})
 
-        df_interp_YC11 = dataset.variables['prof_interp_YC11'][:]
+        try:
+            df_interp_YC11 = dataset['prof_interp_YC11'].to_masked_array()
+        except KeyError:
+            df_interp_YC11 = arr_zeros
         MITprofs.update({"prof_interp_YC11": df_interp_YC11})
         
-        df_interp_YCNINJ = dataset.variables['prof_interp_YCNINJ'][:]
+        try:
+            df_interp_YCNINJ = dataset['prof_interp_YCNINJ'].to_masked_array()
+        except KeyError:
+            df_interp_YCNINJ = arr_zeros
         MITprofs.update({"prof_interp_YCNINJ": df_interp_YCNINJ})
 
     if step > 2:
-        df_bin_a = dataset.variables['prof_bin_id_a'][:]
+        try:
+            df_bin_a = dataset['prof_bin_id_a'].to_masked_array()
+        except KeyError:
+            df_bin_a = arr_zeros
         MITprofs.update({"prof_bin_id_a": df_bin_a})
-        df_bin_b = dataset.variables['prof_bin_id_b'][:]
+        try:
+            df_bin_b = dataset['prof_bin_id_b'].to_masked_array()
+        except KeyError:
+            df_bin_b = arr_zeros
         MITprofs.update({"prof_bin_id_b": df_bin_b})
  
     if step > 3:
-        df_prof_Tclim = dataset.variables['prof_Tclim'][:]
+        try:
+            df_prof_Tclim = dataset['prof_Tclim'].to_masked_array()
+        except KeyError:
+            df_prof_Tclim = arr_zeros_2d
         MITprofs.update({"prof_Tclim": df_prof_Tclim})
-        df_prof_Sclim = dataset.variables['prof_Sclim'][:]
+        try:
+            df_prof_Sclim = dataset['prof_Sclim'].to_masked_array()
+        except KeyError:
+            df_prof_Sclim = arr_zeros_2d
         MITprofs.update({"prof_Sclim": df_prof_Sclim})
     
     # NOTE: arrs are empty before they are added in step 4?
     # However, step 4 tries first to pull existing info from these arrs BEFORE populating them
     # I would check at the end of pipeline completion and ask if there is ever a senario where these following fields
     # are populated from the original CSV files
-    df_Serr = dataset.variables['prof_Serr'][:]    # NOTE: empty but there is code that is translated
+    try:
+        df_Serr = dataset['prof_Serr'].to_masked_array()    # NOTE: empty but there is code that is translated
+    except KeyError:
+        df_Serr = arr_zeros_2d
     MITprofs.update({"prof_Serr": df_Serr})        # but untested to populate these fields
-    df_Terr = dataset.variables['prof_Terr'][:]
+    try:
+        df_Terr = dataset['prof_Terr'].to_masked_array()
+    except KeyError:
+        df_Terr = arr_zeros_2d
     MITprofs.update({"prof_Terr": df_Terr})
 
-    df_Sweight = dataset.variables['prof_Sweight'][:]
+    try:
+        df_Sweight = dataset['prof_Sweight'].to_masked_array()
+    except KeyError:
+        df_Sweight = arr_zeros_2d
     MITprofs.update({"prof_Sweight": df_Sweight})
-    df_Tweight = dataset.variables['prof_Tweight'][:]
+    try:
+        df_Tweight = dataset['prof_Tweight'].to_masked_array()
+    except KeyError:
+        df_Tweight = arr_zeros_2d
     MITprofs.update({"prof_Tweight": df_Tweight})
     # Note above pertains to fields above this line
 
     if step > 5:
-        df_area_gamma = dataset.variables['prof_area_gamma'][:]
+        try:
+            df_area_gamma = dataset['prof_area_gamma'].to_masked_array()
+        except KeyError:
+            df_area_gamma = arr_zeros_2d
         MITprofs.update({"prof_area_gamma": df_area_gamma})
     
     # step6: updated prof_T
     if step > 7:
-        df_Tweight_code = dataset.variables['prof_Tweight_code'][:]
+        try:
+            df_Tweight_code = dataset['prof_Tweight_code'].to_masked_array()
+        except KeyError:
+            df_Tweight_code = arr_zeros_2d
         MITprofs.update({"prof_Tweight_code": df_Tweight_code})
-        df_Sweight_code = dataset.variables['prof_Sweight_code'][:]
+        try:
+            df_Sweight_code = dataset['prof_Sweight_code'].to_masked_array()
+        except KeyError:
+            df_Sweight_code = arr_zeros_2d
         MITprofs.update({"prof_Sweight_code": df_Sweight_code})
 
     return MITprofs
