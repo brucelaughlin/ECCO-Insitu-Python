@@ -23,6 +23,7 @@ def interp_2D_to_arbitrary_z_levels(orig_data_xz, orig_z_centers, new_z_centers)
     # data must be in rows = x (different points)
     #                 columns = z (different depths);
     # convert masked arr to non-masked type
+    # BRUCE - this is a valid usage of "filled", as the array is a masked array
     new_z_centers = new_z_centers.filled(np.nan)
     # Create interpolation function for all rows of orig_data_xz simultaneously
     interp_func = interpolate.interp1d(orig_z_centers, orig_data_xz.T, kind='linear', bounds_error=False, fill_value=np.nan)

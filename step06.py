@@ -302,7 +302,7 @@ def update_prof_insitu_T_to_potential_T(MITprofs, replace_missing_S_with_clim_S)
     else:
         print("step06: There is not a single good T and S pair to use here")
     
-    ptemp = ptemp.filled(np.nan)
+    #ptemp = ptemp.filled(np.nan)
     # set to -9999 if there no new ptemp
     ptemp[np.isnan(ptemp)] = -9999
 

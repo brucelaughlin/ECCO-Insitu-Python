@@ -217,15 +217,19 @@ def update_prof_and_tile_points_on_profiles(MITprof, grid_dir, llcN, wet_or_all)
     tmp_prof_lat = copy.deepcopy(MITprof['prof_lat'])
     tmp_prof_lon = copy.deepcopy(MITprof['prof_lon'])
         
-    bad_lats_over = np.where(abs(tmp_prof_lat)>90)[0]
-    bad_lats_under = np.where(tmp_prof_lat<-90)[0]
+    #bad_lats_over = np.where(tmp_prof_lat>90)[0]
+    #bad_lats_under = np.where(tmp_prof_lat<-90)[0]
+    bad_lats_indices = np.where(abs(tmp_prof_lat)>90)[0]
         
-    if bad_lats_over.size != 0 or bad_lats_under.size != 0:
-        raise Exception("Step01: Bad lats found (lat>90 or lat<-90)")
+    #if bad_lats_over.size != 0 or bad_lats_under.size != 0:
+    #    raise Exception("Step01: Bad lats found (lat>90 or lat<-90)")
     
     d = []
     for k in range(len(tmp_prof_lat)):
-        d.append(distance.distance((tmp_prof_lat[k], tmp_prof_lon[k]), (MITprof['prof_interp_lat'][k], MITprof['prof_interp_lon'][k])).km)
+        if not k in bad_lats_indices:
+            d.append(distance.distance((tmp_prof_lat[k], tmp_prof_lon[k]), (MITprof['prof_interp_lat'][k], MITprof['prof_interp_lon'][k])).km)
+        else:
+            d.append(np.nan)
     d = np.asarray(d)
 
     # distance between grid cells referenced to llcN 90
@@ -244,6 +248,8 @@ def update_prof_and_tile_points_on_profiles(MITprof, grid_dir, llcN, wet_or_all)
         MITprof['prof_flag'] = np.zeros(len(MITprof['prof_YYYYMMDD']))
 
     MITprof['prof_flag'][ins_too_far] = 101
+
+    MITprof['prof_flag'][bad_lats_indices] = 100
 
 def main(MITprof, grid_dir, llcN, wet_or_all):
 

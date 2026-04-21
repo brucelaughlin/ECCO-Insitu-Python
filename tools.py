@@ -1,4 +1,5 @@
 
+from pathlib import Path
 import os
 import numpy as np
 import netCDF4 as nc
@@ -305,9 +306,10 @@ def MITprof_write_to_nc(dest_dir, MITprofs, step, basename):
     output_DS.attrs['description'] = 'test file'
 
     # Save to netCDF
-    #parts = basename.split('.')
-    parts = basename.split('_')
-    name = "{}{}_step_{}_{}.nc".format(parts[0], parts[1], step, parts[2])
+    ###parts = basename.split('.')
+    #parts = basename.split('_')
+    #name = "{}{}_step_{}_{}.nc".format(parts[0], parts[1], step, parts[2])
+    name = f"{str(Path(basename).stem)}__ncei_step_{step}.nc"
     nc_path = os.path.join(dest_dir, name)
     output_DS.to_netcdf(nc_path, encoding= encoding)
 
@@ -353,13 +355,15 @@ def MITprof_read(file, step):
     try:
         df_date = dataset['prof_date'].to_masked_array()
     except KeyError:
-        df_date = arr_zeros
+        #df_date = arr_zeros
+        df_date = np.ma.masked_invalid(arr_zeros)
     MITprofs.update({"prof_date": df_date})
 
     try:
         df_depth = dataset['prof_depth'].to_masked_array()
     except KeyError:
-        df_depth = arr_zeros_2d
+        #df_depth = arr_zeros_2d
+        df_depth = np.ma.masked_invalid(arr_zeros_2d)
     MITprofs.update({"prof_depth": df_depth})
 
     #df_depth_f_flag = dataset['prof_depth_wod_flag'].to_masked_array()
@@ -370,34 +374,39 @@ def MITprof_read(file, step):
     try:
         df_desc = dataset['prof_descr'].to_masked_array() 
     except KeyError:
+        #df_descr = arr_zeros
+        df_descr = np.ma.masked_invalid(arr_zeros)
         #df_descr = arr_zeros_txt
-        df_descr = arr_zeros
         #df_descr = arr_zeros_2d
     MITprofs.update({"prof_descr": df_desc})
     try:
         df_point = dataset['prof_point'].to_masked_array()
     except KeyError:
-        df_point = arr_zeros
+        #df_point = arr_zeros
+        df_point = np.ma.masked_invalid(arr_zeros)
     MITprofs.update({"prof_point": df_point})
 
     #=========== PROF_S VARS ===========
     try:
         df_S = dataset['prof_S'].to_masked_array()
     except KeyError:
-        df_S = arr_zeros_2d
+        #df_S = arr_zeros_2d
+        df_S = np.ma.masked_invalid(arr_zeros_2d)
     MITprofs.update({"prof_S": df_S})
 
     # NOTE: not populated
     try:
         df_Sestim = dataset['prof_Sestim'].to_masked_array()
     except KeyError:
-        df_Sestim = arr_zeros_2d
+        #df_Sestim = arr_zeros_2d
+        df_Sestim = np.ma.masked_invalid(arr_zeros_2d)
     MITprofs.update({"prof_Sestim": df_Sestim})
     # NOTE: not populated
     try:
         df_S_f_flag = dataset['prof_Sflag'].to_masked_array()   # prof_S_wod_flag
     except KeyError:
-        df_S_f_flag = arr_zeros
+        #df_S_f_flag = arr_zeros
+        df_S_f_flag = np.ma.masked_invalid(arr_zeros)
         #df_S_f_flag = arr_zeros_2d
     MITprofs.update({"prof_Sflag": df_S_f_flag}) 
 
@@ -410,19 +419,22 @@ def MITprof_read(file, step):
     try:
         df_T = dataset['prof_T'].to_masked_array()
     except KeyError:
-        df_T = arr_zeros_2d
+        #df_T = arr_zeros_2d
+        df_T = np.ma.masked_invalid(arr_zeros_2d)
     MITprofs.update({"prof_T": df_T})
 
     try:
         df_Testim = dataset['prof_Testim'].to_masked_array()
     except KeyError:
-        df_Testim = arr_zeros_2d
+        #df_Testim = arr_zeros_2d
+        df_Testim = np.ma.masked_invalid(arr_zeros_2d)
     MITprofs.update({"prof_Testim": df_Testim})
 
     try:
         df_T_f_flag = dataset['prof_Tflag'].to_masked_array()   #  prof_T_wod_flag
     except KeyError:
-        df_T_f_flag = arr_zeros_2d
+        #df_T_f_flag = arr_zeros_2d
+        df_T_f_flag = np.ma.masked_invalid(arr_zeros_2d)
     MITprofs.update({"prof_Tflag": df_T_f_flag})       #  prof_Tflag
 
     #df_T_o_flag = dataset['prof_T_orig_flag'].to_masked_array()
@@ -434,103 +446,120 @@ def MITprof_read(file, step):
         try:
             df_interp_i = dataset['prof_interp_i'].to_masked_array()
         except KeyError:
-            df_interp_i = arr_zeros
+            #df_interp_i = arr_zeros
+            df_interp_i = np.ma.masked_invalid(arr_zeros)
         MITprofs.update({"prof_interp_i": df_interp_i})
         try:
             df_interp_j = dataset['prof_interp_j'].to_masked_array()
         except KeyError:
-            df_interp_j = arr_zeros
+            #df_interp_j = arr_zeros
+            df_interp_j = np.ma.masked_invalid(arr_zeros)
         MITprofs.update({"prof_interp_j": df_interp_j})
         
         try:
             df_interp_lon = dataset['prof_interp_lon'].to_masked_array()
         except KeyError:
-            df_interp_lon = arr_zeros
+            #df_interp_lon = arr_zeros
+            df_interp_lon = np.ma.masked_invalid(arr_zeros)
         MITprofs.update({"prof_interp_lon": df_interp_lon})
         try:
             df_interp_lat = dataset['prof_interp_lat'].to_masked_array()
         except KeyError:
-            df_interp_lat = arr_zeros
+            #df_interp_lat = arr_zeros
+            df_interp_lat = np.ma.masked_invalid(arr_zeros)
         MITprofs.update({"prof_interp_lat": df_interp_lat})
     
         try:
             df_interp_weight = dataset['prof_interp_weights'].to_masked_array()
         except KeyError:
-            df_inter_weight = arr_zeros
+            #df_inter_weight = arr_zeros
+            df_inter_weight = np.ma.masked_invalid(arr_zeros)
         MITprofs.update({"prof_interp_weights": df_interp_weight})
         
         try:
             df_interp_XC11 = dataset['prof_interp_XC11'].to_masked_array()
         except KeyError:
-            df_interp_XC11 = arr_zeros
+            #df_interp_XC11 = arr_zeros
+            df_interp_XC11 = np.ma.masked_invalid(arr_zeros)
         MITprofs.update({"prof_interp_XC11": df_interp_XC11})
 
         try:
             df_interp_XCNINJ = dataset['prof_interp_XCNINJ'].to_masked_array()
         except KeyError:
-            df_interp_XCNINJ = arr_zeros
+            #df_interp_XCNINJ = arr_zeros
+            df_interp_XCNINJ = np.ma.masked_invalid(arr_zeros)
         MITprofs.update({"prof_interp_XCNINJ": df_interp_XCNINJ})
 
         try:
             df_interp_YC11 = dataset['prof_interp_YC11'].to_masked_array()
         except KeyError:
-            df_interp_YC11 = arr_zeros
+            #df_interp_YC11 = arr_zeros
+            df_interp_YC11 = np.ma.masked_invalid(arr_zeros)
         MITprofs.update({"prof_interp_YC11": df_interp_YC11})
         
         try:
             df_interp_YCNINJ = dataset['prof_interp_YCNINJ'].to_masked_array()
         except KeyError:
-            df_interp_YCNINJ = arr_zeros
+            #df_interp_YCNINJ = arr_zeros
+            df_interp_YCNINJ = np.ma.masked_invalid(arr_zeros)
         MITprofs.update({"prof_interp_YCNINJ": df_interp_YCNINJ})
 
     if step > 2:
         try:
             df_bin_a = dataset['prof_bin_id_a'].to_masked_array()
         except KeyError:
-            df_bin_a = arr_zeros
+            #df_bin_a = arr_zeros
+            df_bin_a = np.ma.masked_invalid(arr_zeros)
         MITprofs.update({"prof_bin_id_a": df_bin_a})
         try:
             df_bin_b = dataset['prof_bin_id_b'].to_masked_array()
         except KeyError:
-            df_bin_b = arr_zeros
+            #df_bin_b = arr_zeros
+            df_bin_b = np.ma.masked_invalid(arr_zeros)
         MITprofs.update({"prof_bin_id_b": df_bin_b})
  
     if step > 3:
         try:
             df_prof_Tclim = dataset['prof_Tclim'].to_masked_array()
         except KeyError:
-            df_prof_Tclim = arr_zeros_2d
+            #df_prof_Tclim = arr_zeros_2d
+            df_prof_Tclim = np.ma.masked_invalid(arr_zeros_2d)
         MITprofs.update({"prof_Tclim": df_prof_Tclim})
         try:
             df_prof_Sclim = dataset['prof_Sclim'].to_masked_array()
         except KeyError:
-            df_prof_Sclim = arr_zeros_2d
+            #df_prof_Sclim = arr_zeros_2d
+            df_prof_Sclim = np.ma.masked_invalid(arr_zeros_2d)
         MITprofs.update({"prof_Sclim": df_prof_Sclim})
     
     # NOTE: arrs are empty before they are added in step 4?
     # However, step 4 tries first to pull existing info from these arrs BEFORE populating them
-    # I would check at the end of pipeline completion and ask if there is ever a senario where these following fields
+    # I would check at the end of pipeline completion and ask if there is ever a scenario where these following fields
     # are populated from the original CSV files
     try:
         df_Serr = dataset['prof_Serr'].to_masked_array()    # NOTE: empty but there is code that is translated
     except KeyError:
-        df_Serr = arr_zeros_2d
+        #df_Serr = arr_zeros_2d
+        df_Serr = np.ma.masked_invalid(arr_zeros_2d)
     MITprofs.update({"prof_Serr": df_Serr})        # but untested to populate these fields
     try:
         df_Terr = dataset['prof_Terr'].to_masked_array()
     except KeyError:
-        df_Terr = arr_zeros_2d
+        #df_Terr = arr_zeros_2d
+        df_Terr = np.ma.masked_invalid(arr_zeros_2d)
     MITprofs.update({"prof_Terr": df_Terr})
 
     try:
         df_Sweight = dataset['prof_Sweight'].to_masked_array()
     except KeyError:
-        df_Sweight = arr_zeros_2d
+        #df_Sweight = arr_zeros_2d
+        df_Sweight = np.ma.masked_invalid(arr_zeros_2d)
     MITprofs.update({"prof_Sweight": df_Sweight})
     try:
         df_Tweight = dataset['prof_Tweight'].to_masked_array()
     except KeyError:
-        df_Tweight = arr_zeros_2d
+        #df_Tweight = arr_zeros_2d
+        df_Tweight = np.ma.masked_invalid(arr_zeros_2d)
     MITprofs.update({"prof_Tweight": df_Tweight})
     # Note above pertains to fields above this line
 
@@ -538,7 +567,8 @@ def MITprof_read(file, step):
         try:
             df_area_gamma = dataset['prof_area_gamma'].to_masked_array()
         except KeyError:
-            df_area_gamma = arr_zeros_2d
+            #df_area_gamma = arr_zeros_2d
+            df_area_gamma = np.ma.masked_invalid(arr_zeros_2d)
         MITprofs.update({"prof_area_gamma": df_area_gamma})
     
     # step6: updated prof_T
@@ -546,12 +576,14 @@ def MITprof_read(file, step):
         try:
             df_Tweight_code = dataset['prof_Tweight_code'].to_masked_array()
         except KeyError:
-            df_Tweight_code = arr_zeros_2d
+            #df_Tweight_code = arr_zeros_2d
+            df_Tweight_code = np.ma.masked_invalid(arr_zeros_2d)
         MITprofs.update({"prof_Tweight_code": df_Tweight_code})
         try:
             df_Sweight_code = dataset['prof_Sweight_code'].to_masked_array()
         except KeyError:
-            df_Sweight_code = arr_zeros_2d
+            #df_Sweight_code = arr_zeros_2d
+            df_Sweight_code = np.ma.masked_invalid(arr_zeros_2d)
         MITprofs.update({"prof_Sweight_code": df_Sweight_code})
 
     return MITprofs

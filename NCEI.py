@@ -90,110 +90,140 @@ def NCEI_pipeline(dest_dir, input_dir):
                     try:
                         update_prof_and_tile_points_on_profiles.main(MITprofs, grid_dir, llcN, wet_or_all)
                     except Exception as e:
+                        logger.info("\n\nfailure:")
                         logger.info(f"file: {file}")
-                        logger.error(e)
-                        logger.info("")
+                        logger.exception(e)
+                        logger.info("\n\n")
                         continue
                     if 1 in steps_to_save:
                         MITprof_write_to_nc(dest_dir, MITprofs, 1, basename)
+                        logger.info("success:")
+                        logger.info(f"file: {file}")
                 if 2 in steps_to_run:
                     # Updates each profile with a bin index that is specified from some file.
                     try:
                         update_spatial_bin_index_on_prepared_profiles.main(sphere_dir, MITprofs, grid_dir)
                     except Exception as e:
+                        logger.info("\n\nfailure:")
                         logger.info(f"file: {file}")
-                        logger.error(e)
-                        logger.info("")
+                        logger.exception(e)
+                        logger.info("\n\n")
                         continue
                     if 2 in steps_to_save:
                         MITprof_write_to_nc(dest_dir, MITprofs, 2, basename)
+                        logger.info("success:")
+                        logger.info(f"file: {file}")
                 if 3 in steps_to_run:
                     # Assigns the WOA13 T and S climatology values to MITprof objects. 
                     try:
                         update_monthly_mean_TS_clim_WOA13v2_on_prepared_profiles.main(clim_dir, MITprofs)
                     except Exception as e:
+                        logger.info("\n\nfailure:")
                         logger.info(f"file: {file}")
-                        logger.error(e)
-                        logger.info("")
+                        logger.exception(e)
+                        logger.info("\n\n")
                         continue
                     if 3 in steps_to_save:
                         MITprof_write_to_nc(dest_dir, MITprofs, 3, basename)
+                        logger.info("success:")
+                        logger.info(f"file: {file}")
                 # Update MITprof objects with new T and S uncertainity fields
                 if 4 in steps_to_run:
                     try:
                         update_sigmaTS_on_prepared_profiles.main(MITprofs, grid_dir, CTD_TS_bin, respect_existing_zero_weights, new_S_floor, new_T_floor)
                     except Exception as e:
+                        logger.info("\n\nfailure:")
                         logger.info(f"file: {file}")
-                        logger.error(e)
-                        logger.info("")
+                        logger.exception(e)
+                        logger.info("\n\n")
                         continue
                     if 4 in steps_to_save:
                         MITprof_write_to_nc(dest_dir, MITprofs, 4, basename)
+                        logger.info("success:")
+                        logger.info(f"file: {file}")
                 if 5 in steps_to_run:
                     # Updates the MITprof profiles with a new sigma based on whether we are applying or removing the 'gamma' factor
                     try:
                         update_gamma_factor_on_prepared_profiles.main(MITprofs, grid_dir, apply_gamma_factor, llcN)
                     except Exception as e:
+                        logger.info("\n\nfailure:")
                         logger.info(f"file: {file}")
-                        logger.error(e)
-                        logger.info("")
+                        logger.exception(e)
+                        logger.info("\n\n")
                         continue
                     if 5 in steps_to_save:
                         MITprof_write_to_nc(dest_dir, MITprofs, 5, basename)
+                        logger.info("success:")
+                        logger.info(f"file: {file}")
                 if 6 in steps_to_run:
                     # Updates profile insitu temperatures so that they are in portential temperatures
                     try:
                         update_prof_insitu_T_to_potential_T.main(MITprofs, replace_missing_S_with_clim_S)
                     except Exception as e:
+                        logger.info("\n\nfailure:")
                         logger.info(f"file: {file}")
-                        logger.error(e)
-                        logger.info("")
+                        logger.exception(e)
+                        logger.info("\n\n")
                         continue
                     if 6 in steps_to_save:
                         MITprof_write_to_nc(dest_dir, MITprofs, 6, basename)
+                        logger.info("success:")
+                        logger.info(f"file: {file}")
                 if 7 in steps_to_run:
                     # Zeros out profile profTweight and profSweight on points that match some criteria 
                     try:
                         update_zero_weight_points_on_prepared_profiles.main('adjust', MITprofs)
                     except Exception as e:
+                        logger.info("\n\nfailure:")
                         logger.info(f"file: {file}")
-                        logger.error(e)
-                        logger.info("")
+                        logger.exception(e)
+                        logger.info("\n\n")
                         continue
                     if 7 in steps_to_save:
                         MITprof_write_to_nc(dest_dir, MITprofs, 7, basename)
+                        logger.info("success:")
+                        logger.info(f"file: {file}")
                 if 8 in steps_to_run:  
                     # Remove profiles that whose T and S weights are all zero from from MITprof structures
                     try:
                         update_remove_zero_T_S_weighted_profiles_from_MITprof.main(MITprofs)
                     except Exception as e:
+                        logger.info("\n\nfailure:")
                         logger.info(f"file: {file}")
-                        logger.error(e)
-                        logger.info("")
+                        logger.exception(e)
+                        logger.info("\n\n")
                         continue
                     if 8 in steps_to_save:
                         MITprof_write_to_nc(dest_dir, MITprofs, 8, basename)
+                        logger.info("success:")
+                        logger.info(f"file: {file}")
                 if 9 in steps_to_run:    
                     try:
                         update_remove_extraneous_depth_levels.main(MITprofs)
                     except Exception as e:
+                        logger.info("\n\nfailure:")
                         logger.info(f"file: {file}")
-                        logger.error(e)
-                        logger.info("")
+                        logger.exception(e)
+                        logger.info("\n\n")
                         continue
                     if 9 in steps_to_save:
                         MITprof_write_to_nc(dest_dir, MITprofs, 9, basename)
+                        logger.info("success:")
+                        logger.info(f"file: {file}")
                 if 10 in steps_to_run:    
                     # Decimates profiles with subdaily sampling at the same location to once-daily sampling
                     try:
                         update_decimate_profiles_subdaily_to_once_daily.main(MITprofs, distance_tolerance, closest_time, method)
                     except Exception as e:
+                        logger.info("\n\nfailure:")
                         logger.info(f"file: {file}")
-                        logger.error(e)
-                        logger.info("")
+                        logger.exception(e)
+                        logger.info("\n\n")
                         continue
                     if 10 in steps_to_save:
                         MITprof_write_to_nc(dest_dir, MITprofs, 10, basename)
+                        logger.info("success:")
+                        logger.info(f"file: {file}")
             else:
                 raise Exception("No info in NetCDF files")
     else:
@@ -223,6 +253,8 @@ if __name__ == '__main__':
     dest_dir = args.dest_dir
     '''
 
+    input_dir = "/Users/brucel/ecco/yip/sample_data/sample_input_fail" 
+    dest_dir = "/Users/brucel/ecco/yip/sample_data/test_output_single_dir"
     #input_dir = "/Users/brucel/ecco/yip/scripps_data/CTD_WOD"
     ####input_dir = "/Users/brucel/ecco/yip/sample_data/ecco-insitu/sweet_gdrive/CTD_data_ECCO_2024-06-20"
     #dest_dir = "/Users/brucel/ecco/yip/sample_data/test_output"
