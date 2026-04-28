@@ -347,11 +347,6 @@ def MITprof_read(file, step):
     arr_zeros = np.ma.zeros(df_HHMMSS.shape)
     arr_zeros_2d = np.ma.zeros(df_lat.shape)
 
-    # Hackedness
-    n_lTXT = 30
-    arr_zeros_txt = np.ma.zeros((len(arr_zeros), n_lTXT))
-
-
     try:
         df_date = dataset['prof_date'].to_masked_array()
     except KeyError:
@@ -376,8 +371,6 @@ def MITprof_read(file, step):
     except KeyError:
         #df_descr = arr_zeros
         df_descr = np.ma.masked_invalid(arr_zeros)
-        #df_descr = arr_zeros_txt
-        #df_descr = arr_zeros_2d
     MITprofs.update({"prof_descr": df_desc})
     try:
         df_point = dataset['prof_point'].to_masked_array()

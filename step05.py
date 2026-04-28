@@ -36,7 +36,7 @@ def update_gamma_factor_on_prepared_profiles(MITprofs, grid_dir, apply_gamma_fac
 
     #  load weights
     tmpT = MITprofs['prof_Tweight']
-    tmpT[np.where(tmpT < 0)[0]] = np.nan
+    tmpT[np.where(tmpT < 0)[0]] = np.nan  # WE REALLY WANT TO SET ENTIRE ROWS TO NAN?  THIS ERASES AN ENTIRE PROFILE DEPTH INDEX FOR ALL TIME IF ANY OF ITS VALUES ARE NEGATIVE
     if 'prof_S' in MITprofs:
         tmpS = MITprofs['prof_Sweight']
         tmpS[np.where(tmpS <0)[0]] = np.nan

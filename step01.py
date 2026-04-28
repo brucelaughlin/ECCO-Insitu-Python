@@ -6,6 +6,7 @@ import copy
 from geopy import distance
 from scipy.interpolate import griddata
 from tools import MITprof_read, load_llc270_grid, load_llc90_grid, patchface3D, sph2cart
+import pdb
 
 def get_profpoint_llc_ian(lon_llc, lat_llc, mask_llc, MITprof):
     """
@@ -56,7 +57,9 @@ def get_profpoint_llc_ian(lon_llc, lat_llc, mask_llc, MITprof):
     F_grid_PF_XYZ_to_INDEX = F_grid_PF_XYZ_to_INDEX.astype(int)
     
     # creating new prof_point field in dict and populating
-    MITprof.update({"prof_point": F_grid_PF_XYZ_to_INDEX})
+    #MITprof.update({"prof_point": F_grid_PF_XYZ_to_INDEX})
+    print('size of F_grid_PF ', F_grid_PF_XYZ_to_INDEX.shape)
+    MITprof["prof_point"].values[:] =  F_grid_PF_XYZ_to_INDEX
 
     return F_grid_PF_XYZ_to_INDEX
 
@@ -142,28 +145,32 @@ def get_tile_point_llc_ian(lon_llc, lat_llc, ni, nj, MITprof):
         # use the prof_point to pull the right value from whatever list_in{k}
         # is.. list_in{k} is in patchface format, from above.    
         if k == 0:
-            MITprof['prof_interp_lon'] = list_in[k].flatten(order = 'F')[MITprof['prof_point']]
+            #MITprof['prof_interp_lon'] = list_in[k].flatten(order = 'F')[MITprof['prof_point']]
+            #print(type(MITprof['prof_point']))
+            #print(MITprof['prof_point'].values)
+            #print(MITprof['prof_point'].shape)
+            MITprof['prof_interp_lon'] = list_in[k].flatten(order = 'F')[MITprof['prof_point'].values.astype(int)]
         elif k == 1:
-            MITprof['prof_interp_lat'] = list_in[k].flatten(order = 'F')[MITprof['prof_point']]
+            MITprof['prof_interp_lat'] = list_in[k].flatten(order = 'F')[MITprof['prof_point'].values.astype(int)]
         elif k == 2:    
-            MITprof['prof_interp_XC11'] = list_in[k].flatten(order = 'F')[MITprof['prof_point']]
+            MITprof['prof_interp_XC11'] = list_in[k].flatten(order = 'F')[MITprof['prof_point'].values.astype(int)]
         elif k == 3:    
-            MITprof['prof_interp_YC11'] = list_in[k].flatten(order = 'F')[MITprof['prof_point']]
+            MITprof['prof_interp_YC11'] = list_in[k].flatten(order = 'F')[MITprof['prof_point'].values.astype(int)]
         elif k == 4:    
-            MITprof['prof_interp_XCNINJ'] = list_in[k].flatten(order = 'F')[MITprof['prof_point']]
+            MITprof['prof_interp_XCNINJ'] = list_in[k].flatten(order = 'F')[MITprof['prof_point'].values.astype(int)]
         elif k == 5:    
-            MITprof['prof_interp_YCNINJ'] = list_in[k].flatten(order = 'F')[MITprof['prof_point']]
+            MITprof['prof_interp_YCNINJ'] = list_in[k].flatten(order = 'F')[MITprof['prof_point'].values.astype(int)]
         elif k == 6:    
-            MITprof['prof_interp_i'] = list_in[k].flatten(order = 'F')[MITprof['prof_point']]
+            MITprof['prof_interp_i'] = list_in[k].flatten(order = 'F')[MITprof['prof_point'].values.astype(int)]
         elif k == 7:    
-            MITprof['prof_interp_j'] = list_in[k].flatten(order = 'F')[MITprof['prof_point']]
+            MITprof['prof_interp_j'] = list_in[k].flatten(order = 'F')[MITprof['prof_point'].values.astype(int)]
     
     # one last thing: "weights", which is 1 b/c we're using nearest neighbor:
     MITprof['prof_interp_weights'] = np.ones(MITprof['prof_point'].shape)
 
     return MITprof
 
-def update_prof_and_tile_points_on_profiles(MITprof, grid_dir, llcN, wet_or_all):
+def update_prof_and_tile_points_on_profiles(MITprof_orig, grid_dir, llcN, wet_or_all):
     """
     This script updates the prof_points and tile interpolation points
     so that the MITgcm knows which grid points to use for the cost function
@@ -177,7 +184,10 @@ def update_prof_and_tile_points_on_profiles(MITprof, grid_dir, llcN, wet_or_all)
     Output:
         Operates on MITprofs directly 
     """
-    
+   
+    # make deep copy of the MITprof (xarray object)
+    MITprof = MITprof_orig.copy(deep=True)
+
     ##  Read in llc grid 
     if llcN == 90:
 
@@ -247,14 +257,23 @@ def update_prof_and_tile_points_on_profiles(MITprof, grid_dir, llcN, wet_or_all)
     if 'prof_flag' not in MITprof:
         MITprof['prof_flag'] = np.zeros(len(MITprof['prof_YYYYMMDD']))
 
-    MITprof['prof_flag'][ins_too_far] = 101
+    ###breakpoint()
+    #pdb.set_trace()
 
-    MITprof['prof_flag'][bad_lats_indices] = 100
+    if ins_too_far.size != 0:
+        MITprof['prof_flag'][ins_too_far] = 101
 
-def main(MITprof, grid_dir, llcN, wet_or_all):
+    if bad_lats_indices.size != 0:
+        MITprof['prof_flag'][bad_lats_indices] = 100
+
+
+    return MITprof
+
+
+def main(MITprof_ds, grid_dir, llcN, wet_or_all):
 
     print("step01: update_prof_and_tile_points_on_profiles")
-    update_prof_and_tile_points_on_profiles(MITprof, grid_dir, llcN, wet_or_all)
+    update_prof_and_tile_points_on_profiles(MITprof_ds, grid_dir, llcN, wet_or_all)
 
 if __name__ == '__main__':
 

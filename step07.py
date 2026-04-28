@@ -202,8 +202,8 @@ def update_zero_weight_points_on_prepared_profiles(run_code, MITprofs):
         if zero_critera_code_i == 1: #  profiles already have zero or missing weights
 
             # Find indices of NaNs and non-positive values
-            ins1 = np.where(np.isnan(MITprofs['prof_Tweight'].flatten(order = 'F')))
-            ins2 = np.where(MITprofs['prof_Tweight'].flatten(order = 'F') <= 0)
+            ins1 = np.where(np.isnan(MITprofs['prof_Tweight'].values.flatten(order = 'F')))
+            ins2 = np.where(MITprofs['prof_Tweight'].values.flatten(order = 'F') <= 0)
             ins3 = np.union1d(ins1, ins2)
 
             ins3 = np.unravel_index(ins3, MITprofs['prof_Tweight'].shape, order = 'F')

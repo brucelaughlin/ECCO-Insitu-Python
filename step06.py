@@ -1,3 +1,4 @@
+import xarray as xr
 import argparse
 import glob
 import os
@@ -250,15 +251,17 @@ def update_prof_insitu_T_to_potential_T(MITprofs, replace_missing_S_with_clim_S)
     
     lats = MITprofs['prof_lat']
     # flatten array and converted all NaN vals to fillval
-    prof_T = MITprofs['prof_T'].flatten(order = 'F').filled(fillVal)
-    prof_S = MITprofs['prof_S'].flatten(order = 'F').filled(fillVal)
+    #prof_T = MITprofs['prof_T'].values.flatten(order = 'F').filled(fillVal)
+    #prof_S = MITprofs['prof_S'].values.flatten(order = 'F').filled(fillVal)
+    prof_T = np.where(np.isnan(MITprofs['prof_T']), MITprofs['prof_T'], fillVal).flatten(order= 'F') 
+    prof_S = np.where(np.isnan(MITprofs['prof_S']), MITprofs['prof_S'], fillVal).flatten(order= 'F') 
     
     # to qualify you need to have a valid T, S 
     good_T_and_S_ins = np.where((prof_T != fillVal) & (prof_S != fillVal))[0]
     
     if replace_missing_S_with_clim_S:
         missing_S_ins = np.where((prof_T != fillVal) & (prof_S == fillVal))[0]
-        prof_S[missing_S_ins] = MITprofs['prof_Sclim'].ravel(order = 'F')[missing_S_ins]
+        prof_S[missing_S_ins] = MITprofs['prof_Sclim'].values.ravel(order = 'F')[missing_S_ins]
 
     # to qualify you need to have a valid T, S 
     good_T_and_S_ins = np.where((prof_T != fillVal) & (prof_S != fillVal))[0]
@@ -306,7 +309,8 @@ def update_prof_insitu_T_to_potential_T(MITprofs, replace_missing_S_with_clim_S)
     # set to -9999 if there no new ptemp
     ptemp[np.isnan(ptemp)] = -9999
 
-    MITprofs['prof_T'] = ptemp
+    #MITprofs['prof_T'] = ptemp
+    MITprofs['prof_T'] = xr.DataArray(ptemp, dims=['iPROF','iDEPTH'], name='prof_T')
  
     
 def main(MITprofs, replace_missing_S_with_clim_S):

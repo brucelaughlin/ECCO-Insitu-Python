@@ -7,6 +7,8 @@ import netCDF4 as nc
 from scipy.interpolate import griddata
 from tools import MITprof_read, intrep_check, sph2cart
 import pymatreader
+import pdb
+import xarray as xr
 
 def update_monthly_mean_TS_clim_WOA13v2_on_prepared_profiles(TS_clim_dir, MITprofs):
     """
@@ -128,9 +130,13 @@ def update_monthly_mean_TS_clim_WOA13v2_on_prepared_profiles(TS_clim_dir, MITpro
     prof_clim_T_temp = prof_clim_T.flatten(order= 'F')
     prof_clim_T_temp[np.where(np.isnan(prof_clim_T_temp))[0]]= fillVal
     prof_clim_T = prof_clim_T_temp.reshape((prof_clim_T.shape), order='F')
+
+    #pdb.set_trace()
     
-    MITprofs['prof_Tclim'] = prof_clim_T
-    MITprofs['prof_Sclim'] = prof_clim_S
+    #MITprofs['prof_Tclim'] = prof_clim_T
+    #MITprofs['prof_Sclim'] = prof_clim_S
+    MITprofs['prof_Tclim'] = xr.DataArray(prof_clim_T, dims=['iPROF', 'iDEPTH'], name='prof_Tclim')
+    MITprofs['prof_Sclim'] = xr.DataArray(prof_clim_S, dims=['iPROF', 'iDEPTH'], name='prof_Sclim')
 
 def main(TS_clim_dir, MITprofs):
 
