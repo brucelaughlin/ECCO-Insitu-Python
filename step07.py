@@ -1,3 +1,4 @@
+import pdb
 import argparse
 import copy
 import glob
@@ -6,6 +7,18 @@ import numpy as np
 import numpy.ma as ma
 import datetime as dt
 from tools import MITprof_read
+
+chunk_size = 1000
+
+def chunk_modify_in_place_set_to_zero(arr, index_tuple, chunk_size):
+    for ii in range(0, len(index_tuple[0]), chunk_size):
+        arr[index_tuple[0][ii:ii+chunk_size], index_tuple[1][ii:ii+chunk_size]] = 0   
+
+def chunk_modify_in_place_add_scalar(arr, index_tuple, scalar, chunk_size):
+    for ii in range(0, len(index_tuple[0]), chunk_size):
+        arr[index_tuple[0][ii:ii+chunk_size], index_tuple[1][ii:ii+chunk_size]] += scalar    
+
+#zero_T_weight_reason[ins3] = zero_T_weight_reason[ins3] + 2 **(zero_critera_code_i - 1)          
 
 def mynanmean(x, dim = None):
     """
@@ -182,7 +195,8 @@ def update_zero_weight_points_on_prepared_profiles(run_code, MITprofs):
         zero_S_weight_reason = copy.deepcopy(tmp_weight_zero)
     
     # Make copy of MITprofs
-    MITprofs_new = copy.deepcopy(MITprofs)
+    #MITprofs_new = copy.deepcopy(MITprofs)
+    MITprofs_new = MITprofs.copy(deep=True)
     for zero_critera_code_i in zero_criteria_code:
    
         print('\nCriteria : {} {}\n'.format(zero_critera_code_i, critera_names[zero_critera_code_i - 1]))
@@ -206,24 +220,34 @@ def update_zero_weight_points_on_prepared_profiles(run_code, MITprofs):
             ins2 = np.where(MITprofs['prof_Tweight'].values.flatten(order = 'F') <= 0)
             ins3 = np.union1d(ins1, ins2)
 
+
+
             ins3 = np.unravel_index(ins3, MITprofs['prof_Tweight'].shape, order = 'F')
 
             # Set values to 0 directly using boolean indexing
-            MITprofs_new['prof_Tweight'][ins3] = 0   
-            zero_T_weight_reason[ins3] = zero_T_weight_reason[ins3] + 2 **(zero_critera_code_i - 1)          
+            if len(ins3) > 0:
+                chunk_modify_in_place_set_to_zero(MITprofs_new['prof_Tweight'], ins3, chunk_size)
+
+
+            #zero_T_weight_reason[ins3] = zero_T_weight_reason[ins3] + 2 **(zero_critera_code_i - 1)          
+            chunk_modify_in_place_add_scalar(zero_T_weight_reason, ins3, 2 **(zero_critera_code_i - 1), chunk_size)
+
+            print('blah')
 
             # Now salinity
             if 'prof_S' in MITprofs:
                 # nan weights
-                ins1 = np.where(np.isnan(MITprofs['prof_Sweight'].flatten(order = 'F')))
+                ins1 = np.where(np.isnan(MITprofs['prof_Sweight'].values.flatten(order = 'F')))
                 # zero weights or negative weights
-                ins2 = np.where(MITprofs['prof_Sweight'].flatten(order = 'F') <= 0)
+                ins2 = np.where(MITprofs['prof_Sweight'].values.flatten(order = 'F') <= 0)
                 ins3 = np.union1d(ins1, ins2)
 
                 ins3 = np.unravel_index(ins3, MITprofs['prof_Tweight'].shape, order = 'F')
 
                 MITprofs_new['prof_Sweight'][ins3] = 0
                 zero_S_weight_reason[ins3] = zero_S_weight_reason[ins3] + 2 ** (zero_critera_code_i - 1)
+        
+        print('made it past zero criteria code 1') 
        
         if zero_critera_code_i == 2: # nonzero prof T or S flag
             
@@ -238,8 +262,8 @@ def update_zero_weight_points_on_prepared_profiles(run_code, MITprofs):
 
         if zero_critera_code_i == 3: #  missing T or S
 
-            ins1 = np.where(np.isnan(MITprofs['prof_T'].flatten(order = 'F')))
-            ins2 = np.where(MITprofs['prof_T'].flatten(order = 'F') <= checkVal)
+            ins1 = np.where(np.isnan(MITprofs['prof_T'].values.flatten(order = 'F')))
+            ins2 = np.where(MITprofs['prof_T'].values.flatten(order = 'F') <= checkVal)
             ins3 = np.union1d(ins1, ins2)
 
             ins3 = np.unravel_index(ins3, MITprofs['prof_T'].shape, order = 'F')
@@ -249,8 +273,8 @@ def update_zero_weight_points_on_prepared_profiles(run_code, MITprofs):
             zero_T_weight_reason[ins3] = zero_T_weight_reason[ins3] + 2 ** (zero_critera_code_i - 1)
      
             if 'prof_S' in MITprofs:
-                ins1 = np.where(np.isnan(MITprofs['prof_S'].flatten(order = 'F')))
-                ins2 = np.where(MITprofs['prof_S'].flatten(order = 'F') <= checkVal)
+                ins1 = np.where(np.isnan(MITprofs['prof_S'].values.flatten(order = 'F')))
+                ins2 = np.where(MITprofs['prof_S'].values.flatten(order = 'F') <= checkVal)
                 ins3 = np.union1d(ins1, ins2)
 
                 ins3 = np.unravel_index(ins3, MITprofs['prof_S'].shape, order = 'F')
@@ -284,8 +308,8 @@ def update_zero_weight_points_on_prepared_profiles(run_code, MITprofs):
             # Profs with T or S outside legal range 
             # find those that are less than the legal min
             # but not already set to the -9999 missing data
-            ins1 = np.where((MITprofs['prof_T'].flatten(order = 'F') < prof_Tmin) & (MITprofs['prof_T'].flatten(order = 'F')  > checkVal))
-            ins2 = np.where((MITprofs['prof_T'].flatten(order = 'F')  > prof_Tmax) & (MITprofs['prof_T'].flatten(order = 'F')  > checkVal))
+            ins1 = np.where((MITprofs['prof_T'].values.flatten(order = 'F') < prof_Tmin) & (MITprofs['prof_T'].values.flatten(order = 'F')  > checkVal))
+            ins2 = np.where((MITprofs['prof_T'].values.flatten(order = 'F')  > prof_Tmax) & (MITprofs['prof_T'].values.flatten(order = 'F')  > checkVal))
             ins3 = np.union1d(ins1, ins2)
 
             ins3 = np.unravel_index(ins3, MITprofs['prof_T'].shape, order = 'F')
@@ -297,8 +321,8 @@ def update_zero_weight_points_on_prepared_profiles(run_code, MITprofs):
                 # PART 2: FIND S VALUES OUTSIDE OF RANGE.
                 # find those that are less than the legal min
                 # but not already set to the -9999 missing data
-                ins1 = np.where((MITprofs['prof_S'].flatten(order = 'F') < prof_Smin) & (MITprofs['prof_S'].flatten(order = 'F') > checkVal))
-                ins2 = np.where((MITprofs['prof_S'].flatten(order = 'F') > prof_Smax) & (MITprofs['prof_S'].flatten(order = 'F') > checkVal))
+                ins1 = np.where((MITprofs['prof_S'].values.flatten(order = 'F') < prof_Smin) & (MITprofs['prof_S'].values.flatten(order = 'F') > checkVal))
+                ins2 = np.where((MITprofs['prof_S'].values.flatten(order = 'F') > prof_Smax) & (MITprofs['prof_S'].values.flatten(order = 'F') > checkVal))
                 ins3 = np.union1d(ins1, ins2)
 
                 ins3 = np.unravel_index(ins3, MITprofs['prof_S'].shape, order = 'F')
@@ -308,9 +332,9 @@ def update_zero_weight_points_on_prepared_profiles(run_code, MITprofs):
 
         if zero_critera_code_i == 6: # missing climatology value
  
-            ins1 = np.where(MITprofs['prof_Tclim'].flatten(order = 'F') <= checkVal)
-            ins2 = np.where(np.isnan(MITprofs['prof_Tclim'].flatten(order = 'F') ))
-            ins3 = np.where(MITprofs['prof_Tclim'].flatten(order = 'F')  == 0)
+            ins1 = np.where(MITprofs['prof_Tclim'].values.flatten(order = 'F') <= checkVal)
+            ins2 = np.where(np.isnan(MITprofs['prof_Tclim'].values.flatten(order = 'F') ))
+            ins3 = np.where(MITprofs['prof_Tclim'].values.flatten(order = 'F')  == 0)
             ins4 = np.union1d(ins3, np.union1d(ins1, ins2))
 
             ins4 = np.unravel_index(ins4, MITprofs['prof_Tclim'].shape, order = 'F')
@@ -320,9 +344,9 @@ def update_zero_weight_points_on_prepared_profiles(run_code, MITprofs):
       
             if 'prof_S' in MITprofs:
                 
-                ins1 = np.where(MITprofs['prof_Sclim'].flatten(order = 'F') <= checkVal)
-                ins2 = np.where(np.isnan(MITprofs['prof_Sclim'].flatten(order = 'F')))
-                ins3 = np.where(MITprofs['prof_Sclim'].flatten(order = 'F') == 0)
+                ins1 = np.where(MITprofs['prof_Sclim'].values.flatten(order = 'F') <= checkVal)
+                ins2 = np.where(np.isnan(MITprofs['prof_Sclim'].values.flatten(order = 'F')))
+                ins3 = np.where(MITprofs['prof_Sclim'].values.flatten(order = 'F') == 0)
                 ins4 = np.union1d(ins3, np.union1d(ins1, ins2))
 
                 ins4 = np.unravel_index(ins4, MITprofs['prof_Sclim'].shape, order = 'F')
