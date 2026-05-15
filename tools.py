@@ -200,7 +200,7 @@ def MITprof_write_to_nc(dest_dir, MITprofs, step, basename):
                                   df_Tclim, df_Sclim])
     if step >= 4:
 
-        # NOTE: not populated
+        # NoTE: not populated
 
         try:
             df_Terr = xr.DataArray(MITprofs['prof_Terr'], dims = ['iPROF', 'iDEPTH'],
@@ -387,14 +387,14 @@ def MITprof_read(file, step):
         df_S = np.ma.masked_invalid(arr_zeros_2d)
     MITprofs.update({"prof_S": df_S})
 
-    # NOTE: not populated
+    # NoTE: not populated
     try:
         df_Sestim = dataset['prof_Sestim'].to_masked_array()
     except KeyError:
         #df_Sestim = arr_zeros_2d
         df_Sestim = np.ma.masked_invalid(arr_zeros_2d)
     MITprofs.update({"prof_Sestim": df_Sestim})
-    # NOTE: not populated
+    # NoTE: not populated
     try:
         df_S_f_flag = dataset['prof_Sflag'].to_masked_array()   # prof_S_wod_flag
     except KeyError:
@@ -434,7 +434,7 @@ def MITprof_read(file, step):
     #MITprofs.update({"prof_T_orig_flag": df_T_o_flag}) 
     #=========== PROF_T VARS END ===========
 
-    # NOTE: added in step 1
+    # NoTE: added in step 1
     if step > 1:
         try:
             df_interp_i = dataset['prof_interp_i'].to_masked_array()
@@ -466,7 +466,7 @@ def MITprof_read(file, step):
             df_interp_weight = dataset['prof_interp_weights'].to_masked_array()
         except KeyError:
             #df_inter_weight = arr_zeros
-            df_inter_weight = np.ma.masked_invalid(arr_zeros)
+            df_interp_weight = np.ma.masked_invalid(arr_zeros)
         MITprofs.update({"prof_interp_weights": df_interp_weight})
         
         try:
@@ -525,12 +525,12 @@ def MITprof_read(file, step):
             df_prof_Sclim = np.ma.masked_invalid(arr_zeros_2d)
         MITprofs.update({"prof_Sclim": df_prof_Sclim})
     
-    # NOTE: arrs are empty before they are added in step 4?
+    # NoTE: arrs are empty before they are added in step 4?
     # However, step 4 tries first to pull existing info from these arrs BEFORE populating them
     # I would check at the end of pipeline completion and ask if there is ever a scenario where these following fields
     # are populated from the original CSV files
     try:
-        df_Serr = dataset['prof_Serr'].to_masked_array()    # NOTE: empty but there is code that is translated
+        df_Serr = dataset['prof_Serr'].to_masked_array()    # NoTE: empty but there is code that is translated
     except KeyError:
         #df_Serr = arr_zeros_2d
         df_Serr = np.ma.masked_invalid(arr_zeros_2d)
@@ -697,7 +697,7 @@ def patchface3D(nx, ny, nz, array_in, direction):
         faces.append(f4)
         faces.append(f5)
 
-    # NOTE: Same as 0 but for 2D arrays
+    # NoTE: Same as 0 but for 2D arrays
     if direction == 0.5: 
         nx=nx//4
         f1 = array_in[:nx, :3 * nx, :]
@@ -1313,7 +1313,7 @@ def load_llc90_grid(grootdir, step):
     AI_90 = np.arange(0, lon_90.size)
     AI_90 = AI_90.reshape(lon_90.shape, order = 'F')
 
-    # NOTE: ADDED CODE BC need good_ins_90
+    # NoTE: ADDED CODE BC need good_ins_90
     bad_ins_90 = np.where(np.logical_and(lat_90 == 0, lon_90 == 0, bathy_90 == 0).flatten(order = 'F'))[0]
     # USED
     good_ins_90 = np.setdiff1d(AI_90.flatten(order = 'F').T, bad_ins_90.flatten(order = 'F'))
@@ -1357,7 +1357,7 @@ def load_llc90_grid(grootdir, step):
     dry_ins_90 = np.where(hFacC_90 == 0)[0]
     """
 
-    # 14 NOTE: problems - Python cannot have numpy arr of different sizes so result is a list of numpy arrs 
+    # 14 NoTE: problems - Python cannot have numpy arr of different sizes so result is a list of numpy arrs 
     # dry_ins_90_k = []
     wet_ins_90_k = []
     # nan_ins_90_k = []

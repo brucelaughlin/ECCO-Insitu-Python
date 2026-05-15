@@ -1,3 +1,4 @@
+import pdb
 import xarray as xr
 import argparse
 import glob
@@ -153,6 +154,7 @@ def update_sigmaTS_on_prepared_profiles(MITprofs, grid_dir, sigma_dir, respect_e
     # map sigma field to profile points & make weights & apply weights
     tmp_sigma_T = sigma_T_MITprof_z_flat[prof_llc90_cell_index,:]
     tmp_weight_T = 1. / (tmp_sigma_T ** 2)
+    #pdb.set_trace()
     #MITprofs['prof_Tweight'] = tmp_weight_T
     MITprofs['prof_Tweight'] = xr.DataArray(tmp_weight_T, dims=['iPROF', 'iDEPTH'], name='prof_Tweight')
 

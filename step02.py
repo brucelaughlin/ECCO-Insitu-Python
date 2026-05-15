@@ -67,8 +67,8 @@ def update_spatial_bin_index_on_prepared_profiles(bin_dir, MITprofs, grid_dir):
     # loop through the different geodesic bins
     bin_1 = bin_1.flatten(order = 'F')
     bin_2 = bin_2.flatten(order = 'F')
-    MITprofs['prof_bin_id_a'] = bin_1[prof_llcN_cell_index]
-    MITprofs['prof_bin_id_b'] = bin_2[prof_llcN_cell_index]
+    MITprofs['prof_bin_id_a'].values = bin_1[prof_llcN_cell_index]
+    MITprofs['prof_bin_id_b'].values = bin_2[prof_llcN_cell_index]
 
 def main(bin_dir, MITprofs, grid_dir):
 

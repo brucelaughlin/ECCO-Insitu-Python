@@ -1,3 +1,4 @@
+import pdb
 import argparse
 import copy
 import glob
@@ -35,11 +36,16 @@ def update_gamma_factor_on_prepared_profiles(MITprofs, grid_dir, apply_gamma_fac
             RAC = copy.deepcopy(RAC_270_pf)
 
     #  load weights
-    tmpT = MITprofs['prof_Tweight']
-    tmpT[np.where(tmpT < 0)[0]] = np.nan  # WE REALLY WANT TO SET ENTIRE ROWS TO NAN?  THIS ERASES AN ENTIRE PROFILE DEPTH INDEX FOR ALL TIME IF ANY OF ITS VALUES ARE NEGATIVE
+    #pdb.set_trace()
+    tmpT = MITprofs['prof_Tweight'].values
+    #tmpT = MITprofs['prof_Tweight']
+    tmpT[np.where(tmpT < 0)] = np.nan
+    #tmpT[np.where(tmpT < 0)[0]] = np.nan  # I think this didn't break only because the index was empty... 
     if 'prof_S' in MITprofs:
-        tmpS = MITprofs['prof_Sweight']
-        tmpS[np.where(tmpS <0)[0]] = np.nan
+        tmpS = MITprofs['prof_Sweight'].values
+        #tmpS = MITprofs['prof_Sweight']
+        tmpS[np.where(tmpS <0)] = np.nan
+        #tmpS[np.where(tmpS <0)[0]] = np.nan
    
     # apply or remove the gamma factor
     if apply_gamma_factor == 1:
@@ -47,13 +53,13 @@ def update_gamma_factor_on_prepared_profiles(MITprofs, grid_dir, apply_gamma_fac
         alpha = np.squeeze(RAC/ np.max(RAC))
         pp = MITprofs['prof_point'].astype(int)
         alpha_pp = alpha.flatten(order = 'F')[pp]
-        MITprofs['prof_area_gamma'] = alpha_pp
+        MITprofs['prof_area_gamma'].values = alpha_pp
         fac = copy.deepcopy(alpha_pp)
         
     elif apply_gamma_factor == 0:
         alpha_pp = MITprofs['prof_area_gamma']
         fac = 1/ alpha_pp
-        MITprofs['prof_area_gamma'] = np.ones(MITprofs['prof_area_gamma'].size)
+        MITprofs['prof_area_gamma'].values = np.ones(MITprofs['prof_area_gamma'].size)
     
     # loop through k, apply fac to T and S weights
     for k in np.arange(MITprofs['prof_depth'].size):
@@ -66,9 +72,9 @@ def update_gamma_factor_on_prepared_profiles(MITprofs, grid_dir, apply_gamma_fac
             tmpSk = tmpSk * fac
             tmpS[:,k] = tmpSk
 
-    MITprofs['prof_Tweight'] = tmpT
+    MITprofs['prof_Tweight'].values = tmpT
     if 'prof_S' in MITprofs:
-        MITprofs['prof_Sweight'] = tmpS
+        MITprofs['prof_Sweight'].values = tmpS
     
 def main(MITprofs, grid_dir, apply_gamma_factor, llcN):
     

@@ -79,8 +79,8 @@ def update_monthly_mean_TS_clim_WOA13v2_on_prepared_profiles(TS_clim_dir, MITpro
     prof_month = ((MITprofs['prof_YYYYMMDD'] % 10000) // 100).astype(int)
 
     # 'mapping profiles to x,y,z'
-    MITprofs['prof_lon'] = MITprofs['prof_lon'].astype(np.float64)
-    MITprofs['prof_lat'] = MITprofs['prof_lat'].astype(np.float64)
+    MITprofs['prof_lon'].values= MITprofs['prof_lon'].astype(np.float64)
+    MITprofs['prof_lat'].values= MITprofs['prof_lat'].astype(np.float64)
     prof_x, prof_y, prof_z = sph2cart(MITprofs['prof_lon']*deg2rad, MITprofs['prof_lat']*deg2rad, 1)
     
     # map a climatology grid index to each profile.
