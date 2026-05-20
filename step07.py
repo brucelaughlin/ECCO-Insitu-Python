@@ -133,6 +133,9 @@ def update_zero_weight_points_on_prepared_profiles(run_code, MITprofs):
     Output:
         Operates on MITprofs directly 
     """
+
+    print(f"Tmax: {np.nanmax(MITprofs['prof_T'].data)}")
+    print(f"pre: {np.sum(~np.isnan(MITprofs['prof_T'].data))}")
     
     # SET INPUT PARAMETERS
     fillVal=-9999
@@ -191,6 +194,7 @@ def update_zero_weight_points_on_prepared_profiles(run_code, MITprofs):
 
     % plot_map_bad_profiles : 0/1 whether to make a plot of bad profs locations
     """
+
             
     if run_code == 'adjust':
 
@@ -236,7 +240,8 @@ def update_zero_weight_points_on_prepared_profiles(run_code, MITprofs):
   
     if 'prof_S' in MITprofs:
         zero_S_weight_reason = copy.deepcopy(tmp_weight_zero)
-    
+
+
     for zero_criteria_code_i in zero_criteria_code:
    
         print('\nCriteria : {} {}\n'.format(zero_criteria_code_i, criteria_names[zero_criteria_code_i - 1]))
@@ -264,6 +269,7 @@ def update_zero_weight_points_on_prepared_profiles(run_code, MITprofs):
 
             ins3 = np.unravel_index(ins3, MITprofs['prof_Tweight'].shape, order = 'F')
 
+
             # Set values to 0 directly using boolean indexing
             if len(ins3) > 0:
                 chunk_modify_in_place_set_to_zero(MITprofs['prof_Tweight'], ins3, chunk_size)
@@ -286,6 +292,7 @@ def update_zero_weight_points_on_prepared_profiles(run_code, MITprofs):
                     chunk_modify_in_place_set_to_zero(MITprofs['prof_Sweight'], ins3, chunk_size)
                     chunk_modify_in_place_add_scalar(zero_S_weight_reason, ins3, 2**(zero_criteria_code_i - 1), chunk_size)
         
+
         if zero_criteria_code_i == 2: # nonzero prof T or S flag
             
             ins1 = np.where(MITprofs['prof_Tflag'] > 0)
@@ -302,6 +309,7 @@ def update_zero_weight_points_on_prepared_profiles(run_code, MITprofs):
                 if len(ins1) > 0:
                     chunk_modify_in_place_set_to_zero(MITprofs['prof_Sweight'], ins1, chunk_size)
                     chunk_modify_in_place_add_scalar(zero_S_weight_reason, ins1, 2**(zero_criteria_code_i - 1), chunk_size)
+
 
         if zero_criteria_code_i == 3: #  missing T or S
 
@@ -334,7 +342,10 @@ def update_zero_weight_points_on_prepared_profiles(run_code, MITprofs):
                     chunk_modify_in_place_set_to_zero(MITprofs['prof_Sweight'], ins3, chunk_size)
                     chunk_modify_in_place_add_scalar(zero_S_weight_reason, ins3, 2**(zero_criteria_code_i - 1), chunk_size)
       
+
+
         if zero_criteria_code_i == 4: # T or S identically zero
+
 
             ins1 = np.where(MITprofs['prof_T'] == 0)
             # if so, put fill val there, because identically
@@ -364,7 +375,10 @@ def update_zero_weight_points_on_prepared_profiles(run_code, MITprofs):
                     chunk_modify_in_place_set_to_zero(MITprofs['prof_Sweight'], ins1, chunk_size)
                     chunk_modify_in_place_add_scalar(zero_S_weight_reason, ins1, 2**(zero_criteria_code_i - 1), chunk_size)
 
+
         if zero_criteria_code_i == 5: # T or S outside some legal range
+
+
             # Profs with T or S outside legal range 
             # find those that are less than the legal min
             # but not already set to the -9999 missing data
@@ -396,8 +410,10 @@ def update_zero_weight_points_on_prepared_profiles(run_code, MITprofs):
                     chunk_modify_in_place_set_to_zero(MITprofs['prof_Sweight'], ins3, chunk_size)
                     chunk_modify_in_place_add_scalar(zero_S_weight_reason, ins3, 2**(zero_criteria_code_i - 1), chunk_size)
 
+
         if zero_criteria_code_i == 6: # missing climatology value
  
+
             ins1 = np.where(MITprofs['prof_Tclim'].values.flatten(order = 'F') <= checkVal)
             ins2 = np.where(np.isnan(MITprofs['prof_Tclim'].values.flatten(order = 'F') ))
             ins3 = np.where(MITprofs['prof_Tclim'].values.flatten(order = 'F')  == 0)
@@ -410,8 +426,10 @@ def update_zero_weight_points_on_prepared_profiles(run_code, MITprofs):
             if len(ins4) > 0:
                 chunk_modify_in_place_set_to_zero(MITprofs['prof_Tweight'], ins4, chunk_size)
                 chunk_modify_in_place_add_scalar(zero_T_weight_reason, ins4, 2**(zero_criteria_code_i - 1), chunk_size)
+
   
-        if 'prof_S' in MITprofs:
+            if 'prof_S' in MITprofs:
+
                 
                 ins1 = np.where(MITprofs['prof_Sclim'].values.flatten(order = 'F') <= checkVal)
                 ins2 = np.where(np.isnan(MITprofs['prof_Sclim'].values.flatten(order = 'F')))
@@ -426,7 +444,9 @@ def update_zero_weight_points_on_prepared_profiles(run_code, MITprofs):
                     chunk_modify_in_place_set_to_zero(MITprofs['prof_Sweight'], ins4, chunk_size)
                     chunk_modify_in_place_add_scalar(zero_S_weight_reason, ins4, 2**(zero_criteria_code_i - 1), chunk_size)
 
+
         if zero_criteria_code_i == 7: # illegal dates/times
+
 
             y = np.zeros(num_profs, dtype=int)
             m = np.zeros(num_profs, dtype=int)
@@ -458,7 +478,6 @@ def update_zero_weight_points_on_prepared_profiles(run_code, MITprofs):
                 #chunk_modify_in_place_using_profile_index_set_to_zero(MITprofs['prof_Tweight'], bad_profs, chunk_size)
                 #chunk_modify_in_place_using_profile_index_add_scalar(zero_T_weight_reason, bad_profs, 2**(zero_criteria_code_i - 1), chunk_size)
 
-            print('blah1')
    
             if 'prof_S' in MITprofs:
                 #MITprofs['prof_Sweight'][bad_profs, :] = 0
@@ -469,9 +488,9 @@ def update_zero_weight_points_on_prepared_profiles(run_code, MITprofs):
                     #chunk_modify_in_place_using_profile_index_set_to_zero(MITprofs['prof_Sweight'], bad_profs, chunk_size)
                     #chunk_modify_in_place_using_profile_index_add_scalar(zero_S_weight_reason, bad_profs, 2**(zero_criteria_code_i - 1), chunk_size)
 
-            print('blah2')
 
         if zero_criteria_code_i == 8: # lat-lon out of bounds or  0 deg N and 0 deg E
+
             
             lats = MITprofs['prof_lat']
             lons = MITprofs['prof_lon']
@@ -500,7 +519,10 @@ def update_zero_weight_points_on_prepared_profiles(run_code, MITprofs):
                     #chunk_modify_in_place_using_profile_index_set_to_zero(MITprofs['prof_Sweight'], bad_profs, chunk_size)
                     #chunk_modify_in_place_using_profile_index_add_scalar(zero_S_weight_reason, bad_profs, 2**(zero_criteria_code_i - 1), chunk_size)
 
+
         if zero_criteria_code_i == 9 or zero_criteria_code_i == 10: # high cost vs. climatology
+
+            print(f"{zero_criteria_code_i:02}: {np.sum(~np.isnan(MITprofs['prof_T'])).data}")
             
             ct = 1
 
@@ -509,7 +531,12 @@ def update_zero_weight_points_on_prepared_profiles(run_code, MITprofs):
             tmpC = MITprofs['prof_Tclim'].data
             tmpW = MITprofs['prof_Tweight'].data
             
+            #pdb.set_trace()
+
             tmpT[np.where(tmpT < checkVal)] = np.nan
+
+            print(f"{zero_criteria_code_i:02}: {np.sum(~np.isnan(MITprofs['prof_T'])).data}")
+
             #
             print(f'debug_step: {ct}')
             ct += 1
@@ -582,7 +609,6 @@ def update_zero_weight_points_on_prepared_profiles(run_code, MITprofs):
                     #chunk_modify_in_place_using_profile_index_set_to_zero(MITprofs['prof_Tweight'], bad_profs, chunk_size)
                     #chunk_modify_in_place_using_profile_index_add_scalar(zero_T_weight_reason, bad_profs, 2**(zero_criteria_code_i - 1), chunk_size)
                
-                print('blah3')                 
 
 
                 if 'prof_S' in MITprofs:
@@ -603,7 +629,6 @@ def update_zero_weight_points_on_prepared_profiles(run_code, MITprofs):
                         #chunk_modify_in_place_using_profile_index_set_to_zero(MITprofs['prof_Sweight'], bad_profs, chunk_size)
                         #chunk_modify_in_place_using_profile_index_add_scalar(zero_S_weight_reason, bad_profs, 2**(zero_criteria_code_i - 1), chunk_size)
                 
-                print('blah4')                 
 
             if zero_criteria_code_i == 10: # individual points exceed cost threshold
 
@@ -622,7 +647,6 @@ def update_zero_weight_points_on_prepared_profiles(run_code, MITprofs):
                     #chunk_modify_in_place_using_profile_index_set_to_zero(MITprofs['prof_Tweight'], bad_profs, chunk_size)
                     #chunk_modify_in_place_using_profile_index_add_scalar(zero_T_weight_reason, bad_profs, 2**(zero_criteria_code_i - 1), chunk_size)
 
-                print('blah5')                 
                
                 if 'prof_S' in MITprofs:
 
@@ -644,7 +668,8 @@ def update_zero_weight_points_on_prepared_profiles(run_code, MITprofs):
                         #chunk_modify_in_place_using_profile_index_set_to_zero(MITprofs['prof_Sweight'], bad_profs, chunk_size)
                         #chunk_modify_in_place_using_profile_index_add_scalar(zero_S_weight_reason, bad_profs, 2**(zero_criteria_code_i - 1), chunk_size)
 
-                    print('blah6')                 
+
+            print(f"{zero_criteria_code_i:02}: {np.sum(~np.isnan(MITprofs['prof_T'].data))}")
 
         if zero_criteria_code_i == 11: # test for possible bad conducivity cell.
             if 'prof_S' in MITprofs:
@@ -725,7 +750,6 @@ def update_zero_weight_points_on_prepared_profiles(run_code, MITprofs):
                 #zero_S_weight_reason[bad_profs,:] = zero_S_weight_reason[bad_profs,:] + 2**(zero_criteria_code_i -1)
                     chunk_modify_in_place_using_profile_index_add_scalar(zero_S_weight_reason, bad_profs, 2**(zero_criteria_code_i - 1), chunk_size)
 
-                    print('blah7')                 
 
                 # ALSO DO T IN CASE IT IS THE T MEASURMENT
                 # THAT CAUSED S TO BE CRAZY.
@@ -737,7 +761,6 @@ def update_zero_weight_points_on_prepared_profiles(run_code, MITprofs):
                     chunk_modify_in_place_using_profile_index_set_to_zero(MITprofs['prof_Tweight'], bad_profs, chunk_size)
                     chunk_modify_in_place_using_profile_index_add_scalar(zero_T_weight_reason, bad_profs, 2**(zero_criteria_code_i - 1), chunk_size)
 
-                    print('blah8')                 
             
         num_nans = np.where(np.isnan(zero_T_weight_reason))[0]
         if len(num_nans) > 0:

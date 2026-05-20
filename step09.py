@@ -64,17 +64,22 @@ def update_remove_extraneous_depth_levels(MITprofs):
         print(f'max zi is less than size (TT,1) {max_zi} {tt.shape[0]}')
         print('extracting subsets in depth \n')
 
-        MITprofs_new = extract_profile_subset_from_MITprof(MITprofs, [], np.arange(max_zi + 1))
+        MITprofs= extract_profile_subset_from_MITprof(MITprofs, [], np.arange(max_zi + 1))
+        #MITprofs_new = extract_profile_subset_from_MITprof(MITprofs, [], np.arange(max_zi + 1))
     
-        print(f"Dimension of prof_T {MITprofs_new['prof_T'].shape}")
+        print(f"Dimension of prof_T {MITprofs['prof_T'].shape}")
+        #print(f"Dimension of prof_T {MITprofs_new['prof_T'].shape}")
+        print(type(MITprofs))
 
-        MITprofs.update(MITprofs_new)
+        #MITprofs.update(MITprofs_new)
+
     else:
         print(f'max zi is the same as prof depth, no need to cut out missing depth levels')
 
+    print(type(MITprofs))
+
    
 def main(MITprofs):
-
     print("step09: update_remove_extraneous_depth_levels")
     update_remove_extraneous_depth_levels(MITprofs)
 

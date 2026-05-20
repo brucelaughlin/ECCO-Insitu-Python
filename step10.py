@@ -193,6 +193,7 @@ def update_decimate_profiles_subdaily_to_once_daily(MITprofs, distance_tolerance
         MITprofs['prof_Tweight'][toss_set_all,:] = 0
         MITprofs['prof_Sweight'][toss_set_all,:] = 0
        
+
         update_remove_zero_T_S_weighted_profiles_from_MITprof(MITprofs)
 
     print('Num T and S weight > 0, post')

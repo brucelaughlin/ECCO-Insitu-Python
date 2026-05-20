@@ -1,10 +1,36 @@
-
+import pdb
 from pathlib import Path
 import os
 import numpy as np
 import netCDF4 as nc
 import xarray as xr
 from scipy.interpolate import griddata
+
+def MITprof_dataset_from_dict(data_dict: dict, dim_dict: dict):
+
+    new_dataarrays = dict()
+
+    for data_var in data_dict.keys():
+        if len(data_dict[data_var].shape) == 1:
+            for dim in dim_dict.keys():
+                if data_dict[data_var].shape[0] == dim_dict[dim]:
+                    new_dataarrays[data_var] = xr.DataArray(data_dict[data_var], dims=dim, name=data_var)
+                    break
+
+
+        elif len(data_dict[data_var].shape) == 2:
+            if data_dict[data_var].shape[0] == list(dim_dict.values())[0] and  data_dict[data_var].shape[1] == list(dim_dict.values())[1]:
+                new_dataarrays[data_var] = xr.DataArray(data_dict[data_var], dims=list(dim_dict.keys()), name=data_var)
+            else:
+                print('something wacky is going on here (interal)')
+
+        else:
+            print('something wacky is going on here (external)')
+
+    new_dataset = xr.merge([new_dataarrays])
+
+    return new_dataset
+
 
 def MITprof_write_to_nc(dest_dir, MITprofs, step, basename):
 

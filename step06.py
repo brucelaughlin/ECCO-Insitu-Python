@@ -1,3 +1,4 @@
+import pdb
 import xarray as xr
 import argparse
 import glob
@@ -30,11 +31,11 @@ def sw_pres(DEPTH, LAT):
     mD,nD = DEPTH.shape
     mL,nL = LAT.shape
 
-    if mL==1 & nL==1:
+    if mL==1 and nL==1:
         LAT = np.ones(DEPTH.shape) * LAT
 
-    if (mD != mL) or (nD != nL):              # DEPTH & LAT are not the same shape
-        if (nD ==nL) & (mL==1):               # LAT for each column of DEPTH
+    if (mD != mL) or (nD != nL):              # DEPTH and LAT are not the same shape
+        if (nD ==nL) and (mL==1):               # LAT for each column of DEPTH
             LAT = np.tile(LAT[0, :], (LAT.shape[0], 1))     # copy LATS down each column s.t. dim(DEPTH)==dim(LAT)
         else:
             raise Exception('sw_pres.m:  Inputs arguments have wrong dimensions')
@@ -84,9 +85,9 @@ def sw_adtg(S,T,P):
     mt, nt = T.shape
     mp, np_s = P.shape
     
-    # CHECK THAT S & T HAVE SAME SHAPE
+    # CHECK THAT S and T HAVE SAME SHAPE
     if (ms != mt) or (ns != nt):
-        raise Exception('check_stp: S & T must have same dimensions')
+        raise Exception('check_stp: S and T must have same dimensions')
 
     # CHECK OPTIONAL SHAPES FOR P
     if mp == 1 and np_s == 1:                    # P is a scalar.  Fill to size of S
@@ -155,7 +156,7 @@ def sw_ptmp(S, T, P, PR):
     %   T  = temperature [degree C (IPTS-68)]
     %   P  = pressure    [db]
     %   PR = Reference pressure  [db]
-    %        (P & PR may have dims 1x1, mx1, 1xn or mxn for S(mxn) )
+    %        (P and PR may have dims 1x1, mx1, 1xn or mxn for S(mxn) )
     %
     % OUTPUT:
     %   ptmp = Potential temperature relative to PR [degree C (IPTS-68)]
@@ -167,9 +168,9 @@ def sw_ptmp(S, T, P, PR):
     mp, np_s = P.shape
     mpr, npr = PR.shape
 
-    # CHECK THAT S & T HAVE SAME SHAPE
+    # CHECK THAT S and T HAVE SAME SHAPE
     if (ms != mt) or (ns !=nt):
-        raise Exception('check_stp: S & T must have same dimensions')
+        raise Exception('check_stp: S and T must have same dimensions')
   
     # CHECK OPTIONAL SHAPES FOR P
     if mp == 1 and np_s == 1:                          # P is a scalar.  Fill to size of S
@@ -253,44 +254,84 @@ def update_prof_insitu_T_to_potential_T(MITprofs, replace_missing_S_with_clim_S)
     # flatten array and converted all NaN vals to fillval
     #prof_T = MITprofs['prof_T'].values.flatten(order = 'F').filled(fillVal)
     #prof_S = MITprofs['prof_S'].values.flatten(order = 'F').filled(fillVal)
-    prof_T = np.where(np.isnan(MITprofs['prof_T']), MITprofs['prof_T'], fillVal).flatten(order= 'F') 
-    prof_S = np.where(np.isnan(MITprofs['prof_S']), MITprofs['prof_S'], fillVal).flatten(order= 'F') 
+    #prof_T = np.where(np.isnan(MITprofs['prof_T'].values), MITprofs['prof_T'].values, fillVal).flatten(order= 'F') 
+    #prof_S = np.where(np.isnan(MITprofs['prof_S'].values), MITprofs['prof_S'].values, fillVal).flatten(order= 'F') 
+    prof_T = np.where(~np.isnan(MITprofs['prof_T'].values), MITprofs['prof_T'].values, fillVal) 
+    prof_S = np.where(~np.isnan(MITprofs['prof_S'].values), MITprofs['prof_S'].values, fillVal)
+
+    count = 1
+
+    #pdb.set_trace()
+
+    print(f'inside step06 {count:02}')
+    print(f"Tmax: {np.nanmax(prof_T)}")
+    print(np.sum(~np.isnan(prof_T)))
+    print(f"Smax: {np.nanmax(prof_S)}")
+    print(np.sum(~np.isnan(prof_S)))
+    count += 1
     
     # to qualify you need to have a valid T, S 
-    good_T_and_S_ins = np.where((prof_T != fillVal) & (prof_S != fillVal))[0]
+    #good_T_and_S_ins = np.where((prof_T != fillVal) and (prof_S != fillVal))[0]
     
     if replace_missing_S_with_clim_S:
-        missing_S_ins = np.where((prof_T != fillVal) & (prof_S == fillVal))[0]
-        prof_S[missing_S_ins] = MITprofs['prof_Sclim'].values.ravel(order = 'F')[missing_S_ins]
+        #missing_S_ins = np.where((prof_T != fillVal) and (prof_S == fillVal))[0]
+        #prof_S[missing_S_ins] = MITprofs['prof_Sclim'].values.ravel(order = 'F')[missing_S_ins]
+        prof_S = np.where((prof_T != fillVal) & (prof_S == fillVal), MITprofs['prof_Sclim'], fillVal)
+        prof_S = np.where(~np.isnan(prof_S), prof_S, fillVal)
+        #prof_T = np.where(prof_T != fillVal and prof_S != fillVal, prof_T, fillVal)
 
     # to qualify you need to have a valid T, S 
-    good_T_and_S_ins = np.where((prof_T != fillVal) & (prof_S != fillVal))[0]
+    #good_T_and_S_ins = np.where((prof_T != fillVal) and (prof_S != fillVal))[0]
 
-    prof_S = prof_S.reshape(MITprofs['prof_S'].shape, order = 'F')
-    prof_T = prof_T.reshape(MITprofs['prof_T'].shape, order = 'F')
+
+    #prof_S = prof_S.reshape(MITprofs['prof_S'].shape, order = 'F')
+    #prof_T = prof_T.reshape(MITprofs['prof_T'].shape, order = 'F')
+
+    #
+    print(f'inside step06 {count:02}')
+    print(f"Tmax: {np.nanmax(prof_T)}")
+    print(np.sum(~np.isnan(prof_T)))
+    print(f"Smax: {np.nanmax(prof_S)}")
+    print(np.sum(~np.isnan(prof_S)))
+    count += 1
+
 
     # Check to see if **all** salinty values are missing
-    S_max = np.max(prof_S, axis = 1)
+    #S_max = np.max(prof_S, axis = 1)
       
-    if max(S_max) == fillVal:
+    #if max(S_max) == fillVal:
+    if np.max(prof_S) == fillVal:
         print('all S are missing, applying clim instead')
         prof_S = MITprofs['prof_Sclim']
         # to qualify you need to have a valid T, S  %%
-        good_T_and_S_ins = np.where((prof_T != fillVal) & (prof_S != fillVal))[0]
+        #good_T_and_S_ins = np.where((prof_T != fillVal) and (prof_S != fillVal))[0]
 
-    prof_T_tmp = np.full_like(prof_T, np.nan)
-    prof_S_tmp = np.full_like(prof_S, np.nan)
+
+    #pdb.set_trace()
+
+    print(f"prof_T: {np.nanmax(prof_T)}")
+    print(np.sum(~np.isnan(prof_T)))
+    print()
+
+
+    prof_T_tmp = np.where((prof_T != fillVal) & (prof_S != fillVal), prof_T, np.nan)
+    prof_S_tmp = np.where((prof_T != fillVal) & (prof_S != fillVal), prof_S, np.nan)
+
+
+    #prof_T_tmp = np.full_like(prof_T, np.nan)
+    #prof_S_tmp = np.full_like(prof_S, np.nan)
 
     # set values at the good T and S pairs to be the original T and S
-    prof_T_tmp.ravel(order = 'F')[good_T_and_S_ins] = prof_T.ravel(order = 'F')[good_T_and_S_ins]
-    prof_S_tmp.ravel(order = 'F')[good_T_and_S_ins] = prof_S.ravel(order = 'F')[good_T_and_S_ins]
+    #prof_T_tmp.ravel(order = 'F')[good_T_and_S_ins] = prof_T.ravel(order = 'F')[good_T_and_S_ins]
+    #prof_S_tmp.ravel(order = 'F')[good_T_and_S_ins] = prof_S.ravel(order = 'F')[good_T_and_S_ins]
     
     # define an empty ptemp;
     ptemp = np.full_like(prof_T, fillVal)
     
-    if len(good_T_and_S_ins) > 0:
+    if len(np.where((prof_T != fillVal) & (prof_S != fillVal))[0]) > 0:
+    #if len(good_T_and_S_ins) > 0:
         # Prepare 2D matrix of pres and lats required for sw_ptmp
-        depths = MITprofs['prof_depth']
+        depths = MITprofs['prof_depth'].values
         depths_mat = np.tile(depths, (len(lats), 1)).T
 
         lats_mat = np.tile(lats, (len(depths), 1))
@@ -298,9 +339,17 @@ def update_prof_insitu_T_to_potential_T(MITprofs, replace_missing_S_with_clim_S)
         # calculate equivalent pressure from depth
         pres_mat = sw_pres(depths_mat, lats_mat)
         pres_mat = pres_mat.T
+
+        print(f"ptemp_max: {np.nanmax(prof_T_tmp)}")
+        print(np.sum(~np.isnan(prof_T_tmp)))
+        print()
+ 
     
         # Calc potential temperature w.r.t. to surf [pres = 0]
         ptemp = sw_ptmp(prof_S_tmp, prof_T_tmp, pres_mat, np.zeros(pres_mat.shape))
+
+        print(f"ptemp_max: {np.nanmax(ptemp)}")
+        print(np.sum(~np.isnan(ptemp)))
  
     else:
         print("step06: There is not a single good T and S pair to use here")
@@ -309,8 +358,23 @@ def update_prof_insitu_T_to_potential_T(MITprofs, replace_missing_S_with_clim_S)
     # set to -9999 if there no new ptemp
     ptemp[np.isnan(ptemp)] = -9999
 
+    print(f'inside step06 {count:02}')
+    print(np.sum(~np.isnan(MITprofs['prof_T'].values)))
+    print(f"Tmax: {np.nanmax(MITprofs['prof_T'].values)}")
+    print(np.sum(~np.isnan(ptemp)))
+    count += 1
+
+    print(f"ptemp_max: {np.nanmax(ptemp)}")
+
+
     #MITprofs['prof_T'] = ptemp
     MITprofs['prof_T'] = xr.DataArray(ptemp, dims=['iPROF','iDEPTH'], name='prof_T')
+
+    print(f'inside step06 {count:02}')
+    print(np.sum(~np.isnan(MITprofs['prof_T'].values)))
+    print(f"Tmax: {np.nanmax(MITprofs['prof_T'].values)}")
+    count += 1
+
  
     
 def main(MITprofs, replace_missing_S_with_clim_S):
