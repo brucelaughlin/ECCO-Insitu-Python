@@ -44,7 +44,7 @@ def createNETCDF(file, dest_dir, prof_desc, prof_HHMMSS, prof_lat, prof_lon, pro
     print("Writing NETCDF file for {}".format(filename[0]))
     
     # Set global attributes 
-    # NOTE: Date that is processed, where (directory) of CSV data came from
+    # NoTE: Date that is processed, where (directory) of CSV data came from
 
     nc.title = "Generated from file: {}".format(os.path.basename(file))
     nc.insitution = 'JPL'
@@ -157,10 +157,10 @@ def createNETCDF(file, dest_dir, prof_desc, prof_HHMMSS, prof_lat, prof_lon, pro
     prof_S_o_flag_var[:] = prof_S_o_flag_np
 
     # =======================================================================================
-    # NOTE: empty info for rest of pipeline, maybe figure out better merge later 
+    # NoTE: empty info for rest of pipeline, maybe figure out better merge later 
     arr_zeros = np.zeros(len(prof_HHMMSS_np))
 
-    # NOTE: field is not populated in pipeline
+    # NoTE: field is not populated in pipeline
     prof_basin = nc.createVariable('prof_basin', np.float64, 'iPROF')
     prof_basin.long_name = "ocean basin index (ecco 4g)"
     prof_basin.units = 'N/A'
@@ -194,7 +194,7 @@ def createNETCDF(file, dest_dir, prof_desc, prof_HHMMSS, prof_lat, prof_lon, pro
     prof_Sestim.units = 'psu'
     prof_Sestim[:] = arr_zeros_2d
 
-    # NOTE: not populated 
+    # NoTE: not populated 
     prof_Sflag = nc.createVariable('prof_Sflag', np.float64, ('iPROF', 'iDEPTH'))
     prof_Sflag[:] = arr_zeros_2d
 
@@ -329,7 +329,7 @@ def parse_row_info(row, profflag_found, unique_years, foundNewYear, foundFirstPr
 
     return foundNewYear, foundFirstProfile, one_prof_lon, one_prof_lat, one_prof_HHMMSS, one_prof_YYMMDD   
               
-# NOTE: Organize saved NETCDF profiles by year 
+# NoTE: Organize saved NETCDF profiles by year 
 def csv_processing(dest_dir, input_dir):
 
     # Get list of .csv files to process
@@ -489,7 +489,7 @@ def csv_processing(dest_dir, input_dir):
                                 if salinity_org != '2' or salinity_org != '6':
                                     valid_profile_data = False
                             elif orgFlag == 'Wilkes Land Expedition':
-                                # NOTE: is interpolated okay? also no good flag either?
+                                # NoTE: is interpolated okay? also no good flag either?
                                 if depth_org != '6':
                                     valid_profile_data = False
                                 if temp_org != '6':
@@ -603,7 +603,7 @@ def csv_processing(dest_dir, input_dir):
                             textfile.write("Invalid profile data - lon/lat units are false {}\n".format(line_num))
 
                     # Check if Originators flag exists
-                    # NOTE INFO LINK: https://www.nodc.noaa.gov/OC5/WOD/CODES/s_96_origflagset.html
+                    # NoTE INFO LINK: https://www.nodc.noaa.gov/OC5/WOD/CODES/s_96_origflagset.html
                     if row[0].strip() == 'Originators flag set to use' and row[3].strip() == 'WOD code':
                         # Validate data if it exists
                         if row[2].strip() == '1' and row[4].strip() == 'WOCE':

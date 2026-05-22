@@ -5,7 +5,7 @@ import numpy as np
 import scipy.io as sio
 import netCDF4 as nc
 from scipy.interpolate import griddata
-from tools import MITprof_read, intrep_check, sph2cart
+from tools import MITprof_read, interp_check, sph2cart
 import pymatreader
 import pdb
 import xarray as xr
@@ -67,7 +67,7 @@ def update_monthly_mean_TS_clim_WOA13v2_on_prepared_profiles(TS_clim_dir, MITpro
     xyz = np.column_stack((X_woa, Y_woa, Z_woa)).astype(np.float64)
 
     # verify that our little trick works in 4 parts of the earth
-    intrep_check(xyz, AI, X_woa, Y_woa, Z_woa, lat_woam, lon_woam, 3, good_clim = good_clim_ins)
+    interp_check(xyz, AI, X_woa, Y_woa, Z_woa, lat_woam, lon_woam, 3, good_clim = good_clim_ins)
 
     num_profs = len(MITprofs['prof_lat'])
     num_prof_depths = len(MITprofs['prof_depth'])
