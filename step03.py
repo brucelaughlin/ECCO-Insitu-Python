@@ -55,7 +55,8 @@ def update_monthly_mean_TS_clim_WOA13v2_on_prepared_profiles(TS_clim_dir, MITpro
  
     # POINTS TO USE ARE THOSE POINTS WITH VALID DATA at the surface
     subset = S_clim[0,0].flatten(order= 'F')
-    good_clim_ins = np.where(~np.isnan(subset))[0]
+    #good_clim_ins = np.where(~np.isnan(subset))[0]
+    good_clim_ins = np.where(~np.isnan(subset) & ~np.isnan(T_clim[0,0].flatten(order='F')))[0] # NoTE: Bruce - same as previous line, but seemed safer 
 
     lon_woam = lon_woam.flatten(order='F').astype(np.float64)
     lat_woam = lat_woam.flatten(order='F').astype(np.float64)

@@ -1415,7 +1415,7 @@ def load_llc90_grid(grootdir, step):
 
     return lon_90, lat_90, blank_90, wet_ins_90_k, RAC_90_pf, bathy_90, good_ins_90, X_90, Y_90, Z_90, z_top_90, z_bot_90, hFacC_90, AI_90, z_cen_90 
 
-def intrep_check(xyz, AI, X, Y, Z, lat_vals, lon_vals, step, **kwargs):
+def interp_check(xyz, AI, X, Y, Z, lat_vals, lon_vals, step, **kwargs):
     
     good_clim_ins = kwargs.get('good_clim', None)
     
