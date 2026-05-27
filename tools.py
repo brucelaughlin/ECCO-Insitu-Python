@@ -1115,6 +1115,15 @@ def sph2cart(az, elev, r):
 
     return x, y, z
 
+#def sph2cart(az, elev, r):
+#
+#    rcoselev = r * np.cos(elev)
+#    x = rcoselev * np.cos(az)
+#    y = rcoselev* np.sin(az)
+#    z = r * np.sin(elev)
+#
+#    return x, y, z
+
 def load_llc90_grid(grootdir, step):
 
     """

@@ -5,7 +5,7 @@ import glob
 import os
 import numpy as np
 from scipy.interpolate import griddata
-from tools import MITprof_read, intrep_check, load_llc90_grid, sph2cart
+from tools import MITprof_read, interp_check, load_llc90_grid, sph2cart
 from scipy import interpolate
 
 
@@ -106,7 +106,7 @@ def update_sigmaTS_on_prepared_profiles(MITprofs, grid_dir, sigma_dir, respect_e
     deg2rad = np.pi/180
     xyz_wet = np.column_stack((X_90.flatten(order = 'F')[wet_ins_90_k[0]], Y_90.flatten(order = 'F')[wet_ins_90_k[0]], Z_90.flatten(order = 'F')[wet_ins_90_k[0]]))
     AI = AI_90.flatten(order = 'F')[wet_ins_90_k[0]] 
-    intrep_check(xyz_wet, AI, X_90, Y_90, Z_90, lat_90, lon_90, 4)
+    interp_check(xyz_wet, AI, X_90, Y_90, Z_90, lat_90, lon_90, 4)
 
     # initialize remapped sigma field
     sigma_T_MITprof_z = []

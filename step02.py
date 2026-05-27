@@ -1,7 +1,7 @@
 import argparse
 import glob
 import os
-from tools import intrep_check, load_llc90_grid, load_llc270_grid, sph2cart, MITprof_read
+from tools import interp_check, load_llc90_grid, load_llc270_grid, sph2cart, MITprof_read
 from scipy.interpolate import griddata
 import numpy as np
 
@@ -27,7 +27,7 @@ def update_spatial_bin_index_on_prepared_profiles(bin_dir, MITprofs, grid_dir):
     # read binary files
     siz = [bin_llcN, 13*bin_llcN, 1, 1]
     mform = '>f4' 
-    # NOTE: if bin_llcN = 270 these files dont work lol
+    # NoTE: if bin_llcN = 270 these files dont work lol
     with open(bin_file_1, 'rb') as fid:
         bin_1 = np.fromfile(fid, dtype=mform)
         bin_1 = bin_1.reshape((siz[0], np.prod(siz[1:])), order='F')
@@ -54,7 +54,7 @@ def update_spatial_bin_index_on_prepared_profiles(bin_dir, MITprofs, grid_dir):
         AI = np.arange(bathy_90.size)
     
     # verify that our little trick works in 4 parts of the earth
-    intrep_check(xyz, AI, X, Y, Z, lat_llc, lon_llc, 2)
+    interp_check(xyz, AI, X, Y, Z, lat_llc, lon_llc, 2)
  
     deg2rad = np.pi/180.0
 

@@ -77,7 +77,7 @@ def NCEI_pipeline(dest_dir, input_dir):
     steps_to_run = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
     steps_to_save = [10]
 
-    # NOTE: add in loadin feature 
+    # NoTE: add in loadin feature 
 
     if len(netCDF_files) != 0:
         for file in netCDF_files:
