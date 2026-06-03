@@ -77,9 +77,9 @@ def bin_around_geodesic_vertices(geodesic_file: str, profile_file: str, variable
                 for index in geodesic_bin_anomalies.keys():
 
                     geodesic_bin_anomalies[index]["count"] = len(geodesic_bin_anomalies[index]["values"])
-                    geodesic_bin_anomalies[index]["avg"] = np.mean(geodesic_bin_anomalies[index]["values"])
-                    geodesic_bin_anomalies[index]["std"] = np.std(geodesic_bin_anomalies[index]["values"])
+                    geodesic_bin_anomalies[index]["mean"] = np.mean(geodesic_bin_anomalies[index]["values"])
                     geodesic_bin_anomalies[index]["median"] = np.median(geodesic_bin_anomalies[index]["values"])
+                    geodesic_bin_anomalies[index]["std"] = np.std(geodesic_bin_anomalies[index]["values"])
 
                     artificial_coord_mask_current_index = artificial_grid_geo_bins == int(index)
                     artificial_lons_current_index = artificial_lon_meshgrid[artificial_coord_mask_current_index]
@@ -90,10 +90,13 @@ def bin_around_geodesic_vertices(geodesic_file: str, profile_file: str, variable
 
                     # Testing ----
                     x,y,z= sph2cart(np.radians(artificial_lons_current_index), np.radians(artificial_lats_current_index), 1)
-                    #coords_within_geodesic_bin_cartesian = np.stack((x,y), axis=-1)
-                    coords_within_geodesic_bin_cartesian = np.stack((x,y,z), axis=-1)
+                    coords_within_geodesic_bin_cartesian = np.stack((x,y), axis=-1)
+                    ###coords_within_geodesic_bin_cartesian = np.stack((x,y,z), axis=-1)
                     bounding_polygon = coords_within_geodesic_bin[ConvexHull(coords_within_geodesic_bin_cartesian).vertices]
+                    #bounding_polygon = coords_within_geodesic_bin[ConvexHull(coords_within_geodesic_bin).vertices]
                     # ------------
+
+                    #pdb.set_trace()
 
 
 

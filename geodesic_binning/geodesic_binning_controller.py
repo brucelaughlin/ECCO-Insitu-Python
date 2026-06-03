@@ -9,8 +9,8 @@ import qc
 variables_of_interest = ["T", "S"]
 num_geodesic_bins = 10242
 profile_file_index = 1
-#angular_precision = 0.25
-angular_precision = 0.5
+angular_precision = 0.25
+#angular_precision = 0.5
 
 geodesic_file_dict = {
     "00642": "/Users/brucel/ecco/yip/sample_data/ecco-insitu/sweet_gdrive/geodesic/00642_bin_locations.csv",
