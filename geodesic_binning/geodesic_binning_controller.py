@@ -30,4 +30,4 @@ profile_file = profile_file_list[profile_file_index]
 geodesic_bin_data = utils.bin_around_geodesic_vertices(geodesic_file, profile_file, variables_of_interest, angular_precision, num_geodesic_bins)
 
 
-qc.pp(geodesic_bin_data)
+qc.pp(geodesic_bin_data, num_geodesic_bins)
