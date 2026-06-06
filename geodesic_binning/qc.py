@@ -1,3 +1,4 @@
+from functools import partial
 from matplotlib.lines import Line2D
 import textwrap
 import math
@@ -10,16 +11,10 @@ import matplotlib.cm as cm
 import matplotlib.colors as mcolors
 from matplotlib.collections import PatchCollection
 import numpy as np
-
-'''
-def qc(lons, lats):
-    ax = plt.axes(projection=ccrs.PlateCarree())
-    ax.coastlines()
-
-    plt.plot(lons, lats, 'k.', transform=ccrs.PlateCarree())
-    ax.gridlines(draw_labels=True)
-    plt.show()
-'''
+from shapely.geometry import Polygon as ShapelyPolygon
+from shapely.geometry import Point
+from shapely import get_coordinates as ShapelyCoordinates
+from sklearn.cluster import KMeans
 
 
 def pp(geodesic_bin_data, num_bins):
@@ -31,7 +26,9 @@ def pp(geodesic_bin_data, num_bins):
     key_depth = "00"
     key_anomaly_var_edge = "std"
     key_anomaly_var_face = "mean"
+    key_anomaly_var_raw_values= "values"
     variable_units = "($^\circ$C)"
+    scale_threshold = 10
     # -------------------------
 
     dummyMegaNumber = 1e30
@@ -70,7 +67,6 @@ def pp(geodesic_bin_data, num_bins):
 
 
     norm_face = mcolors.CenteredNorm(vcenter=0)
-    #norm_face = mcolors.TwoSlopeNorm(vmin=value_min_face, vcenter=0, vmax=value_max_face)
     cmap_face = cm.get_cmap('PRGn')
     #cmap_face = cm.get_cmap('RdBu_r')
     #cmap_face = cm.get_cmap('RdBu')
@@ -90,22 +86,23 @@ def pp(geodesic_bin_data, num_bins):
     #original_scale = 0.05
     #original_scale = 0.1
 
+    anomaly_var_raw_values_list = []
     anomaly_var_face_list = []
     anomaly_var_edge_list= []
     patch_list = []
     count_list = []
     count_relative_list = []
     linewidths = []
-    edgecolors = []
+    edgecolors_list = []
 
 
     for index in geodesic_bin_data[key_variable][key_depth].keys():
         if geodesic_bin_data[key_variable][key_depth][index]["count"] == 1 and key_anomaly_var_edge == "std":
             continue
         gbd_polygon = geodesic_bin_data[key_variable][key_depth][index]["artificial_grid_bounding_polygon_for_geodesic_bin"]
-        #anomaly_var_face_list.append(geodesic_bin_data[key_variable][key_depth][index][key_anomaly_var_face])
-        #count_list.append(geodesic_bin_data[key_variable][key_depth][index]['count'])
         if gbd_polygon.size > 0:
+
+            anomaly_var_raw_values_list.append(geodesic_bin_data[key_variable][key_depth][index][key_anomaly_var_raw_values])
 
             anomaly_var_face_list.append(geodesic_bin_data[key_variable][key_depth][index][key_anomaly_var_face])
             anomaly_var_edge_list.append(geodesic_bin_data[key_variable][key_depth][index][key_anomaly_var_edge])
@@ -115,7 +112,7 @@ def pp(geodesic_bin_data, num_bins):
 
             linewidths.append(linewidth_pre)
 
-            edgecolors.append(cmap_edge(norm_edge(geodesic_bin_data[key_variable][key_depth][index][key_anomaly_var_edge])))
+            edgecolors_list.append(cmap_edge(norm_edge(geodesic_bin_data[key_variable][key_depth][index][key_anomaly_var_edge])))
             patch_list.append(patches.Polygon(gbd_polygon, closed=True))
 
             if xmin > np.min(gbd_polygon[:,0]):
@@ -136,91 +133,54 @@ def pp(geodesic_bin_data, num_bins):
     original_linewidths_raw = np.array(linewidths)
     original_linewidths_plot = np.clip(original_linewidths_raw, linewidth_floor, original_linewidth_max)
 
-    face_array = np.array(anomaly_var_face_list)
     count_array = np.array(count_list)
-    edge_array = np.array(anomaly_var_edge_list)
 
-    col = PatchCollection(patch_list, cmap=cmap_face, norm=norm_face, linewidths=original_linewidths_plot, edgecolors=edgecolors, transform=ccrs.PlateCarree(), joinstyle='miter')
+    collection = PatchCollection(patch_list, cmap=cmap_face, norm=norm_face, linewidths=original_linewidths_plot, edgecolors=edgecolors_list, transform=ccrs.PlateCarree(), joinstyle='miter')
 
-    col.set_array(face_array) 
-    #col.set_array(anomaly_var_face_list) 
+    collection.set_array(np.array(anomaly_var_face_list))
 
     ax = plt.axes(projection=ccrs.PlateCarree())
-    ax.coastlines(color='black', linewidth=0.1)
+    ax.coastlines(color='black', linewidth=0.15)
     ax.patch.set_facecolor('#D9D9D9')
-    #ax.patch.set_facecolor('darkgrey')
-    #ax.patch.set_facecolor('lightgrey')
 
     ax.set_xlim(xmin,xmax)
     ax.set_ylim(ymin,ymax)
 
-    #ax.set_xlim(-20,0)
-    #ax.set_ylim(60,81)
-
-    collection_ax = ax.add_collection(col)
+    collection_ax = ax.add_collection(collection)
 
     cbar_shrink = 0.5
     cbar_pad = 0.2
-    #cbar_pad = 0.12
     cbar_aspect = 10
 
-    cbar = plt.colorbar(col, ax=ax, shrink=cbar_shrink, pad=cbar_pad, aspect=cbar_aspect, label=rf'{key_variable} anomaly mean {variable_units}')
+    cbar = plt.colorbar(collection, ax=ax, shrink=cbar_shrink, pad=cbar_pad, aspect=cbar_aspect, label=rf'{key_variable} anomaly mean {variable_units}'+'\n\n(no extensions shown)')
 
-    cbar.ax.set_ylim(np.min(anomaly_var_face_list), np.max(anomaly_var_face_list))
 
-    print(np.min(anomaly_var_face_list))
-    print(np.max(anomaly_var_face_list))
+    cbar_min, cbar_max = find_colorbar_limits(cbar, anomaly_var_face_list)
+    cbar.ax.set_ylim(cbar_min, cbar_max)
 
     cbar_std = plt.colorbar(mpl.cm.ScalarMappable(norm=norm_edge, cmap=cmap_edge),
              ax=ax, orientation='vertical', label=rf'{key_variable} anomaly std {variable_units}', shrink=cbar_shrink, pad=cbar_pad, aspect=cbar_aspect, location='left')
 
-
     quartiles = [0.25, 0.5, 0.75, 0.9, 0.95, 0.99]
-    #quartiles = [0.25, 0.5, 0.75, 0.9]
-    #quartiles = [0.25, 0.5, 0.75]
-    quartiles_edgecolors = np.quantile(edge_array, quartiles)
+    quartiles_edgecolors = np.quantile(np.array(anomaly_var_edge_list), quartiles)
 
     quartiles_strings = [rf'$\downarrow${int(100 * qval)}%' for qval in quartiles]
-    #quartiles_strings = [rf'{int(100 * qval)}%$\downarrow$' for qval in quartiles]
 
     for q_dex in range(len(quartiles_edgecolors)):
-    #for qval in quartiles_edgecolors:
-        #cbar_std.ax.axhline(qval color='white', zorder=3)
-        cbar_std.ax.axhline(quartiles_edgecolors[q_dex], color='white', zorder=3)
+        cbar_std.ax.axhline(quartiles_edgecolors[q_dex], color='white', zorder=3, linewidth=0.2)
         cbar_std.ax.text(x=0.5, y=quartiles_edgecolors[q_dex], s=quartiles_strings[q_dex], color='black',
              va='center', ha='center', fontsize='xx-small')
-             #va='center', ha='left', fontsize='xx-small')
 
     original_range_x = ax.get_xlim()[1] - ax.get_xlim()[0]  
     original_range_y = ax.get_ylim()[1] - ax.get_ylim()[0]  
     original_area = original_range_x * original_range_y
 
-    def scale_with_zoom(axes):
 
-        current_range_x = ax.get_xlim()[1] - ax.get_xlim()[0]  
-        current_range_y = ax.get_ylim()[1] - ax.get_ylim()[0]  
-        current_area = current_range_x * current_range_y
-
-        scale_factor = np.sqrt(original_area / current_area)
-
-        new_linewidth_max = scale_factor 
-
-        new_linewidths = np.clip(original_linewidths_raw * scale_factor, linewidth_floor, new_linewidth_max)
-
-        col.set_linewidths(new_linewidths)
-
-        custom_handles, legend_title = make_handles_and_titles(patch_list, count_array, ax)
-
-        if custom_handles != 0:
-            ax.legend(framealpha=0, handlelength=0, handletextpad=0, fontsize="xx-small", title_fontsize="xx-small",
-                      handles=custom_handles, title=f"{legend_title}")
-
-        else:
-            plt.gca().get_legend().remove()
+    bound_callback = partial(scale_with_zoom, colorbar=cbar, original_area=original_area, original_linewidths_raw=original_linewidths_raw, linewidth_floor=linewidth_floor, count_array=count_array, patch_list=patch_list, anomaly_var_raw_values_list=anomaly_var_raw_values_list, cmap_face=cmap_face, norm_face=norm_face, edgecolors_list=edgecolors_list, anomaly_var_face_list=anomaly_var_face_list, scale_threshold=scale_threshold)
 
 
-    ax.callbacks.connect('xlim_changed', scale_with_zoom)
-    ax.callbacks.connect('ylim_changed', scale_with_zoom)
+    ax.callbacks.connect('xlim_changed', bound_callback)
+    ax.callbacks.connect('ylim_changed', bound_callback)
 
 
     # Only runs for first plot, before zooming
@@ -233,16 +193,159 @@ def pp(geodesic_bin_data, num_bins):
 
     plt.title(f"variable: {key_variable }\ndepth level: {key_depth }\nnum bins populated: {len(count_array)}/{num_bins}\nnum profiles binned: {np.sum(count_array)}\n\n")
 
-    caption_string = ("As you zoom, bin edge widths will scale with profile counts. Within each bin, face color corresponds to anomaly mean, edge color "
-                      "corresponds to anomaly standard deviation (std), and edge width corresponds to the number of profiles within the bin.")
+    caption_string = ("Within each bin, face color corresponds to anomaly value, and edge color corresponds to anomaly standard deviation (std).\n"
+                      "At low-moderate zoom levels, bin face color represents bin anomaly mean, and bin edge width scales linearly with bin profile count.\n"
+                      "At higher zoom levels, bins are sub-divided into equal-area polygons representing individual profiles, with face colors "
+                      "indicating profile anomaly values and edge colors still representing overall bin anomaly standard deviation.")
 
-    wrap_width = 80
+    wrap_width = 100
 
-    caption_string_wrapped = "\n".join(textwrap.wrap(caption_string, width=wrap_width))
+    caption_string_wrapped_list = [textwrap.fill(paragraph, width=wrap_width) for paragraph in caption_string.split('\n')]
+    caption_string_wrapped = '\n'.join(caption_string_wrapped_list)
 
-    plt.figtext(0.46, 0.15, caption_string_wrapped, ha="center", fontsize="small", style="italic")
+    plt.figtext(0.46, 0.08, caption_string_wrapped, ha="center", fontsize="small", style="italic")
 
     plt.show()
+
+
+def determine_sub_polygons(axes, patch_list, count_array, anomaly_var_raw_values_list, cmap_face, norm_face, edgecolors_list):
+
+    visible_patch_mask = np.zeros(len(patch_list)).astype(bool)
+
+    for patch_dex in range(len(patch_list)):
+        patch_coords = patch_list[patch_dex].get_xy()
+        for coord_dex in range(patch_coords.shape[0]):
+            if (patch_coords[coord_dex,0] > axes.get_xlim()[0]
+                and patch_coords[coord_dex,0] < axes.get_xlim()[1] 
+                and patch_coords[coord_dex,1] > axes.get_ylim()[0] 
+                and patch_coords[coord_dex,1] < axes.get_ylim()[1]):
+                    visible_patch_mask[patch_dex] = True 
+                    break
+    if np.sum(visible_patch_mask) == 0:
+        return 0, 0
+
+    counts_zoom = count_array[visible_patch_mask]
+
+    patches_zoom = [patch_list[ii] for ii in range(len(patch_list)) if visible_patch_mask[ii]]
+    edgecolors_zoom = [edgecolors_list[ii] for ii in range(len(edgecolors_list)) if visible_patch_mask[ii]]
+    anomalies_zoom = [anomaly_var_raw_values_list[ii] for ii in range(len(anomaly_var_raw_values_list)) if visible_patch_mask[ii]]
+
+    mini_patches_list = []
+    mini_patches_anomaly_list = []
+    mini_patches_edgecolors_list = []
+
+    for patch_dex in range(len(patches_zoom)):
+
+        patch_vertices = patches_zoom[patch_dex].get_xy()
+        num_profiles = counts_zoom[patch_dex]
+
+        orig_poly = ShapelyPolygon(patch_vertices)
+
+        # VIBING OUT
+        num_samples = 2000
+        minx, miny, maxx, maxy = orig_poly.bounds
+        points = []
+
+        while len(points) < num_samples:
+            p = Point(np.random.uniform(minx, maxx), np.random.uniform(miny, maxy))
+            if orig_poly.contains(p):
+                points.append([p.x, p.y])
+
+        random_points_array = np.array(points)
+
+        kmeans = KMeans(n_clusters=num_profiles, n_init=10, random_state=42)
+        labels = kmeans.fit_predict(random_points_array)
+
+        for profile_index in range(num_profiles):
+            cluster_points = random_points_array[labels == profile_index]
+            polygon_coords = ShapelyCoordinates(ShapelyPolygon(cluster_points).convex_hull)
+            mini_patches_list.append(patches.Polygon(polygon_coords, closed=True))
+
+        mini_patches_anomaly_list += anomalies_zoom[patch_dex]
+        mini_patches_edgecolors_list += [edgecolors_zoom[patch_dex]] * num_profiles
+
+
+
+    subcol = PatchCollection(mini_patches_list, cmap=cmap_face, norm=norm_face, linewidths=1, edgecolors=mini_patches_edgecolors_list, transform=ccrs.PlateCarree(), joinstyle='miter')
+
+    subcol.set_array(np.array(mini_patches_anomaly_list)) 
+
+    return subcol, mini_patches_anomaly_list
+
+
+
+
+def scale_with_zoom(axes, colorbar, original_area, original_linewidths_raw, linewidth_floor, count_array, patch_list, anomaly_var_face_list, anomaly_var_raw_values_list, cmap_face, norm_face, edgecolors_list, scale_threshold):
+
+    current_range_x = axes.get_xlim()[1] - axes.get_xlim()[0]  
+    current_range_y = axes.get_ylim()[1] - axes.get_ylim()[0]  
+    current_area = current_range_x * current_range_y
+
+    scale_factor = np.sqrt(original_area / current_area)
+
+    #print(f"zoom scale factor: {scale_factor}")
+
+    current_collection=axes.collections[-1]
+    if type(current_collection) is PatchCollection:
+        current_collection.remove() # erase the old collection/plot, start fresh.  maybe unecessary, but just want to get this working for now
+
+    if plt.gca().get_legend() is not None:
+        plt.gca().get_legend().remove()
+
+    if scale_factor < scale_threshold:
+
+        #---------------------------------------------------
+        collection = PatchCollection(patch_list, cmap=cmap_face, norm=norm_face, edgecolors=edgecolors_list, transform=ccrs.PlateCarree(), joinstyle='miter')
+        collection.set_array(np.array(anomaly_var_face_list))
+        collection_ax = axes.add_collection(collection)
+        #---------------------------------------------------
+
+        new_linewidth_max = scale_factor # Random choice, but seems to do the job
+        new_linewidths = np.clip(original_linewidths_raw * scale_factor, linewidth_floor, new_linewidth_max)
+        collection.set_linewidths(new_linewidths)
+
+        custom_handles, legend_title = make_handles_and_titles(patch_list, count_array, axes)
+        if custom_handles != 0:
+            axes.legend(framealpha=0, handlelength=0, handletextpad=0, fontsize="xx-small", title_fontsize="xx-small",
+                      handles=custom_handles, title=f"{legend_title}")
+
+        cbar_min, cbar_max = find_colorbar_limits(colorbar, anomaly_var_face_list)
+        colorbar.ax.set_ylim(cbar_min, cbar_max)
+
+    else:
+        collection, new_anomaly_var_face_list = determine_sub_polygons(axes, patch_list, count_array, anomaly_var_raw_values_list, cmap_face, norm_face, edgecolors_list)
+
+        if collection != 0:
+            custom_handles, legend_title = make_handles_and_titles(patch_list, count_array, axes)
+            axes.legend(framealpha=0, handlelength=0, handletextpad=0, fontsize="xx-small", title_fontsize="xx-small",
+                      handles=custom_handles, title=f"{legend_title}")
+
+
+            collection_ax = axes.add_collection(collection)
+            collection.set_linewidths(1)
+            cbar_min, cbar_max = find_colorbar_limits(colorbar, new_anomaly_var_face_list)
+            colorbar.ax.set_ylim(cbar_min, cbar_max)
+
+
+
+def find_colorbar_limits(colorbar, value_list):
+
+    cbar_min = np.min(value_list)
+    cbar_max = np.max(value_list)
+
+    extend_up = False
+    extend_down = False
+
+    if cbar_max > colorbar.norm.vmax:
+        cbar_max = colorbar.norm.vmax
+        extend_up = True
+    if cbar_min < colorbar.norm.vmin:
+        cbar_min = colorbar.norm.vmin
+        extend_down = True
+
+    return cbar_min, cbar_max
+    #return cbar_min, cbar_max, extend_down, extend_up
+
 
 
 
@@ -285,14 +388,14 @@ def make_handles_and_titles(patch_list, count_array, ax):
             custom_handles = [
                 Line2D([0], [0], color='gray', label=f"{count_min_zoom}"),
             ]
-            legend_title = "profiles per patch"
+            legend_title = "profiles per patch:"
 
         elif len(np.unique(count_array[visible_patch_mask])) == 2: 
             custom_handles = [
                 Line2D([0], [0], color='gray', label=f"min {count_min_zoom}"),
                 Line2D([0], [0], color='gray', label=f"max {count_max_zoom}")
             ]
-            legend_title = "profiles per patch"
+            legend_title = "profiles per patch:"
 
         else:
             count_mid_zoom = int(np.median(np.sort(count_array[visible_patch_mask])))
@@ -306,7 +409,7 @@ def make_handles_and_titles(patch_list, count_array, ax):
                 Line2D([0], [0], color='gray', label=f"med {count_mid_zoom}"),
                 Line2D([0], [0], color='gray', label=f"max {count_max_zoom}")
             ]
-            legend_title = "profiles per patch"
+            legend_title = "profiles per patch:"
 
         return custom_handles, legend_title
 
