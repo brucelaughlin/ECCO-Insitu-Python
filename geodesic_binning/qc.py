@@ -23,7 +23,8 @@ def pp(geodesic_bin_data, num_bins):
     # Hardcoded test parameters
     # -------------------------
     key_variable = "T"
-    key_depth = "00"
+    key_depth = "05"
+    #key_depth = "00"
     key_anomaly_var_edge = "std"
     key_anomaly_var_face = "mean"
     key_anomaly_var_raw_values= "values"

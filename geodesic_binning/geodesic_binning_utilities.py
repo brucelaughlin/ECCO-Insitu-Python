@@ -29,7 +29,6 @@ def bin_around_geodesic_vertices(geodesic_file: str, profile_file: str, variable
     profiles_lats = profiles_ds['prof_lat'].values
     profiles_lons = np.where(profiles_lons > 180, profiles_lons - 360, profiles_lons)
     profiles_coordinates_cartesian_tuple = sph2cart(np.radians(profiles_lons), np.radians(profiles_lats), 1)
-    #profiles_coordinates_cartesian_tuple = sph2cart(profiles_lons, profiles_lats, 1)
     distance, nearest_bin_numbers_profiles = tree.query(np.stack(profiles_coordinates_cartesian_tuple, axis=-1))
 
     artificial_lons = np.arange(-180,180,angular_precision)
@@ -37,10 +36,6 @@ def bin_around_geodesic_vertices(geodesic_file: str, profile_file: str, variable
     artificial_lon_meshgrid, artificial_lat_meshgrid = np.meshgrid(artificial_lons, artificial_lats)
     artificial_coords_cartesian_tuple = sph2cart(np.radians(artificial_lon_meshgrid), np.radians(artificial_lat_meshgrid), 1)
     distance, artificial_grid_geo_bins = tree.query(np.stack((artificial_coords_cartesian_tuple[0].ravel(), artificial_coords_cartesian_tuple[1].ravel(), artificial_coords_cartesian_tuple[2].ravel()), axis=-1))
-
-    ###
-    #pdb.set_trace()
-    ###
 
     artificial_grid_geo_bins = artificial_grid_geo_bins.reshape(artificial_lon_meshgrid.shape)
 
@@ -59,7 +54,6 @@ def bin_around_geodesic_vertices(geodesic_file: str, profile_file: str, variable
 
     for i_depth in range(anomalies_dict[list(anomalies_dict.keys())[0]][prof_keys["values"]].shape[-1]):
         depth_key =  f"{i_depth:02}"
-        #depth_key =  f"iDEPTH_{i_depth:02}"
         for variable_key in variables_of_interest:
             print(f"{depth_key}; {variable_key}")
             valid_indices = ~np.isnan(anomalies_dict[variable_key][prof_keys["values"]][:,i_depth])
@@ -87,34 +81,29 @@ def bin_around_geodesic_vertices(geodesic_file: str, profile_file: str, variable
                     coords_within_geodesic_bin = np.stack((artificial_lons_current_index,artificial_lats_current_index), axis=-1)
                     geodesic_bin_anomalies[index]["artificial_grid_coords_within_geodesic_bin"] = coords_within_geodesic_bin
 
-
-                    # Testing ----
+                    # Ignoring "z" solved my strange plotting problems, but it feels a little weird....
                     x,y,z= sph2cart(np.radians(artificial_lons_current_index), np.radians(artificial_lats_current_index), 1)
                     coords_within_geodesic_bin_cartesian = np.stack((x,y), axis=-1)
-                    ###coords_within_geodesic_bin_cartesian = np.stack((x,y,z), axis=-1)
+                    #coords_within_geodesic_bin_cartesian = np.stack((x,y,z), axis=-1)
                     bounding_polygon = coords_within_geodesic_bin[ConvexHull(coords_within_geodesic_bin_cartesian).vertices]
                     #bounding_polygon = coords_within_geodesic_bin[ConvexHull(coords_within_geodesic_bin).vertices]
-                    # ------------
-
-                    #pdb.set_trace()
 
 
-
-                    #bounding_polygon = coords_within_geodesic_bin[ConvexHull(coords_within_geodesic_bin).vertices]
-
+                    # This was my expression of fear about sign changes at the prime meridian messing with the plotting... silly?
+                    '''
                     # for now, only deal with polygons where all longitudes have the same sign (brain tired)
                     if np.all(np.sign(bounding_polygon[:,0]) == np.sign(bounding_polygon[0,0])):
                         geodesic_bin_anomalies[index]["artificial_grid_bounding_polygon_for_geodesic_bin"] = bounding_polygon
                     else:
                         geodesic_bin_anomalies[index]["artificial_grid_bounding_polygon_for_geodesic_bin"] = np.array([])
+                    '''   
 
-                    ###
-                    #pdb.set_trace()
-                    ###
+                    geodesic_bin_anomalies[index]["artificial_grid_bounding_polygon_for_geodesic_bin"] = bounding_polygon
+
                     
                 geodesic_bin_data[variable_key][depth_key] = geodesic_bin_anomalies
 
-        break
+        #break
 
 
     return geodesic_bin_data
