@@ -189,12 +189,14 @@ def update_sigmaTS_on_prepared_profiles(MITprofs, grid_dir, sigma_dir, respect_e
             # APPLY ZEROS TO WEIGHTS
             MITprofs['prof_Sweight'].values[zero_orig_weight_ins] = 0
 
+    '''
     else:
         print("STEP 4: not respecting the zero weights of the original profiles")
+    '''
     
 def main(MITprofs, grid_dir, sigma_dir, respect_existing_zero_weights, new_S_floor, new_T_floor):
 
-    print("step 04: update_sigmaTS_on_prepared_profiles")
+    #print("step04: update_sigmaTS_on_prepared_profiles")
     update_sigmaTS_on_prepared_profiles(MITprofs, grid_dir, sigma_dir, respect_existing_zero_weights, new_S_floor, new_T_floor)
 
 if __name__ == '__main__':

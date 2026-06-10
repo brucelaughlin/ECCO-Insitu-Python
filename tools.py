@@ -34,6 +34,8 @@ def MITprof_dataset_from_dict(data_dict: dict, dim_dict: dict):
 
 def MITprof_write_to_nc(dest_dir, MITprofs, step, basename):
 
+    Path(dest_dir).mkdir(parents=True, exist_ok=True)
+
     print("Writing NETCDF files {}".format(basename))
 
     df_HHMMSS = xr.DataArray(MITprofs['prof_HHMMSS'], dims = ['iPROF'],                                
@@ -1453,6 +1455,7 @@ def interp_check(xyz, AI, X, Y, Z, lat_vals, lon_vals, step, **kwargs):
         
         if step == 2:
             
+            '''
             print('original (line 1) vs closest (line 2) x,y,z')
             print("{} {} {}".format(X[test_ind], Y[test_ind], Z[test_ind]))
             print("{} {} {}".format(test_x, test_y, test_z))
@@ -1460,6 +1463,7 @@ def interp_check(xyz, AI, X, Y, Z, lat_vals, lon_vals, step, **kwargs):
             print('original (line 1) vs closest (line 2) lat lon')
             print("{} {}".format(test_lat, test_lon))
             print("{} {}".format(lat_vals[test_ind], lon_vals[test_ind]))
+            '''
 
             if abs(X[test_ind] - test_x) > 5 or abs(Y[test_ind] - test_y) > 5 or abs(Z[test_ind] - test_z) > 5:
                 raise Exception("Step {} failed check, interp XYZ coordinate difference too big".format(step))
@@ -1467,6 +1471,7 @@ def interp_check(xyz, AI, X, Y, Z, lat_vals, lon_vals, step, **kwargs):
                 raise Exception("Step {} failed check, interp lon/lat coordinate difference too big".format(step))
         
         if step == 3:
+            '''
             print('original (line 1) vs closest (line 2) x,y,z')
             print("{} {} {}".format(X[test_ind], Y[test_ind], Z[test_ind]))
             print("{} {} {}".format(test_x, test_y, test_z))
@@ -1474,6 +1479,7 @@ def interp_check(xyz, AI, X, Y, Z, lat_vals, lon_vals, step, **kwargs):
             print('original (line 1) vs closest (line 2) lat lon')
             print("{} {}".format(test_lat, test_lon))
             print("{} {}".format(lat_vals[good_clim_ins[test_ind]], lon_vals[good_clim_ins[test_ind]]))
+            '''
 
             if abs(X[test_ind] - test_x) > 5 or abs(Y[test_ind] - test_y) > 5 or abs(Z[test_ind] - test_z) > 5:
                 raise Exception("Step {} failed check, interp XYZ coordinate difference too big".format(step))
@@ -1482,6 +1488,7 @@ def interp_check(xyz, AI, X, Y, Z, lat_vals, lon_vals, step, **kwargs):
 
         if step == 4:
 
+            '''
             print('original (line 1) vs closest (line 2) x,y,z')
             print("{} {} {}".format(X.flatten(order = 'F')[test_ind], Y.flatten(order = 'F')[test_ind], Z.flatten(order = 'F')[test_ind]))
             print("{} {} {}".format(test_x, test_y, test_z))
@@ -1489,11 +1496,12 @@ def interp_check(xyz, AI, X, Y, Z, lat_vals, lon_vals, step, **kwargs):
             print('original (line 1) vs closest (line 2) lat lon')
             print("{} {}".format(test_lat, test_lon))
             print("{} {}".format(lat_vals.flatten(order = 'F')[test_ind], lon_vals.flatten(order = 'F')[test_ind]))
+            '''
 
             if abs(X.flatten(order = 'F')[test_ind] - test_x) > 5 or abs(Y.flatten(order = 'F')[test_ind] - test_y) > 5 or abs(Z.flatten(order = 'F')[test_ind] - test_z) > 5:
                 raise Exception("Step {} failed check, interp XYZ coordinate difference too big".format(step))
             if abs(lat_vals.flatten(order = 'F')[test_ind] - test_lat) > 5 or abs(lon_vals.flatten(order = 'F')[test_ind] - test_lon) > 5:
                 raise Exception("Step {} failed check, interp lon/lat coordinate difference too big".format(step))
         
-        print("=================")    
+        #print("=================")    
 

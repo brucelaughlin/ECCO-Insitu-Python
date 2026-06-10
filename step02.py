@@ -72,7 +72,7 @@ def update_spatial_bin_index_on_prepared_profiles(bin_dir, MITprofs, grid_dir):
 
 def main(bin_dir, MITprofs, grid_dir):
 
-    print("step02: update_spatial_bin_index_on_prepared_profiles")
+    #print("step02: update_spatial_bin_index_on_prepared_profiles")
     update_spatial_bin_index_on_prepared_profiles(bin_dir, MITprofs, grid_dir)
 
 if __name__ == '__main__':

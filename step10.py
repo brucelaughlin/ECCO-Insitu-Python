@@ -27,7 +27,7 @@ def distmat(xy, varargin):
         dmat(k+n*(kk-1)) = sqrt(sum((xy(k,:) - xy(kk,:)).^2,2));
         dmat(kk+n*(k-1)) = dmat(k+n*(kk-1));
         """
-        print("uncoded")
+        #print("uncoded")
     if opt == 2: # fully vectorized calculation (very fast for medium inputs)
         a = np.reshape(xy,(1 ,n ,dims), order = 'F') # 1 9 3
         b = np.reshape(xy,(n ,1 ,dims), order= 'F')
@@ -40,14 +40,14 @@ def distmat(xy, varargin):
             dmat(k,:) = sqrt(sum((xy(k*ones(n,1),:) - xy).^2,2));
         end
         """
-        print("uncoded")
+        #print("uncoded")
     if opt == 4: # another compact method, generally slower than the others
         """
         a = (1:n);
         b = a(ones(n,1),:);
         dmat = reshape(sqrt(sum((xy(b,:) - xy(b',:)).^2,2)),n,n);
         """
-        print("uncoded")
+        #print("uncoded")
 
     return dmat, opt
 
@@ -84,7 +84,7 @@ def update_decimate_profiles_subdaily_to_once_daily(MITprofs, distance_tolerance
                  
         while(np.sum(profs_to_decimate)) > 0:
             
-            print(f'profs left {np.sum(profs_to_decimate)}')
+            #print(f'profs left {np.sum(profs_to_decimate)}')
             profs_left_ins = np.where(profs_to_decimate > 0)[0]
             num_profs_left = len(profs_left_ins)
            
@@ -196,15 +196,19 @@ def update_decimate_profiles_subdaily_to_once_daily(MITprofs, distance_tolerance
 
         update_remove_zero_T_S_weighted_profiles_from_MITprof(MITprofs)
 
+    '''
     print('Num T and S weight > 0, post')
     print('{:>10} {:>10}'.format(np.sum(MITprofs['prof_Tweight'] > 0), np.sum(MITprofs['prof_Sweight'] > 0)))
+    '''
 
 def main(MITprofs, distance_tolerance, closest_time, method):
 
-    print("step10: update_decimate_profiles_subdaily_to_once_daily")
+    #print("step10: update_decimate_profiles_subdaily_to_once_daily")
 
+    '''
     print('Num T and S weight > 0, pre')
     print('{:>10} {:>10}'.format(np.sum(MITprofs['prof_Tweight'] > 0), np.sum(MITprofs['prof_Sweight'] > 0)))
+    '''
 
     update_decimate_profiles_subdaily_to_once_daily(MITprofs, distance_tolerance, closest_time, method)
 

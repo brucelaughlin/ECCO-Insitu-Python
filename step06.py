@@ -96,10 +96,12 @@ def sw_adtg(S,T,P):
         P = np.tile(P[0, :], (P.shape[0], 1))    # Copy down each column.
     elif mp == ms and np_s ==1:                  # P is column vector
         P = np.tile(P[:, 0], (ns, 1)).T          # Copy across each row
-    elif mp == ms and np_s == ns:                # PR is a matrix size(S)
-        print("step6 (sw_adtg): shape ok")
     else:
         raise Exception('check_stp: P has wrong dimensions')
+    '''
+    elif mp == ms and np_s == ns:                # PR is a matrix size(S)
+        print("step6 (sw_adtg): shape ok")
+    '''
 
     mp, np_s = P.shape
     
@@ -179,10 +181,12 @@ def sw_ptmp(S, T, P, PR):
         P = np.tile(P[0, :], (P.shape[0], 1))          # Copy down each column.
     elif mp == ms and np_s == 1:                       # P is column vector
         P = np.tile(P[:, 0], (ns, 1)).T                # Copy across each row
-    elif mp == ms and np_s == ns:                      # PR is a matrix size(S)
-        print("step6 (sw_ptmp): shape ok")
     else:
         raise Exception('check_stp: P has wrong dimensions')
+    '''
+    elif mp == ms and np_s == ns:                      # PR is a matrix size(S)
+        print("step6 (sw_ptmp): shape ok")
+    '''
 
     mp, np_s = P.shape
     
@@ -193,10 +197,12 @@ def sw_ptmp(S, T, P, PR):
         PR = np.tile(PR[0, :], (PR.shape[0], 1))       # Copy down each column.
     elif mpr == ms and npr == 1:                       # P is column vector
         PR = np.tile(PR[:, 0], (ns, 1)).T 
-    elif mpr == ms and npr == ns:                      # PR is a matrix size(S)
-        print("step6 (sw_ptmp): shape ok")
     else:
         raise Exception('check_stp: PR has wrong dimensions')
+    '''
+    elif mpr == ms and npr == ns:                      # PR is a matrix size(S)
+        print("step6 (sw_ptmp): shape ok")
+    '''
 
     mpr, npr = PR.shape
   
@@ -263,11 +269,13 @@ def update_prof_insitu_T_to_potential_T(MITprofs, replace_missing_S_with_clim_S)
 
     #pdb.set_trace()
 
+    '''
     print(f'inside step06 {count:02}')
     print(f"Tmax: {np.nanmax(prof_T)}")
     print(np.sum(~np.isnan(prof_T)))
     print(f"Smax: {np.nanmax(prof_S)}")
     print(np.sum(~np.isnan(prof_S)))
+    '''
     count += 1
     
     # to qualify you need to have a valid T, S 
@@ -287,12 +295,13 @@ def update_prof_insitu_T_to_potential_T(MITprofs, replace_missing_S_with_clim_S)
     #prof_S = prof_S.reshape(MITprofs['prof_S'].shape, order = 'F')
     #prof_T = prof_T.reshape(MITprofs['prof_T'].shape, order = 'F')
 
-    #
+    '''
     print(f'inside step06 {count:02}')
     print(f"Tmax: {np.nanmax(prof_T)}")
     print(np.sum(~np.isnan(prof_T)))
     print(f"Smax: {np.nanmax(prof_S)}")
     print(np.sum(~np.isnan(prof_S)))
+    '''
     count += 1
 
 
@@ -301,17 +310,18 @@ def update_prof_insitu_T_to_potential_T(MITprofs, replace_missing_S_with_clim_S)
       
     #if max(S_max) == fillVal:
     if np.max(prof_S) == fillVal:
-        print('all S are missing, applying clim instead')
+        #print('all S are missing, applying clim instead')
         prof_S = MITprofs['prof_Sclim']
         # to qualify you need to have a valid T, S  %%
         #good_T_and_S_ins = np.where((prof_T != fillVal) and (prof_S != fillVal))[0]
 
 
-    #pdb.set_trace()
 
+    '''
     print(f"prof_T: {np.nanmax(prof_T)}")
     print(np.sum(~np.isnan(prof_T)))
     print()
+    '''
 
 
     prof_T_tmp = np.where((prof_T != fillVal) & (prof_S != fillVal), prof_T, np.nan)
@@ -340,46 +350,57 @@ def update_prof_insitu_T_to_potential_T(MITprofs, replace_missing_S_with_clim_S)
         pres_mat = sw_pres(depths_mat, lats_mat)
         pres_mat = pres_mat.T
 
+        '''
         print(f"ptemp_max: {np.nanmax(prof_T_tmp)}")
         print(np.sum(~np.isnan(prof_T_tmp)))
         print()
+        '''
  
     
         # Calc potential temperature w.r.t. to surf [pres = 0]
         ptemp = sw_ptmp(prof_S_tmp, prof_T_tmp, pres_mat, np.zeros(pres_mat.shape))
 
+        '''
         print(f"ptemp_max: {np.nanmax(ptemp)}")
         print(np.sum(~np.isnan(ptemp)))
+        '''
  
+    '''
     else:
         print("step06: There is not a single good T and S pair to use here")
+    '''
     
     #ptemp = ptemp.filled(np.nan)
     # set to -9999 if there no new ptemp
     ptemp[np.isnan(ptemp)] = -9999
 
+    '''
     print(f'inside step06 {count:02}')
     print(np.sum(~np.isnan(MITprofs['prof_T'].values)))
     print(f"Tmax: {np.nanmax(MITprofs['prof_T'].values)}")
     print(np.sum(~np.isnan(ptemp)))
+    '''
     count += 1
 
-    print(f"ptemp_max: {np.nanmax(ptemp)}")
+    #print(f"ptemp_max: {np.nanmax(ptemp)}")
 
 
     #MITprofs['prof_T'] = ptemp
     MITprofs['prof_T'] = xr.DataArray(ptemp, dims=['iPROF','iDEPTH'], name='prof_T')
 
+    '''
     print(f'inside step06 {count:02}')
     print(np.sum(~np.isnan(MITprofs['prof_T'].values)))
     print(f"Tmax: {np.nanmax(MITprofs['prof_T'].values)}")
+    '''
     count += 1
 
  
     
 def main(MITprofs, replace_missing_S_with_clim_S):
 
-    print("step06: update_prof_insitu_T_to_potential_T")
+    #print("     step06: update_prof_insitu_T_to_potential_T")
+    #print("step06: update_prof_insitu_T_to_potential_T")
     update_prof_insitu_T_to_potential_T(MITprofs, replace_missing_S_with_clim_S)
 
 if __name__ == '__main__':

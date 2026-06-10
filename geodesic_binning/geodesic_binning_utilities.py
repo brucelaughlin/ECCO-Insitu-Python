@@ -103,7 +103,7 @@ def bin_around_geodesic_vertices(geodesic_file: str, profile_file: str, variable
                     
                 geodesic_bin_data[variable_key][depth_key] = geodesic_bin_anomalies
 
-        #break
+        break
 
 
     return geodesic_bin_data

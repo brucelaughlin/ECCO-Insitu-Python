@@ -141,7 +141,7 @@ def update_monthly_mean_TS_clim_WOA13v2_on_prepared_profiles(TS_clim_dir, MITpro
 
 def main(TS_clim_dir, MITprofs):
 
-    print("step 03: update_monthly_mean_TS_clim_WOA13v2_on_prepared_profiles")
+    #print("step03: update_monthly_mean_TS_clim_WOA13v2_on_prepared_profiles")
     update_monthly_mean_TS_clim_WOA13v2_on_prepared_profiles(TS_clim_dir, MITprofs)
 
 if __name__ == '__main__':

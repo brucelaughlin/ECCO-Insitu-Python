@@ -58,7 +58,7 @@ def get_profpoint_llc_ian(lon_llc, lat_llc, mask_llc, MITprof):
     
     # creating new prof_point field in dict and populating
     #MITprof.update({"prof_point": F_grid_PF_XYZ_to_INDEX})
-    print('size of F_grid_PF ', F_grid_PF_XYZ_to_INDEX.shape)
+    #print('size of F_grid_PF ', F_grid_PF_XYZ_to_INDEX.shape)
     MITprof["prof_point"].values[:] =  F_grid_PF_XYZ_to_INDEX
 
     #return F_grid_PF_XYZ_to_INDEX
@@ -278,7 +278,8 @@ def update_prof_and_tile_points_on_profiles(MITprof, grid_dir, llcN, wet_or_all)
 
 def main(MITprof_ds, grid_dir, llcN, wet_or_all):
 
-    print("step01: update_prof_and_tile_points_on_profiles")
+    #print("     step01: update_prof_and_tile_points_on_profiles")
+    #print("step01: update_prof_and_tile_points_on_profiles")
     update_prof_and_tile_points_on_profiles(MITprof_ds, grid_dir, llcN, wet_or_all)
 
 if __name__ == '__main__':

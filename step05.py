@@ -78,7 +78,7 @@ def update_gamma_factor_on_prepared_profiles(MITprofs, grid_dir, apply_gamma_fac
     
 def main(MITprofs, grid_dir, apply_gamma_factor, llcN):
     
-    print("step05: update_gamma_factor_on_prepared_profiles")
+    #print("step05: update_gamma_factor_on_prepared_profiles")
     update_gamma_factor_on_prepared_profiles(MITprofs, grid_dir, apply_gamma_factor, llcN)
 
 if __name__ == '__main__':

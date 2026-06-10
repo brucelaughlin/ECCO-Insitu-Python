@@ -37,15 +37,19 @@ def extract_profile_subset_from_MITprof(MITprofs, prof_ins, prof_depth_ins):
     # check whether an empty set of profile indices was passed
     if len(prof_ins) == 0:
         prof_ins = np.arange(num_profs)
-        print('including all profiles')
+        #print('including all profiles')
+    '''
     else:
         print('subsetting some profiles')
+    '''
     # check whether an empty set of profile depth indices was passed
     if len(prof_depth_ins) == 0:
         prof_depth_ins = np.arange(num_depths)
-        print('including all depths')
+        #print('including all depths')
+    '''
     else:
         print('subsetting depths')
+    '''
     
     # loop through every field in MITprof
     for data_var in MITprofs.data_vars:
@@ -114,16 +118,18 @@ def update_remove_zero_T_S_weighted_profiles_from_MITprof(MITprofs):
 
     nnt_orig, nns_orig, nnts_orig, np_orig, zwti_orig, zwsi_orig, zwtsi_orig,nzwti_orig, nzwsi_orig, nzwtsi_orig = count_profs_with_nonzero_weights(MITprofs)
         
-    print(f'\tnum profs: {np_orig} \n\tnum nonzero T: {nnt_orig} \n\tnum nonzero S: {nns_orig} \n\tnum nonzero TS: {nnts_orig}')
+    #print(f'\tnum profs: {np_orig} \n\tnum nonzero T: {nnt_orig} \n\tnum nonzero S: {nns_orig} \n\tnum nonzero TS: {nnts_orig}')
     
     #pdb.set_trace()
 
     num_nan_profs = np.where(np.isnan(MITprofs['prof_Tweight'].values.flatten(order = 'F')))[0]
     num_profs_to_remove = np_orig - len(nzwtsi_orig)
 
+    '''
     print(f'\t# profs to nix: {num_profs_to_remove}')
     print(f'\tTotal T weight: {total_Tweight}')
     print(f'\tTotal S weight: {total_Sweight}')
+    '''
 
     #pdb.set_trace()
 
@@ -141,13 +147,15 @@ def update_remove_zero_T_S_weighted_profiles_from_MITprof(MITprofs):
 
             nnt_new, nns_new, nnts_new, np_new, zwti_new, zwsi_new, zwtsi_new, nzwti_new, nzwsi_new, nzwtsi_new = count_profs_with_nonzero_weights(MITprofs_new)
 
-            print(f'\tnum profs: {np_new} \n\tnum nonzero T: {nnt_new} \n\tnum nonzero S: {nns_new} \n\tnum nonzero TS: {nnts_new}')
+            #print(f'\tnum profs: {np_new} \n\tnum nonzero T: {nnt_new} \n\tnum nonzero S: {nns_new} \n\tnum nonzero TS: {nnts_new}')
 
             num_profs_to_remove = np_new - len(nzwtsi_new)
 
+            '''
             print(f'\t# profs to nix: {num_profs_to_remove}')
             print(f'\tTotal T weight: {total_Tweight}')
             print(f'\tTotal S weight: {total_Sweight}')
+            '''
 
             # make sure subsetting worked
             a1 = np.nansum(np.nansum((MITprofs['prof_S'] - MITprofs['prof_Sclim'])**2 * MITprofs['prof_Sweight']))
@@ -156,31 +164,35 @@ def update_remove_zero_T_S_weighted_profiles_from_MITprof(MITprofs):
             b1 = np.nansum(np.nansum((MITprofs['prof_T'] - MITprofs['prof_Tclim'])**2 * MITprofs['prof_Tweight']))
             b2 = np.nansum(np.nansum((MITprofs_new['prof_T'] - MITprofs_new['prof_Tclim'])**2 * MITprofs_new['prof_Tweight']))
 
+            diff = np.abs(b1 - b2)
+            '''
             print('\n\ttotal T cost old/new {:10.30f} / {:10.30f} \n'.format(b1, b2))
             print('\ttotal S cost old/new {:10.30f} / {:10.30f} \n'.format(a1, a2))
-            diff = np.abs(b1 - b2)
             print('difference b/w b1 + b2: {:10.10e}'.format(diff))
+            '''
     
             if a1 != a2:
-                print('profile s costs difference is small')
+                #print('profile s costs difference is small')
                 if np.abs(a1 - a2) > 1:
                     raise Exception('profile s costs is big')
 
             if b1 != b2:
-                print('profile t costs difference is small')
+                #print('profile t costs difference is small')
                 if np.abs(b1 - b2) > 1:
                     raise Exception('profile t costs is big')
                 
             MITprofs = MITprofs_new
 
 
+        '''
         else:
             print('no bad profs!')
             #MITprofs_new = MITprofs 
             #MITprofs_new = xr.Dataset() # DID WE WANT THE RETURNED/RESULTING DATASET TO BE COMPLETELY EMPTY????  THAT'S WHAT THIS WILL DO....??!?!?
+        '''
     
     else: # no good profs left
-        print('no good profs left, making empty MITprofs_new')
+        #print('no good profs left, making empty MITprofs_new')
         # WAIT, IS THE IDEA THAT WE NULLIFY THE ENTIRE DATASTRUCTURE???  BECAUSE THE "update" CALL BELOW WON'T DO THAT ... ????
         #MITprofs_new = []
         #MITprofs_new = xr.Dataset() # DID WE WANT THE RETURNED/RESULTING DATASET TO BE COMPLETELY EMPTY????  THAT'S WHAT THIS WILL DO....??!?!?
@@ -196,7 +208,7 @@ def update_remove_zero_T_S_weighted_profiles_from_MITprof(MITprofs):
         
 def main(MITprofs):
 
-    print("step08: update_remove_zero_T_S_weighted_profiles_from_MITprof")
+    #print("step08: update_remove_zero_T_S_weighted_profiles_from_MITprof")
     update_remove_zero_T_S_weighted_profiles_from_MITprof(MITprofs)
 
 if __name__ == '__main__':

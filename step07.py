@@ -134,8 +134,10 @@ def update_zero_weight_points_on_prepared_profiles(run_code, MITprofs):
         Operates on MITprofs directly 
     """
 
+    '''
     print(f"Tmax: {np.nanmax(MITprofs['prof_T'].data)}")
     print(f"pre: {np.sum(~np.isnan(MITprofs['prof_T'].data))}")
+    '''
     
     # SET INPUT PARAMETERS
     fillVal=-9999
@@ -224,16 +226,19 @@ def update_zero_weight_points_on_prepared_profiles(run_code, MITprofs):
     
     if 'prof_S' in MITprofs:
         num_orig_nonzero_Sweights = len(np.where(MITprofs['prof_Sweight'])[0])
+        '''
         print("START Nonzero T weights {}".format(num_orig_nonzero_Tweights))
         print("START Nonzero S weights {}".format(num_orig_nonzero_Sweights))
+
     else:
         print("START Nonzero T weights {}".format(num_orig_nonzero_Tweights))
         print("No S")
+        '''
 
     #nnt_orig, nns_orig, nnts_orig, np_orig, zwti_orig, zwsi_orig, zwtsi_orig, nzwti_orig, nzwsi_orig, nzwtsi_orig = count_profs_with_nonzero_weights(MITprofs)
     nnt_orig, nns_orig, nnts_orig, num_profs, zwti_orig, zwsi_orig, zwtsi_orig, nzwti_orig, nzwsi_orig, nzwtsi_orig = count_profs_with_nonzero_weights(MITprofs)
     
-    print(f'num profs: {num_profs:10d}\nnum nonzero T : {nnt_orig:10d}\nnum nonzero S : {nns_orig:10d}\nnum nonzero TS: {nnts_orig:10d}')
+    #print(f'num profs: {num_profs:10d}\nnum nonzero T : {nnt_orig:10d}\nnum nonzero S : {nns_orig:10d}\nnum nonzero TS: {nnts_orig:10d}')
 
     tmp_weight_zero = np.zeros_like(MITprofs['prof_Tweight'])
     zero_T_weight_reason = copy.deepcopy(tmp_weight_zero)
@@ -244,19 +249,23 @@ def update_zero_weight_points_on_prepared_profiles(run_code, MITprofs):
 
     for zero_criteria_code_i in zero_criteria_code:
    
+        '''
         print('\nCriteria : {} {}\n'.format(zero_criteria_code_i, criteria_names[zero_criteria_code_i - 1]))
         print('------------------------------------\n')
+        '''
 
         num_nonzero_Tweights = len(np.where(MITprofs['prof_Tweight'])[0])
         
         if 'prof_S' in MITprofs:
             num_nonzero_Sweights = len(np.where(MITprofs['prof_Sweight'])[0])
+            '''
             print(f'Nonzero T weights NOW/ORIG {num_orig_nonzero_Tweights}/{num_nonzero_Tweights}\n' \
                   f'Nonzero S weights NOW/ORIG {num_nonzero_Sweights}/{num_orig_nonzero_Sweights}\n')
+            '''
 
   
         nnt, nns, nnts, num_np, zwti, zwsi, zwtsi,nzwti, nzwsi, nzwtsi = count_profs_with_nonzero_weights(MITprofs)
-        print(f'\nnum profs(n/o): {num_np:10d}\nnum nonzero T : {nnt:10d} {nnt_orig:10d}\nnum nonzero S : {nns:10d} {nns_orig:10d}\nnum nonzero TS: {nnt:10d} {nnts_orig:10d}\n')
+        #print(f'\nnum profs(n/o): {num_np:10d}\nnum nonzero T : {nnt:10d} {nnt_orig:10d}\nnum nonzero S : {nns:10d} {nns_orig:10d}\nnum nonzero TS: {nnt:10d} {nnts_orig:10d}\n')
 
         if zero_criteria_code_i == 1: #  profiles already have zero or missing weights
 
@@ -522,7 +531,7 @@ def update_zero_weight_points_on_prepared_profiles(run_code, MITprofs):
 
         if zero_criteria_code_i == 9 or zero_criteria_code_i == 10: # high cost vs. climatology
 
-            print(f"{zero_criteria_code_i:02}: {np.sum(~np.isnan(MITprofs['prof_T'])).data}")
+            #print(f"{zero_criteria_code_i:02}: {np.sum(~np.isnan(MITprofs['prof_T'])).data}")
             
             ct = 1
 
@@ -535,25 +544,25 @@ def update_zero_weight_points_on_prepared_profiles(run_code, MITprofs):
 
             tmpT[np.where(tmpT < checkVal)] = np.nan
 
-            print(f"{zero_criteria_code_i:02}: {np.sum(~np.isnan(MITprofs['prof_T'])).data}")
+            #print(f"{zero_criteria_code_i:02}: {np.sum(~np.isnan(MITprofs['prof_T'])).data}")
 
             #
-            print(f'debug_step: {ct}')
+            #print(f'debug_step: {ct}')
             ct += 1
             #
             tmpT[np.where(tmpT == 0)] = np.nan
             #
-            print(f'debug_step: {ct}')
+            #print(f'debug_step: {ct}')
             ct += 1
             #
             tmpC[np.where(tmpC < checkVal)] = np.nan
             #
-            print(f'debug_step: {ct}')
+            #print(f'debug_step: {ct}')
             ct += 1
             #
             tmpC[np.where(tmpC == 0)] = np.nan
             #
-            print(f'debug_step: {ct}')
+            #print(f'debug_step: {ct}')
             ct += 1
             #
             
@@ -669,7 +678,7 @@ def update_zero_weight_points_on_prepared_profiles(run_code, MITprofs):
                         #chunk_modify_in_place_using_profile_index_add_scalar(zero_S_weight_reason, bad_profs, 2**(zero_criteria_code_i - 1), chunk_size)
 
 
-            print(f"{zero_criteria_code_i:02}: {np.sum(~np.isnan(MITprofs['prof_T'].data))}")
+            ########print(f"{zero_criteria_code_i:02}: {np.sum(~np.isnan(MITprofs['prof_T'].data))}")
 
         if zero_criteria_code_i == 11: # test for possible bad conducivity cell.
             if 'prof_S' in MITprofs:
@@ -805,7 +814,7 @@ def update_zero_weight_points_on_prepared_profiles(run_code, MITprofs):
 
 def main(run_code, MITprofs):
 
-    print("step07: update_zero_weight_points_on_prepared_profiles")
+    #print("step07: update_zero_weight_points_on_prepared_profiles")
     update_zero_weight_points_on_prepared_profiles(run_code, MITprofs)
 
 if __name__ == '__main__':
