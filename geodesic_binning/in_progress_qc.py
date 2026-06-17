@@ -1,4 +1,4 @@
-from mpl_toolkits.axes_grid1 import make_axes_locatable
+from pathlib import Path
 from functools import partial
 from matplotlib.lines import Line2D
 import textwrap
@@ -18,7 +18,7 @@ from shapely import get_coordinates as ShapelyCoordinates
 from sklearn.cluster import KMeans
 
 
-def pp(geodesic_bin_data, num_bins):
+def pp(geodesic_bin_data, num_bins, geodesic_file, profile_file):
 
     # -------------------------
     # Hardcoded test parameters
@@ -141,32 +141,29 @@ def pp(geodesic_bin_data, num_bins):
 
     collection.set_array(np.array(anomaly_var_face_list))
 
-    fig = plt.figure(layout="constrained")
+    fig_width, fig_height = 14, 6
+    #fig_width, fig_height = 10, 6
 
-    #ax = plt.axes([0.25, 0.25, 0.5, 0.5], projection=ccrs.PlateCarree())
+    fig = plt.figure(figsize=(fig_width, fig_height), facecolor='lightskyblue', layout='constrained')
+
     ax = plt.axes(projection=ccrs.PlateCarree())
-
     ax.coastlines(color='black', linewidth=0.15)
     ax.patch.set_facecolor('#D9D9D9')
 
     ax.set_xlim(xmin,xmax)
     ax.set_ylim(ymin,ymax)
 
-    #ax.set_adjustable('datalim')
-    ax.set_box_aspect(1)
-    #ax.set_aspect('equal', adjustable='box')
-    #ax.set_aspect('equal')
+    pos = ax.get_position()
 
-    fig = plt.gcf()
-    fig.canvas.draw()
+    fig.add_axes(ax)
 
-    collection_ax = ax.add_collection(collection)
+    ax.add_collection(collection)
 
     cbar_shrink = 0.5
     cbar_pad = 0.2
     cbar_aspect = 10
 
-    cbar = plt.colorbar(collection, ax=ax, shrink=cbar_shrink, pad=cbar_pad, aspect=cbar_aspect, label=rf'{key_variable} anomaly {variable_units}'+'\n\n(no extensions shown)')
+    cbar = plt.colorbar(collection, ax=ax, shrink=cbar_shrink, pad=cbar_pad, aspect=cbar_aspect, label=rf'{key_variable} anomaly mean {variable_units}'+'\n\n(no extensions shown)')
 
 
     cbar_min, cbar_max = find_colorbar_limits(cbar, anomaly_var_face_list)
@@ -196,58 +193,50 @@ def pp(geodesic_bin_data, num_bins):
     ax.callbacks.connect('xlim_changed', bound_callback)
     ax.callbacks.connect('ylim_changed', bound_callback)
 
-    #right = ax.get_xlim()[1]
-    #top = ax.get_ylim()[1] 
-    data_to_axes_space = ax.transLimits.transform((xmax, ymax))
-    norm_xmax, norm_ymax = data_to_axes_space[0], data_to_axes_space[1]
 
     # Only runs for first plot, before zooming
     custom_handles, legend_title = make_handles_and_titles(patch_list, count_array, ax)
     if custom_handles != 0:
         ax.legend(framealpha=0, handlelength=0, handletextpad=0, fontsize="xx-small", title_fontsize="xx-small",
                   handles=custom_handles, title=f"{legend_title}")
-                  #handles=custom_handles, title=f"{legend_title}", bbox_to_anchor=(norm_xmax, norm_ymax), bbox_transform=ax.transAxes)
-
 
     ax.gridlines(draw_labels=True)
 
-    plt.title(f"variable: {key_variable }\ndepth level: {key_depth }\nnum bins populated: {len(count_array)}/{num_bins}\nnum profiles binned: {np.sum(count_array)}\n\n")
-
-    caption_string = ("Within each bin, face color corresponds to anomaly value, and edge color corresponds to anomaly standard deviation (std).\n\n"
-                      "At low-moderate zoom levels, bin face color represents bin anomaly mean, and bin edge width scales linearly with bin profile count.\n\n"
-                      "At higher zoom levels, bins are sub-divided into equal-area polygons representing individual profiles within the bin "
-                      "(locations ignored) , with face colors "
-                      "indicating profile anomaly values and edge colors still representing overall bin anomaly standard deviation.  Note that these"
-                      "sub-polygons do not indicate profile location within a bin")
-
-    '''
-    caption = cbar.ax.text(
-            0.5, -0.25, caption_string, ha='center', va='top', wrap=True, style='italic',
-            transform=ax.transAxes,
-            bbox=dict(boxstyle='square,pad=0', fc='none', ec='none')
-                  )
-    '''
-
-    '''
-    caption = cbar.ax.annotate(
-            caption_string,
-            xy=(0.5, 0),
-            xycoords='axes fraction',
-            xytext=(0,-0.2),
-            textcoords='offset points',
-            ha='center', va='top',
-            style='italic',
-            wrap=True,
-            transform=ax.transAxes,
-            bbox=dict(boxstyle='square,pad=0', fc='none', ec='none'),
+    suptitle_string = (
+            #f"profile_file: {Path(profile_file).stem}\n"
+            f"\nprofile_file: {Path(profile_file).stem}\n"
+            f"geodesic_bin_file: {Path(geodesic_file).stem}\n"
+            f"variable: {key_variable }\n"
+            f"depth level: {key_depth }\n"
+            f"num bins populated: {len(count_array)}/{num_bins}\n"
+            f"num profiles binned: {np.sum(count_array)}\n\n"
             )
-    '''
 
-    caption = plt.figtext(0.46, 0.08, caption_string, ha="center", fontsize="small", style="italic")
-    #plt.figtext(0.46, 0.08, caption_string_wrapped, ha="center", fontsize="small", style="italic", wrap=True)
+    fig.suptitle(suptitle_string)
 
-    wrap_width = 0.7 
-    caption._get_wrap_line_width = lambda: fig.bbox.width * wrap_width
+    caption_string = (
+            "Within each bin, face color corresponds to anomaly value, and edge color corresponds to anomaly standard deviation (std).\n"
+            "At low-moderate zoom levels, bin face color represents bin anomaly mean, and bin edge width scales linearly with bin profile count.\n"
+            "At higher zoom levels, bins are sub-divided into equal-area polygons representing individual profiles, with face colors "
+            "indicating profile anomaly values and edge colors still representing overall bin anomaly standard deviation."
+            )
+
+    wrap_width = 100
+
+    caption_string_wrapped_list = [textwrap.fill(paragraph, width=wrap_width) for paragraph in caption_string.split('\n')]
+    caption_string_wrapped = '\n'.join(caption_string_wrapped_list)
+
+    # VIBING
+    ax.annotate(
+        caption_string_wrapped,
+        xy=(0.5, -0.15),             # Position relative to your data or axes
+        xycoords='axes fraction',    # Placed relative to the axes container
+        ha='center',
+        va='top',
+        annotation_clip=False
+    )
+    
+    ax.set_aspect('equal', anchor='C')
 
     plt.show()
 
@@ -327,9 +316,7 @@ def scale_with_zoom(axes, colorbar, original_area, original_linewidths_raw, line
 
     scale_factor = np.sqrt(original_area / current_area)
 
-    data_to_axes_space = axes.transLimits.transform((axes.get_xlim()[1], axes.get_ylim()[1]))
-    norm_xmax, norm_ymax = data_to_axes_space[0], data_to_axes_space[1]
-
+    #print(f"zoom scale factor: {scale_factor}")
 
     current_collection=axes.collections[-1]
     if type(current_collection) is PatchCollection:
@@ -343,7 +330,7 @@ def scale_with_zoom(axes, colorbar, original_area, original_linewidths_raw, line
         #---------------------------------------------------
         collection = PatchCollection(patch_list, cmap=cmap_face, norm=norm_face, edgecolors=edgecolors_list, transform=ccrs.PlateCarree(), joinstyle='miter')
         collection.set_array(np.array(anomaly_var_face_list))
-        collection_ax = axes.add_collection(collection)
+        axes.add_collection(collection)
         #---------------------------------------------------
 
         new_linewidth_max = scale_factor # Random choice, but seems to do the job
@@ -353,8 +340,6 @@ def scale_with_zoom(axes, colorbar, original_area, original_linewidths_raw, line
         custom_handles, legend_title = make_handles_and_titles(patch_list, count_array, axes)
         if custom_handles != 0:
             axes.legend(framealpha=0, handlelength=0, handletextpad=0, fontsize="xx-small", title_fontsize="xx-small",
-                      #handles=custom_handles, title=f"{legend_title}", bbox_to_anchor=(norm_xmax, norm_ymax), bbox_transform=axes.transAxes)
-                      #handles=custom_handles, title=f"{legend_title}", loc='upper right', bbox_to_anchor=(right, top), bbox_transform=axes.transData)
                       handles=custom_handles, title=f"{legend_title}")
 
         cbar_min, cbar_max = find_colorbar_limits(colorbar, anomaly_var_face_list)
@@ -366,12 +351,10 @@ def scale_with_zoom(axes, colorbar, original_area, original_linewidths_raw, line
         if collection != 0:
             custom_handles, legend_title = make_handles_and_titles(patch_list, count_array, axes)
             axes.legend(framealpha=0, handlelength=0, handletextpad=0, fontsize="xx-small", title_fontsize="xx-small",
-                      #handles=custom_handles, title=f"{legend_title}", bbox_to_anchor=(norm_xmax, norm_ymax), bbox_transform=axes.transAxes)
-                      #handles=custom_handles, title=f"{legend_title}", loc='upper right', bbox_to_anchor=(right, top), bbox_transform=axes.transData)
                       handles=custom_handles, title=f"{legend_title}")
 
 
-            collection_ax = axes.add_collection(collection)
+            axes.add_collection(collection)
             collection.set_linewidths(1)
             cbar_min, cbar_max = find_colorbar_limits(colorbar, new_anomaly_var_face_list)
             colorbar.ax.set_ylim(cbar_min, cbar_max)
@@ -462,7 +445,3 @@ def make_handles_and_titles(patch_list, count_array, ax):
             legend_title = "profiles per patch:"
 
         return custom_handles, legend_title
-
-
-
-

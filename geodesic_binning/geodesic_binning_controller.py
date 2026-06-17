@@ -4,7 +4,8 @@ from pathlib import Path
 geodesic_dir = str(Path(__file__).parent.resolve())
 sys.path.append(geodesic_dir)
 import geodesic_binning_utilities as utils
-import qc
+import in_progress_qc
+#import qc
 
 variables_of_interest = ["T", "S"]
 angular_precision = 0.25
@@ -31,4 +32,5 @@ profile_file = profile_file_list[profile_file_index]
 geodesic_bin_data = utils.bin_around_geodesic_vertices(geodesic_file, profile_file, variables_of_interest, angular_precision, num_geodesic_bins)
 
 
-qc.pp(geodesic_bin_data, num_geodesic_bins)
+in_progress_qc.pp(geodesic_bin_data, num_geodesic_bins, geodesic_file, profile_file)
+#qc.pp(geodesic_bin_data, num_geodesic_bins)
