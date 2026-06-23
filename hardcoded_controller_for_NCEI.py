@@ -1,7 +1,8 @@
 from pathlib import Path
 import NCEI
 
-output_base_directory = "/Users/brucel/ecco/yip/sample_data/test_output_all_files"
+output_base_directory = "/Users/brucel/ecco/yip/ECCO-Insitu-Python/processed_profile_files"
+#output_base_directory = "/Users/brucel/ecco/yip/sample_data/test_output_all_files"
 
 base_directory = "/Users/brucel/ecco/yip/scripps_data"
 directories = [d for d in Path(base_directory).rglob('*') if d.is_dir()]

@@ -1,3 +1,4 @@
+import numpy.ma as ma
 import argparse
 import glob
 import os
@@ -9,6 +10,9 @@ from tools import MITprof_read, load_llc270_grid, load_llc90_grid, patchface3D, 
 import pdb
 
 def get_profpoint_llc_ian(lon_llc, lat_llc, mask_llc, MITprof):
+
+    # Note: "ny" in the signature for "patchface3d" is never used...
+
     """
     Finds the 'prof_point' of each profile in the MITprof object for a global LLC grid
 
@@ -31,7 +35,7 @@ def get_profpoint_llc_ian(lon_llc, lat_llc, mask_llc, MITprof):
     AI_grid_pf = np.arange(0, X_grid_pf.size).reshape(X_grid_pf.shape, order = 'F')
     
     mask_llc_pf_flat = mask_llc_pf.flatten(order = 'F')
-    good_ins = np.where(mask_llc_pf_flat == 1)[0]
+    good_ins = np.nonzero(mask_llc_pf_flat == 1)[0]
 
     # make a subset of X,Y,Z and AI to include only the non-nan, not masked points
     X_grid_pf = X_grid_pf.flatten(order = 'F')
@@ -48,10 +52,14 @@ def get_profpoint_llc_ian(lon_llc, lat_llc, mask_llc, MITprof):
 
     # these are the x,y,z coordinates of the 'good' cells in
     model_xyz = np.column_stack((X_grid_pf, Y_grid_pf, Z_grid_pf))
-    point_lon = MITprof["prof_lon"].astype(np.float64)
-    point_lat = MITprof["prof_lat"].astype(np.float64)
+    #point_lon = MITprof["prof_lon"].values
+    #point_lat = MITprof["prof_lat"].values
+    point_lon = ma.masked_invalid(MITprof["prof_lon"].values)
+    point_lat = ma.masked_invalid(MITprof["prof_lat"].values)
     
     prof_x, prof_y, prof_z = sph2cart(point_lon*deg2rad, point_lat*deg2rad, 1)
+
+    #pdb.set_trace()
 
     F_grid_PF_XYZ_to_INDEX = griddata(model_xyz, AI_grid_pf, (prof_x, prof_y, prof_z), method='nearest')
     F_grid_PF_XYZ_to_INDEX = F_grid_PF_XYZ_to_INDEX.astype(int)
@@ -59,6 +67,8 @@ def get_profpoint_llc_ian(lon_llc, lat_llc, mask_llc, MITprof):
     # creating new prof_point field in dict and populating
     #MITprof.update({"prof_point": F_grid_PF_XYZ_to_INDEX})
     #print('size of F_grid_PF ', F_grid_PF_XYZ_to_INDEX.shape)
+
+
     MITprof["prof_point"].values[:] =  F_grid_PF_XYZ_to_INDEX
 
     #return F_grid_PF_XYZ_to_INDEX
@@ -145,8 +155,6 @@ def get_tile_point_llc_ian(lon_llc, lat_llc, ni, nj, MITprof):
         # use the prof_point to pull the right value from whatever list_in{k}
         # is.. list_in{k} is in patchface format, from above.    
 
-        #pdb.set_trace()
-
         if k == 0:
             #MITprof['prof_interp_lon'] = list_in[k].flatten(order = 'F')[MITprof['prof_point']]
             #print(type(MITprof['prof_point']))
@@ -231,20 +239,29 @@ def update_prof_and_tile_points_on_profiles(MITprof, grid_dir, llcN, wet_or_all)
     #  also check to see if |lat| > 90, if so then assign flag 100.
     #  these flag values can be used later when assigning weights.
 
-    tmp_prof_lat = copy.deepcopy(MITprof['prof_lat'])
-    tmp_prof_lon = copy.deepcopy(MITprof['prof_lon'])
+    #tmp_prof_lat = copy.deepcopy(MITprof['prof_lat'])
+    #tmp_prof_lon = copy.deepcopy(MITprof['prof_lon'])
+    tmp_prof_lat = copy.deepcopy(MITprof['prof_lat'].values)
+    tmp_prof_lon = copy.deepcopy(MITprof['prof_lon'].values)
         
-    #bad_lats_over = np.where(tmp_prof_lat>90)[0]
-    #bad_lats_under = np.where(tmp_prof_lat<-90)[0]
-    bad_lats_indices = np.where(abs(tmp_prof_lat)>90)[0]
-        
+    #bad_lats_indices = np.nonzero(abs(tmp_prof_lat)>90)[0]
+    #bad_lats_index_array = abs(tmp_prof_lat)>90
+
+    #pdb.set_trace()
+
+    bad_coord_indices = np.nonzero(abs(tmp_prof_lat)>90 & np.isnan(tmp_prof_lat) & np.isnan(tmp_prof_lon))[0]
+
     #if bad_lats_over.size != 0 or bad_lats_under.size != 0:
     #    raise Exception("Step01: Bad lats found (lat>90 or lat<-90)")
     
     d = []
     for k in range(len(tmp_prof_lat)):
-        if not k in bad_lats_indices:
-            d.append(distance.distance((tmp_prof_lat[k], tmp_prof_lon[k]), (MITprof['prof_interp_lat'][k], MITprof['prof_interp_lon'][k])).km)
+        if not k in bad_coord_indices:
+        #if not k in bad_lats_indices:
+            try:
+                d.append(distance.distance((tmp_prof_lat[k], tmp_prof_lon[k]), (MITprof['prof_interp_lat'][k], MITprof['prof_interp_lon'][k])).km)
+            except:
+                pdb.set_trace()
         else:
             d.append(np.nan)
     d = np.asarray(d)
@@ -255,22 +272,23 @@ def update_prof_and_tile_points_on_profiles(MITprof, grid_dir, llcN, wet_or_all)
     # find points where distance between the profile point and the 
     # closest grid point is further than twice the distance 
     # of the square root of the area.
-    ins_too_far = np.where(d / dx > 2)[0]
+    ins_too_far = np.nonzero(d / dx > 2)[0]
 
     # if the profile lat is > |90| call it a bad lat
     # if the distance between the profile and the nearest grid cell
     # is greater than one grid cell distance then call it a bad point
     # -- you may have to create the field prof_flag.
     if 'prof_flag' not in MITprof:
-        MITprof['prof_flag'] = np.zeros(len(MITprof['prof_YYYYMMDD']))
-
-    #pdb.set_trace()
+        MITprof['prof_flag'] = ('iPROF', np.zeros(len(MITprof['prof_YYYYMMDD'])))
+        #MITprof['prof_flag'] = np.zeros(len(MITprof['prof_YYYYMMDD']))
 
     if ins_too_far.size != 0:
         MITprof['prof_flag'][ins_too_far] = 101
 
-    if bad_lats_indices.size != 0:
-        MITprof['prof_flag'][bad_lats_indices] = 100
+    #if bad_lats_indices.size != 0:
+    #    MITprof['prof_flag'][bad_lats_indices] = 100
+    if bad_coord_indices.size != 0:
+        MITprof['prof_flag'][bad_coord_indices] = 100
 
 
     #return MITprof

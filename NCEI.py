@@ -8,6 +8,7 @@ import os
 import logging
 import glob
 from pathlib import Path
+import argparse
 
 
 # Add the directory containing the package to the search path
@@ -27,28 +28,11 @@ from tools import MITprof_read, MITprof_write_to_nc
 import tools
 
 
-#original_file = "/Users/brucel/ecco/yip/scripps_data/CTD_WOD/WOD_WO_1992_CTD_OSD.nc"
-#original_file = "/Users/brucel/ecco/yip/scripps_data/GLD_WOD/WOD_WO_2002_GLD.nc"
-#original_file = "/Users/brucel/ecco/yip/scripps_data/ITP/L3/ITP_WO_2004_CTD.nc"
-
-
-problematic_dirs = {}
-problematic_dirs["/PFL/"] = "P has wrong dimensions"
-problematic_dirs["/CTD_WOD/"] = "P has wrong dimensions"
-problematic_dirs["/GLD_WOD/"] = "P has wrong dimensions"
-
-
 def NCEI_pipeline(dest_dir, input_dir):
 
     # Get a list of all netCDF files present in input directory 
-    #input_profile_files = glob.glob(os.path.join(input_dir, '*.nc'))
-    #input_profile_files = Path(input_dir).rglob("*.nc")
     input_profile_files = list(Path(input_dir).rglob("*.nc"))
-
-    '''
-    for problematic_dir in problematic_dirs.keys():
-        input_profile_files = [str(file) for file in input_profile_files if problematic_dir not in str(file)]
-    '''
+    input_profile_files.sort()
 
     # ==========================================================================================
     # ========================== START OF NEED PATHS/ PAREMS ===================================
@@ -103,7 +87,7 @@ def NCEI_pipeline(dest_dir, input_dir):
 
         original_file = input_profile_files[file_dex]
 
-        #print(f"file {file_dex+1:0{num_digits_print}}/{num_profile_files}: {original_file}")
+        #print(f"step0, file {file_dex+1:0{num_digits_print}}/{num_profile_files}: {original_file}")
 
         basename = os.path.basename(original_file)
 
@@ -150,65 +134,61 @@ def NCEI_pipeline(dest_dir, input_dir):
         #MITprof_ds
 
 
-        try:
-            step01.main(MITprof_ds, grid_dir, llcN, wet_or_all)
-        except Exception as xcept:
-            #print("failure, continuing; check stderr")
-            print(f"file {file_dex+1:0{num_digits_print}}/{num_profile_files}: {original_file}\n\t\t{xcept}", file=sys.stderr)
-            continue
+        #try:
+        step01.main(MITprof_ds, grid_dir, llcN, wet_or_all)
+        #except Exception as xcept:
+        #    print(f"step01, file {file_dex+1:0{num_digits_print}}/{num_profile_files}: {original_file}\n\t\t{xcept}", file=sys.stderr)
+        #    continue
         try:
             step02.main(sphere_dir, MITprof_ds, grid_dir)
         except Exception as xcept:
-            #print("failure, continuing; check stderr")
-            print(f"file {file_dex+1:0{num_digits_print}}/{num_profile_files}: {original_file}\n\t\t{xcept}", file=sys.stderr)
+            print(f"step02, file {file_dex+1:0{num_digits_print}}/{num_profile_files}: {original_file}\n\t\t{xcept}", file=sys.stderr)
             continue
         try:
             step03.main(clim_dir, MITprof_ds)
         except Exception as xcept:
-            #print("failure, continuing; check stderr")
-            print(f"file {file_dex+1:0{num_digits_print}}/{num_profile_files}: {original_file}\n\t\t{xcept}", file=sys.stderr)
+            print(f"step03, file {file_dex+1:0{num_digits_print}}/{num_profile_files}: {original_file}\n\t\t{xcept}", file=sys.stderr)
             continue
         try:
             step04.main(MITprof_ds, grid_dir, CTD_TS_bin, respect_existing_zero_weights, new_S_floor, new_T_floor)
         except Exception as xcept:
-            #print("failure, continuing; check stderr")
-            print(f"file {file_dex+1:0{num_digits_print}}/{num_profile_files}: {original_file}\n\t\t{xcept}", file=sys.stderr)
+            print(f"step04, file {file_dex+1:0{num_digits_print}}/{num_profile_files}: {original_file}\n\t\t{xcept}", file=sys.stderr)
             continue
         try:
             step05.main(MITprof_ds, grid_dir, apply_gamma_factor, llcN)
         except Exception as xcept:
-            #print("failure, continuing; check stderr")
-            print(f"file {file_dex+1:0{num_digits_print}}/{num_profile_files}: {original_file}\n\t\t{xcept}", file=sys.stderr)
+            print(f"step05, file {file_dex+1:0{num_digits_print}}/{num_profile_files}: {original_file}\n\t\t{xcept}", file=sys.stderr)
             continue
+        '''
         try:
             step06.main(MITprof_ds, replace_missing_S_with_clim_S)
         except Exception as xcept:
-            #print("failure, continuing; check stderr")
-            print(f"file {file_dex+1:0{num_digits_print}}/{num_profile_files}: {original_file}\n\t\t{xcept}", file=sys.stderr)
+            print(f"step06, file {file_dex+1:0{num_digits_print}}/{num_profile_files}: {original_file}\n\t\t{xcept}", file=sys.stderr)
             continue
+        '''
+        step06.main(MITprof_ds, replace_missing_S_with_clim_S)
+        '''
         try:
             step07.main('adjust', MITprof_ds)
         except Exception as xcept:
-            #print("failure, continuing; check stderr")
-            print(f"file {file_dex+1:0{num_digits_print}}/{num_profile_files}: {original_file}\n\t\t{xcept}", file=sys.stderr)
+            print(f"step07, file {file_dex+1:0{num_digits_print}}/{num_profile_files}: {original_file}\n\t\t{xcept}", file=sys.stderr)
             continue
+        '''
+        step07.main('adjust', MITprof_ds)
         try:
             step08.main(MITprof_ds)
         except Exception as xcept:
-            #print("failure, continuing; check stderr")
-            print(f"file {file_dex+1:0{num_digits_print}}/{num_profile_files}: {original_file}\n\t\t{xcept}", file=sys.stderr)
+            print(f"step08, file {file_dex+1:0{num_digits_print}}/{num_profile_files}: {original_file}\n\t\t{xcept}", file=sys.stderr)
             continue
         try:
             step09.main(MITprof_ds)
         except Exception as xcept:
-            #print("failure, continuing; check stderr")
-            print(f"file {file_dex+1:0{num_digits_print}}/{num_profile_files}: {original_file}\n\t\t{xcept}", file=sys.stderr)
+            print(f"step09, file {file_dex+1:0{num_digits_print}}/{num_profile_files}: {original_file}\n\t\t{xcept}", file=sys.stderr)
             continue
         try:
             step10.main(MITprof_ds, distance_tolerance, closest_time, method)
         except Exception as xcept:
-            #print("failure, continuing; check stderr")
-            print(f"file {file_dex+1:0{num_digits_print}}/{num_profile_files}: {original_file}\n\t\t{xcept}", file=sys.stderr)
+            print(f"step10, file {file_dex+1:0{num_digits_print}}/{num_profile_files}: {original_file}\n\t\t{xcept}", file=sys.stderr)
             continue
 
         print(f"success for file {file_dex+1:0{num_digits_print}}/{num_profile_files}: {original_file}")
@@ -226,7 +206,7 @@ def main(dest_dir, input_dir):
 
 if __name__ == '__main__':
   
-    ''' 
+    #''' 
     parser = argparse.ArgumentParser()
 
     parser.add_argument("-i", "--input_dir", action= "store",
@@ -243,9 +223,9 @@ if __name__ == '__main__':
 
     input_dir = args.input_dir
     dest_dir = args.dest_dir
-    '''
+    #'''
 
-    dest_dir = "/Users/brucel/ecco/yip/ECCO-Insitu-Python/processed_profile_files"
-    input_dir = "/Users/brucel/ecco/yip/scripps_data"
+    #dest_dir = "/Users/brucel/ecco/yip/ECCO-Insitu-Python/processed_profile_files"
+    #input_dir = "/Users/brucel/ecco/yip/scripps_data"
 
     main(dest_dir, input_dir)

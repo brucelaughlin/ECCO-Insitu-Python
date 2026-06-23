@@ -34,17 +34,18 @@ def sw_pres(DEPTH, LAT):
     if mL==1 and nL==1:
         LAT = np.ones(DEPTH.shape) * LAT
 
+    # Bruce - this is really outstanding stuff right here
     if (mD != mL) or (nD != nL):              # DEPTH and LAT are not the same shape
         if (nD ==nL) and (mL==1):               # LAT for each column of DEPTH
             LAT = np.tile(LAT[0, :], (LAT.shape[0], 1))     # copy LATS down each column s.t. dim(DEPTH)==dim(LAT)
         else:
             raise Exception('sw_pres.m:  Inputs arguments have wrong dimensions')
 
-    Transpose = 0
+    Transpose = False
     if mD == 1:  #row vector
-        DEPTH = DEPTH.flatten(order = 'F')
-        LAT = LAT.flatten(order = 'F')
-        Transpose = 1
+        DEPTH = DEPTH.flatten()
+        LAT = LAT.flatten()
+        Transpose = True
 
     DEG2RAD = np.pi/180
     X       = np.sin(np.abs(LAT)*DEG2RAD)  # convert to radians
@@ -80,15 +81,29 @@ def sw_adtg(S,T,P):
     """
 
 
+    bb = False
+    if len(S.shape) == 1:
+        S = S[:, np.newaxis]
+    if len(T.shape) == 1:
+        T = T[:, np.newaxis]
+        bb=True
+    if len(P.shape) == 1:
+        P = P[:, np.newaxis]
+
+   
+    # Something feels so dumb about this
     # CHECK S,T,P dimensions and verify consistent
     ms, ns = S.shape
     mt, nt = T.shape
     mp, np_s = P.shape
     
+    
     # CHECK THAT S and T HAVE SAME SHAPE
     if (ms != mt) or (ns != nt):
+        #pdb.set_trace()
         raise Exception('check_stp: S and T must have same dimensions')
 
+    """
     # CHECK OPTIONAL SHAPES FOR P
     if mp == 1 and np_s == 1:                    # P is a scalar.  Fill to size of S
         P = np.ones((ms,ns)) * P[0,0]
@@ -97,11 +112,16 @@ def sw_adtg(S,T,P):
     elif mp == ms and np_s ==1:                  # P is column vector
         P = np.tile(P[:, 0], (ns, 1)).T          # Copy across each row
     else:
+        print('failure at adtg calc')
         raise Exception('check_stp: P has wrong dimensions')
     '''
     elif mp == ms and np_s == ns:                # PR is a matrix size(S)
         print("step6 (sw_adtg): shape ok")
     '''
+    """
+
+    if P.shape != T.shape:
+        raise Exception('P and T have different dimensions (ptmp calc step)')
 
     mp, np_s = P.shape
     
@@ -164,9 +184,21 @@ def sw_ptmp(S, T, P, PR):
     %   ptmp = Potential temperature relative to PR [degree C (IPTS-68)]
 
     """
+    
+
+    # Bruce - I don't like the storing of the return of shape in variables... Also, I had to add the 'newaxis' hack below
+    # to get the code to run with SOCAT data, which had a size 1 array for depth
+
     # CHECK S,T,P dimensions and verify consistent
     ms, ns = S.shape
     mt, nt = T.shape
+
+    if len(P.shape) == 1:
+        P = P[:, np.newaxis]
+
+    if len(PR.shape) == 1:
+        PR = PR[:, np.newaxis]
+
     mp, np_s = P.shape
     mpr, npr = PR.shape
 
@@ -174,6 +206,7 @@ def sw_ptmp(S, T, P, PR):
     if (ms != mt) or (ns !=nt):
         raise Exception('check_stp: S and T must have same dimensions')
   
+    """
     # CHECK OPTIONAL SHAPES FOR P
     if mp == 1 and np_s == 1:                          # P is a scalar.  Fill to size of S
         P = np.ones((ms,ns)) * P[0,0]
@@ -182,14 +215,19 @@ def sw_ptmp(S, T, P, PR):
     elif mp == ms and np_s == 1:                       # P is column vector
         P = np.tile(P[:, 0], (ns, 1)).T                # Copy across each row
     else:
+        print('failure at ptmp calc ')
         raise Exception('check_stp: P has wrong dimensions')
     '''
     elif mp == ms and np_s == ns:                      # PR is a matrix size(S)
         print("step6 (sw_ptmp): shape ok")
     '''
+    """
+    if P.shape != T.shape:
+        raise Exception('P and T have different dimensions (ptmp calc step)')
 
     mp, np_s = P.shape
     
+    """
     # CHECK OPTIONAL SHAPES FOR PR
     if mpr == 1 and npr == 1:                          # PR is a scalar.  Fill to size of S
         PR = np.ones((ms,ns)) * PR[0,0]
@@ -203,6 +241,10 @@ def sw_ptmp(S, T, P, PR):
     elif mpr == ms and npr == ns:                      # PR is a matrix size(S)
         print("step6 (sw_ptmp): shape ok")
     '''
+    """
+
+    if PR.shape != T.shape:
+        raise Exception('PR and T have different dimensions (ptmp calc step)')
 
     mpr, npr = PR.shape
   
@@ -215,25 +257,49 @@ def sw_ptmp(S, T, P, PR):
         PR      = PR.flatten(order = 'F')
         Transpose = 1
 
+    # Bruce: so stupid.  and what is this "transpose" business.  what the heck
+    if len(T.shape) == 1:
+        T = T[:, np.newaxis]
+    if len(S.shape) == 1:
+        S = S[:, np.newaxis]
+    if len(P.shape) == 1:
+        P = P[:, np.newaxis]
+    if len(PR.shape) == 1:
+        PR = PR[:, np.newaxis]
+
     # theta1
     del_P  = PR - P
     del_th = del_P * sw_adtg(S,T,P)
     th     = T + 0.5* del_th
     q      = del_th
 
+
+    aa=1
+    #pdb.set_trace()
+
     # theta2
     del_th = del_P * sw_adtg(S, th, P+ 0.5*del_P)
     th     = th + (1 - 1/np.sqrt(2)) * (del_th - q)
     q      = (2 - np.sqrt(2))*del_th + (-2+3/ np.sqrt(2))*q
+
+    aa=2
+    #pdb.set_trace()
 
     # theta3
     del_th = del_P * sw_adtg(S,th,P+0.5*del_P)
     th     = th + (1 + 1/np.sqrt(2))*(del_th - q)
     q      = (2 + np.sqrt(2))*del_th + (-2-3/np.sqrt(2))*q
 
+    aa=3
+    #pdb.set_trace()
+
     # theta4
     del_th = del_P *sw_adtg(S,th,P+del_P)
     PT     = th + (del_th - 2*q)/6
+
+    aa=4
+    #pdb.set_trace()
+
 
     if Transpose:
         PT = PT.T
@@ -256,7 +322,8 @@ def update_prof_insitu_T_to_potential_T(MITprofs, replace_missing_S_with_clim_S)
     # SET INPUT PARAMETERS
     fillVal=-9999
     
-    lats = MITprofs['prof_lat']
+    lats = MITprofs['prof_lat'].values
+    #lats = MITprofs['prof_lat']
     # flatten array and converted all NaN vals to fillval
     #prof_T = MITprofs['prof_T'].values.flatten(order = 'F').filled(fillVal)
     #prof_S = MITprofs['prof_S'].values.flatten(order = 'F').filled(fillVal)
@@ -265,26 +332,19 @@ def update_prof_insitu_T_to_potential_T(MITprofs, replace_missing_S_with_clim_S)
     prof_T = np.where(~np.isnan(MITprofs['prof_T'].values), MITprofs['prof_T'].values, fillVal) 
     prof_S = np.where(~np.isnan(MITprofs['prof_S'].values), MITprofs['prof_S'].values, fillVal)
 
-    count = 1
+    # hacky fix for 1d array broadcast issue?
+    if len(prof_T.shape) == 1:
+        prof_T = prof_T[:, np.newaxis]
+    if len(prof_S.shape) == 1:
+        prof_S = prof_S[:, np.newaxis]
 
-    #pdb.set_trace()
-
-    '''
-    print(f'inside step06 {count:02}')
-    print(f"Tmax: {np.nanmax(prof_T)}")
-    print(np.sum(~np.isnan(prof_T)))
-    print(f"Smax: {np.nanmax(prof_S)}")
-    print(np.sum(~np.isnan(prof_S)))
-    '''
-    count += 1
-    
     # to qualify you need to have a valid T, S 
     #good_T_and_S_ins = np.where((prof_T != fillVal) and (prof_S != fillVal))[0]
     
     if replace_missing_S_with_clim_S:
         #missing_S_ins = np.where((prof_T != fillVal) and (prof_S == fillVal))[0]
         #prof_S[missing_S_ins] = MITprofs['prof_Sclim'].values.ravel(order = 'F')[missing_S_ins]
-        prof_S = np.where((prof_T != fillVal) & (prof_S == fillVal), MITprofs['prof_Sclim'], fillVal)
+        prof_S = np.where((prof_T != fillVal) & (prof_S == fillVal), MITprofs['prof_Sclim'].values, fillVal)
         prof_S = np.where(~np.isnan(prof_S), prof_S, fillVal)
         #prof_T = np.where(prof_T != fillVal and prof_S != fillVal, prof_T, fillVal)
 
@@ -295,14 +355,7 @@ def update_prof_insitu_T_to_potential_T(MITprofs, replace_missing_S_with_clim_S)
     #prof_S = prof_S.reshape(MITprofs['prof_S'].shape, order = 'F')
     #prof_T = prof_T.reshape(MITprofs['prof_T'].shape, order = 'F')
 
-    '''
-    print(f'inside step06 {count:02}')
-    print(f"Tmax: {np.nanmax(prof_T)}")
-    print(np.sum(~np.isnan(prof_T)))
-    print(f"Smax: {np.nanmax(prof_S)}")
-    print(np.sum(~np.isnan(prof_S)))
-    '''
-    count += 1
+    #python -u NCEI.py --input_dir /Users/brucel/ecco/yip/scripps_data/SOCAT --dest_dir z_socat
 
 
     # Check to see if **all** salinty values are missing
@@ -311,7 +364,7 @@ def update_prof_insitu_T_to_potential_T(MITprofs, replace_missing_S_with_clim_S)
     #if max(S_max) == fillVal:
     if np.max(prof_S) == fillVal:
         #print('all S are missing, applying clim instead')
-        prof_S = MITprofs['prof_Sclim']
+        prof_S = MITprofs['prof_Sclim'].values
         # to qualify you need to have a valid T, S  %%
         #good_T_and_S_ins = np.where((prof_T != fillVal) and (prof_S != fillVal))[0]
 
@@ -342,6 +395,11 @@ def update_prof_insitu_T_to_potential_T(MITprofs, replace_missing_S_with_clim_S)
     #if len(good_T_and_S_ins) > 0:
         # Prepare 2D matrix of pres and lats required for sw_ptmp
         depths = MITprofs['prof_depth'].values
+
+        #if int(np.sum(depths.shape)) == 1:
+        #    depths = np.array([depths[0]*len(lats)])
+
+
         depths_mat = np.tile(depths, (len(lats), 1)).T
 
         lats_mat = np.tile(lats, (len(depths), 1))
@@ -350,21 +408,10 @@ def update_prof_insitu_T_to_potential_T(MITprofs, replace_missing_S_with_clim_S)
         pres_mat = sw_pres(depths_mat, lats_mat)
         pres_mat = pres_mat.T
 
-        '''
-        print(f"ptemp_max: {np.nanmax(prof_T_tmp)}")
-        print(np.sum(~np.isnan(prof_T_tmp)))
-        print()
-        '''
- 
     
         # Calc potential temperature w.r.t. to surf [pres = 0]
         ptemp = sw_ptmp(prof_S_tmp, prof_T_tmp, pres_mat, np.zeros(pres_mat.shape))
 
-        '''
-        print(f"ptemp_max: {np.nanmax(ptemp)}")
-        print(np.sum(~np.isnan(ptemp)))
-        '''
- 
     '''
     else:
         print("step06: There is not a single good T and S pair to use here")
@@ -374,26 +421,11 @@ def update_prof_insitu_T_to_potential_T(MITprofs, replace_missing_S_with_clim_S)
     # set to -9999 if there no new ptemp
     ptemp[np.isnan(ptemp)] = -9999
 
-    '''
-    print(f'inside step06 {count:02}')
-    print(np.sum(~np.isnan(MITprofs['prof_T'].values)))
-    print(f"Tmax: {np.nanmax(MITprofs['prof_T'].values)}")
-    print(np.sum(~np.isnan(ptemp)))
-    '''
-    count += 1
-
     #print(f"ptemp_max: {np.nanmax(ptemp)}")
 
 
     #MITprofs['prof_T'] = ptemp
     MITprofs['prof_T'] = xr.DataArray(ptemp, dims=['iPROF','iDEPTH'], name='prof_T')
-
-    '''
-    print(f'inside step06 {count:02}')
-    print(np.sum(~np.isnan(MITprofs['prof_T'].values)))
-    print(f"Tmax: {np.nanmax(MITprofs['prof_T'].values)}")
-    '''
-    count += 1
 
  
     
