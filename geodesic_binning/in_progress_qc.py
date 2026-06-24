@@ -18,7 +18,7 @@ from shapely import get_coordinates as ShapelyCoordinates
 from sklearn.cluster import KMeans
 
 
-def pp(geodesic_bin_data, num_bins, geodesic_file, profile_file):
+def pp(geodesic_bin_data, num_bins, geodesic_file, profile_file, num_subpolygons_max):
 
     # -------------------------
     # Hardcoded test parameters
@@ -187,7 +187,7 @@ def pp(geodesic_bin_data, num_bins, geodesic_file, profile_file):
     original_area = original_range_x * original_range_y
 
 
-    bound_callback = partial(scale_with_zoom, colorbar=cbar, original_area=original_area, original_linewidths_raw=original_linewidths_raw, linewidth_floor=linewidth_floor, count_array=count_array, patch_list=patch_list, anomaly_var_raw_values_list=anomaly_var_raw_values_list, cmap_face=cmap_face, norm_face=norm_face, edgecolors_list=edgecolors_list, anomaly_var_face_list=anomaly_var_face_list, scale_threshold=scale_threshold)
+    bound_callback = partial(scale_with_zoom, colorbar=cbar, original_area=original_area, original_linewidths_raw=original_linewidths_raw, linewidth_floor=linewidth_floor, count_array=count_array, patch_list=patch_list, anomaly_var_raw_values_list=anomaly_var_raw_values_list, cmap_face=cmap_face, norm_face=norm_face, edgecolors_list=edgecolors_list, anomaly_var_face_list=anomaly_var_face_list, scale_threshold=scale_threshold, num_subpolygons_max=num_subpolygons_max)
 
 
     ax.callbacks.connect('xlim_changed', bound_callback)
@@ -241,11 +241,16 @@ def pp(geodesic_bin_data, num_bins, geodesic_file, profile_file):
     plt.show()
 
 
-def determine_sub_polygons(axes, patch_list, count_array, anomaly_var_raw_values_list, cmap_face, norm_face, edgecolors_list):
+def determine_sub_polygons(axes, patch_list, count_array, anomaly_var_raw_values_list, cmap_face, norm_face, edgecolors_list, linewidths_list, num_subpolygons_max):
 
-    visible_patch_mask = np.zeros(len(patch_list)).astype(bool)
+    num_patches = len(patch_list) # This is fixed throughout the life of the program
 
-    for patch_dex in range(len(patch_list)):
+    visible_patch_mask = np.zeros(num_patches).astype(bool)
+    #visible_patch_mask = np.zeros(len(patch_list)).astype(bool)
+
+
+    for patch_dex in range(num_patches):
+    #for patch_dex in range(len(patch_list)):
         patch_coords = patch_list[patch_dex].get_xy()
         for coord_dex in range(patch_coords.shape[0]):
             if (patch_coords[coord_dex,0] > axes.get_xlim()[0]
@@ -257,58 +262,111 @@ def determine_sub_polygons(axes, patch_list, count_array, anomaly_var_raw_values
     if np.sum(visible_patch_mask) == 0:
         return 0, 0
 
-    counts_zoom = count_array[visible_patch_mask]
 
-    patches_zoom = [patch_list[ii] for ii in range(len(patch_list)) if visible_patch_mask[ii]]
-    edgecolors_zoom = [edgecolors_list[ii] for ii in range(len(edgecolors_list)) if visible_patch_mask[ii]]
-    anomalies_zoom = [anomaly_var_raw_values_list[ii] for ii in range(len(anomaly_var_raw_values_list)) if visible_patch_mask[ii]]
+    patches_zoom = [patch_list[ii] for ii in range(num_patches) if visible_patch_mask[ii]]
+    #patches_zoom = [patch_list[ii] for ii in range(len(patch_list)) if visible_patch_mask[ii]]
+    edgecolors_zoom = [edgecolors_list[ii] for ii in range(num_patches) if visible_patch_mask[ii]]
+    #edgecolors_zoom = [edgecolors_list[ii] for ii in range(len(patch_list)) if visible_patch_mask[ii]]
+    anomalies_zoom = [anomaly_var_raw_values_list[ii] for ii in range(num_patches) if visible_patch_mask[ii]]
+    #anomalies_zoom = [anomaly_var_raw_values_list[ii] for ii in range(len(anomaly_var_raw_values_list)) if visible_patch_mask[ii]]
+    linewidths_zoom = [linewidths_list[ii] for ii in range(num_patches) if visible_patch_mask[ii]]
+    #linewidths_zoom = [linewidths_list[ii] for ii in range(len(linewidths_list)) if visible_patch_mask[ii]]
+    profiles_per_patch_zoom = [len(anomaly_list) for anomaly_list in anomalies_zoom]
+    #profiles_per_patch_zoom = [len(anomaly_var_raw_values_list[ii]) for ii in range(len(anomaly_var_raw_values_list)) if visible_patch_mask[ii]]
 
     mini_patches_list = []
     mini_patches_anomaly_list = []
     mini_patches_edgecolors_list = []
+    mini_patches_linewidths_list = []
+
+    #num_anomalies = [len(anomaly_list) for anomaly_list in anomaly_var_raw_values_list]
 
     for patch_dex in range(len(patches_zoom)):
 
-        patch_vertices = patches_zoom[patch_dex].get_xy()
-        num_profiles = counts_zoom[patch_dex]
+        num_profiles = profiles_per_patch_zoom[patch_dex]
 
-        orig_poly = ShapelyPolygon(patch_vertices)
+        if num_profiles > num_subpolygons_max:
 
-        # VIBING OUT
-        num_samples = 2000
-        minx, miny, maxx, maxy = orig_poly.bounds
-        points = []
+            mini_patches_list.append(patches_zoom[patch_dex])
+            mini_patches_anomaly_list.append(np.mean(anomalies_zoom[patch_dex]))
+            mini_patches_edgecolors_list.append(edgecolors_zoom[patch_dex])
+            mini_patches_linewidths_list.append(linewidths_zoom[patch_dex])
 
-        while len(points) < num_samples:
-            p = Point(np.random.uniform(minx, maxx), np.random.uniform(miny, maxy))
-            if orig_poly.contains(p):
-                points.append([p.x, p.y])
+        else:
 
-        random_points_array = np.array(points)
+            patch_vertices = patches_zoom[patch_dex].get_xy()
+            orig_poly = ShapelyPolygon(patch_vertices)
 
-        kmeans = KMeans(n_clusters=num_profiles, n_init=10, random_state=42)
-        labels = kmeans.fit_predict(random_points_array)
+            # STRANGE ISSUE WITH A SINGLE POLYGON NEAR THE EQUATOR - IT HAD ZERO AREA, FROZE THE PROGRAM
+            # SETTING A PDB TRACE HERE LETS US LOOK AT "orig_poly.area" and "orig_poly.exterior", WHICH REVEAL TROUBLING ZEROS!!!
+            # is this bc of the proximity to the equator??
 
-        for profile_index in range(num_profiles):
-            cluster_points = random_points_array[labels == profile_index]
-            polygon_coords = ShapelyCoordinates(ShapelyPolygon(cluster_points).convex_hull)
-            mini_patches_list.append(patches.Polygon(polygon_coords, closed=True))
+            # FOR NOW, SWEEPING THIS UNDER THE RUG!!!
 
-        mini_patches_anomaly_list += anomalies_zoom[patch_dex]
-        mini_patches_edgecolors_list += [edgecolors_zoom[patch_dex]] * num_profiles
+            # Note - First I'd run this without the trace, but with the "print(num_profiles)", so I could see the last profile count
+            # printed before the program freezes.  Then I'd add the trace, and hit "c" until reaching the problematic polygon.
+            # That's where "orig_poly.area" was 0, and original_poly.exterior had zeros for all lat values...
+
+            # OK this definitely has to do with the equator.  Brain tired but should be fixable or maybe fine to skip problematic bins
+
+            # OK, we don't even need to zoom past the threshold to see the bug - bins spanning the equator are wonky, only plotting on one
+            # side of it (in the current case, the southern side)
+
+            #print(num_profiles)
+            #pdb.set_trace()
+
+            if orig_poly.area == 0:
+                print("A polygon with zero area was encountered... did one of the bins you zoomed in on span the equator?  Still haven't sorted this bug out...")
+                continue
+
+            # VIBING OUT
+            num_samples = 2000
+            minx, miny, maxx, maxy = orig_poly.bounds
+            points = []
+
+
+            while len(points) < num_samples:
+                p = Point(np.random.uniform(minx, maxx), np.random.uniform(miny, maxy))
+                if orig_poly.contains(p):
+                    points.append([p.x, p.y])
+
+
+            random_points_array = np.array(points)
+
+            kmeans = KMeans(n_clusters=num_profiles, n_init=10, random_state=42)
+
+            labels = kmeans.fit_predict(random_points_array)
+
+
+            for profile_index in range(num_profiles):
+                cluster_points = random_points_array[labels == profile_index]
+                polygon_coords = ShapelyCoordinates(ShapelyPolygon(cluster_points).convex_hull)
+                mini_patches_list.append(patches.Polygon(polygon_coords, closed=True))
+
+
+            mini_patches_anomaly_list += anomalies_zoom[patch_dex]
+            mini_patches_edgecolors_list += [edgecolors_zoom[patch_dex]] * num_profiles
+            mini_patches_linewidths_list += [1] * num_profiles
 
 
 
-    subcol = PatchCollection(mini_patches_list, cmap=cmap_face, norm=norm_face, linewidths=1, edgecolors=mini_patches_edgecolors_list, transform=ccrs.PlateCarree(), joinstyle='miter')
+    try:
+        subcol = PatchCollection(mini_patches_list, cmap=cmap_face, norm=norm_face, edgecolors=mini_patches_edgecolors_list, transform=ccrs.PlateCarree(), joinstyle='miter')
+    except:
+        pdb.set_trace()
+
+    #subcol = PatchCollection(mini_patches_list, cmap=cmap_face, norm=norm_face, linewidths=1, edgecolors=mini_patches_edgecolors_list, transform=ccrs.PlateCarree(), joinstyle='miter')
 
     subcol.set_array(np.array(mini_patches_anomaly_list)) 
+
+    subcol.set_linewidths(mini_patches_linewidths_list)
 
     return subcol, mini_patches_anomaly_list
 
 
 
 
-def scale_with_zoom(axes, colorbar, original_area, original_linewidths_raw, linewidth_floor, count_array, patch_list, anomaly_var_face_list, anomaly_var_raw_values_list, cmap_face, norm_face, edgecolors_list, scale_threshold):
+def scale_with_zoom(axes, colorbar, original_area, original_linewidths_raw, linewidth_floor, count_array, patch_list, anomaly_var_face_list, anomaly_var_raw_values_list, cmap_face, norm_face, edgecolors_list, scale_threshold, num_subpolygons_max):
 
     current_range_x = axes.get_xlim()[1] - axes.get_xlim()[0]  
     current_range_y = axes.get_ylim()[1] - axes.get_ylim()[0]  
@@ -325,6 +383,9 @@ def scale_with_zoom(axes, colorbar, original_area, original_linewidths_raw, line
     if plt.gca().get_legend() is not None:
         plt.gca().get_legend().remove()
 
+    new_linewidth_max = scale_factor # Random choice, but seems to do the job
+    new_linewidths = np.clip(original_linewidths_raw * scale_factor, linewidth_floor, new_linewidth_max)
+
     if scale_factor < scale_threshold:
 
         #---------------------------------------------------
@@ -333,8 +394,6 @@ def scale_with_zoom(axes, colorbar, original_area, original_linewidths_raw, line
         axes.add_collection(collection)
         #---------------------------------------------------
 
-        new_linewidth_max = scale_factor # Random choice, but seems to do the job
-        new_linewidths = np.clip(original_linewidths_raw * scale_factor, linewidth_floor, new_linewidth_max)
         collection.set_linewidths(new_linewidths)
 
         custom_handles, legend_title = make_handles_and_titles(patch_list, count_array, axes)
@@ -346,7 +405,7 @@ def scale_with_zoom(axes, colorbar, original_area, original_linewidths_raw, line
         colorbar.ax.set_ylim(cbar_min, cbar_max)
 
     else:
-        collection, new_anomaly_var_face_list = determine_sub_polygons(axes, patch_list, count_array, anomaly_var_raw_values_list, cmap_face, norm_face, edgecolors_list)
+        collection, new_anomaly_var_face_list = determine_sub_polygons(axes, patch_list, count_array, anomaly_var_raw_values_list, cmap_face, norm_face, edgecolors_list, new_linewidths, num_subpolygons_max)
 
         if collection != 0:
             custom_handles, legend_title = make_handles_and_titles(patch_list, count_array, axes)
@@ -355,7 +414,7 @@ def scale_with_zoom(axes, colorbar, original_area, original_linewidths_raw, line
 
 
             axes.add_collection(collection)
-            collection.set_linewidths(1)
+            #collection.set_linewidths(1)
             cbar_min, cbar_max = find_colorbar_limits(colorbar, new_anomaly_var_face_list)
             colorbar.ax.set_ylim(cbar_min, cbar_max)
 

@@ -1,3 +1,4 @@
+import numpy.ma as ma
 import pdb
 import xarray as xr
 import argparse
@@ -115,15 +116,15 @@ def update_sigmaTS_on_prepared_profiles(MITprofs, grid_dir, sigma_dir, respect_e
     num_prof_depths = len(MITprofs['prof_depth'])
 
     # pull original weights
-    orig_profTweight = MITprofs['prof_Tweight'].values
+    orig_profTweight = MITprofs['prof_Tweight'].data
     if 'prof_S' in MITprofs:
-        orig_profSweight = MITprofs['prof_Sweight'].values
+        orig_profSweight = MITprofs['prof_Sweight'].data
     
     # ['mapping profiles to llc grid']
-    #prof_lon = MITprofs['prof_lon'].astype(np.float64)
-    #prof_lat = MITprofs['prof_lat'].astype(np.float64)
-    prof_lon = MITprofs['prof_lon'].values
-    prof_lat = MITprofs['prof_lat'].values
+    #prof_lon = MITprofs['prof_lon'].data
+    #prof_lat = MITprofs['prof_lat'].data
+    prof_lon = ma.masked_invalid(MITprofs['prof_lon'].data)
+    prof_lat = ma.masked_invalid(MITprofs['prof_lat'].data)
     prof_x, prof_y, prof_z = sph2cart(prof_lon*deg2rad, prof_lat*deg2rad, 1)
     
     # map a llc90 grid index to each profile.
@@ -132,7 +133,7 @@ def update_sigmaTS_on_prepared_profiles(MITprofs, grid_dir, sigma_dir, respect_e
     prof_llc90_cell_index = griddata(xyz_wet, AI, np.column_stack((prof_x, prof_y, prof_z)), 'nearest').astype(int)
 
     # interp sigmas to the new vertical levels if it hasn't already been interpolated
-    sigma_T_MITprof_z = interp_3D_to_arbitrary_z_levels(sigma_T, z_cen_90, MITprofs['prof_depth'].values) # BRUCE - I sure hope that's an array with nan's as fill values...
+    sigma_T_MITprof_z = interp_3D_to_arbitrary_z_levels(sigma_T, z_cen_90, MITprofs['prof_depth'].data) # BRUCE - I sure hope that's an array with nan's as fill values...
     #sigma_T_MITprof_z = interp_3D_to_arbitrary_z_levels(sigma_T, z_cen_90, MITprofs['prof_depth'].data)
     #sigma_T_MITprof_z = interp_3D_to_arbitrary_z_levels(sigma_T, z_cen_90, MITprofs['prof_depth'])
     # ['interpolated sigma T to new levels']
@@ -143,7 +144,7 @@ def update_sigmaTS_on_prepared_profiles(MITprofs, grid_dir, sigma_dir, respect_e
         ins = np.where(sigma_T_MITprof_z_flat >=0)[0]
         sigma_T_MITprof_z_flat[ins] = np.maximum(new_T_floor, sigma_T_MITprof_z_flat[ins])
     if 'prof_S' in MITprofs and not sigma_S_MITprof_z:
-        sigma_S_MITprof_z = interp_3D_to_arbitrary_z_levels(sigma_S, z_cen_90, MITprofs['prof_depth'].values)
+        sigma_S_MITprof_z = interp_3D_to_arbitrary_z_levels(sigma_S, z_cen_90, MITprofs['prof_depth'].data)
         #sigma_S_MITprof_z = interp_3D_to_arbitrary_z_levels(sigma_S, z_cen_90, MITprofs['prof_depth'])
         sigma_S_MITprof_z_flat = np.reshape(sigma_S_MITprof_z, (90*1170, num_prof_depths), order = 'F')
         if new_S_floor > 0:
@@ -169,10 +170,10 @@ def update_sigmaTS_on_prepared_profiles(MITprofs, grid_dir, sigma_dir, respect_e
         if 'prof_Terr' in MITprofs:
             # Set the field that notes whatever floor has been applied to the sigmas;
             #MITprofs['prof_Terr'] = np.zeros_like(MITprofs['prof_Terr']) + new_T_floor
-            MITprofs['prof_Terr'].values = np.zeros_like(MITprofs['prof_Terr'].values) + new_T_floor
+            MITprofs['prof_Terr'].data = np.zeros_like(MITprofs['prof_Terr'].data) + new_T_floor
     if new_S_floor > 0:
         if 'prof_Serr' in MITprofs:
-            MITprofs['prof_Serr'].values = np.zeros_like(MITprofs['prof_Serr'].values) + new_S_floor
+            MITprofs['prof_Serr'].data = np.zeros_like(MITprofs['prof_Serr'].data) + new_S_floor
     
     # SET WEIGHTS TO ZERO IF THEY CAME WITH ZERO.
     if respect_existing_zero_weights:
@@ -182,12 +183,12 @@ def update_sigmaTS_on_prepared_profiles(MITprofs, grid_dir, sigma_dir, respect_e
   
         # APPLY ZEROS TO WEIGHTS
         #MITprofs['prof_Tweight'][zero_orig_weight_ins] = 0
-        MITprofs['prof_Tweight'].values[zero_orig_weight_ins] = 0
+        MITprofs['prof_Tweight'].data[zero_orig_weight_ins] = 0
         
         if 'prof_S' in MITprofs:
             zero_orig_weight_ins= np.where(orig_profSweight == 0)[0]     
             # APPLY ZEROS TO WEIGHTS
-            MITprofs['prof_Sweight'].values[zero_orig_weight_ins] = 0
+            MITprofs['prof_Sweight'].data[zero_orig_weight_ins] = 0
 
     '''
     else:

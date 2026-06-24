@@ -1,3 +1,4 @@
+import numpy.ma as ma
 import argparse
 import glob
 import os
@@ -54,18 +55,20 @@ def update_monthly_mean_TS_clim_WOA13v2_on_prepared_profiles(TS_clim_dir, MITpro
     deg2rad = np.float64(np.pi/180.0)
  
     # POINTS TO USE ARE THOSE POINTS WITH VALID DATA at the surface
-    subset = S_clim[0,0].flatten(order= 'F')
-    #good_clim_ins = np.where(~np.isnan(subset))[0]
-    good_clim_ins = np.where(~np.isnan(subset) & ~np.isnan(T_clim[0,0].flatten(order='F')))[0] # NoTE: Bruce - same as previous line, but seemed safer 
+    subset = S_clim[0,0].flatten()
+    #good_clim_ins = np.nonzero(~np.isnan(subset))[0]
+    #good_clim_ins = np.nonzero(~np.isnan(subset) & ~np.isnan(T_clim[0,0]))[0] # NoTE: Bruce - same as previous line, but seemed safer 
+    good_clim_ins = np.nonzero(~np.isnan(subset) & ~np.isnan(T_clim[0,0]).ravel())[0] # NoTE: Bruce - same as previous line, but seemed safer 
 
-    lon_woam = lon_woam.flatten(order='F').astype(np.float64)
-    lat_woam = lat_woam.flatten(order='F').astype(np.float64)
+    # Bruce: again, on a wing and a prayer
+    lon_woam = lon_woam.ravel()
+    lat_woam = lat_woam.ravel()
 
     X_woa, Y_woa, Z_woa = sph2cart(lon_woam[good_clim_ins]*deg2rad, lat_woam[good_clim_ins]*deg2rad, 1)
-    AI = np.arange(0,X_woa.size).astype(np.float64)
+    AI = np.arange(0,X_woa.size)
     
     # these are the x,y,z coordinates of all points in the climatology
-    xyz = np.column_stack((X_woa, Y_woa, Z_woa)).astype(np.float64)
+    xyz = np.column_stack((X_woa, Y_woa, Z_woa))
 
     # verify that our little trick works in 4 parts of the earth
     interp_check(xyz, AI, X_woa, Y_woa, Z_woa, lat_woam, lon_woam, 3, good_clim = good_clim_ins)
@@ -77,12 +80,16 @@ def update_monthly_mean_TS_clim_WOA13v2_on_prepared_profiles(TS_clim_dir, MITpro
     #  no data => profX == -9999, valid value in climatology, 0 in weight
     
     # determine the month for every profile
-    prof_month = ((MITprofs['prof_YYYYMMDD'] % 10000) // 100).astype(int)
+    prof_month = ((MITprofs['prof_YYYYMMDD'].data % 10000) // 100).astype(int)
+
+    points_lon = ma.masked_invalid(MITprofs["prof_lon"].data)
+    points_lat = ma.masked_invalid(MITprofs["prof_lat"].data)
+
 
     # 'mapping profiles to x,y,z'
-    MITprofs['prof_lon'].values= MITprofs['prof_lon'].astype(np.float64)
-    MITprofs['prof_lat'].values= MITprofs['prof_lat'].astype(np.float64)
-    prof_x, prof_y, prof_z = sph2cart(MITprofs['prof_lon']*deg2rad, MITprofs['prof_lat']*deg2rad, 1)
+    prof_x, prof_y, prof_z = sph2cart(points_lon*deg2rad, points_lat*deg2rad, 1)
+
+    #pdb.set_trace()
     
     # map a climatology grid index to each profile.
     prof_clim_cell_index = griddata(xyz, AI, (prof_x, prof_y, prof_z), method='nearest')
@@ -102,10 +109,10 @@ def update_monthly_mean_TS_clim_WOA13v2_on_prepared_profiles(TS_clim_dir, MITpro
             T_clim_mk = T_clim_k[m, :, :]
             S_clim_mk = S_clim_k[m, :, :]
     
-            T_clim_mk = T_clim_mk.flatten(order = 'F')[good_clim_ins]
-            S_clim_mk = S_clim_mk.flatten(order = 'F')[good_clim_ins]
+            T_clim_mk = T_clim_mk.flatten()[good_clim_ins]
+            S_clim_mk = S_clim_mk.flatten()[good_clim_ins]
 
-            profs_in_month = np.where(prof_month == m + 1)[0]
+            profs_in_month = np.nonzero(prof_month == m + 1)[0]
             prof_clim_cell_index_m = prof_clim_cell_index[profs_in_month]
 
             prof_clim_T_tmp = T_clim_mk[prof_clim_cell_index_m]
@@ -121,15 +128,15 @@ def update_monthly_mean_TS_clim_WOA13v2_on_prepared_profiles(TS_clim_dir, MITpro
             prof_clim_S[:,k] = tmp_S
     
 
-    # NOTE: print(np.where(np.isnan(prof_clim_S))[0].size)
+    # NOTE: print(np.nonzero(np.isnan(prof_clim_S))[0].size)
     # Fill -9999 for NaNs
 
-    prof_clim_S_temp = prof_clim_S.flatten(order= 'F')
-    prof_clim_S_temp[np.where(np.isnan(prof_clim_S_temp))[0]]= fillVal
+    prof_clim_S_temp = prof_clim_S.flatten()
+    prof_clim_S_temp[np.nonzero(np.isnan(prof_clim_S_temp))[0]]= fillVal
     prof_clim_S = prof_clim_S_temp.reshape((prof_clim_S.shape), order='F')
 
-    prof_clim_T_temp = prof_clim_T.flatten(order= 'F')
-    prof_clim_T_temp[np.where(np.isnan(prof_clim_T_temp))[0]]= fillVal
+    prof_clim_T_temp = prof_clim_T.flatten()
+    prof_clim_T_temp[np.nonzero(np.isnan(prof_clim_T_temp))[0]]= fillVal
     prof_clim_T = prof_clim_T_temp.reshape((prof_clim_T.shape), order='F')
 
     #pdb.set_trace()

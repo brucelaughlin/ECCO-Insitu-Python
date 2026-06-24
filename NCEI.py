@@ -134,11 +134,11 @@ def NCEI_pipeline(dest_dir, input_dir):
         #MITprof_ds
 
 
-        #try:
-        step01.main(MITprof_ds, grid_dir, llcN, wet_or_all)
-        #except Exception as xcept:
-        #    print(f"step01, file {file_dex+1:0{num_digits_print}}/{num_profile_files}: {original_file}\n\t\t{xcept}", file=sys.stderr)
-        #    continue
+        try:
+            step01.main(MITprof_ds, grid_dir, llcN, wet_or_all)
+        except Exception as xcept:
+            print(f"step01, file {file_dex+1:0{num_digits_print}}/{num_profile_files}: {original_file}\n\t\t{xcept}", file=sys.stderr)
+            continue
         try:
             step02.main(sphere_dir, MITprof_ds, grid_dir)
         except Exception as xcept:

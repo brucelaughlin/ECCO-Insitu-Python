@@ -1,3 +1,6 @@
+import xarray as xr
+import numpy.ma as ma
+import pdb
 import argparse
 import glob
 import os
@@ -43,36 +46,63 @@ def update_spatial_bin_index_on_prepared_profiles(bin_dir, MITprofs, grid_dir):
 
         lon_90, lat_90, bathy_90, X_90, Y_90, Z_90 = load_llc90_grid(grid_dir, 2)
 
-        X = X_90.flatten(order = 'F')
-        Y = Y_90.flatten(order = 'F')
-        Z = Z_90.flatten(order = 'F')
-        lon_llc = lon_90.flatten(order = 'F')
-        lat_llc = lat_90.flatten(order = 'F')
+        '''
+        X = X_90
+        Y = Y_90
+        Z = Z_90
+        lon_llc = lon_90
+        lat_llc = lat_90
+        '''
+        
+        # Bruce: I really think that this is what was meant:
+        X = X_90.ravel()
+        Y = Y_90.ravel()
+        Z = Z_90.ravel()
+        lon_llc = lon_90.ravel()
+        lat_llc = lat_90.ravel()
 
+        # Bruce: And then I need to do this... oh boy here we go....
+        bin_1 = bin_1.ravel()
+        bin_2 = bin_2.ravel()
+
+
+        # Bruce: Are we sure that this is correct?  
         xyz = np.column_stack((X, Y, Z))
         # map a grid index to each profile.
         AI = np.arange(bathy_90.size)
     
     # verify that our little trick works in 4 parts of the earth
-    interp_check(xyz, AI, X, Y, Z, lat_llc, lon_llc, 2)
+
+    try:
+        interp_check(xyz, AI, X, Y, Z, lat_llc, lon_llc, 2)
+    except:
+        pdb.set_trace()
  
     deg2rad = np.pi/180.0
 
-    # Read and process the profile files
-    prof_x, prof_y, prof_z = sph2cart(MITprofs['prof_lon']*deg2rad, MITprofs['prof_lat']*deg2rad, 1)
 
-    prof_llcN_cell_index = griddata(xyz, AI, np.column_stack((prof_x, prof_y, prof_z)), 'nearest')
-    prof_llcN_cell_index  = prof_llcN_cell_index.astype(int)
+    point_lon = ma.masked_invalid(MITprofs["prof_lon"].data)
+    point_lat = ma.masked_invalid(MITprofs["prof_lat"].data)
+
+    # Read and process the profile files
+    prof_x, prof_y, prof_z = sph2cart(point_lon*deg2rad, point_lat*deg2rad, 1)
+
+
+
+    prof_llcN_cell_index = griddata(xyz, AI, np.column_stack((prof_x, prof_y, prof_z)), 'nearest').astype(int)
+
 
     # loop through the different geodesic bins
-    bin_1 = bin_1.flatten(order = 'F')
-    bin_2 = bin_2.flatten(order = 'F')
-    MITprofs['prof_bin_id_a'].values = bin_1[prof_llcN_cell_index]
-    MITprofs['prof_bin_id_b'].values = bin_2[prof_llcN_cell_index]
+    try:
+        MITprofs['prof_bin_id_a'] = xr.DataArray(bin_1[prof_llcN_cell_index], dims=['iPROF'], name='prof_bin_id_a')
+    except:
+        pdb.set_trace()
+    MITprofs['prof_bin_id_b'] = xr.DataArray(bin_2[prof_llcN_cell_index], dims=['iPROF'], name='prof_bin_id_b')
 
 def main(bin_dir, MITprofs, grid_dir):
 
     #print("step02: update_spatial_bin_index_on_prepared_profiles")
+
     update_spatial_bin_index_on_prepared_profiles(bin_dir, MITprofs, grid_dir)
 
 if __name__ == '__main__':

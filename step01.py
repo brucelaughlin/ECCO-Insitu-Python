@@ -52,10 +52,10 @@ def get_profpoint_llc_ian(lon_llc, lat_llc, mask_llc, MITprof):
 
     # these are the x,y,z coordinates of the 'good' cells in
     model_xyz = np.column_stack((X_grid_pf, Y_grid_pf, Z_grid_pf))
-    #point_lon = MITprof["prof_lon"].values
-    #point_lat = MITprof["prof_lat"].values
-    point_lon = ma.masked_invalid(MITprof["prof_lon"].values)
-    point_lat = ma.masked_invalid(MITprof["prof_lat"].values)
+    #point_lon = MITprof["prof_lon"].data
+    #point_lat = MITprof["prof_lat"].data
+    point_lon = ma.masked_invalid(MITprof["prof_lon"].data)
+    point_lat = ma.masked_invalid(MITprof["prof_lat"].data)
     
     prof_x, prof_y, prof_z = sph2cart(point_lon*deg2rad, point_lat*deg2rad, 1)
 
@@ -69,7 +69,7 @@ def get_profpoint_llc_ian(lon_llc, lat_llc, mask_llc, MITprof):
     #print('size of F_grid_PF ', F_grid_PF_XYZ_to_INDEX.shape)
 
 
-    MITprof["prof_point"].values[:] =  F_grid_PF_XYZ_to_INDEX
+    MITprof["prof_point"].data[:] =  F_grid_PF_XYZ_to_INDEX
 
     #return F_grid_PF_XYZ_to_INDEX
 
@@ -158,27 +158,27 @@ def get_tile_point_llc_ian(lon_llc, lat_llc, ni, nj, MITprof):
         if k == 0:
             #MITprof['prof_interp_lon'] = list_in[k].flatten(order = 'F')[MITprof['prof_point']]
             #print(type(MITprof['prof_point']))
-            #print(MITprof['prof_point'].values)
+            #print(MITprof['prof_point'].data)
             #print(MITprof['prof_point'].shape)
-            #MITprof['prof_interp_lon'] = list_in[k].flatten(order = 'F')[MITprof['prof_point'].values.astype(int)]
-            MITprof['prof_interp_lon'].values = list_in[k].flatten(order = 'F')[MITprof['prof_point'].values.astype(int)]
+            #MITprof['prof_interp_lon'] = list_in[k].flatten(order = 'F')[MITprof['prof_point'].data.astype(int)]
+            MITprof['prof_interp_lon'].data = list_in[k].flatten(order = 'F')[MITprof['prof_point'].data.astype(int)]
         elif k == 1:
-            MITprof['prof_interp_lat'].values = list_in[k].flatten(order = 'F')[MITprof['prof_point'].values.astype(int)]
+            MITprof['prof_interp_lat'].data = list_in[k].flatten(order = 'F')[MITprof['prof_point'].data.astype(int)]
         elif k == 2:    
-            MITprof['prof_interp_XC11'].values = list_in[k].flatten(order = 'F')[MITprof['prof_point'].values.astype(int)]
+            MITprof['prof_interp_XC11'].data = list_in[k].flatten(order = 'F')[MITprof['prof_point'].data.astype(int)]
         elif k == 3:    
-            MITprof['prof_interp_YC11'].values = list_in[k].flatten(order = 'F')[MITprof['prof_point'].values.astype(int)]
+            MITprof['prof_interp_YC11'].data = list_in[k].flatten(order = 'F')[MITprof['prof_point'].data.astype(int)]
         elif k == 4:    
-            MITprof['prof_interp_XCNINJ'].values = list_in[k].flatten(order = 'F')[MITprof['prof_point'].values.astype(int)]
+            MITprof['prof_interp_XCNINJ'].data = list_in[k].flatten(order = 'F')[MITprof['prof_point'].data.astype(int)]
         elif k == 5:    
-            MITprof['prof_interp_YCNINJ'].values = list_in[k].flatten(order = 'F')[MITprof['prof_point'].values.astype(int)]
+            MITprof['prof_interp_YCNINJ'].data = list_in[k].flatten(order = 'F')[MITprof['prof_point'].data.astype(int)]
         elif k == 6:    
-            MITprof['prof_interp_i'].values = list_in[k].flatten(order = 'F')[MITprof['prof_point'].values.astype(int)]
+            MITprof['prof_interp_i'].data = list_in[k].flatten(order = 'F')[MITprof['prof_point'].data.astype(int)]
         elif k == 7:    
-            MITprof['prof_interp_j'].values = list_in[k].flatten(order = 'F')[MITprof['prof_point'].values.astype(int)]
+            MITprof['prof_interp_j'].data = list_in[k].flatten(order = 'F')[MITprof['prof_point'].data.astype(int)]
     
     # one last thing: "weights", which is 1 b/c we're using nearest neighbor:
-    MITprof['prof_interp_weights'].values = np.ones(MITprof['prof_point'].shape)
+    MITprof['prof_interp_weights'].data = np.ones(MITprof['prof_point'].shape)
 
     #return MITprof
 
@@ -241,8 +241,8 @@ def update_prof_and_tile_points_on_profiles(MITprof, grid_dir, llcN, wet_or_all)
 
     #tmp_prof_lat = copy.deepcopy(MITprof['prof_lat'])
     #tmp_prof_lon = copy.deepcopy(MITprof['prof_lon'])
-    tmp_prof_lat = copy.deepcopy(MITprof['prof_lat'].values)
-    tmp_prof_lon = copy.deepcopy(MITprof['prof_lon'].values)
+    tmp_prof_lat = copy.deepcopy(MITprof['prof_lat'].data)
+    tmp_prof_lon = copy.deepcopy(MITprof['prof_lon'].data)
         
     #bad_lats_indices = np.nonzero(abs(tmp_prof_lat)>90)[0]
     #bad_lats_index_array = abs(tmp_prof_lat)>90

@@ -1450,8 +1450,19 @@ def interp_check(xyz, AI, X, Y, Z, lat_vals, lon_vals, step, **kwargs):
             test_lon = 60
 
         test_x, test_y, test_z = sph2cart(test_lon*deg2rad, test_lat*deg2rad, 1)
-        #test_ind = int(griddata(xyz, AI, np.asarray([test_x, test_y, test_z]), 'nearest'))
+
+        ###test_ind = int(griddata(xyz, AI, np.asarray([test_x, test_y, test_z]), 'nearest'))
+        #test_ind = griddata(xyz, AI, np.column_stack([test_x, test_y, test_z]), 'nearest').astype(int)
         test_ind = griddata(xyz, AI, np.asarray([test_x, test_y, test_z]), 'nearest').astype(int)
+
+        '''
+        try:
+            test_ind = griddata(xyz, AI, np.column_stack([test_x, test_y, test_z]), 'nearest').astype(int)
+            #test_ind = griddata(xyz, AI, np.column_stack([test_x, test_y, test_z]), 'nearest').astype(int)
+            #test_ind = griddata(xyz, AI, np.asarray([test_x, test_y, test_z]), 'nearest').astype(int)
+        except:
+            pdb.set_trace()
+        '''
         
         if step == 2:
             
