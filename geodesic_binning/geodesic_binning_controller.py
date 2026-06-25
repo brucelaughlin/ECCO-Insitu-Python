@@ -15,6 +15,7 @@ num_subpolygons_max = 1000
 
 
 variables_of_interest = ["T", "S"]
+#angular_precision = 0.1
 angular_precision = 0.25
 #angular_precision = 0.5
 
@@ -32,26 +33,21 @@ profile_file_list = [
     "/Users/brucel/ecco/yip/ECCO-Insitu-Python/z_test_output/ARGO_WO_2001_PFL_A__ncei_step_10.nc",
     "/Users/brucel/ecco/yip/ECCO-Insitu-Python/z_test_output/ARGO_WO_2015_PFL_A__ncei_step_10.nc",
     "/Users/brucel/ecco/yip/ECCO-Insitu-Python/z_test_output/ITP2_WO_2008_CTD__ncei_step_10.nc",
-
-
 ]
 
+'''
+Good files:
+1,4,2
 
-# NEVER MIND - The "failure" is just having a million bazillion profiles in a bin, which swamps the chip when calculating sub-polygons
+Bad files:
+5
 
-#profile_file_index = 5 # Meltdown!!  new errors?!?!
+Files to test:
+3
+0
+'''
 
-#profile_file_index = 1 # THE ORIGINAL GOODIE
-
-#profile_file_index = 2 ## only 3 bins... interesting! OH LOOK - since we have only a few nearby bins, the initial plot is already pretty "zoomed in",
-# so we can't zoom in enough to get subpolygons plotting!!
-
-profile_file_index = 4 ## 4 works initially, but fails at the close zoom when recalculating sub polygons.  i wondered if it was become some 
-# bins only have one profile, but my fix for that isn't fixing the problem...
-
-#profile_file_index = 3 ## TOTAL FAILURE 3 is bad (this was a debug problematic file, with only 1 profile in it)
-#profile_file_index = 0 # bad, similar to 3...
-
+profile_file_index = 2
 
 geodesic_file = geodesic_file_dict[f"{num_geodesic_bins:05}"]
 profile_file = profile_file_list[profile_file_index]

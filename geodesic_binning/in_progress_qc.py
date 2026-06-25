@@ -16,9 +16,18 @@ from shapely.geometry import Polygon as ShapelyPolygon
 from shapely.geometry import Point
 from shapely import get_coordinates as ShapelyCoordinates
 from sklearn.cluster import KMeans
+import xarray as xr
 
 
 def pp(geodesic_bin_data, num_bins, geodesic_file, profile_file, num_subpolygons_max):
+
+    '''
+    # For plotting actual locations
+    profiles_ds = xr.open_dataset(profile_file)
+    profiles_lons = profiles_ds['prof_lon'].data
+    profiles_lats = profiles_ds['prof_lat'].data
+    '''
+
 
     # -------------------------
     # Hardcoded test parameters
@@ -43,19 +52,33 @@ def pp(geodesic_bin_data, num_bins, geodesic_file, profile_file, num_subpolygons
     value_min_face = dummyMegaNumber
     value_max_face = -dummyMegaNumber
 
+    '''
     count_min = dummyMegaNumber 
     count_max = 0
+    '''
+
+    profiles_lats = []
+    profiles_lons = []
+    bin_counts = []
+
+    num_zero_area_bins = 0
 
     for index in geodesic_bin_data[key_variable][key_depth].keys():
 
-        if geodesic_bin_data[key_variable][key_depth][index]["artificial_grid_bounding_polygon_for_geodesic_bin"].size == 0:
+        # Had to add this bc of the profiles_lons/lats, which aren't specific to any bins 
+        if not isinstance(geodesic_bin_data[key_variable][key_depth][index], dict):
             continue
 
+        if geodesic_bin_data[key_variable][key_depth][index]["artificial_grid_bounding_polygon_for_geodesic_bin"].size == 0:
+            num_zero_area_bins += 1
+
+        '''
         if geodesic_bin_data[key_variable][key_depth][index]["count"] > 1:
             if geodesic_bin_data[key_variable][key_depth][index]["count"] < count_min:
                 count_min = geodesic_bin_data[key_variable][key_depth][index]["count"] 
             if geodesic_bin_data[key_variable][key_depth][index]["count"] > count_max:
                 count_max = geodesic_bin_data[key_variable][key_depth][index]["count"] 
+        '''
 
         if geodesic_bin_data[key_variable][key_depth][index][key_anomaly_var_edge] < value_min_edge:
             value_min_edge = geodesic_bin_data[key_variable][key_depth][index][key_anomaly_var_edge]
@@ -67,6 +90,12 @@ def pp(geodesic_bin_data, num_bins, geodesic_file, profile_file, num_subpolygons
         if geodesic_bin_data[key_variable][key_depth][index][key_anomaly_var_face] > value_max_face:
             value_max_face = geodesic_bin_data[key_variable][key_depth][index][key_anomaly_var_face]
 
+        bin_counts.append(geodesic_bin_data[key_variable][key_depth][index]['count'])
+
+    profiles_lats = geodesic_bin_data[key_variable][key_depth]['profiles_lats']
+    profiles_lons = geodesic_bin_data[key_variable][key_depth]['profiles_lons']
+
+    print(f'debug: {num_zero_area_bins} zero-area bins encountered')
 
     norm_face = mcolors.CenteredNorm(vcenter=0)
     cmap_face = cm.get_cmap('PRGn')
@@ -99,8 +128,13 @@ def pp(geodesic_bin_data, num_bins, geodesic_file, profile_file, num_subpolygons
 
 
     for index in geodesic_bin_data[key_variable][key_depth].keys():
-        if geodesic_bin_data[key_variable][key_depth][index]["count"] == 1 and key_anomaly_var_edge == "std":
+        #if geodesic_bin_data[key_variable][key_depth][index]["count"] == 1 and key_anomaly_var_edge == "std":
+        #    continue
+
+        # Had to add this bc of the profiles_lons/lats, which aren't specific to any bins 
+        if not isinstance(geodesic_bin_data[key_variable][key_depth][index], dict):
             continue
+
         gbd_polygon = geodesic_bin_data[key_variable][key_depth][index]["artificial_grid_bounding_polygon_for_geodesic_bin"]
         if gbd_polygon.size > 0:
 
@@ -110,7 +144,10 @@ def pp(geodesic_bin_data, num_bins, geodesic_file, profile_file, num_subpolygons
             anomaly_var_edge_list.append(geodesic_bin_data[key_variable][key_depth][index][key_anomaly_var_edge])
             count_list.append(geodesic_bin_data[key_variable][key_depth][index]['count'])
             
-            linewidth_pre = original_scale * geodesic_bin_data[key_variable][key_depth][index]['count']
+            if geodesic_bin_data[key_variable][key_depth][index]['count'] == 1:
+                linewidth_pre = 0
+            else:
+                linewidth_pre = original_scale * geodesic_bin_data[key_variable][key_depth][index]['count']
 
             linewidths.append(linewidth_pre)
 
@@ -137,6 +174,18 @@ def pp(geodesic_bin_data, num_bins, geodesic_file, profile_file, num_subpolygons
 
     count_array = np.array(count_list)
 
+    '''
+    for patch_dex in range(len(patch_list)):
+        x = patch_list[patch_dex].get_xy()[:,0]
+        y = patch_list[patch_dex].get_xy()[:,1]
+        area = 0.5 * np.abs(np.dot(x, np.roll(y, 1)) - np.dot(y, np.roll(x, 1)))
+        print(area)
+
+        if any(patch_list[patch_dex].get_xy()[:,1] == 0):
+            print(patch_list[patch_dex].get_xy()) 
+            print(patch_list[patch_dex].get_closed()) 
+    '''
+
     collection = PatchCollection(patch_list, cmap=cmap_face, norm=norm_face, linewidths=original_linewidths_plot, edgecolors=edgecolors_list, transform=ccrs.PlateCarree(), joinstyle='miter')
 
     collection.set_array(np.array(anomaly_var_face_list))
@@ -153,11 +202,16 @@ def pp(geodesic_bin_data, num_bins, geodesic_file, profile_file, num_subpolygons
     ax.set_xlim(xmin,xmax)
     ax.set_ylim(ymin,ymax)
 
-    pos = ax.get_position()
-
     fig.add_axes(ax)
 
     ax.add_collection(collection)
+
+    #'''
+    original_range_x = ax.get_xlim()[1] - ax.get_xlim()[0]  
+    original_range_y = ax.get_ylim()[1] - ax.get_ylim()[0]  
+    original_area = original_range_x * original_range_y
+    #'''
+
 
     cbar_shrink = 0.5
     cbar_pad = 0.2
@@ -182,23 +236,83 @@ def pp(geodesic_bin_data, num_bins, geodesic_file, profile_file, num_subpolygons
         cbar_std.ax.text(x=0.5, y=quartiles_edgecolors[q_dex], s=quartiles_strings[q_dex], color='black',
              va='center', ha='center', fontsize='xx-small')
 
-    original_range_x = ax.get_xlim()[1] - ax.get_xlim()[0]  
-    original_range_y = ax.get_ylim()[1] - ax.get_ylim()[0]  
-    original_area = original_range_x * original_range_y
-
-
-    bound_callback = partial(scale_with_zoom, colorbar=cbar, original_area=original_area, original_linewidths_raw=original_linewidths_raw, linewidth_floor=linewidth_floor, count_array=count_array, patch_list=patch_list, anomaly_var_raw_values_list=anomaly_var_raw_values_list, cmap_face=cmap_face, norm_face=norm_face, edgecolors_list=edgecolors_list, anomaly_var_face_list=anomaly_var_face_list, scale_threshold=scale_threshold, num_subpolygons_max=num_subpolygons_max)
-
-
-    ax.callbacks.connect('xlim_changed', bound_callback)
-    ax.callbacks.connect('ylim_changed', bound_callback)
-
-
     # Only runs for first plot, before zooming
     custom_handles, legend_title = make_handles_and_titles(patch_list, count_array, ax)
     if custom_handles != 0:
         ax.legend(framealpha=0, handlelength=0, handletextpad=0, fontsize="xx-small", title_fontsize="xx-small",
                   handles=custom_handles, title=f"{legend_title}")
+
+
+
+
+
+
+
+
+
+    # Hardcoding "globe_area" to be that of the globe, since otherwise it may be impossible to get the sub-polygons
+    # to plot (ie when only a few nearby bins are populated, the first plot will already be somewhat zoomed in, and
+    # "original_area" will be small to begin with and thus we won't get past the ratio threshold when zooming further in 
+    # before the program freaks out bc we've zoomed too far in to plot a whole bin polygon. 
+    globe_range_x = 360
+    globe_range_y = 180 
+    globe_area = globe_range_x * globe_range_y
+
+    #pdb.set_trace()
+
+    scale_factor = np.sqrt(globe_area/original_area)
+
+    if scale_factor > scale_threshold: 
+
+        ax.collections[-1].remove()
+
+        if plt.gca().get_legend() is not None:
+            plt.gca().get_legend().remove()
+
+        collection, new_anomaly_var_face_list = determine_sub_polygons(ax, patch_list, anomaly_var_raw_values_list, cmap_face, norm_face, edgecolors_list, num_subpolygons_max)
+
+        if collection != 0:
+            custom_handles, legend_title = make_handles_and_titles(patch_list, count_array, ax)
+            if custom_handles != 0:
+                ax.legend(framealpha=0, handlelength=0, handletextpad=0, fontsize="xx-small", title_fontsize="xx-small",
+                          handles=custom_handles, title=f"{legend_title}")
+
+
+            ax.scatter(profiles_lons, profiles_lats, c='red', s=1, zorder=10)
+            ax.add_collection(collection)
+            cbar_min, cbar_max = find_colorbar_limits(cbar, new_anomaly_var_face_list)
+            cbar.ax.set_ylim(cbar_min, cbar_max)
+
+
+
+
+
+
+
+
+
+
+
+
+
+    # !!!!!!!!!!
+    # !!!!!!!!!!
+    # !!!!!!!!!!
+    # More hacky stuff to only remove an axes collection when the last collection added was a patch collection.
+    # Used in my hack to remove the previous patch collection, in case we zoom in and would see it underneath the sub-polygons.
+    # Note that this means the patch collection must be the last collection added to the axes (ie after calling ax.scatter(), ax.coastlines(), etc)
+    num_artists_original = len(ax.collections)
+    # !!!!!!!!!!
+    # !!!!!!!!!!
+    # !!!!!!!!!!
+
+    bound_callback = partial(scale_with_zoom, num_artists_original=num_artists_original, colorbar=cbar, globe_area=globe_area, original_linewidths_raw=original_linewidths_raw, linewidth_floor=linewidth_floor, count_array=count_array, patch_list=patch_list, anomaly_var_raw_values_list=anomaly_var_raw_values_list, cmap_face=cmap_face, norm_face=norm_face, edgecolors_list=edgecolors_list, anomaly_var_face_list=anomaly_var_face_list, scale_threshold=scale_threshold, num_subpolygons_max=num_subpolygons_max, profiles_lons=profiles_lons, profiles_lats=profiles_lats)
+    #bound_callback = partial(scale_with_zoom, num_artists_original=num_artists_original, colorbar=cbar, original_area=original_area, original_linewidths_raw=original_linewidths_raw, linewidth_floor=linewidth_floor, count_array=count_array, patch_list=patch_list, anomaly_var_raw_values_list=anomaly_var_raw_values_list, cmap_face=cmap_face, norm_face=norm_face, edgecolors_list=edgecolors_list, anomaly_var_face_list=anomaly_var_face_list, scale_threshold=scale_threshold, num_subpolygons_max=num_subpolygons_max, profiles_lons=profiles_lons, profiles_lats=profiles_lats)
+
+
+    ax.callbacks.connect('xlim_changed', bound_callback)
+    ax.callbacks.connect('ylim_changed', bound_callback)
+
 
     ax.gridlines(draw_labels=True)
 
@@ -241,16 +355,14 @@ def pp(geodesic_bin_data, num_bins, geodesic_file, profile_file, num_subpolygons
     plt.show()
 
 
-def determine_sub_polygons(axes, patch_list, count_array, anomaly_var_raw_values_list, cmap_face, norm_face, edgecolors_list, linewidths_list, num_subpolygons_max):
+def determine_sub_polygons(axes, patch_list, anomaly_var_raw_values_list, cmap_face, norm_face, edgecolors_list, num_subpolygons_max):
+#def determine_sub_polygons(axes, patch_list, anomaly_var_raw_values_list, cmap_face, norm_face, edgecolors_list, linewidths_list, num_subpolygons_max):
 
     num_patches = len(patch_list) # This is fixed throughout the life of the program
 
     visible_patch_mask = np.zeros(num_patches).astype(bool)
-    #visible_patch_mask = np.zeros(len(patch_list)).astype(bool)
-
 
     for patch_dex in range(num_patches):
-    #for patch_dex in range(len(patch_list)):
         patch_coords = patch_list[patch_dex].get_xy()
         for coord_dex in range(patch_coords.shape[0]):
             if (patch_coords[coord_dex,0] > axes.get_xlim()[0]
@@ -262,30 +374,24 @@ def determine_sub_polygons(axes, patch_list, count_array, anomaly_var_raw_values
     if np.sum(visible_patch_mask) == 0:
         return 0, 0
 
-
     patches_zoom = [patch_list[ii] for ii in range(num_patches) if visible_patch_mask[ii]]
-    #patches_zoom = [patch_list[ii] for ii in range(len(patch_list)) if visible_patch_mask[ii]]
     edgecolors_zoom = [edgecolors_list[ii] for ii in range(num_patches) if visible_patch_mask[ii]]
-    #edgecolors_zoom = [edgecolors_list[ii] for ii in range(len(patch_list)) if visible_patch_mask[ii]]
     anomalies_zoom = [anomaly_var_raw_values_list[ii] for ii in range(num_patches) if visible_patch_mask[ii]]
-    #anomalies_zoom = [anomaly_var_raw_values_list[ii] for ii in range(len(anomaly_var_raw_values_list)) if visible_patch_mask[ii]]
-    linewidths_zoom = [linewidths_list[ii] for ii in range(num_patches) if visible_patch_mask[ii]]
-    #linewidths_zoom = [linewidths_list[ii] for ii in range(len(linewidths_list)) if visible_patch_mask[ii]]
+    #linewidths_zoom = [linewidths_list[ii] for ii in range(num_patches) if visible_patch_mask[ii]]
     profiles_per_patch_zoom = [len(anomaly_list) for anomaly_list in anomalies_zoom]
-    #profiles_per_patch_zoom = [len(anomaly_var_raw_values_list[ii]) for ii in range(len(anomaly_var_raw_values_list)) if visible_patch_mask[ii]]
 
     mini_patches_list = []
     mini_patches_anomaly_list = []
     mini_patches_edgecolors_list = []
     mini_patches_linewidths_list = []
 
-    #num_anomalies = [len(anomaly_list) for anomaly_list in anomaly_var_raw_values_list]
-
     for patch_dex in range(len(patches_zoom)):
 
         num_profiles = profiles_per_patch_zoom[patch_dex]
 
-        if num_profiles > num_subpolygons_max:
+        '''
+        if num_profiles > 10000000:
+        #if num_profiles > num_subpolygons_max:
 
             mini_patches_list.append(patches_zoom[patch_dex])
             mini_patches_anomaly_list.append(np.mean(anomalies_zoom[patch_dex]))
@@ -293,69 +399,74 @@ def determine_sub_polygons(axes, patch_list, count_array, anomaly_var_raw_values
             mini_patches_linewidths_list.append(linewidths_zoom[patch_dex])
 
         else:
+        '''
 
-            patch_vertices = patches_zoom[patch_dex].get_xy()
-            orig_poly = ShapelyPolygon(patch_vertices)
+        patch_vertices = patches_zoom[patch_dex].get_xy()
+        orig_poly = ShapelyPolygon(patch_vertices)
 
-            # STRANGE ISSUE WITH A SINGLE POLYGON NEAR THE EQUATOR - IT HAD ZERO AREA, FROZE THE PROGRAM
-            # SETTING A PDB TRACE HERE LETS US LOOK AT "orig_poly.area" and "orig_poly.exterior", WHICH REVEAL TROUBLING ZEROS!!!
-            # is this bc of the proximity to the equator??
+        # STRANGE ISSUE WITH A SINGLE POLYGON NEAR THE EQUATOR - IT HAD ZERO AREA, FROZE THE PROGRAM
+        # SETTING A PDB TRACE HERE LETS US LOOK AT "orig_poly.area" and "orig_poly.exterior", WHICH REVEAL TROUBLING ZEROS!!!
+        # is this bc of the proximity to the equator??
 
-            # FOR NOW, SWEEPING THIS UNDER THE RUG!!!
+        # FOR NOW, SWEEPING THIS UNDER THE RUG!!!
 
-            # Note - First I'd run this without the trace, but with the "print(num_profiles)", so I could see the last profile count
-            # printed before the program freezes.  Then I'd add the trace, and hit "c" until reaching the problematic polygon.
-            # That's where "orig_poly.area" was 0, and original_poly.exterior had zeros for all lat values...
+        # Note - First I'd run this without the trace, but with the "print(num_profiles)", so I could see the last profile count
+        # printed before the program freezes.  Then I'd add the trace, and hit "c" until reaching the problematic polygon.
+        # That's where "orig_poly.area" was 0, and original_poly.exterior had zeros for all lat values...
 
-            # OK this definitely has to do with the equator.  Brain tired but should be fixable or maybe fine to skip problematic bins
+        # OK this definitely has to do with the equator.  Brain tired but should be fixable or maybe fine to skip problematic bins
 
-            # OK, we don't even need to zoom past the threshold to see the bug - bins spanning the equator are wonky, only plotting on one
-            # side of it (in the current case, the southern side)
+        # OK, we don't even need to zoom past the threshold to see the bug - bins spanning the equator are wonky, only plotting on one
+        # side of it (in the current case, the southern side)
 
-            #print(num_profiles)
+        #print(num_profiles)
+
+        if orig_poly.area == 0:
             #pdb.set_trace()
+            print("A polygon with zero area was encountered... did one of the bins you zoomed in on span the equator?  Still haven't sorted this bug out...")
+            continue
 
-            if orig_poly.area == 0:
-                print("A polygon with zero area was encountered... did one of the bins you zoomed in on span the equator?  Still haven't sorted this bug out...")
-                continue
+        # THIS NEEDS TO BE CALCULATED AND STORED IN A FILE THAT'S LOADED, REALLY DUMB TO WASTE TIME DOING THIS EVERY TIME THE AXIS LIMITS CHANGE
+        # WHILE ZOOMED IN
 
-            # VIBING OUT
-            num_samples = 2000
-            minx, miny, maxx, maxy = orig_poly.bounds
-            points = []
+        # VIBING OUT
+        num_samples = 100000
+        #num_samples = 10000
+        #num_samples = 5000
+        #num_samples = 2000
+        minx, miny, maxx, maxy = orig_poly.bounds
+        points = []
 
+        while len(points) < num_samples:
+            p = Point(np.random.uniform(minx, maxx), np.random.uniform(miny, maxy))
+            if orig_poly.contains(p):
+                points.append([p.x, p.y])
 
-            while len(points) < num_samples:
-                p = Point(np.random.uniform(minx, maxx), np.random.uniform(miny, maxy))
-                if orig_poly.contains(p):
-                    points.append([p.x, p.y])
+        random_points_array = np.array(points)
 
+        kmeans = KMeans(n_clusters=num_profiles, n_init=10, random_state=42)
 
-            random_points_array = np.array(points)
+        labels = kmeans.fit_predict(random_points_array)
 
-            kmeans = KMeans(n_clusters=num_profiles, n_init=10, random_state=42)
-
-            labels = kmeans.fit_predict(random_points_array)
-
-
-            for profile_index in range(num_profiles):
-                cluster_points = random_points_array[labels == profile_index]
+        for profile_index in range(num_profiles):
+            cluster_points = random_points_array[labels == profile_index]
+            try:
                 polygon_coords = ShapelyCoordinates(ShapelyPolygon(cluster_points).convex_hull)
-                mini_patches_list.append(patches.Polygon(polygon_coords, closed=True))
+            except:
+                pdb.set_trace()
+            mini_patches_list.append(patches.Polygon(polygon_coords, closed=True))
 
-
-            mini_patches_anomaly_list += anomalies_zoom[patch_dex]
-            mini_patches_edgecolors_list += [edgecolors_zoom[patch_dex]] * num_profiles
+        mini_patches_anomaly_list += anomalies_zoom[patch_dex]
+        mini_patches_edgecolors_list += [edgecolors_zoom[patch_dex]] * num_profiles
+        if num_profiles == 1:
+            mini_patches_linewidths_list.append(0)
+        else:
             mini_patches_linewidths_list += [1] * num_profiles
-
-
 
     try:
         subcol = PatchCollection(mini_patches_list, cmap=cmap_face, norm=norm_face, edgecolors=mini_patches_edgecolors_list, transform=ccrs.PlateCarree(), joinstyle='miter')
     except:
         pdb.set_trace()
-
-    #subcol = PatchCollection(mini_patches_list, cmap=cmap_face, norm=norm_face, linewidths=1, edgecolors=mini_patches_edgecolors_list, transform=ccrs.PlateCarree(), joinstyle='miter')
 
     subcol.set_array(np.array(mini_patches_anomaly_list)) 
 
@@ -366,19 +477,31 @@ def determine_sub_polygons(axes, patch_list, count_array, anomaly_var_raw_values
 
 
 
-def scale_with_zoom(axes, colorbar, original_area, original_linewidths_raw, linewidth_floor, count_array, patch_list, anomaly_var_face_list, anomaly_var_raw_values_list, cmap_face, norm_face, edgecolors_list, scale_threshold, num_subpolygons_max):
+def scale_with_zoom(axes, num_artists_original, colorbar, globe_area, original_linewidths_raw, linewidth_floor, count_array, patch_list, anomaly_var_face_list, anomaly_var_raw_values_list, cmap_face, norm_face, edgecolors_list, scale_threshold, num_subpolygons_max, profiles_lons, profiles_lats):
+#def scale_with_zoom(axes, num_artists_original, colorbar, original_area, original_linewidths_raw, linewidth_floor, count_array, patch_list, anomaly_var_face_list, anomaly_var_raw_values_list, cmap_face, norm_face, edgecolors_list, scale_threshold, num_subpolygons_max, profiles_lons, profiles_lats):
+
+    # My hack to remove the previous patch collection, in case we zoom in and would see it underneath the sub-polygons.
+    # Note that this means the patch collection must be the last collection added to the axes (ie after calling ax.scatter(), ax.coastlines(), etc)
+    #if len(axes.collections) == num_artists_original:
+    if len(axes.collections) == num_artists_original + 1:
+        axes.collections[-1].remove()
+        axes.collections[-1].remove()
+    elif len(axes.collections) == num_artists_original:
+        axes.collections[-1].remove()
 
     current_range_x = axes.get_xlim()[1] - axes.get_xlim()[0]  
     current_range_y = axes.get_ylim()[1] - axes.get_ylim()[0]  
     current_area = current_range_x * current_range_y
 
-    scale_factor = np.sqrt(original_area / current_area)
-
+    scale_factor = np.sqrt(globe_area / current_area)
+    #scale_factor = np.sqrt(original_area / current_area)
     #print(f"zoom scale factor: {scale_factor}")
 
+    '''
     current_collection=axes.collections[-1]
     if type(current_collection) is PatchCollection:
         current_collection.remove() # erase the old collection/plot, start fresh.  maybe unecessary, but just want to get this working for now
+    '''
 
     if plt.gca().get_legend() is not None:
         plt.gca().get_legend().remove()
@@ -405,20 +528,41 @@ def scale_with_zoom(axes, colorbar, original_area, original_linewidths_raw, line
         colorbar.ax.set_ylim(cbar_min, cbar_max)
 
     else:
-        collection, new_anomaly_var_face_list = determine_sub_polygons(axes, patch_list, count_array, anomaly_var_raw_values_list, cmap_face, norm_face, edgecolors_list, new_linewidths, num_subpolygons_max)
+        collection, new_anomaly_var_face_list = determine_sub_polygons(axes, patch_list, anomaly_var_raw_values_list, cmap_face, norm_face, edgecolors_list, num_subpolygons_max)
+        #collection, new_anomaly_var_face_list = determine_sub_polygons(axes, patch_list, anomaly_var_raw_values_list, cmap_face, norm_face, edgecolors_list, new_linewidths, num_subpolygons_max)
 
         if collection != 0:
             custom_handles, legend_title = make_handles_and_titles(patch_list, count_array, axes)
             axes.legend(framealpha=0, handlelength=0, handletextpad=0, fontsize="xx-small", title_fontsize="xx-small",
                       handles=custom_handles, title=f"{legend_title}")
 
-
             axes.add_collection(collection)
-            #collection.set_linewidths(1)
             cbar_min, cbar_max = find_colorbar_limits(colorbar, new_anomaly_var_face_list)
             colorbar.ax.set_ylim(cbar_min, cbar_max)
 
+        # Haven't figured out why no profile coords are plotting in the one bottom antarctic bin in 
+        # /Users/brucel/ecco/yip/ECCO-Insitu-Python/z_test_output/ARGO_WO_2015_PFL_A__ncei_step_10.nc
 
+        '''
+        scatter_lons = []
+        scatter_lats = []
+
+        for profile_dex in range(len(profiles_lons)):
+            if (profiles_lons[profile_dex] > axes.get_xlim()[0]
+                and profiles_lons[profile_dex] < axes.get_xlim()[1] 
+                and profiles_lats[profile_dex] > axes.get_ylim()[0] 
+                and profiles_lats[profile_dex] < axes.get_ylim()[1]):
+
+                scatter_lons.append(profiles_lons[profile_dex])
+                scatter_lats.append(profiles_lats[profile_dex])
+
+        pdb.set_trace()
+        axes.scatter(scatter_lons,scatter_lats,c='red',s=1,zorder=10)
+        '''
+
+        axes.scatter(profiles_lons, profiles_lats, c='red', s=1, zorder=10)
+
+            
 
 def find_colorbar_limits(colorbar, value_list):
 
