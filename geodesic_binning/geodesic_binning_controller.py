@@ -13,6 +13,13 @@ num_subpolygons_max = 1000
 #num_subpolygons_max = 10
 #num_subpolygons_max = 100
 
+# This is where the real slowdown happens, and it's why I am now pre-calculating everything and saving to a file that's later loaded.
+# If this  number is too small, we risk some profiles not getting a 2D polygon when zoomed-in.  The zoomed-in images also look nicer
+# as this number increases (more and more like beautiful stained glass), but higher values mean more compute time.  100,000 is really nice,
+# 10,000 might be fine.
+num_samples_for_kmeans = 100000
+#num_samples_for_kmeans = 10000
+
 
 variables_of_interest = ["T", "S"]
 #angular_precision = 0.1
@@ -54,6 +61,8 @@ profile_file = profile_file_list[profile_file_index]
 
 geodesic_bin_data = utils.bin_around_geodesic_vertices(geodesic_file, profile_file, variables_of_interest, angular_precision, num_geodesic_bins)
 
+geodesic_bin_subpatch_data = utils.determine_subpatches()
 
-in_progress_qc.pp(geodesic_bin_data, num_geodesic_bins, geodesic_file, profile_file, num_subpolygons_max)
+
+in_progress_qc.pp(geodesic_bin_data, num_geodesic_bins, profile_file, num_subpolygons_max)
 #qc.pp(geodesic_bin_data, num_geodesic_bins)
