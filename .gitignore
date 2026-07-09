@@ -3,3 +3,4 @@ __pycache__/
 *.nc
 z_*
 processed_profile_files/
+*.zarr

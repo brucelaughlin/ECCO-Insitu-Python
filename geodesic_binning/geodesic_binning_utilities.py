@@ -1,4 +1,6 @@
+import pdb
 import sys
+import zarr
 from pathlib import Path
 import matplotlib.pyplot as plt
 import xarray as xr
@@ -18,14 +20,11 @@ from shapely.geometry import Point
 from shapely import get_coordinates as ShapelyCoordinates
 from sklearn.cluster import KMeans
 
-
-
 base_dir = str(Path(__file__).parent.parent.resolve())
 sys.path.append(base_dir)
 from tools import sph2cart
-import pdb
 
-def bin_around_geodesic_vertices(geodesic_file: str, profile_file: str, variables_of_interest: list, angular_precision: float, num_geodesic_bins: int) -> dict :
+def bin_around_geodesic_vertices(geodesic_file: str, profile_file: str, variables_of_interest: dict, angular_precision: float, num_geodesic_bins: int, num_subpolygons_max: int, num_samples_for_kmeans: int) -> dict :
 
     num_digits = len(str(num_geodesic_bins))
 
@@ -55,70 +54,78 @@ def bin_around_geodesic_vertices(geodesic_file: str, profile_file: str, variable
     prof_keys["bin_indices"] = "profile_geodesic_bin_indices"
 
     anomalies_global_dict = {}
-    for variable in variables_of_interest:
+    for variable in variables_of_interest.keys():
         anomalies_global_dict[variable] = {
                 prof_keys["values"]: profiles_ds[f'prof_{variable}'].data - profiles_ds[f'prof_{variable}clim'].data,
                 prof_keys["bin_indices"]: nearest_bin_numbers_profiles,
                 }
 
-    geodesic_bin_data = {}
+    geodesic_bin_data_dict = {}
 
-    for i_depth in range(anomalies_global_dict[list(anomalies_global_dict.keys())[0]][prof_keys["values"]].shape[-1]):
-        depth_key =  f"{i_depth:02}"
-        for variable_key in variables_of_interest:
+    for variable_key in variables_of_interest.keys():
+        geodesic_bin_data_dict.setdefault(variable_key, {})
+        for i_depth in range(anomalies_global_dict[list(anomalies_global_dict.keys())[0]][prof_keys["values"]].shape[-1]):
+            depth_key =  f"{i_depth:02}"
+            geodesic_bin_data_dict[variable_key].setdefault(depth_key, {})
             print(f"{depth_key}; {variable_key}")
             valid_indices = ~np.isnan(anomalies_global_dict[variable_key][prof_keys["values"]][:,i_depth])
             if np.sum(valid_indices) > 0:
                 
-                geodesic_bin_data.setdefault(variable_key, {})
-                bin_anomalies_singleVar_singleDepth_dict = {}
-                bin_anomalies_singleVar_singleDepth_dict["bin_data"] = {}
+                patch_collection_pieces_dict = {}
+                patch_collection_pieces_dict["bin_data"] = {}
 
                 for index, value in zip(anomalies_global_dict[variable_key][prof_keys["bin_indices"]][valid_indices], anomalies_global_dict[variable_key][prof_keys["values"]][:,i_depth][valid_indices]):
                     index_print = f"{index:0{num_digits}}"
-                    bin_anomalies_singleVar_singleDepth_dict["bin_data"].setdefault(index_print, {})
-                    bin_anomalies_singleVar_singleDepth_dict["bin_data"][index_print].setdefault("values", [])
-                    bin_anomalies_singleVar_singleDepth_dict["bin_data"][index_print]["values"].append(float(value))
+                    patch_collection_pieces_dict["bin_data"].setdefault(index_print, {})
+                    patch_collection_pieces_dict["bin_data"][index_print].setdefault("values", [])
+                    patch_collection_pieces_dict["bin_data"][index_print]["values"].append(float(value))
 
-                for index in bin_anomalies_singleVar_singleDepth_dict.keys():
+                for index in patch_collection_pieces_dict["bin_data"].keys():
 
-                    bin_anomalies_singleVar_singleDepth_dict["bin_data"][index]["count"] = len(bin_anomalies_singleVar_singleDepth_dict["bin_data"][index]["values"])
-                    bin_anomalies_singleVar_singleDepth_dict["bin_data"][index]["mean"] = np.mean(bin_anomalies_singleVar_singleDepth_dict["bin_data"][index]["values"])
-                    bin_anomalies_singleVar_singleDepth_dict["bin_data"][index]["median"] = np.median(bin_anomalies_singleVar_singleDepth_dict["bin_data"][index]["values"])
-                    bin_anomalies_singleVar_singleDepth_dict["bin_data"][index]["std"] = np.std(bin_anomalies_singleVar_singleDepth_dict["bin_data"][index]["values"])
+                    patch_collection_pieces_dict["bin_data"][index]["count"] = len(patch_collection_pieces_dict["bin_data"][index]["values"])
+                    patch_collection_pieces_dict["bin_data"][index]["mean"] = np.mean(patch_collection_pieces_dict["bin_data"][index]["values"])
+                    patch_collection_pieces_dict["bin_data"][index]["median"] = np.median(patch_collection_pieces_dict["bin_data"][index]["values"])
+                    patch_collection_pieces_dict["bin_data"][index]["std"] = np.std(patch_collection_pieces_dict["bin_data"][index]["values"])
 
                     artificial_coord_mask_current_index = artificial_grid_geo_bins == int(index)
                     artificial_lons_current_index = artificial_lon_meshgrid[artificial_coord_mask_current_index]
                     artificial_lats_current_index = artificial_lat_meshgrid[artificial_coord_mask_current_index]
                     coords_within_geodesic_bin = np.stack((artificial_lons_current_index,artificial_lats_current_index), axis=-1)
-                    bin_anomalies_singleVar_singleDepth_dict["bin_data"][index]["artificial_grid_coords_within_geodesic_bin"] = coords_within_geodesic_bin
+                    patch_collection_pieces_dict["bin_data"][index]["artificial_grid_coords_within_geodesic_bin"] = coords_within_geodesic_bin
 
                     bounding_polygon = coords_within_geodesic_bin[ConvexHull(coords_within_geodesic_bin).vertices]
-                    bin_anomalies_singleVar_singleDepth_dict["bin_data"][index]["artificial_grid_bounding_polygon_for_geodesic_bin"] = bounding_polygon
+                    patch_collection_pieces_dict["bin_data"][index]["artificial_grid_bounding_polygon_for_geodesic_bin"] = bounding_polygon
 
-                bin_anomalies_singleVar_singleDepth_dict["profiles_lats"] = profiles_lats[valid_indices]
-                bin_anomalies_singleVar_singleDepth_dict["profiles_lons"] = profiles_lons[valid_indices]
+                patch_collection_pieces_dict["profiles_lats"] = profiles_lats[valid_indices]
+                patch_collection_pieces_dict["profiles_lons"] = profiles_lons[valid_indices]
 
-                determine_patch_collections(bin_anomalies_singleVar_singleDepth_dict, profile_file, num_subpolygons_max)
+                determine_patch_collections_pieces(patch_collection_pieces_dict, num_subpolygons_max, num_samples_for_kmeans)
 
-                geodesic_bin_data[variable_key][depth_key] = bin_anomalies_singleVar_singleDepth_dict
+                patch_collection_pieces_dict["units_string"] = variables_of_interest[variable_key]
 
-            # Break added just for testing
+                geodesic_bin_data_dict[variable_key][depth_key] = patch_collection_pieces_dict
+
+            else:
+                print('invalid data')
+
             break
 
-        geodesic_bin_data["profile_file_stem"] = Path(profile_file)
-        geodesic_bin_data["geodesic_bin_file_stem"] = Path(geodesic_file).stem
-        geodesic_bin_data["num_geodesic_bins"] = num_geodesic_bins
+        geodesic_bin_data_dict["profile_file_stem"] = Path(profile_file).stem
+        geodesic_bin_data_dict["geodesic_bin_file_stem"] = Path(geodesic_file).stem
+        geodesic_bin_data_dict["num_geodesic_bins"] = num_geodesic_bins
+        geodesic_bin_data_dict["num_subpolygons_max"] = num_subpolygons_max
 
-    return geodesic_bin_data
+        break
+
+    return geodesic_bin_data_dict
 
 
-def determine_patch_collections(bin_anomalies_singleVar_singleDepth_dict: dict, num_subpolygons_max: int) -> None:
+def determine_patch_collections_pieces(patch_collection_pieces_dict: dict, num_subpolygons_max: int, num_samples_for_kmeans) -> None:
 
     # Some plotting parameters that have seemed to work
-    linewidth_floor = 0
-    original_linewidth_max = 1
-    original_scale = 0.01
+    linewidth_floor_initial = 0
+    linewidth_ceil_initial = 1
+    linewidth_macro_scale = 0.01
 
     # It might be clunky to use variables here, since these values may never change.  
     key_for_patch_edge = "std"
@@ -141,135 +148,118 @@ def determine_patch_collections(bin_anomalies_singleVar_singleDepth_dict: dict, 
 
     num_zero_area_bins = 0
 
-    for index in bin_anomalies_singleVar_singleDepth_dict["bin_data"].keys():
+    for index in patch_collection_pieces_dict["bin_data"].keys():
 
         # Had to add this bc of the profiles_lons/lats, which aren't specific to any bins 
-        if not isinstance(bin_anomalies_singleVar_singleDepth_dict["bin_data"][index], dict):
+        if not isinstance(patch_collection_pieces_dict["bin_data"][index], dict):
             continue
 
-        if bin_anomalies_singleVar_singleDepth_dict["bin_data"][index]["artificial_grid_bounding_polygon_for_geodesic_bin"].size == 0:
+        if patch_collection_pieces_dict["bin_data"][index]["artificial_grid_bounding_polygon_for_geodesic_bin"].size == 0:
             num_zero_area_bins += 1
 
-        if bin_anomalies_singleVar_singleDepth_dict["bin_data"][index][key_for_patch_edge] < value_min_edge:
-            value_min_edge = bin_anomalies_singleVar_singleDepth_dict["bin_data"][index][key_for_patch_edge]
-        if bin_anomalies_singleVar_singleDepth_dict["bin_data"][index][key_for_patch_edge] > value_max_edge:
-            value_max_edge = bin_anomalies_singleVar_singleDepth_dict["bin_data"][index][key_for_patch_edge]
+        if patch_collection_pieces_dict["bin_data"][index][key_for_patch_edge] < value_min_edge:
+            value_min_edge = patch_collection_pieces_dict["bin_data"][index][key_for_patch_edge]
+        if patch_collection_pieces_dict["bin_data"][index][key_for_patch_edge] > value_max_edge:
+            value_max_edge = patch_collection_pieces_dict["bin_data"][index][key_for_patch_edge]
 
-        if bin_anomalies_singleVar_singleDepth_dict["bin_data"][index][key_for_patch_face] < value_min_face:
-            value_min_face = bin_anomalies_singleVar_singleDepth_dict["bin_data"][index][key_for_patch_face]
-        if bin_anomalies_singleVar_singleDepth_dict["bin_data"][index][key_for_patch_face] > value_max_face:
-            value_max_face = bin_anomalies_singleVar_singleDepth_dict["bin_data"][index][key_for_patch_face]
+        if patch_collection_pieces_dict["bin_data"][index][key_for_patch_face] < value_min_face:
+            value_min_face = patch_collection_pieces_dict["bin_data"][index][key_for_patch_face]
+        if patch_collection_pieces_dict["bin_data"][index][key_for_patch_face] > value_max_face:
+            value_max_face = patch_collection_pieces_dict["bin_data"][index][key_for_patch_face]
 
-        bin_counts.append(bin_anomalies_singleVar_singleDepth_dict["bin_data"][index]['count'])
+        bin_counts.append(patch_collection_pieces_dict["bin_data"][index]['count'])
 
-    profiles_lats = bin_anomalies_singleVar_singleDepth_dict['profiles_lats']
-    profiles_lons = bin_anomalies_singleVar_singleDepth_dict['profiles_lons']
+    profiles_lats = patch_collection_pieces_dict['profiles_lats']
+    profiles_lons = patch_collection_pieces_dict['profiles_lons']
 
     print(f'debug: {num_zero_area_bins} zero-area bins encountered')
 
+    cmap_face_string = 'PRGn'
+    cmap_face = cm.get_cmap(cmap_face_string)
     norm_face = mcolors.CenteredNorm(vcenter=0)
-    cmap_face = cm.get_cmap('PRGn')
+    cmap_edge_string = 'cividis_r'
+    cmap_edge = cm.get_cmap(cmap_edge_string)
     norm_edge = mcolors.Normalize(vmin=value_min_edge, vmax=value_max_edge)
-    cmap_edge = cm.get_cmap('cividis_r')
 
     individual_profile_anomalies_list_of_bin_lists = []
-    anomaly_var_face_list = []
+    patch_face_value_list = []
     anomaly_var_edge_list= []
-    patch_list = []
     count_list = []
     count_relative_list = []
     linewidths = []
     edgecolors_list = []
 
-    geodesic_bins_boundaries_list = []
+    patch_polygon_vertex_list_of_lists = []
 
-    for index in bin_anomalies_singleVar_singleDepth_dict["bin_data"].keys():
+    for index in patch_collection_pieces_dict["bin_data"].keys():
 
         # Had to add this bc of the profiles_lons/lats, which aren't specific to any bins 
-        if not isinstance(bin_anomalies_singleVar_singleDepth_dict["bin_data"][index], dict):
+        if not isinstance(patch_collection_pieces_dict["bin_data"][index], dict):
             continue
 
-        gbd_polygon = bin_anomalies_singleVar_singleDepth_dict["bin_data"][index]["artificial_grid_bounding_polygon_for_geodesic_bin"]
+        gbd_polygon = patch_collection_pieces_dict["bin_data"][index]["artificial_grid_bounding_polygon_for_geodesic_bin"]
         if gbd_polygon.size > 0:
 
-            individual_profile_anomalies_list_of_bin_lists.append(bin_anomalies_singleVar_singleDepth_dict["bin_data"][index][key_for_patch_raw_values])
+            individual_profile_anomalies_list_of_bin_lists.append(patch_collection_pieces_dict["bin_data"][index][key_for_patch_raw_values])
 
-            anomaly_var_face_list.append(bin_anomalies_singleVar_singleDepth_dict["bin_data"][index][key_for_patch_face])
-            anomaly_var_edge_list.append(bin_anomalies_singleVar_singleDepth_dict["bin_data"][index][key_for_patch_edge])
-            count_list.append(bin_anomalies_singleVar_singleDepth_dict["bin_data"][index]['count'])
+            patch_face_value_list.append(patch_collection_pieces_dict["bin_data"][index][key_for_patch_face])
+            anomaly_var_edge_list.append(patch_collection_pieces_dict["bin_data"][index][key_for_patch_edge])
+            count_list.append(patch_collection_pieces_dict["bin_data"][index]['count'])
             
-            if bin_anomalies_singleVar_singleDepth_dict["bin_data"][index]['count'] == 1:
+            if patch_collection_pieces_dict["bin_data"][index]['count'] == 1:
                 linewidth_pre = 0
             else:
-                linewidth_pre = original_scale * bin_anomalies_singleVar_singleDepth_dict["bin_data"][index]['count']
+                linewidth_pre = linewidth_macro_scale * patch_collection_pieces_dict["bin_data"][index]['count']
 
             linewidths.append(linewidth_pre)
-            edgecolors_list.append(cmap_edge(norm_edge(bin_anomalies_singleVar_singleDepth_dict["bin_data"][index][key_for_patch_edge])))
-            #patch_list.append(patches.Polygon(gbd_polygon, closed=True))
-            geodesic_bins_boundaries_list.append(gbd_polygon)
+            edgecolors_list.append(cmap_edge(norm_edge(patch_collection_pieces_dict["bin_data"][index][key_for_patch_edge])))
+            patch_polygon_vertex_list_of_lists.append(gbd_polygon)
 
-    original_linewidths_raw = np.array(linewidths)
-    original_linewidths_plot = np.clip(original_linewidths_raw, linewidth_floor, original_linewidth_max)
+    original_linewidths_unclipped = np.array(linewidths)
+    original_linewidths_plot = np.clip(original_linewidths_unclipped, linewidth_floor_initial, linewidth_ceil_initial)
 
-    count_array = np.array(count_list)
+    patch_collection_pieces_dict['individual_profile_anomalies_list_of_bin_lists'] = individual_profile_anomalies_list_of_bin_lists
+    patch_collection_pieces_dict['count_array'] = np.array(count_list)
+    patch_collection_pieces_dict['cmap_face_string'] = cmap_face_string
+    patch_collection_pieces_dict['cmap_edge_string'] = cmap_edge_string
+    patch_collection_pieces_dict['value_min_edge'] = value_min_edge
+    patch_collection_pieces_dict['value_max_edge'] = value_max_edge
 
-    '''
-    patch_collection = PatchCollection(patch_list, transform=ccrs.PlateCarree(), joinstyle='miter')
-    patch_collection.set_array(np.array(anomaly_var_face_list))
-    patch_collection.set_linewidths(original_linewidths_plot)
-    patch_collection.set_edge_colors(edgecolors=edgecolors_list)
-    patch_collection.set_cmap(cmap_face)
-    patch_collection.set_norm(norm_face)
-    '''
+    patch_collection_pieces_dict['macro'] = {}
+    patch_collection_pieces_dict['macro']['polygon_vertex_list_of_lists'] = patch_polygon_vertex_list_of_lists 
+    patch_collection_pieces_dict['macro']['face_value_list'] = patch_face_value_list
+    patch_collection_pieces_dict['macro']['edgecolors_list'] = edgecolors_list
+    patch_collection_pieces_dict['macro']['linewidths_list'] = original_linewidths_plot
+    patch_collection_pieces_dict['macro']['linewidths_unclipped_list'] = original_linewidths_unclipped
 
-    patch_collection_dict = {}
-    patch_collection_dict['macro'] = {}
-    patch_collection_dict['macro']['geodesic_bins_boundaries_list'] = geodesic_bins_boundaries_list 
-    patch_collection_dict['macro']['cmap_face'] = cmap_face
-    patch_collection_dict['macro']['norm_face'] = norm_face
-    patch_collection_dict['macro']['edgecolors_list'] = edgecolors_list
-    patch_collection_dict['macro']['linewidths_list'] = original_linewidths_plot
-    patch_collection_dict['macro']['individual_profile_anomalies_list_of_bin_lists'] = individual_profile_anomalies_list_of_bin_lists
-    #patch_collection_dict['macro']['patch_collection'] = patch_collection 
+    patch_collection_pieces_dict['macro']['linewidth_floor_initial'] = linewidth_floor_initial
+    patch_collection_pieces_dict['macro']['linewidth_ceil_initial'] = linewidth_ceil_initial
 
-    # Modify <patch_collection_dict> in place
-    determine_sub_polygons(patch_collection_dict, num_subpolygons_max)
+    determine_micro_patch_collections_pieces(patch_collection_pieces_dict, num_subpolygons_max, num_samples_for_kmeans)
 
-def determine_sub_polygons(patch_collection_dict, num_subpolygons_max, num_samples_for_kmeans):
 
-    mini_patches_list = []
-    mini_patches_anomaly_list = []
-    mini_patches_edgecolors_list = []
-    mini_patches_linewidths_list = []
+def determine_micro_patch_collections_pieces(patch_collection_pieces_dict : dict, num_subpolygons_max: int, num_samples_for_kmeans: int) -> None:
 
-    macro_patch_paths = patch_collection_dict['macro']['patch_collection'].get_paths()
+    patch_polygon_vertex_list_of_lists = []
+    patch_face_value_list = []
+    edgecolors_list = []
+    linewidths_list = []
 
-    for patch_dex in range(len(macro_patch_paths)):
+    for patch_dex in range(len(patch_collection_pieces_dict['count_array'])):
 
-        num_profiles = len(patch_collection_dict['macro']['individual_profile_anomalies_list_of_bin_lists'][patch_dex])
+        num_profiles = patch_collection_pieces_dict['count_array'][patch_dex]
 
-        #'''
         if num_profiles > num_subpolygons_max:
-            mini_patches_list.append(macro_patch_paths[patch_dex].vertices)
-            mini_patches_anomaly_list.append(np.mean(patch_collection_dict['macro']['patch_collection'][patch_dex].get_array()))
-            mini_patches_edgecolors_list.append(patch_collection_dict['macro']['edgecolors_list'][patch_dex])
-            mini_patches_linewidths_list.append(patch_collection_dict['macro']['linewidths_list'][patch_dex])
-        #'''
-
-    patch_collection_dict['macro']['patch_collection'] = patch_collection 
-    patch_collection_dict['macro']['edgecolors_list'] = edgecolors_list
-    patch_collection_dict['macro']['individual_profile_anomalies_list_of_bin_lists'] = individual_profile_anomalies_list_of_bin_lists
-
-
+            patch_polygon_vertex_list_of_lists.append(patch_collection_pieces_dict['macro']['polygon_vertex_list_of_lists'][patch_dex])
+            patch_face_value_list.append(patch_collection_pieces_dict['macro']['face_value_list'][patch_dex])
+            edgecolors_list.append(patch_collection_pieces_dict['macro']['edgecolors_list'][patch_dex])
+            linewidths_list.append(patch_collection_pieces_dict['macro']['linewidths_list'][patch_dex])
         else:
-            patch_vertices = patch_list[patch_dex].get_xy()
-            orig_poly = ShapelyPolygon(patch_vertices)
+            orig_poly = ShapelyPolygon(patch_collection_pieces_dict['macro']['polygon_vertex_list_of_lists'][patch_dex])
 
             # VIBING OUT
-            #num_samples_for_kmeans = 100000 # now this is a function parameter
             minx, miny, maxx, maxy = orig_poly.bounds
             points = []
-
             while len(points) < num_samples_for_kmeans:
                 p = Point(np.random.uniform(minx, maxx), np.random.uniform(miny, maxy))
                 if orig_poly.contains(p):
@@ -280,38 +270,91 @@ def determine_sub_polygons(patch_collection_dict, num_subpolygons_max, num_sampl
             labels = kmeans.fit_predict(random_points_array)
             for profile_index in range(num_profiles):
                 cluster_points = random_points_array[labels == profile_index]
-                try:
-                    polygon_coords = ShapelyCoordinates(ShapelyPolygon(cluster_points).convex_hull)
-                except:
-                    pdb.set_trace()
-                mini_patches_list.append(patches.Polygon(polygon_coords, closed=True))
+                #try:
+                polygon_coords = ShapelyCoordinates(ShapelyPolygon(cluster_points).convex_hull)
+                #except:
+                #    pdb.set_trace()
+                patch_polygon_vertex_list_of_lists.append(polygon_coords)
+                #patch_polygon_vertex_list_of_lists.append(patches.Polygon(polygon_coords, closed=True))
 
-            mini_patches_anomaly_list += anomalies_zoom[patch_dex]
-            mini_patches_edgecolors_list += [edgecolors_zoom[patch_dex]] * num_profiles
+            patch_face_value_list += patch_collection_pieces_dict['individual_profile_anomalies_list_of_bin_lists'][patch_dex]
+            edgecolors_list += [patch_collection_pieces_dict['macro']['edgecolors_list'][patch_dex]] * num_profiles
             if num_profiles == 1:
-                mini_patches_linewidths_list.append(0)
+                linewidths_list.append(0)
             else:
-                mini_patches_linewidths_list += [1] * num_profiles
+                linewidths_list += [1] * num_profiles
 
-    #try:
-    patch_collection = PatchCollection(mini_patches_list, transform=ccrs.PlateCarree(), joinstyle='miter')
-    #except:
-    #pdb.set_trace()
-    patch_collection.set_array(np.array(mini_patches_anomaly_list))
-    patch_collection.set_linewidths(mini_patches_linewidths_list)
-    patch_collection.set_edge_colors(edgecolors=mini_patches_edgecolors_list)
-    patch_collection.set_cmap(cmap_face)
-    patch_collection.set_norm(norm_face)
+    patch_collection_pieces_dict['micro'] = {}
+    patch_collection_pieces_dict['micro']['polygon_vertex_list_of_lists'] = patch_polygon_vertex_list_of_lists 
+    patch_collection_pieces_dict['micro']['face_value_list'] = patch_face_value_list
+    patch_collection_pieces_dict['micro']['edgecolors_list'] = edgecolors_list
+    patch_collection_pieces_dict['micro']['linewidths_list'] = linewidths_list
 
+
+
+
+#--------------------------------------------------------------------------------------------------------
+#--------------------------------------------------------------------------------------------------------
+# zarr utilities (VIBING OUT)
+#--------------------------------------------------------------------------------------------------------
+#--------------------------------------------------------------------------------------------------------
+
+def has_numpy_arrays(item):
+    """Recursively checks if a dict or list contains any numpy arrays."""
+    if isinstance(item, np.ndarray):
+        return True
+    if isinstance(item, dict):
+        return any(has_numpy_arrays(v) for v in item.values())
+    if isinstance(item, list):
+        return any(has_numpy_arrays(v) for v in item)
+    return False
+
+def dict_to_zarr(d, current_group):
+    for k, v in d.items():
+        if isinstance(v, dict):
+            if has_numpy_arrays(v):
+                sub_group = current_group.create_group(k)
+                dict_to_zarr(v, sub_group)
+            else:
+                current_group.attrs[k] = v
+                
+        elif isinstance(v, list):
+            if has_numpy_arrays(v):
+                # Turn the list into a subgroup, marking it as a list using metadata
+                list_group = current_group.create_group(k)
+                list_group.attrs["_is_list_of_arrays"] = True
+                # Convert the list elements into a dictionary using string indices as keys
+                list_dict = {str(i): arr for i, arr in enumerate(v)}
+                dict_to_zarr(list_dict, list_group)
+            else:
+                # Regular list of pure metadata (strings, ints) fits in JSON attrs
+                current_group.attrs[k] = v
+                
+        elif isinstance(v, np.ndarray):
+            current_group.create_array(k, data=v, overwrite=True)
+        else:
+            current_group.attrs[k] = v
+
+
+def zarr_to_dict(current_group):
+    # Pull base metadata attributes safely
+    attrs = dict(current_group.attrs)
+    is_list = attrs.pop("_is_list_of_arrays", False)
     
+    d = {}
     
-
-    patch_collection_dict['micro'] = {}
-    patch_collection_dict['micro']['patch_collection'] = patch_collection 
-    patch_collection_dict['micro']['edgecolors_list'] = edgecolors_list
-    patch_collection_dict['micro']['individual_profile_anomalies_list_of_bin_lists'] = individual_profile_anomalies_list_of_bin_lists
-    patch_collection_dict['micro']['cmap_face'] = patch_collection_dict['macro']['cmap_face']
-    patch_collection_dict['micro']['norm_face'] = patch_collection_dict['macro']['norm_face']
-
-    #return subcol, mini_patches_anomaly_list
-
+    for name in current_group.keys():
+        item = current_group[name]
+        if isinstance(item, zarr.Group):
+            d[name] = zarr_to_dict(item)
+        elif isinstance(item, zarr.Array):
+            d[name] = item[:]
+            
+    # Merge back the metadata attributes
+    d.update(attrs)
+    
+    # Reconstruct the list if it was tagged as one
+    if is_list:
+        return [d[str(i)] for i in range(len(d))]
+        
+    return d

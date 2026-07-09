@@ -1,17 +1,14 @@
 
+import pdb
+import zarr
+import xarray as xr
+import numpy as np
 import sys
 from pathlib import Path
 geodesic_dir = str(Path(__file__).parent.resolve())
 sys.path.append(geodesic_dir)
 import geodesic_binning_utilities as utils
-import in_progress_qc
-#import qc
 
-# Turns out it wasn't the number of profiles freezing the program.  Still, we may want something like this....?  For now, 
-# leave it in since I'm lazy, just set the threshold high
-num_subpolygons_max = 1000
-#num_subpolygons_max = 10
-#num_subpolygons_max = 100
 
 # This is where the real slowdown happens, and it's why I am now pre-calculating everything and saving to a file that's later loaded.
 # If this  number is too small, we risk some profiles not getting a 2D polygon when zoomed-in.  The zoomed-in images also look nicer
@@ -20,8 +17,17 @@ num_subpolygons_max = 1000
 num_samples_for_kmeans = 100000
 #num_samples_for_kmeans = 10000
 
+# Max number of sub-patches within a geodesic bin, in case there are thousands of data points in a bin and it's too expensive
+# to calculate and plot sub-patches for them all.
+#num_subpolygons_max = 200
+num_subpolygons_max = 1000
 
-variables_of_interest = ["T", "S"]
+
+variables_of_interest_dict = {}
+variables_of_interest_dict["T"] = "($^\circ$C)"
+variables_of_interest_dict["S"] = "psu"
+
+
 #angular_precision = 0.1
 angular_precision = 0.25
 #angular_precision = 0.5
@@ -56,13 +62,37 @@ Files to test:
 
 profile_file_index = 2
 
-geodesic_file = geodesic_file_dict[f"{num_geodesic_bins:05}"]
+num_geodesic_bins_string = f"{num_geodesic_bins:05}"
+
+geodesic_file = geodesic_file_dict[num_geodesic_bins_string]
 profile_file = profile_file_list[profile_file_index]
 
-geodesic_bin_data = utils.bin_around_geodesic_vertices(geodesic_file, profile_file, variables_of_interest, angular_precision, num_geodesic_bins)
+save_dir = Path(geodesic_dir) / "plotting_data" / f"{num_geodesic_bins_string}_geodesic_bins" 
+Path(save_dir).mkdir(parents=True, exist_ok=True)
 
-geodesic_bin_subpatch_data = utils.determine_subpatches()
+geodesic_bin_data_dict = utils.bin_around_geodesic_vertices(geodesic_file, profile_file, variables_of_interest_dict, angular_precision, num_geodesic_bins, num_subpolygons_max, num_samples_for_kmeans)
 
+save_file_zarr = save_dir / f"{geodesic_bin_data_dict['profile_file_stem']}.zarr"
+store = zarr.storage.LocalStore(save_file_zarr)
+root = zarr.group(store=store, overwrite=True)
 
-in_progress_qc.pp(geodesic_bin_data, num_geodesic_bins, profile_file, num_subpolygons_max)
-#qc.pp(geodesic_bin_data, num_geodesic_bins)
+utils.dict_to_zarr(geodesic_bin_data_dict, root)
+
+#opened_root = zarr.open(save_file_zarr, mode='r')
+
+#loaded_dict = utils.zarr_to_dict(opened_root)
+
+'''
+# Crazy.  AI is amaazing
+try:
+    # Raises an AssertionError if they are not equal, returns None if they match
+    np.testing.assert_equal(geodesic_bin_data_dict, loaded_dict)
+    are_equal = True
+except AssertionError:
+    are_equal = False
+
+print(are_equal)  # True
+'''
+
+#in_progress_qc.pp(geodesic_bin_data_dict, num_geodesic_bins, profile_file, num_subpolygons_max)
+
