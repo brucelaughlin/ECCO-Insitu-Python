@@ -69,9 +69,11 @@ def bin_around_geodesic_vertices(geodesic_file: str, profile_file: str, variable
             geodesic_bin_data_dict[variable_key].setdefault(depth_key, {})
             print(f"{depth_key}; {variable_key}")
             valid_indices = ~np.isnan(anomalies_global_dict[variable_key][prof_keys["values"]][:,i_depth])
+
+            patch_collection_pieces_dict = {}
+
             if np.sum(valid_indices) > 0:
                 
-                patch_collection_pieces_dict = {}
                 patch_collection_pieces_dict["bin_data"] = {}
 
                 for index, value in zip(anomalies_global_dict[variable_key][prof_keys["bin_indices"]][valid_indices], anomalies_global_dict[variable_key][prof_keys["values"]][:,i_depth][valid_indices]):
@@ -106,16 +108,20 @@ def bin_around_geodesic_vertices(geodesic_file: str, profile_file: str, variable
                 geodesic_bin_data_dict[variable_key][depth_key] = patch_collection_pieces_dict
 
             else:
-                print('invalid data')
 
-            break
+                #patch_collection_pieces_dict["bin_data"] = None
+                print('invalid data, not being saved')
+
+            #break
+
+            #geodesic_bin_data_dict[variable_key][depth_key] = patch_collection_pieces_dict
 
         geodesic_bin_data_dict["profile_file_stem"] = Path(profile_file).stem
         geodesic_bin_data_dict["geodesic_bin_file_stem"] = Path(geodesic_file).stem
         geodesic_bin_data_dict["num_geodesic_bins"] = num_geodesic_bins
         geodesic_bin_data_dict["num_subpolygons_max"] = num_subpolygons_max
 
-        break
+        #break
 
     return geodesic_bin_data_dict
 
@@ -183,7 +189,7 @@ def determine_patch_collections_pieces(patch_collection_pieces_dict: dict, num_s
 
     individual_profile_anomalies_list_of_bin_lists = []
     patch_face_value_list = []
-    anomaly_var_edge_list= []
+    patch_edge_value_list= []
     count_list = []
     count_relative_list = []
     linewidths = []
@@ -203,7 +209,7 @@ def determine_patch_collections_pieces(patch_collection_pieces_dict: dict, num_s
             individual_profile_anomalies_list_of_bin_lists.append(patch_collection_pieces_dict["bin_data"][index][key_for_patch_raw_values])
 
             patch_face_value_list.append(patch_collection_pieces_dict["bin_data"][index][key_for_patch_face])
-            anomaly_var_edge_list.append(patch_collection_pieces_dict["bin_data"][index][key_for_patch_edge])
+            patch_edge_value_list.append(patch_collection_pieces_dict["bin_data"][index][key_for_patch_edge])
             count_list.append(patch_collection_pieces_dict["bin_data"][index]['count'])
             
             if patch_collection_pieces_dict["bin_data"][index]['count'] == 1:
@@ -215,8 +221,8 @@ def determine_patch_collections_pieces(patch_collection_pieces_dict: dict, num_s
             edgecolors_list.append(cmap_edge(norm_edge(patch_collection_pieces_dict["bin_data"][index][key_for_patch_edge])))
             patch_polygon_vertex_list_of_lists.append(gbd_polygon)
 
-    original_linewidths_unclipped = np.array(linewidths)
-    original_linewidths_plot = np.clip(original_linewidths_unclipped, linewidth_floor_initial, linewidth_ceil_initial)
+    linewidths_unclipped = np.array(linewidths)
+    linewidths_clipped = np.clip(linewidths_unclipped, linewidth_floor_initial, linewidth_ceil_initial)
 
     patch_collection_pieces_dict['individual_profile_anomalies_list_of_bin_lists'] = individual_profile_anomalies_list_of_bin_lists
     patch_collection_pieces_dict['count_array'] = np.array(count_list)
@@ -228,9 +234,10 @@ def determine_patch_collections_pieces(patch_collection_pieces_dict: dict, num_s
     patch_collection_pieces_dict['macro'] = {}
     patch_collection_pieces_dict['macro']['polygon_vertex_list_of_lists'] = patch_polygon_vertex_list_of_lists 
     patch_collection_pieces_dict['macro']['face_value_list'] = patch_face_value_list
+    patch_collection_pieces_dict['macro']['edge_value_list'] = patch_edge_value_list
     patch_collection_pieces_dict['macro']['edgecolors_list'] = edgecolors_list
-    patch_collection_pieces_dict['macro']['linewidths_list'] = original_linewidths_plot
-    patch_collection_pieces_dict['macro']['linewidths_unclipped_list'] = original_linewidths_unclipped
+    patch_collection_pieces_dict['macro']['linewidths_clipped_list'] = linewidths_clipped
+    patch_collection_pieces_dict['macro']['linewidths_unclipped_list'] = linewidths_unclipped
 
     patch_collection_pieces_dict['macro']['linewidth_floor_initial'] = linewidth_floor_initial
     patch_collection_pieces_dict['macro']['linewidth_ceil_initial'] = linewidth_ceil_initial
@@ -242,6 +249,7 @@ def determine_micro_patch_collections_pieces(patch_collection_pieces_dict : dict
 
     patch_polygon_vertex_list_of_lists = []
     patch_face_value_list = []
+    patch_edge_value_list = []
     edgecolors_list = []
     linewidths_list = []
 
@@ -252,8 +260,10 @@ def determine_micro_patch_collections_pieces(patch_collection_pieces_dict : dict
         if num_profiles > num_subpolygons_max:
             patch_polygon_vertex_list_of_lists.append(patch_collection_pieces_dict['macro']['polygon_vertex_list_of_lists'][patch_dex])
             patch_face_value_list.append(patch_collection_pieces_dict['macro']['face_value_list'][patch_dex])
+            patch_edge_value_list.append(patch_collection_pieces_dict['macro']['edge_value_list'][patch_dex])
             edgecolors_list.append(patch_collection_pieces_dict['macro']['edgecolors_list'][patch_dex])
-            linewidths_list.append(patch_collection_pieces_dict['macro']['linewidths_list'][patch_dex])
+            linewidths_list.append(patch_collection_pieces_dict['macro']['linewidths_unclipped_list'][patch_dex])
+            #linewidths_list.append(patch_collection_pieces_dict['macro']['linewidths_clipped_list'][patch_dex])
         else:
             orig_poly = ShapelyPolygon(patch_collection_pieces_dict['macro']['polygon_vertex_list_of_lists'][patch_dex])
 
@@ -278,6 +288,7 @@ def determine_micro_patch_collections_pieces(patch_collection_pieces_dict : dict
                 #patch_polygon_vertex_list_of_lists.append(patches.Polygon(polygon_coords, closed=True))
 
             patch_face_value_list += patch_collection_pieces_dict['individual_profile_anomalies_list_of_bin_lists'][patch_dex]
+            patch_edge_value_list += [patch_collection_pieces_dict['macro']['edge_value_list'][patch_dex]] * num_profiles
             edgecolors_list += [patch_collection_pieces_dict['macro']['edgecolors_list'][patch_dex]] * num_profiles
             if num_profiles == 1:
                 linewidths_list.append(0)
@@ -287,6 +298,7 @@ def determine_micro_patch_collections_pieces(patch_collection_pieces_dict : dict
     patch_collection_pieces_dict['micro'] = {}
     patch_collection_pieces_dict['micro']['polygon_vertex_list_of_lists'] = patch_polygon_vertex_list_of_lists 
     patch_collection_pieces_dict['micro']['face_value_list'] = patch_face_value_list
+    patch_collection_pieces_dict['micro']['edge_value_list'] = patch_edge_value_list
     patch_collection_pieces_dict['micro']['edgecolors_list'] = edgecolors_list
     patch_collection_pieces_dict['micro']['linewidths_list'] = linewidths_list
 

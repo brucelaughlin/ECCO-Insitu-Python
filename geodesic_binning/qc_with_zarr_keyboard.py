@@ -23,16 +23,114 @@ sys.path.append(geodesic_dir)
 import geodesic_binning_utilities as utils
 
 
-def plot_fresh_figure(zarr_file, variable_key, depth_key):
+def prepare_axes():
+    ax = plt.axes(projection=ccrs.PlateCarree())
+    ax.coastlines(color='black', linewidth=0.15)
+    ax.patch.set_facecolor('#D9D9D9')
+    ax.gridlines(draw_labels=True)
+    ax.set_aspect('equal', anchor='C')
+    return ax
+
+
+def handle_arrows(fig, ax, geodesic_bin_data_dict, zoom_scale_threshold, variable_key, depth_key, event):
+    # Ensure the cursor is over the axes
+    if event.inaxes is None:
+        return
+
+    num_depths = len(geodesic_bin_data_dict[variable_key].keys())
+    current_depth_int = int(depth_key)
+
+    if event.key == 'up':
+        print(f"▲ Up pressed.")
+
+    elif event.key == 'down':
+        print(f"▼ Down pressed.")
+
+        depth_counter = 0
+        while depth_counter < num_depths:
+            depth_counter += 1
+            print(depth_counter)
+            if current_depth_int == num_depths - 1:
+                current_depth_int = 0
+            else:
+                current_depth_int += 1
+            depth_key = f'{current_depth_int:02}'
+            try:
+                if geodesic_bin_data_dict[variable_key][depth_key]['bin_data'] is not None:
+                    pdb.set_trace()
+                    ax.remove()
+                    ax = prepare_axes()
+                    plot_fresh_axes(fig, ax, geodesic_bin_data_dict, zoom_scale_threshold, variable_key, depth_key)
+                    #break
+                    current_depth_int = num_depths
+            except:
+                pdb.set_trace()
+        else:
+            #pdb.set_trace()
+            print("************************************")
+            print(f"No valid '{variable_key}' data, at ANY depth, in profile file: {Path(zarr_file).stem}")
+            print("************************************")
+            return
+
+    elif event.key == 'left':
+        print(f"◀ Left pressed.")
+
+    elif event.key == 'right':
+        print(f"▶ Right pressed.")
+
+
+
+# Note: need to update to stop from defaulting to empty fields (we don't always have data at a given depth level)
+def plot_spawner(zarr_file, zoom_scale_threshold=10, variable_key="T", depth_key="00"):
 
     opened_root = zarr.open(zarr_file, mode='r')
     geodesic_bin_data_dict = utils.zarr_to_dict(opened_root)
-    num_subpolygons_max = geodesic_bin_data_dict['num_subpolygons_max']
-    patch_collection_pieces_dict = geodesic_bin_data_dict[variable_key][depth_key]
 
-    if patch_collection_pieces_dict['bin_data'] is None:
-        print(f"No data was binned for variable {variable_key} at depth level {depth_key}; file: {Path(zarr_file).stem}")
-        return 1
+    # -----
+    num_depths = len(geodesic_bin_data_dict[variable_key].keys())
+    current_depth_int = int(depth_key)
+    depth_counter = 0
+    while depth_counter < num_depths:
+        depth_counter += 1
+        print(depth_counter)
+        if current_depth_int == num_depths - 1:
+            current_depth_int = 0
+        else:
+            current_depth_int += 1
+        depth_key = f'{current_depth_int:02}'
+        if geodesic_bin_data_dict[variable_key][depth_key]['bin_data'] is not None:
+            #ax = prepare_axes()
+            #plot_fresh_axes(fig, ax, geodesic_bin_data_dict, zoom_scale_threshold, variable_key, depth_key)
+            break
+            #current_depth_int = num_depths
+    else:
+        #pdb.set_trace()
+        print("************************************")
+        print(f"No valid '{variable_key}' data, at ANY depth, in profile file: {Path(zarr_file).stem}")
+        print("************************************")
+        exit(1)
+    # -----
+
+
+
+    fig_width, fig_height = 14, 6
+    fig = plt.figure(figsize=(fig_width, fig_height), facecolor='lightskyblue', layout='constrained')
+
+    ax = prepare_axes()
+
+    bound_keyboard_callback = partial(handle_arrows, fig, ax, geodesic_bin_data_dict, zoom_scale_threshold, variable_key, depth_key)
+
+    fig.canvas.mpl_connect('key_press_event', bound_keyboard_callback)
+    #keyboard_cid = fig.canvas.mpl_connect('key_press_event', bound_keyboard_callback)
+
+    plot_fresh_axes(fig, ax, geodesic_bin_data_dict, zoom_scale_threshold, variable_key, depth_key)
+
+
+
+
+def plot_fresh_axes(fig, ax, geodesic_bin_data_dict, zoom_scale_threshold, variable_key, depth_key):
+
+    patch_collection_pieces_dict = geodesic_bin_data_dict[variable_key][depth_key]
 
     cmap_face = cm.get_cmap(patch_collection_pieces_dict['cmap_face_string'])
     norm_face = mcolors.CenteredNorm(vcenter=0)
@@ -52,7 +150,6 @@ def plot_fresh_figure(zarr_file, variable_key, depth_key):
     patch_collection_macro.set_array(np.array(patch_collection_pieces_dict['macro']['face_value_list']))
     patch_collection_macro.set_edgecolors(patch_collection_pieces_dict['macro']['edgecolors_list'])
     patch_collection_macro.set_linewidths(patch_collection_pieces_dict['macro']['linewidths_unclipped_list'])
-    #patch_collection_macro.set_linewidths(patch_collection_pieces_dict['macro']['linewidths_list'])
     patch_collection_macro.set_cmap(cmap_face)
     patch_collection_macro.set_norm(norm_face)
 
@@ -68,13 +165,6 @@ def plot_fresh_figure(zarr_file, variable_key, depth_key):
     patch_collection_micro.set_cmap(cmap_face)
     patch_collection_micro.set_norm(norm_face)
 
-
-    fig_width, fig_height = 14, 6
-    fig = plt.figure(figsize=(fig_width, fig_height), facecolor='lightskyblue', layout='constrained')
-
-    ax = plt.axes(projection=ccrs.PlateCarree())
-    ax.coastlines(color='black', linewidth=0.15)
-    ax.patch.set_facecolor('#D9D9D9')
 
     dummyMegaNumber = 1e30
 
@@ -145,7 +235,7 @@ def plot_fresh_figure(zarr_file, variable_key, depth_key):
 
     scale_factor = np.sqrt(globe_area/original_area)
 
-    if scale_factor > scale_threshold: 
+    if scale_factor > zoom_scale_threshold: 
 
         ax.collections[-1].remove()
 
@@ -178,14 +268,10 @@ def plot_fresh_figure(zarr_file, variable_key, depth_key):
     # !!!!!!!!!!
     # !!!!!!!!!!
 
-    bound_callback = partial(scale_with_zoom, num_artists_original=num_artists_original, colorbar=cbar, globe_area=globe_area, linewidth_floor=patch_collection_pieces_dict['macro']['linewidth_floor_initial'], count_array=count_array, patch_collection_pieces_dict=patch_collection_pieces_dict, patch_collection_macro=patch_collection_macro, patch_collection_micro=patch_collection_micro, norm_face=norm_face, scale_threshold=scale_threshold, patch_list_macro=patch_list_macro, patch_list_micro=patch_list_micro,)
+    bound_callback = partial(scale_with_zoom, num_artists_original=num_artists_original, colorbar=cbar, globe_area=globe_area, linewidth_floor=patch_collection_pieces_dict['macro']['linewidth_floor_initial'], count_array=count_array, patch_collection_pieces_dict=patch_collection_pieces_dict, patch_collection_macro=patch_collection_macro, patch_collection_micro=patch_collection_micro, norm_face=norm_face, zoom_scale_threshold=zoom_scale_threshold, patch_list_macro=patch_list_macro, patch_list_micro=patch_list_micro,)
 
     ax.callbacks.connect('xlim_changed', bound_callback)
     ax.callbacks.connect('ylim_changed', bound_callback)
-
-
-    ax.gridlines(draw_labels=True)
-
 
     suptitle_string = (
             f"\nprofile_file: {geodesic_bin_data_dict['profile_file_stem']}\n"
@@ -202,7 +288,7 @@ def plot_fresh_figure(zarr_file, variable_key, depth_key):
             "Within each polygon, face color corresponds to variable anomaly value, and edge color corresponds to geodesic bin anomaly standard deviation.  "
             f"At low-moderate zoom levels, polygons represent geodesic bins, with face colors representing mean binned variable ({variable_key}) anomaly and "
             "edge widths scaling linearly with profile count.  "
-            f"At higher zoom levels, profile locations are shown in red, and, unless they contains more than {num_subpolygons_max} profiles, geodesic bins "
+            f"At higher zoom levels, profile locations are shown in red, and, unless they contains more than {geodesic_bin_data_dict['num_subpolygons_max']} profiles, geodesic bins "
             "are sub-divided into smaller polygons (with random locations within the geodesic bin) whose face colors represent individual profile anomalies."
             )
 
@@ -221,13 +307,11 @@ def plot_fresh_figure(zarr_file, variable_key, depth_key):
         annotation_clip=False
     )
     
-    ax.set_aspect('equal', anchor='C')
-
     plt.show()
 
 
 
-def scale_with_zoom(axes, num_artists_original, colorbar, globe_area, linewidth_floor, count_array, patch_collection_pieces_dict, patch_collection_macro, patch_collection_micro, norm_face, scale_threshold, patch_list_macro, patch_list_micro):
+def scale_with_zoom(axes, num_artists_original, colorbar, globe_area, linewidth_floor, count_array, patch_collection_pieces_dict, patch_collection_macro, patch_collection_micro, norm_face, zoom_scale_threshold, patch_list_macro, patch_list_micro):
 
     # My hack to remove the previous patch collection, in case we zoom in and would see it underneath the sub-polygons.
     # Note that this means the patch collection must be the last collection added to the axes (ie after calling ax.scatter(), ax.coastlines(), etc)
@@ -250,7 +334,7 @@ def scale_with_zoom(axes, num_artists_original, colorbar, globe_area, linewidth_
     new_linewidth_ceil = scale_factor # Random choice, but seems to do the job
     new_linewidths = np.clip(patch_collection_pieces_dict['macro']['linewidths_unclipped_list'] * scale_factor, linewidth_floor, new_linewidth_ceil)
 
-    if scale_factor < scale_threshold:
+    if scale_factor < zoom_scale_threshold:
 
         axes.add_collection(patch_collection_macro)
 
