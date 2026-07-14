@@ -1,3 +1,7 @@
+import logging
+# Mute matplotlib's specific root logging system
+logging.getLogger('matplotlib').setLevel(logging.ERROR)
+
 import sys
 from pathlib import Path
 from functools import partial
@@ -11,13 +15,15 @@ import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 import matplotlib.cm as cm
 import matplotlib.colors as mcolors
-from matplotlib.collections import PatchCollection
+from matplotlib.collections import PatchCollection, PathCollection
 import numpy as np
 from shapely.geometry import Polygon as ShapelyPolygon
 from shapely.geometry import Point
 from shapely import get_coordinates as ShapelyCoordinates
 import xarray as xr
 import zarr
+import random
+
 geodesic_dir = str(Path(__file__).parent.resolve())
 sys.path.append(geodesic_dir)
 import geodesic_binning_utilities as utils
@@ -32,104 +38,163 @@ def prepare_axes():
     return ax
 
 
-def handle_arrows(fig, ax, geodesic_bin_data_dict, zoom_scale_threshold, variable_key, depth_key, event):
+def clear_axes(ax):
+    # Only remove scatter plots (PathCollection) and patch layers
+    for coll in list(ax.collections):
+        if isinstance(coll, (PathCollection, PatchCollection)):
+            coll.remove()
+
+def handle_keyboard_input(fig, ax, geodesic_bin_data_dict, zoom_scale_threshold, variable_key_list, depth_key_list_dict, event):
+
     # Ensure the cursor is over the axes
     if event.inaxes is None:
         return
+    
+    global depth_key_list_index
+    global variable_key_list_index
+    global xmin_global, xmax_global, ymin_global, ymax_global 
+    global xmin_zoom, xmax_zoom, ymin_zoom, ymax_zoom
 
-    num_depths = len(geodesic_bin_data_dict[variable_key].keys())
-    current_depth_int = int(depth_key)
+    if event.key == ' ':
+        xmin_zoom = xmax_zoom = ymin_zoom = ymax_zoom = None
 
-    if event.key == 'up':
-        print(f"▲ Up pressed.")
+    elif event.key == 'backspace':
+        depth_key_list_index = 0
+        xmin_zoom = xmax_zoom = ymin_zoom = ymax_zoom = None
+
+    elif event.key == 'up':
+        if depth_key_list_index == 0:
+            depth_key_list_index = len(depth_key_list_dict[variable_key_list[variable_key_list_index]]) - 1
+        else:
+            depth_key_list_index -= 1
 
     elif event.key == 'down':
-        print(f"▼ Down pressed.")
-
-        depth_counter = 0
-        while depth_counter < num_depths:
-            depth_counter += 1
-            print(depth_counter)
-            if current_depth_int == num_depths - 1:
-                current_depth_int = 0
-            else:
-                current_depth_int += 1
-            depth_key = f'{current_depth_int:02}'
-            try:
-                if geodesic_bin_data_dict[variable_key][depth_key]['bin_data'] is not None:
-                    pdb.set_trace()
-                    ax.remove()
-                    ax = prepare_axes()
-                    plot_fresh_axes(fig, ax, geodesic_bin_data_dict, zoom_scale_threshold, variable_key, depth_key)
-                    #break
-                    current_depth_int = num_depths
-            except:
-                pdb.set_trace()
+        if depth_key_list_index == len(depth_key_list_dict[variable_key_list[variable_key_list_index]]) - 1:
+            depth_key_list_index = 0
         else:
-            #pdb.set_trace()
-            print("************************************")
-            print(f"No valid '{variable_key}' data, at ANY depth, in profile file: {Path(zarr_file).stem}")
-            print("************************************")
-            return
+            depth_key_list_index += 1
 
     elif event.key == 'left':
-        print(f"◀ Left pressed.")
+        if variable_key_list_index == 0:
+            variable_key_list_index = len(variable_key_list) - 1
+        else:
+            variable_key_list_index -= 1
 
     elif event.key == 'right':
-        print(f"▶ Right pressed.")
+        if variable_key_list_index == len(variable_key_list) - 1:
+            variable_key_list_index = 0
+        else:
+            variable_key_list_index += 1
+
+    # Issue - if user changes variables, may not have data at current depth key
+    if event.key == 'left' or event.key == 'right':
+        try:
+            dummy = depth_key_list_dict[variable_key_list[variable_key_list_index]][depth_key_list_index]
+        #except Exception:
+        except (TypeError, ValueError, KeyError, IndexError):
+        #except IndexError:
+            depth_key_list_index = 0
+
+
+    redraw_axes(fig, ax, geodesic_bin_data_dict, zoom_scale_threshold, variable_key_list, depth_key_list_dict)
+
+def determine_global_axis_limits(geodesic_bin_data_dict, plotting_coord_static_dict):
+
+    global xmin_global, xmax_global, ymin_global, ymax_global
+
+    edge_buffer_size_degrees = plotting_coord_static_dict['edge_buffer_size_degrees']
+    xmin_global = plotting_coord_static_dict['lon_max']
+    xmax_global = plotting_coord_static_dict['lon_min']
+    ymin_global = plotting_coord_static_dict['lat_max']
+    ymax_global = plotting_coord_static_dict['lat_min']
+
+    # This might be overkill (making patches just to extract coord limits), but I'm reusing code for now
+    for variable_key in geodesic_bin_data_dict.keys():
+        # Assuming that only variables of interest (ie not metadata, etc.) have values wich are dictionaries
+        if type(geodesic_bin_data_dict[variable_key]) != dict:
+            continue
+        for depth_key in geodesic_bin_data_dict[variable_key].keys():
+            patch_collection_pieces_dict = geodesic_bin_data_dict[variable_key][depth_key]
+            patch_list_macro = []
+            for patch_dex in range(len(patch_collection_pieces_dict['macro']['polygon_vertex_list_of_lists'])): 
+                patch_list_macro.append(patches.Polygon(patch_collection_pieces_dict['macro']['polygon_vertex_list_of_lists'][patch_dex], closed=True))
+
+            for patch in patch_list_macro: 
+                xmin_patch, ymin_patch, xmax_patch, ymax_patch = patch.get_extents().extents
+                if xmin_patch < xmin_global:
+                    xmin_global = xmin_patch
+                if xmax_patch > xmax_global:
+                    xmax_global = xmax_patch
+                if ymin_patch < ymin_global:
+                    ymin_global = ymin_patch
+                if ymax_patch > ymax_global:
+                    ymax_global = ymax_patch
+
+    xmin_global = xmin_global - edge_buffer_size_degrees if xmin_global - edge_buffer_size_degrees > plotting_coord_static_dict['lon_min'] else plotting_coord_static_dict['lon_min']
+    xmax_global = xmax_global + edge_buffer_size_degrees if xmax_global + edge_buffer_size_degrees < plotting_coord_static_dict['lon_max'] else plotting_coord_static_dict['lon_max']
+    ymin_global = ymin_global - edge_buffer_size_degrees if ymin_global - edge_buffer_size_degrees > plotting_coord_static_dict['lat_min'] else plotting_coord_static_dict['lat_min']
+    ymax_global = ymax_global + edge_buffer_size_degrees if ymax_global + edge_buffer_size_degrees < plotting_coord_static_dict['lat_max'] else plotting_coord_static_dict['lat_max']
 
 
 
-# Note: need to update to stop from defaulting to empty fields (we don't always have data at a given depth level)
-def plot_spawner(zarr_file, zoom_scale_threshold=10, variable_key="T", depth_key="00"):
+def plot_spawner(zarr_file, plotting_coord_static_dict, fig_width, fig_height, zoom_scale_threshold=10):
 
     opened_root = zarr.open(zarr_file, mode='r')
     geodesic_bin_data_dict = utils.zarr_to_dict(opened_root)
 
-    # -----
-    num_depths = len(geodesic_bin_data_dict[variable_key].keys())
-    current_depth_int = int(depth_key)
-    depth_counter = 0
-    while depth_counter < num_depths:
-        depth_counter += 1
-        print(depth_counter)
-        if current_depth_int == num_depths - 1:
-            current_depth_int = 0
-        else:
-            current_depth_int += 1
-        depth_key = f'{current_depth_int:02}'
-        if geodesic_bin_data_dict[variable_key][depth_key]['bin_data'] is not None:
-            #ax = prepare_axes()
-            #plot_fresh_axes(fig, ax, geodesic_bin_data_dict, zoom_scale_threshold, variable_key, depth_key)
-            break
-            #current_depth_int = num_depths
-    else:
-        #pdb.set_trace()
-        print("************************************")
-        print(f"No valid '{variable_key}' data, at ANY depth, in profile file: {Path(zarr_file).stem}")
-        print("************************************")
-        exit(1)
-    # -----
+    global variable_key_list_index
+    variable_key_list = [variable_key for variable_key in list(geodesic_bin_data_dict.keys()) if type(geodesic_bin_data_dict[variable_key]) == dict]
+    variable_key_list_index = 0
 
+    global depth_key_list_index
+    depth_key_list_dict = {}
+    for variable_key in variable_key_list: 
+        depth_key_list_dict[variable_key] = list(geodesic_bin_data_dict[variable_key].keys())
+        depth_key_list_dict[variable_key].sort()
+    depth_key_list_index = 0
+    
+    global xmin_global, xmax_global, ymin_global, ymax_global 
+    determine_global_axis_limits(geodesic_bin_data_dict, plotting_coord_static_dict)
 
+    global xmin_zoom, xmax_zoom, ymin_zoom, ymax_zoom
+    xmin_zoom = xmax_zoom = ymin_zoom = ymax_zoom = None
 
-    fig_width, fig_height = 14, 6
-    fig = plt.figure(figsize=(fig_width, fig_height), facecolor='lightskyblue', layout='constrained')
-
+    fig = plt.figure(figsize=(fig_width, fig_height), facecolor='lightskyblue')
+    fig.subplots_adjust(left=0.2, right=0.8, bottom=0.2, top=0.75)
+    #fig.subplots_adjust(left=0.1, right=0.9, bottom=0.3, top=0.65)
     ax = prepare_axes()
 
-    bound_keyboard_callback = partial(handle_arrows, fig, ax, geodesic_bin_data_dict, zoom_scale_threshold, variable_key, depth_key)
-
+    bound_keyboard_callback = partial(handle_keyboard_input, fig, ax, geodesic_bin_data_dict, zoom_scale_threshold, variable_key_list, depth_key_list_dict)
     fig.canvas.mpl_connect('key_press_event', bound_keyboard_callback)
-    #keyboard_cid = fig.canvas.mpl_connect('key_press_event', bound_keyboard_callback)
 
-    plot_fresh_axes(fig, ax, geodesic_bin_data_dict, zoom_scale_threshold, variable_key, depth_key)
+    redraw_axes(fig, ax, geodesic_bin_data_dict, zoom_scale_threshold, variable_key_list, depth_key_list_dict)
+
+    plt.show()
 
 
+def redraw_axes(fig, ax, geodesic_bin_data_dict, zoom_scale_threshold, variable_key_list, depth_key_list_dict):
+
+    # Vibing - clear colorbars
+    for extra_ax in list(fig.axes):
+        if extra_ax is not ax:
+            extra_ax.remove() 
+
+    # Vibing - clear annotation
+    for t in list(ax.texts):
+        if isinstance(t, mpl.text.Annotation):
+            t.remove()
+
+    # Vibingish - clear scatter plot and patch collections
+    clear_axes(ax)
 
 
-def plot_fresh_axes(fig, ax, geodesic_bin_data_dict, zoom_scale_threshold, variable_key, depth_key):
+    global xmin_global, xmax_global, ymin_global, ymax_global
+    global xmin_zoom, xmax_zoom, ymin_zoom, ymax_zoom
 
+    variable_key = variable_key_list[variable_key_list_index]
+    depth_key = depth_key_list_dict[variable_key][depth_key_list_index]
+
+    # Issue - if user changes variables, may not have data at current depth key
     patch_collection_pieces_dict = geodesic_bin_data_dict[variable_key][depth_key]
 
     cmap_face = cm.get_cmap(patch_collection_pieces_dict['cmap_face_string'])
@@ -165,55 +230,52 @@ def plot_fresh_axes(fig, ax, geodesic_bin_data_dict, zoom_scale_threshold, varia
     patch_collection_micro.set_cmap(cmap_face)
     patch_collection_micro.set_norm(norm_face)
 
-
-    dummyMegaNumber = 1e30
-
-    xmin, ymin = dummyMegaNumber, dummyMegaNumber
-    xmax, ymax = -dummyMegaNumber, -dummyMegaNumber 
-
-    for patch in patch_list_macro: 
-
-        xmin_patch, ymin_patch, xmax_patch, ymax_patch = patch.get_extents().extents
-        if xmin_patch < xmin:
-            xmin = xmin_patch
-        if xmax_patch > xmax:
-            xmax = xmax_patch
-        if ymin_patch < ymin:
-            ymin = ymin_patch
-        if ymax_patch > ymax:
-            ymax = ymax_patch
-
-    ax.set_xlim(xmin,xmax)
-    ax.set_ylim(ymin,ymax)
-    fig.add_axes(ax)
     ax.add_collection(patch_collection_macro)
+    visible_patch_mask = get_visible_patch_mask(ax, patch_list_macro)
+
+    #if xmin_zoom is None:
+    if xmin_zoom is None or np.sum(visible_patch_mask) == 0:
+        ax.set_xlim(xmin_global,xmax_global)
+        ax.set_ylim(ymin_global,ymax_global)
+    else:
+        ax.set_xlim(xmin_zoom,xmax_zoom)
+        ax.set_ylim(ymin_zoom,ymax_zoom)
 
     original_range_x = ax.get_xlim()[1] - ax.get_xlim()[0]  
     original_range_y = ax.get_ylim()[1] - ax.get_ylim()[0]  
     original_area = original_range_x * original_range_y
 
+    # Define permanent positions: [left, bottom, width, height]
+    cax_left  = fig.add_axes([0.05, 0.15, 0.02, 0.7])  # Fixed left slot
+    #ax        = fig.add_subplot(1, 1, 1, projection=ccrs.PlateCarree()) # Center map
+    cax_right = fig.add_axes([0.93, 0.15, 0.02, 0.7])  # Fixed right slot
+
+    cax_left.clear()
+    cax_right.clear()
+
     # sure, why not
     cbar_shrink = 0.5
-    cbar_pad = 0.2
+    cbar_pad = 0.1
+    #cbar_pad = 0.2
     cbar_aspect = 10
 
-    cbar = plt.colorbar(patch_collection_macro, ax=ax, shrink=cbar_shrink, pad=cbar_pad, aspect=cbar_aspect, label=rf'{variable_key} anomaly mean {units_string}'+'\n\n(no extensions shown)')
+
+    cbar = plt.colorbar(patch_collection_macro, ax=ax, shrink=cbar_shrink, pad=cbar_pad, aspect=cbar_aspect, label=rf'{variable_key} anomaly mean {units_string}'+'\n\n(no extensions shown)', cax=cax_right)
 
     cbar_min, cbar_max = find_colorbar_limits(cbar, patch_collection_pieces_dict['macro']['face_value_list'])
     cbar.ax.set_ylim(cbar_min, cbar_max)
 
     cbar_std = plt.colorbar(mpl.cm.ScalarMappable(norm=norm_edge, cmap=cmap_edge),
-             ax=ax, orientation='vertical', label=rf'{variable_key} anomaly std {units_string}', shrink=cbar_shrink, pad=cbar_pad, aspect=cbar_aspect, location='left')
+             ax=ax, orientation='vertical', label=rf'{variable_key} anomaly std {units_string}', shrink=cbar_shrink, pad=cbar_pad, aspect=cbar_aspect, cax=cax_left)
 
-    quartiles = [0.25, 0.5, 0.75, 0.95]
-    #quantiles = [0.25, 0.5, 0.75, 0.9, 0.95, 0.99]
-    quartiles_edgecolors = np.quantile(np.array(patch_collection_pieces_dict['macro']['edge_value_list']), quartiles)
+    quantiles = [0.25, 0.5, 0.75, 0.95]
+    quantiles_edgecolors = np.quantile(np.array(patch_collection_pieces_dict['macro']['edge_value_list']), quantiles)
 
-    quartiles_strings = [rf'$\downarrow${int(100 * qval)}%' for qval in quartiles]
+    quantiles_strings = [rf'$\downarrow${int(100 * qval)}%' for qval in quantiles]
 
-    for q_dex in range(len(quartiles_edgecolors)):
-        cbar_std.ax.axhline(quartiles_edgecolors[q_dex], color='white', zorder=3, linewidth=0.2)
-        cbar_std.ax.text(x=0.5, y=quartiles_edgecolors[q_dex], s=quartiles_strings[q_dex], color='black',
+    for q_dex in range(len(quantiles_edgecolors)):
+        cbar_std.ax.axhline(quantiles_edgecolors[q_dex], color='white', zorder=3, linewidth=0.2)
+        cbar_std.ax.text(x=0.5, y=quantiles_edgecolors[q_dex], s=quantiles_strings[q_dex], color='black',
              va='center', ha='center', fontsize='xx-small')
 
     # Only runs for first plot, before zooming
@@ -222,53 +284,42 @@ def plot_fresh_axes(fig, ax, geodesic_bin_data_dict, zoom_scale_threshold, varia
         ax.legend(framealpha=0, handlelength=0, handletextpad=0, fontsize="xx-small", title_fontsize="xx-small",
                   handles=custom_handles, title=f"{legend_title}")
 
-
-    # Hardcoding "globe_area" to be that of the globe, since otherwise it may be impossible to get the sub-polygons
-    # to plot (ie when only a few nearby bins are populated, the first plot will already be somewhat zoomed in, and
-    # "original_area" will be small to begin with and thus we won't get past the ratio threshold when zooming further in 
-    # before the program freaks out bc we've zoomed too far in to plot a whole bin polygon. 
     globe_range_x = 360
     globe_range_y = 180 
     globe_area = globe_range_x * globe_range_y
-
-    #pdb.set_trace()
 
     scale_factor = np.sqrt(globe_area/original_area)
 
     if scale_factor > zoom_scale_threshold: 
 
-        ax.collections[-1].remove()
+        clear_axes(ax)
 
         if plt.gca().get_legend() is not None:
             plt.gca().get_legend().remove()
 
-        if patch_collection_macro != 0:
+        ax.scatter(patch_collection_pieces_dict['profiles_lons'], patch_collection_pieces_dict['profiles_lats'], c='red', s=1, zorder=10)
+
+        visible_patch_mask = get_visible_patch_mask(ax, patch_list_macro)
+
+        if np.sum(visible_patch_mask) != 0:
             custom_handles, legend_title = make_handles_and_titles(patch_list_macro, count_array, ax)
             if custom_handles != 0:
                 ax.legend(framealpha=0, handlelength=0, handletextpad=0, fontsize="xx-small", title_fontsize="xx-small",
                           handles=custom_handles, title=f"{legend_title}")
 
-
-            ax.scatter(patch_collection_pieces_dict['profiles_lons'], patch_collection_pieces_dict['profiles_lats'], c='red', s=1, zorder=10)
             ax.add_collection(patch_collection_micro)
 
             visible_patch_mask = get_visible_patch_mask(ax, patch_list_micro)
             visible_patch_face_values_list = [face_value for mask_value, face_value in zip(visible_patch_mask, patch_collection_pieces_dict['micro']['face_value_list']) if mask_value]
 
-            cbar_min, cbar_max = find_colorbar_limits(cbar, visible_patch_face_values_list ) 
+            cbar_min, cbar_max = find_colorbar_limits(cbar, visible_patch_face_values_list)
             if np.sum(visible_patch_mask) > 1:
                 cbar.ax.set_ylim(cbar_min, cbar_max)
+        else:
+            xmin_zoom = xmax_zoom = ymin_zoom = ymax_zoom = None
 
 
-    # More hacky stuff to only remove an axes collection when the last collection added was a patch collection.
-    # Used in my hack to remove the previous patch collection, in case we zoom in and would see it underneath the sub-polygons.
-    # Note that this means the patch collection must be the last collection added to the axes (ie after calling ax.scatter(), ax.coastlines(), etc)
-    num_artists_original = len(ax.collections)
-    # !!!!!!!!!!
-    # !!!!!!!!!!
-    # !!!!!!!!!!
-
-    bound_callback = partial(scale_with_zoom, num_artists_original=num_artists_original, colorbar=cbar, globe_area=globe_area, linewidth_floor=patch_collection_pieces_dict['macro']['linewidth_floor_initial'], count_array=count_array, patch_collection_pieces_dict=patch_collection_pieces_dict, patch_collection_macro=patch_collection_macro, patch_collection_micro=patch_collection_micro, norm_face=norm_face, zoom_scale_threshold=zoom_scale_threshold, patch_list_macro=patch_list_macro, patch_list_micro=patch_list_micro,)
+    bound_callback = partial(scale_with_zoom, colorbar=cbar, globe_area=globe_area, linewidth_floor=patch_collection_pieces_dict['macro']['linewidth_floor_initial'], count_array=count_array, patch_collection_pieces_dict=patch_collection_pieces_dict, patch_collection_macro=patch_collection_macro, patch_collection_micro=patch_collection_micro, norm_face=norm_face, zoom_scale_threshold=zoom_scale_threshold, patch_list_macro=patch_list_macro, patch_list_micro=patch_list_micro,)
 
     ax.callbacks.connect('xlim_changed', bound_callback)
     ax.callbacks.connect('ylim_changed', bound_callback)
@@ -277,12 +328,12 @@ def plot_fresh_axes(fig, ax, geodesic_bin_data_dict, zoom_scale_threshold, varia
             f"\nprofile_file: {geodesic_bin_data_dict['profile_file_stem']}\n"
             f"geodesic_bin_file: {geodesic_bin_data_dict['geodesic_bin_file_stem']}\n"
             f"variable: {variable_key}\n"
-            f"depth level: {depth_key}\n"
+            f"depth level: {depth_key}/{geodesic_bin_data_dict['num_depth_levels_profile_file']}\n"
             f"num bins populated: {len(count_array)}/{geodesic_bin_data_dict['num_geodesic_bins']}\n"
             f"num profiles binned: {np.sum(count_array)}\n\n"
             )
 
-    fig.suptitle(suptitle_string)
+    fig.suptitle(suptitle_string, y=1.0, fontsize=8)
 
     caption_string = (
             "Within each polygon, face color corresponds to variable anomaly value, and edge color corresponds to geodesic bin anomaly standard deviation.  "
@@ -304,23 +355,26 @@ def plot_fresh_axes(fig, ax, geodesic_bin_data_dict, zoom_scale_threshold, varia
         xycoords='axes fraction',    # Placed relative to the axes container
         ha='center',
         va='top',
+        fontsize=5,
         annotation_clip=False
     )
+
+    ax.set_adjustable("datalim") 
+
+    fig.canvas.draw_idle()
     
-    plt.show()
 
+def scale_with_zoom(axes, colorbar, globe_area, linewidth_floor, count_array, patch_collection_pieces_dict, patch_collection_macro, patch_collection_micro, norm_face, zoom_scale_threshold, patch_list_macro, patch_list_micro):
 
+    clear_axes(axes)
 
-def scale_with_zoom(axes, num_artists_original, colorbar, globe_area, linewidth_floor, count_array, patch_collection_pieces_dict, patch_collection_macro, patch_collection_micro, norm_face, zoom_scale_threshold, patch_list_macro, patch_list_micro):
+    global xmin_zoom, xmax_zoom, ymin_zoom, ymax_zoom
 
-    # My hack to remove the previous patch collection, in case we zoom in and would see it underneath the sub-polygons.
-    # Note that this means the patch collection must be the last collection added to the axes (ie after calling ax.scatter(), ax.coastlines(), etc)
-    #if len(axes.collections) == num_artists_original:
-    if len(axes.collections) == num_artists_original + 1:
-        axes.collections[-1].remove()
-        axes.collections[-1].remove()
-    elif len(axes.collections) == num_artists_original:
-        axes.collections[-1].remove()
+    xmin_zoom = axes.get_xlim()[0]
+    xmax_zoom = axes.get_xlim()[1]
+    ymin_zoom = axes.get_ylim()[0]
+    max_zoom = axes.get_ylim()[1]
+
 
     current_range_x = axes.get_xlim()[1] - axes.get_xlim()[0]  
     current_range_y = axes.get_ylim()[1] - axes.get_ylim()[0]  
@@ -355,7 +409,6 @@ def scale_with_zoom(axes, num_artists_original, colorbar, globe_area, linewidth_
 
         # This is dummy code... adds an invisible legend... needed because of how I remove legends in order to recreate them...
         if np.sum(visible_patch_mask) != 0:
-        #if patch_collection_macro != 0:
             custom_handles, legend_title = make_handles_and_titles(patch_list_macro, count_array, axes)
             if custom_handles != 0:
                 axes.legend(framealpha=0, handlelength=0, handletextpad=0, fontsize="xx-small", title_fontsize="xx-small",
@@ -369,6 +422,9 @@ def scale_with_zoom(axes, num_artists_original, colorbar, globe_area, linewidth_
             cbar_min, cbar_max = find_colorbar_limits(colorbar, visible_patch_face_values_list)
             if np.sum(visible_patch_mask) > 1:
                 colorbar.ax.set_ylim(cbar_min, cbar_max)
+
+        else:
+            xmin_zoom = xmax_zoom = ymin_zoom = ymax_zoom = None
 
 
 
@@ -390,7 +446,6 @@ def find_colorbar_limits(colorbar, value_list):
         extend_down = True
 
     return cbar_min, cbar_max
-    #return cbar_min, cbar_max, extend_down, extend_up
 
 
 def get_visible_patch_mask(ax, patch_list):

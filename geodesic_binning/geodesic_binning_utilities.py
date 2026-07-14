@@ -62,17 +62,19 @@ def bin_around_geodesic_vertices(geodesic_file: str, profile_file: str, variable
 
     geodesic_bin_data_dict = {}
 
+    # Assuming <num_depth_levels_profile_file> is fixed for a given profile file....
+    num_depth_levels_profile_file = anomalies_global_dict[list(anomalies_global_dict.keys())[0]][prof_keys["values"]].shape[-1] 
     for variable_key in variables_of_interest.keys():
         geodesic_bin_data_dict.setdefault(variable_key, {})
-        for i_depth in range(anomalies_global_dict[list(anomalies_global_dict.keys())[0]][prof_keys["values"]].shape[-1]):
-            depth_key =  f"{i_depth:02}"
-            geodesic_bin_data_dict[variable_key].setdefault(depth_key, {})
-            print(f"{depth_key}; {variable_key}")
+        for i_depth in range(num_depth_levels_profile_file):
             valid_indices = ~np.isnan(anomalies_global_dict[variable_key][prof_keys["values"]][:,i_depth])
-
             patch_collection_pieces_dict = {}
 
             if np.sum(valid_indices) > 0:
+
+                depth_key =  f"{i_depth:02}"
+                geodesic_bin_data_dict[variable_key].setdefault(depth_key, {})
+                print(f"Valid data found for depth level: {depth_key}/{num_depth_levels_profile_file}; variable: {variable_key}")
                 
                 patch_collection_pieces_dict["bin_data"] = {}
 
@@ -107,19 +109,12 @@ def bin_around_geodesic_vertices(geodesic_file: str, profile_file: str, variable
 
                 geodesic_bin_data_dict[variable_key][depth_key] = patch_collection_pieces_dict
 
-            else:
 
-                #patch_collection_pieces_dict["bin_data"] = None
-                print('invalid data, not being saved')
-
-            #break
-
-            #geodesic_bin_data_dict[variable_key][depth_key] = patch_collection_pieces_dict
-
-        geodesic_bin_data_dict["profile_file_stem"] = Path(profile_file).stem
-        geodesic_bin_data_dict["geodesic_bin_file_stem"] = Path(geodesic_file).stem
-        geodesic_bin_data_dict["num_geodesic_bins"] = num_geodesic_bins
-        geodesic_bin_data_dict["num_subpolygons_max"] = num_subpolygons_max
+    geodesic_bin_data_dict["num_depth_levels_profile_file"] = num_depth_levels_profile_file - 1
+    geodesic_bin_data_dict["profile_file_stem"] = Path(profile_file).stem
+    geodesic_bin_data_dict["geodesic_bin_file_stem"] = Path(geodesic_file).stem
+    geodesic_bin_data_dict["num_geodesic_bins"] = num_geodesic_bins
+    geodesic_bin_data_dict["num_subpolygons_max"] = num_subpolygons_max
 
         #break
 
@@ -310,6 +305,9 @@ def determine_micro_patch_collections_pieces(patch_collection_pieces_dict : dict
 # zarr utilities (VIBING OUT)
 #--------------------------------------------------------------------------------------------------------
 #--------------------------------------------------------------------------------------------------------
+
+# Note: The code I vibecopied below is saving empy depths as attributes, which creates problems in my plotting alg.
+# So, for now, just don't save any attributes...
 
 def has_numpy_arrays(item):
     """Recursively checks if a dict or list contains any numpy arrays."""

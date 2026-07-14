@@ -30,8 +30,8 @@ variables_of_interest_dict["S"] = "psu"
 
 
 #angular_precision = 0.1
-angular_precision = 0.25
-#angular_precision = 0.5
+#angular_precision = 0.25
+angular_precision = 0.5
 
 geodesic_file_dict = {
 #    "00642": "/Users/brucel/ecco/yip/sample_data/ecco-insitu/sweet_gdrive/geodesic/00642_bin_locations.csv",
@@ -53,6 +53,8 @@ profile_file_list = [
 Good files:
 1,4,2
 
+#profile_file_index = 2 # This is the good one with just 4 bins in NW america
+
 Bad files:
 5
 
@@ -67,7 +69,6 @@ num_geodesic_bins_string = f"{num_geodesic_bins:05}"
 geodesic_file = geodesic_file_dict[num_geodesic_bins_string]
 
 
-#profile_file_index = 2
 #for profile_file_index in range(len(profile_file_list)):
 for profile_file_index in range(2,3):
     profile_file = profile_file_list[profile_file_index]
