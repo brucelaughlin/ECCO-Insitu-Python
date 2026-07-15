@@ -1,5 +1,4 @@
 import logging
-# Mute matplotlib's specific root logging system
 logging.getLogger('matplotlib').setLevel(logging.ERROR)
 
 import sys
@@ -23,6 +22,7 @@ from shapely import get_coordinates as ShapelyCoordinates
 import xarray as xr
 import zarr
 import random
+import time
 
 geodesic_dir = str(Path(__file__).parent.resolve())
 sys.path.append(geodesic_dir)
@@ -38,75 +38,65 @@ def prepare_axes():
     return ax
 
 
-def clear_axes(ax):
+def erase_axes_collections(ax):
     # Only remove scatter plots (PathCollection) and patch layers
     for coll in list(ax.collections):
         if isinstance(coll, (PathCollection, PatchCollection)):
             coll.remove()
 
-def handle_keyboard_input(fig, ax, geodesic_bin_data_dict, zoom_scale_threshold, variable_key_list, depth_key_list_dict, event):
+def handle_keyboard_input(fig, ax, cax_left, cax_right, geodesic_bin_data_dict, zoom_scale_threshold, dynamic_plot_dict, event):
 
     # Ensure the cursor is over the axes
     if event.inaxes is None:
         return
     
-    global depth_key_list_index
-    global variable_key_list_index
-    global xmin_global, xmax_global, ymin_global, ymax_global 
-    global xmin_zoom, xmax_zoom, ymin_zoom, ymax_zoom
-
     if event.key == ' ':
-        xmin_zoom = xmax_zoom = ymin_zoom = ymax_zoom = None
+        dynamic_plot_dict['xmin_zoom'] = dynamic_plot_dict['xmax_zoom'] = dynamic_plot_dict['ymin_zoom'] = dynamic_plot_dict['ymax_zoom'] = None
 
     elif event.key == 'backspace':
-        depth_key_list_index = 0
-        xmin_zoom = xmax_zoom = ymin_zoom = ymax_zoom = None
+        dynamic_plot_dict['depth_key_list_index'] = 0
+        dynamic_plot_dict['xmin_zoom'] = dynamic_plot_dict['xmax_zoom'] = dynamic_plot_dict['ymin_zoom'] = dynamic_plot_dict['ymax_zoom'] = None
 
     elif event.key == 'up':
-        if depth_key_list_index == 0:
-            depth_key_list_index = len(depth_key_list_dict[variable_key_list[variable_key_list_index]]) - 1
+        if dynamic_plot_dict['depth_key_list_index'] == 0:
+            dynamic_plot_dict['depth_key_list_index'] = len(dynamic_plot_dict['depth_key_list_dict'][dynamic_plot_dict['variable_key_list'][dynamic_plot_dict['variable_key_list_index']]]) - 1
         else:
-            depth_key_list_index -= 1
+            dynamic_plot_dict['depth_key_list_index'] -= 1
 
     elif event.key == 'down':
-        if depth_key_list_index == len(depth_key_list_dict[variable_key_list[variable_key_list_index]]) - 1:
-            depth_key_list_index = 0
+        if dynamic_plot_dict['depth_key_list_index'] == len(dynamic_plot_dict['depth_key_list_dict'][dynamic_plot_dict['variable_key_list'][dynamic_plot_dict['variable_key_list_index']]]) - 1:
+            dynamic_plot_dict['depth_key_list_index'] = 0
         else:
-            depth_key_list_index += 1
+            dynamic_plot_dict['depth_key_list_index'] += 1
 
     elif event.key == 'left':
-        if variable_key_list_index == 0:
-            variable_key_list_index = len(variable_key_list) - 1
+        if dynamic_plot_dict['variable_key_list_index'] == 0:
+            dynamic_plot_dict['variable_key_list_index'] = len(dynamic_plot_dict['variable_key_list']) - 1
         else:
-            variable_key_list_index -= 1
+            dynamic_plot_dict['variable_key_list_index'] -= 1
 
     elif event.key == 'right':
-        if variable_key_list_index == len(variable_key_list) - 1:
-            variable_key_list_index = 0
+        if dynamic_plot_dict['variable_key_list_index'] == len(dynamic_plot_dict['variable_key_list']) - 1:
+            dynamic_plot_dict['variable_key_list_index'] = 0
         else:
-            variable_key_list_index += 1
+            dynamic_plot_dict['variable_key_list_index'] += 1
 
-    # Issue - if user changes variables, may not have data at current depth key
     if event.key == 'left' or event.key == 'right':
         try:
-            dummy = depth_key_list_dict[variable_key_list[variable_key_list_index]][depth_key_list_index]
-        #except Exception:
-        except (TypeError, ValueError, KeyError, IndexError):
-        #except IndexError:
-            depth_key_list_index = 0
+            dummy = dynamic_plot_dict['depth_key_list_dict'][dynamic_plot_dict['variable_key_list'][dynamic_plot_dict['variable_key_list_index']]][dynamic_plot_dict['depth_key_list_index']]
+        except IndexError:
+            dynamic_plot_dict['depth_key_list_index'] = 0
+
+    redraw_axes(fig, ax, cax_left, cax_right, geodesic_bin_data_dict, zoom_scale_threshold, dynamic_plot_dict)
 
 
-    redraw_axes(fig, ax, geodesic_bin_data_dict, zoom_scale_threshold, variable_key_list, depth_key_list_dict)
+def determine_global_axis_limits(geodesic_bin_data_dict, plotting_coord_static_dict, dynamic_plot_dict):
 
-def determine_global_axis_limits(geodesic_bin_data_dict, plotting_coord_static_dict):
-
-    global xmin_global, xmax_global, ymin_global, ymax_global
-
-    edge_buffer_size_degrees = plotting_coord_static_dict['edge_buffer_size_degrees']
-    xmin_global = plotting_coord_static_dict['lon_max']
-    xmax_global = plotting_coord_static_dict['lon_min']
-    ymin_global = plotting_coord_static_dict['lat_max']
-    ymax_global = plotting_coord_static_dict['lat_min']
+    dynamic_plot_dict['edge_buffer_size_degrees'] = plotting_coord_static_dict['edge_buffer_size_degrees']
+    dynamic_plot_dict['xmin_global'] = plotting_coord_static_dict['lon_max']
+    dynamic_plot_dict['xmax_global'] = plotting_coord_static_dict['lon_min']
+    dynamic_plot_dict['ymin_global'] = plotting_coord_static_dict['lat_max']
+    dynamic_plot_dict['ymax_global'] = plotting_coord_static_dict['lat_min']
 
     # This might be overkill (making patches just to extract coord limits), but I'm reusing code for now
     for variable_key in geodesic_bin_data_dict.keys():
@@ -117,23 +107,35 @@ def determine_global_axis_limits(geodesic_bin_data_dict, plotting_coord_static_d
             patch_collection_pieces_dict = geodesic_bin_data_dict[variable_key][depth_key]
             patch_list_macro = []
             for patch_dex in range(len(patch_collection_pieces_dict['macro']['polygon_vertex_list_of_lists'])): 
-                patch_list_macro.append(patches.Polygon(patch_collection_pieces_dict['macro']['polygon_vertex_list_of_lists'][patch_dex], closed=True))
+                #patch_list_macro.append(patches.Polygon(patch_collection_pieces_dict['macro']['polygon_vertex_list_of_lists'][patch_dex], closed=True))
 
+                vertex_array = patch_collection_pieces_dict['macro']['polygon_vertex_list_of_lists'][patch_dex]
+
+                if np.min(vertex_array[:,0]) < dynamic_plot_dict['xmin_global']:
+                    dynamic_plot_dict['xmin_global'] = np.min(vertex_array[:,0])
+                if np.max(vertex_array[:,0]) > dynamic_plot_dict['xmax_global']:
+                    dynamic_plot_dict['xmax_global'] = np.max(vertex_array[:,0])
+                if np.min(vertex_array[:,1]) < dynamic_plot_dict['ymin_global']:
+                    dynamic_plot_dict['ymin_global'] = np.min(vertex_array[:,1])
+                if np.max(vertex_array[:,1]) > dynamic_plot_dict['ymax_global']:
+                    dynamic_plot_dict['ymax_global'] = np.max(vertex_array[:,1])
+            '''
             for patch in patch_list_macro: 
                 xmin_patch, ymin_patch, xmax_patch, ymax_patch = patch.get_extents().extents
-                if xmin_patch < xmin_global:
-                    xmin_global = xmin_patch
-                if xmax_patch > xmax_global:
-                    xmax_global = xmax_patch
-                if ymin_patch < ymin_global:
-                    ymin_global = ymin_patch
-                if ymax_patch > ymax_global:
-                    ymax_global = ymax_patch
+                if xmin_patch < dynamic_plot_dict['xmin_global']:
+                    dynamic_plot_dict['xmin_global'] = xmin_patch
+                if xmax_patch > dynamic_plot_dict['xmax_global']:
+                    dynamic_plot_dict['xmax_global'] = xmax_patch
+                if ymin_patch < dynamic_plot_dict['ymin_global']:
+                    dynamic_plot_dict['ymin_global'] = ymin_patch
+                if ymax_patch > dynamic_plot_dict['ymax_global']:
+                    dynamic_plot_dict['ymax_global'] = ymax_patch
+            '''
 
-    xmin_global = xmin_global - edge_buffer_size_degrees if xmin_global - edge_buffer_size_degrees > plotting_coord_static_dict['lon_min'] else plotting_coord_static_dict['lon_min']
-    xmax_global = xmax_global + edge_buffer_size_degrees if xmax_global + edge_buffer_size_degrees < plotting_coord_static_dict['lon_max'] else plotting_coord_static_dict['lon_max']
-    ymin_global = ymin_global - edge_buffer_size_degrees if ymin_global - edge_buffer_size_degrees > plotting_coord_static_dict['lat_min'] else plotting_coord_static_dict['lat_min']
-    ymax_global = ymax_global + edge_buffer_size_degrees if ymax_global + edge_buffer_size_degrees < plotting_coord_static_dict['lat_max'] else plotting_coord_static_dict['lat_max']
+    dynamic_plot_dict['xmin_global'] = dynamic_plot_dict['xmin_global'] - dynamic_plot_dict['edge_buffer_size_degrees'] if dynamic_plot_dict['xmin_global'] - dynamic_plot_dict['edge_buffer_size_degrees'] > plotting_coord_static_dict['lon_min'] else plotting_coord_static_dict['lon_min']
+    dynamic_plot_dict['xmax_global'] = dynamic_plot_dict['xmax_global'] + dynamic_plot_dict['edge_buffer_size_degrees'] if dynamic_plot_dict['xmax_global'] + dynamic_plot_dict['edge_buffer_size_degrees'] < plotting_coord_static_dict['lon_max'] else plotting_coord_static_dict['lon_max']
+    dynamic_plot_dict['ymin_global'] = dynamic_plot_dict['ymin_global'] - dynamic_plot_dict['edge_buffer_size_degrees'] if dynamic_plot_dict['ymin_global'] - dynamic_plot_dict['edge_buffer_size_degrees'] > plotting_coord_static_dict['lat_min'] else plotting_coord_static_dict['lat_min']
+    dynamic_plot_dict['ymax_global'] = dynamic_plot_dict['ymax_global'] + dynamic_plot_dict['edge_buffer_size_degrees'] if dynamic_plot_dict['ymax_global'] + dynamic_plot_dict['edge_buffer_size_degrees'] < plotting_coord_static_dict['lat_max'] else plotting_coord_static_dict['lat_max']
 
 
 
@@ -142,57 +144,53 @@ def plot_spawner(zarr_file, plotting_coord_static_dict, fig_width, fig_height, z
     opened_root = zarr.open(zarr_file, mode='r')
     geodesic_bin_data_dict = utils.zarr_to_dict(opened_root)
 
-    global variable_key_list_index
     variable_key_list = [variable_key for variable_key in list(geodesic_bin_data_dict.keys()) if type(geodesic_bin_data_dict[variable_key]) == dict]
+    variable_key_list.sort()
     variable_key_list_index = 0
 
-    global depth_key_list_index
+    dynamic_plot_dict = {'variable_key_list': variable_key_list, 'variable_key_list_index': variable_key_list_index}
+
     depth_key_list_dict = {}
     for variable_key in variable_key_list: 
         depth_key_list_dict[variable_key] = list(geodesic_bin_data_dict[variable_key].keys())
         depth_key_list_dict[variable_key].sort()
     depth_key_list_index = 0
-    
-    global xmin_global, xmax_global, ymin_global, ymax_global 
-    determine_global_axis_limits(geodesic_bin_data_dict, plotting_coord_static_dict)
 
-    global xmin_zoom, xmax_zoom, ymin_zoom, ymax_zoom
-    xmin_zoom = xmax_zoom = ymin_zoom = ymax_zoom = None
+    dynamic_plot_dict.update({'depth_key_list_dict': depth_key_list_dict, 'depth_key_list_index': depth_key_list_index})
+    
+    determine_global_axis_limits(geodesic_bin_data_dict, plotting_coord_static_dict, dynamic_plot_dict)
+
+    dynamic_plot_dict.update({'xmin_zoom': None, 'xmax_zoom': None, 'ymin_zoom': None, 'ymax_zoom': None})
+    dynamic_plot_dict['initial_plot_switch'] = True
 
     fig = plt.figure(figsize=(fig_width, fig_height), facecolor='lightskyblue')
     fig.subplots_adjust(left=0.2, right=0.8, bottom=0.2, top=0.75)
-    #fig.subplots_adjust(left=0.1, right=0.9, bottom=0.3, top=0.65)
     ax = prepare_axes()
+    cax_left  = fig.add_axes([0.05, 0.15, 0.02, 0.7])
+    cax_right = fig.add_axes([0.90, 0.15, 0.02, 0.7])
 
-    bound_keyboard_callback = partial(handle_keyboard_input, fig, ax, geodesic_bin_data_dict, zoom_scale_threshold, variable_key_list, depth_key_list_dict)
+    bound_keyboard_callback = partial(handle_keyboard_input, fig, ax, cax_left, cax_right, geodesic_bin_data_dict, zoom_scale_threshold, dynamic_plot_dict)
+    #bound_keyboard_callback = partial(handle_keyboard_input, fig, ax, geodesic_bin_data_dict, zoom_scale_threshold, variable_key_list, depth_key_list_dict)
     fig.canvas.mpl_connect('key_press_event', bound_keyboard_callback)
 
-    redraw_axes(fig, ax, geodesic_bin_data_dict, zoom_scale_threshold, variable_key_list, depth_key_list_dict)
+    redraw_axes(fig, ax, cax_left, cax_right, geodesic_bin_data_dict, zoom_scale_threshold, dynamic_plot_dict)
+    #redraw_axes(fig, ax, geodesic_bin_data_dict, zoom_scale_threshold, variable_key_list, depth_key_list_dict)
 
     plt.show()
 
 
-def redraw_axes(fig, ax, geodesic_bin_data_dict, zoom_scale_threshold, variable_key_list, depth_key_list_dict):
+def redraw_axes(fig, ax, cax_left, cax_right, geodesic_bin_data_dict, zoom_scale_threshold, dynamic_plot_dict):
 
-    # Vibing - clear colorbars
-    for extra_ax in list(fig.axes):
-        if extra_ax is not ax:
-            extra_ax.remove() 
-
-    # Vibing - clear annotation
+    # Clear the axes object
+    erase_axes_collections(ax)
+    cax_left.clear()
+    cax_right.clear()
     for t in list(ax.texts):
         if isinstance(t, mpl.text.Annotation):
             t.remove()
 
-    # Vibingish - clear scatter plot and patch collections
-    clear_axes(ax)
-
-
-    global xmin_global, xmax_global, ymin_global, ymax_global
-    global xmin_zoom, xmax_zoom, ymin_zoom, ymax_zoom
-
-    variable_key = variable_key_list[variable_key_list_index]
-    depth_key = depth_key_list_dict[variable_key][depth_key_list_index]
+    variable_key = dynamic_plot_dict['variable_key_list'][dynamic_plot_dict['variable_key_list_index']]
+    depth_key = dynamic_plot_dict['depth_key_list_dict'][variable_key][dynamic_plot_dict['depth_key_list_index']]
 
     # Issue - if user changes variables, may not have data at current depth key
     patch_collection_pieces_dict = geodesic_bin_data_dict[variable_key][depth_key]
@@ -233,52 +231,44 @@ def redraw_axes(fig, ax, geodesic_bin_data_dict, zoom_scale_threshold, variable_
     ax.add_collection(patch_collection_macro)
     visible_patch_mask = get_visible_patch_mask(ax, patch_list_macro)
 
-    #if xmin_zoom is None:
-    if xmin_zoom is None or np.sum(visible_patch_mask) == 0:
-        ax.set_xlim(xmin_global,xmax_global)
-        ax.set_ylim(ymin_global,ymax_global)
+    if dynamic_plot_dict['xmin_zoom'] is None or np.sum(visible_patch_mask) == 0:
+        ax.set_xlim(dynamic_plot_dict['xmin_global'],dynamic_plot_dict['xmax_global'])
+        ax.set_ylim(dynamic_plot_dict['ymin_global'],dynamic_plot_dict['ymax_global'])
+        dynamic_plot_dict['xmin_zoom'] = dynamic_plot_dict['xmax_zoom'] = dynamic_plot_dict['ymin_zoom'] = dynamic_plot_dict['ymax_zoom'] = None
+        print("--")
+        print("ping ra_reset")
+        print("--")
     else:
-        ax.set_xlim(xmin_zoom,xmax_zoom)
-        ax.set_ylim(ymin_zoom,ymax_zoom)
+        ax.set_xlim(dynamic_plot_dict['xmin_zoom'],dynamic_plot_dict['xmax_zoom'])
+        ax.set_ylim(dynamic_plot_dict['ymin_zoom'],dynamic_plot_dict['ymax_zoom'])
+        print("--")
+        print("ping ra_continue")
+        print("--")
+
+    print(f"xmin_zoom: {dynamic_plot_dict['xmin_zoom']}")
+    print(f"xmax_zoom: {dynamic_plot_dict['xmax_zoom']}")
+    print("--")
+
 
     original_range_x = ax.get_xlim()[1] - ax.get_xlim()[0]  
     original_range_y = ax.get_ylim()[1] - ax.get_ylim()[0]  
     original_area = original_range_x * original_range_y
 
-    # Define permanent positions: [left, bottom, width, height]
-    cax_left  = fig.add_axes([0.05, 0.15, 0.02, 0.7])  # Fixed left slot
-    #ax        = fig.add_subplot(1, 1, 1, projection=ccrs.PlateCarree()) # Center map
-    cax_right = fig.add_axes([0.93, 0.15, 0.02, 0.7])  # Fixed right slot
-
-    cax_left.clear()
-    cax_right.clear()
-
-    # sure, why not
-    cbar_shrink = 0.5
-    cbar_pad = 0.1
-    #cbar_pad = 0.2
-    cbar_aspect = 10
-
-
-    cbar = plt.colorbar(patch_collection_macro, ax=ax, shrink=cbar_shrink, pad=cbar_pad, aspect=cbar_aspect, label=rf'{variable_key} anomaly mean {units_string}'+'\n\n(no extensions shown)', cax=cax_right)
-
+    cbar = plt.colorbar(patch_collection_macro, ax=ax, label=rf'{variable_key} anomaly mean ({units_string})'+'\n\n(no extensions shown)', cax=cax_right)
     cbar_min, cbar_max = find_colorbar_limits(cbar, patch_collection_pieces_dict['macro']['face_value_list'])
     cbar.ax.set_ylim(cbar_min, cbar_max)
 
     cbar_std = plt.colorbar(mpl.cm.ScalarMappable(norm=norm_edge, cmap=cmap_edge),
-             ax=ax, orientation='vertical', label=rf'{variable_key} anomaly std {units_string}', shrink=cbar_shrink, pad=cbar_pad, aspect=cbar_aspect, cax=cax_left)
+             ax=ax, orientation='vertical', label=rf'{variable_key} anomaly std ({units_string})', cax=cax_left)
 
     quantiles = [0.25, 0.5, 0.75, 0.95]
     quantiles_edgecolors = np.quantile(np.array(patch_collection_pieces_dict['macro']['edge_value_list']), quantiles)
-
     quantiles_strings = [rf'$\downarrow${int(100 * qval)}%' for qval in quantiles]
-
     for q_dex in range(len(quantiles_edgecolors)):
         cbar_std.ax.axhline(quantiles_edgecolors[q_dex], color='white', zorder=3, linewidth=0.2)
         cbar_std.ax.text(x=0.5, y=quantiles_edgecolors[q_dex], s=quantiles_strings[q_dex], color='black',
              va='center', ha='center', fontsize='xx-small')
 
-    # Only runs for first plot, before zooming
     custom_handles, legend_title = make_handles_and_titles(patch_list_macro, count_array, ax)
     if custom_handles != 0:
         ax.legend(framealpha=0, handlelength=0, handletextpad=0, fontsize="xx-small", title_fontsize="xx-small",
@@ -292,7 +282,7 @@ def redraw_axes(fig, ax, geodesic_bin_data_dict, zoom_scale_threshold, variable_
 
     if scale_factor > zoom_scale_threshold: 
 
-        clear_axes(ax)
+        erase_axes_collections(ax)
 
         if plt.gca().get_legend() is not None:
             plt.gca().get_legend().remove()
@@ -316,10 +306,10 @@ def redraw_axes(fig, ax, geodesic_bin_data_dict, zoom_scale_threshold, variable_
             if np.sum(visible_patch_mask) > 1:
                 cbar.ax.set_ylim(cbar_min, cbar_max)
         else:
-            xmin_zoom = xmax_zoom = ymin_zoom = ymax_zoom = None
+            dynamic_plot_dict['xmin_zoom'] = dynamic_plot_dict['xmax_zoom'] = dynamic_plot_dict['ymin_zoom'] = dynamic_plot_dict['ymax_zoom'] = None
 
 
-    bound_callback = partial(scale_with_zoom, colorbar=cbar, globe_area=globe_area, linewidth_floor=patch_collection_pieces_dict['macro']['linewidth_floor_initial'], count_array=count_array, patch_collection_pieces_dict=patch_collection_pieces_dict, patch_collection_macro=patch_collection_macro, patch_collection_micro=patch_collection_micro, norm_face=norm_face, zoom_scale_threshold=zoom_scale_threshold, patch_list_macro=patch_list_macro, patch_list_micro=patch_list_micro,)
+    bound_callback = partial(scale_with_zoom, colorbar=cbar, globe_area=globe_area, linewidth_floor=patch_collection_pieces_dict['macro']['linewidth_floor_initial'], count_array=count_array, patch_collection_pieces_dict=patch_collection_pieces_dict, patch_collection_macro=patch_collection_macro, patch_collection_micro=patch_collection_micro, norm_face=norm_face, zoom_scale_threshold=zoom_scale_threshold, patch_list_macro=patch_list_macro, patch_list_micro=patch_list_micro, dynamic_plot_dict=dynamic_plot_dict)
 
     ax.callbacks.connect('xlim_changed', bound_callback)
     ax.callbacks.connect('ylim_changed', bound_callback)
@@ -330,17 +320,19 @@ def redraw_axes(fig, ax, geodesic_bin_data_dict, zoom_scale_threshold, variable_
             f"variable: {variable_key}\n"
             f"depth level: {depth_key}/{geodesic_bin_data_dict['num_depth_levels_profile_file']}\n"
             f"num bins populated: {len(count_array)}/{geodesic_bin_data_dict['num_geodesic_bins']}\n"
-            f"num profiles binned: {np.sum(count_array)}\n\n"
+            f"num profiles binned: {np.sum(count_array)}\n"
+            "Navigation: holding the mouse cursor over the plot, left/right keys change variable, up/down keys change depth level.\n"
+            "Spacebar resets zoom to 0, backspace resets zoom and depth to 0.  Click the magnifying glass to enable zooming.\n\n"
             )
 
     fig.suptitle(suptitle_string, y=1.0, fontsize=8)
 
     caption_string = (
-            "Within each polygon, face color corresponds to variable anomaly value, and edge color corresponds to geodesic bin anomaly standard deviation.  "
-            f"At low-moderate zoom levels, polygons represent geodesic bins, with face colors representing mean binned variable ({variable_key}) anomaly and "
-            "edge widths scaling linearly with profile count.  "
-            f"At higher zoom levels, profile locations are shown in red, and, unless they contains more than {geodesic_bin_data_dict['num_subpolygons_max']} profiles, geodesic bins "
-            "are sub-divided into smaller polygons (with random locations within the geodesic bin) whose face colors represent individual profile anomalies."
+            f"Polygon face colors represent {variable_key} anomalies (geodesic bin mean at low zoom levels, individual profile anomalies at "
+            f"higher zoom levels unless a bin contains more than {geodesic_bin_data_dict['num_subpolygons_max']} profiles).  "
+            f"Polygon edge colors represent {variable_key} anomaly standard deviation for an entire geodesic bin, regardless of zoom level.  "
+            "At low zoom levels, polygon edge widths scale linearly with the number of profiles binned at the current depth level.  "
+            "At higher zoom levels, profile locations are shown in red."
             )
 
     wrap_width = 100
@@ -348,33 +340,48 @@ def redraw_axes(fig, ax, geodesic_bin_data_dict, zoom_scale_threshold, variable_
     caption_string_wrapped_list = [textwrap.fill(paragraph, width=wrap_width) for paragraph in caption_string.split('\n')]
     caption_string_wrapped = '\n'.join(caption_string_wrapped_list)
 
-    # VIBING
     ax.annotate(
         caption_string_wrapped,
-        xy=(0.5, -0.15),             # Position relative to your data or axes
-        xycoords='axes fraction',    # Placed relative to the axes container
+        xy=(0.5, -0.10),
+        xycoords='axes fraction',
         ha='center',
         va='top',
-        fontsize=5,
+        fontsize=7,
         annotation_clip=False
     )
 
     ax.set_adjustable("datalim") 
 
     fig.canvas.draw_idle()
+
+    dynamic_plot_dict['initial_plot_switch'] = False
     
 
-def scale_with_zoom(axes, colorbar, globe_area, linewidth_floor, count_array, patch_collection_pieces_dict, patch_collection_macro, patch_collection_micro, norm_face, zoom_scale_threshold, patch_list_macro, patch_list_micro):
+def scale_with_zoom(axes, colorbar, globe_area, linewidth_floor, count_array, patch_collection_pieces_dict, patch_collection_macro, patch_collection_micro, norm_face, zoom_scale_threshold, patch_list_macro, patch_list_micro, dynamic_plot_dict):
 
-    clear_axes(axes)
+    current_time = time.time()
+    last_time = dynamic_plot_dict.get('last_zoom_time', 0)
+    
+    # Ignore callbacks firing within 100 milliseconds of each other
+    if current_time - last_time < 0.1:
+        return
+        
+    # Update the timestamp immediately to block rapid double-fires
+    dynamic_plot_dict['last_zoom_time'] = current_time
 
-    global xmin_zoom, xmax_zoom, ymin_zoom, ymax_zoom
 
-    xmin_zoom = axes.get_xlim()[0]
-    xmax_zoom = axes.get_xlim()[1]
-    ymin_zoom = axes.get_ylim()[0]
-    max_zoom = axes.get_ylim()[1]
+    erase_axes_collections(axes)
 
+    dynamic_plot_dict['xmin_zoom'] = axes.get_xlim()[0]
+    dynamic_plot_dict['xmax_zoom'] = axes.get_xlim()[1]
+    dynamic_plot_dict['ymin_zoom'] = axes.get_ylim()[0]
+    dynamic_plot_dict['max_zoom'] = axes.get_ylim()[1]
+
+    print("--")
+    print("ping swz")
+    print(f"xmin_zoom: {dynamic_plot_dict['xmin_zoom']}")
+    print(f"xmax_zoom: {dynamic_plot_dict['xmax_zoom']}")
+    print("--")
 
     current_range_x = axes.get_xlim()[1] - axes.get_xlim()[0]  
     current_range_y = axes.get_ylim()[1] - axes.get_ylim()[0]  
@@ -407,7 +414,6 @@ def scale_with_zoom(axes, colorbar, globe_area, linewidth_floor, count_array, pa
 
         visible_patch_mask = get_visible_patch_mask(axes, patch_list_macro)
 
-        # This is dummy code... adds an invisible legend... needed because of how I remove legends in order to recreate them...
         if np.sum(visible_patch_mask) != 0:
             custom_handles, legend_title = make_handles_and_titles(patch_list_macro, count_array, axes)
             if custom_handles != 0:
@@ -424,11 +430,8 @@ def scale_with_zoom(axes, colorbar, globe_area, linewidth_floor, count_array, pa
                 colorbar.ax.set_ylim(cbar_min, cbar_max)
 
         else:
-            xmin_zoom = xmax_zoom = ymin_zoom = ymax_zoom = None
+            dynamic_plot_dict['xmin_zoom'] = dynamic_plot_dict['xmax_zoom'] = dynamic_plot_dict['ymin_zoom'] = dynamic_plot_dict['ymax_zoom'] = None
 
-
-
-            
 
 def find_colorbar_limits(colorbar, value_list):
 
@@ -449,6 +452,7 @@ def find_colorbar_limits(colorbar, value_list):
 
 
 def get_visible_patch_mask(ax, patch_list):
+
     visible_patch_mask = np.zeros(len(patch_list)).astype(bool)
     for patch_dex in range(len(patch_list)):
         patch_coords = patch_list[patch_dex].get_xy()
@@ -459,6 +463,7 @@ def get_visible_patch_mask(ax, patch_list):
                 and patch_coords[coord_dex,1] < ax.get_ylim()[1]):
                     visible_patch_mask[patch_dex] = True 
                     break
+
     return visible_patch_mask
 
 

@@ -25,7 +25,7 @@ num_subpolygons_max = 100
 
 
 variables_of_interest_dict = {}
-variables_of_interest_dict["T"] = "($^\circ$C)"
+variables_of_interest_dict["T"] = "$^\circ$C"
 variables_of_interest_dict["S"] = "psu"
 
 
