@@ -31,9 +31,7 @@ import geodesic_binning_utilities_plotting as utils
 
 def plot_spawner(zarr_file, plot_initial_dict):
 
-    plot_state_dict = {'linewidth_floor': plot_initial_dict['linewidth_floor'], 'zoom_scale_threshold': plot_initial_dict['zoom_scale_threshold'], 'global_area': plot_initial_dict['global_area']}
-
-    plot_state_dict['scale_factor'] = 1
+    plot_state_dict = {'linewidth_floor': plot_initial_dict['linewidth_floor'], 'zoom_scale_threshold': plot_initial_dict['zoom_scale_threshold'], 'global_area': plot_initial_dict['global_area'], 'callback_time_threshold': plot_initial_dict['callback_time_threshold'], 'legend_loc_tuple': plot_initial_dict['legend_loc_tuple']}
 
     opened_root = zarr.open(zarr_file, mode='r')
     geodesic_bin_data_dict = zarr_to_dict(opened_root)
@@ -51,27 +49,39 @@ def plot_spawner(zarr_file, plot_initial_dict):
     depth_key_list_index = 0
 
     plot_state_dict.update({'depth_key_list_dict': depth_key_list_dict, 'depth_key_list_index': depth_key_list_index})
-    
+
     utils.set_global_axis_limits(plot_state_dict, geodesic_bin_data_dict, plot_initial_dict)
 
     fig = plt.figure(figsize=(plot_initial_dict['fig_width'], plot_initial_dict['fig_height']), facecolor=plot_initial_dict['figure_facecolor'])
     fig.subplots_adjust(left=0.2, right=0.8, bottom=0.2, top=0.75)
     ax, cax_left, cax_right = utils.prepare_axes(fig)
 
+    fig.add_axes(ax)
+
     plot_state_dict.update({'fig': fig, 'ax': ax, 'cax_left': cax_left, 'cax_right': cax_right})
+
+    # Trying to get initial axis limits calculated properly
+    plot_state_dict['fig'].canvas.draw()
+    utils.reset_global_xylims(plot_state_dict)
+
+    # Just starting with global view for now, so can set this to false by default, rather than trying to start zoomed in 
+    plot_state_dict['zoom_threshold_crossed'] = False
+
+    plot_state_dict['setup_bool'] = True
+    plot_state_dict['first_plot_bool'] = True
 
     bound_keyboard_callback = partial(utils.handle_keyboard_input, plot_state_dict, geodesic_bin_data_dict)
     fig.canvas.mpl_connect('key_press_event', bound_keyboard_callback)
+
+    plot_state_dict['last_zoom_time'] = time.time()
 
     bound_mouse_callback = partial(utils.scale_with_zoom, plot_state_dict, geodesic_bin_data_dict)
     ax.callbacks.connect('xlim_changed', bound_mouse_callback)
     ax.callbacks.connect('ylim_changed', bound_mouse_callback)
 
-
-    pdb.set_trace()
+    plot_state_dict['setup_bool'] = False
 
     utils.redraw_axes(plot_state_dict, geodesic_bin_data_dict)
 
     plt.show()
-
 

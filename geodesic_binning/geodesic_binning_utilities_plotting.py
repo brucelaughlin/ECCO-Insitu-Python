@@ -23,6 +23,7 @@ import xarray as xr
 import zarr
 import random
 import time
+import matplotlib.transforms as mtransforms
 
 geodesic_dir = str(Path(__file__).parent.resolve())
 sys.path.append(geodesic_dir)
@@ -32,6 +33,11 @@ def get_keys(plot_state_dict, geodesic_bin_data_dict):
     variable_key = plot_state_dict['variable_key_list'][plot_state_dict['variable_key_list_index']]
     depth_key = plot_state_dict['depth_key_list_dict'][variable_key][plot_state_dict['depth_key_list_index']]
     return variable_key, depth_key
+
+def get_variable_key(plot_state_dict, geodesic_bin_data_dict):
+    variable_key = plot_state_dict['variable_key_list'][plot_state_dict['variable_key_list_index']]
+    return variable_key
+
 
 
 def find_colorbar_limits(colorbar, value_list):
@@ -74,7 +80,6 @@ def make_handles_and_titles(plot_state_dict, patch_information_dict):
 
     if np.sum(visible_patch_mask) == 0:
         return 0, 0
-
 
     else:
         count_array = patch_information_dict['count_array'] 
@@ -121,7 +126,7 @@ def make_handles_and_titles(plot_state_dict, patch_information_dict):
 
         return custom_handles, legend_title
 
-def set_plot_text(plot_state_dict, geodesic_bin_data_dict):
+def set_plot_text(plot_state_dict, geodesic_bin_data_dict, patch_information_dict):
 
     variable_key, depth_key = get_keys(plot_state_dict, geodesic_bin_data_dict)
 
@@ -130,8 +135,8 @@ def set_plot_text(plot_state_dict, geodesic_bin_data_dict):
             f"geodesic_bin_file: {geodesic_bin_data_dict['geodesic_bin_file_stem']}\n"
             f"variable: {variable_key}\n"
             f"depth level: {depth_key}/{geodesic_bin_data_dict['num_depth_levels_profile_file']}\n"
-            f"num bins populated: {len(count_array)}/{geodesic_bin_data_dict['num_geodesic_bins']}\n"
-            f"num profiles binned: {np.sum(count_array)}\n"
+            f"num bins populated: {len(patch_information_dict['count_array'])}/{geodesic_bin_data_dict['num_geodesic_bins']}\n"
+            f"num profiles binned: {np.sum(patch_information_dict['count_array'])}\n"
             "Navigation: holding the mouse cursor over the plot, left/right keys change variable, up/down keys change depth level.\n"
             "Spacebar resets zoom to 0, backspace resets zoom and depth to 0.  Click the magnifying glass to enable zooming.\n\n"
             )
@@ -162,9 +167,6 @@ def set_plot_text(plot_state_dict, geodesic_bin_data_dict):
         annotation_clip=False
     )
     return None
-
-    #return suptitle_string, caption_string_wrapped
-
 
 
 def get_patch_information(plot_state_dict, geodesic_bin_data_dict):
@@ -215,7 +217,7 @@ def get_patch_information(plot_state_dict, geodesic_bin_data_dict):
     return patch_information_dict
 
 
-def establish_colorbars(plot_state_dict, geodesic_bin_data_dict, patch_collection):
+def establish_colorbars(plot_state_dict, geodesic_bin_data_dict, patch_collection, scale_string):
 
     variable_key, depth_key = get_keys(plot_state_dict, geodesic_bin_data_dict)
 
@@ -227,7 +229,7 @@ def establish_colorbars(plot_state_dict, geodesic_bin_data_dict, patch_collectio
     units_string = patch_collection_pieces_dict["units_string"]
     cmap_edge = cm.get_cmap(patch_collection_pieces_dict['cmap_edge_string'])
 
-    cbar = plt.colorbar(patch_collection, ax=plot_state_dict['ax'], label=rf'{variable_key} anomaly mean ({units_string})'+'\n\n(no extensions shown)', cax=plot_state_dict['cax_right'])
+    cbar = plt.colorbar(patch_collection, ax=plot_state_dict['ax'], label=rf'{variable_key} anomaly mean ({units_string})', cax=plot_state_dict['cax_right'])
     cbar_min, cbar_max = find_colorbar_limits(cbar, patch_collection_pieces_dict[scale_string]['face_value_list'])
     cbar.ax.set_ylim(cbar_min, cbar_max)
 
@@ -272,11 +274,9 @@ def clear_axes(plot_state_dict, data_change=False):
     return None
 
 
-def reset_zoom(plot_state_dict):
-    plot_state_dict['xmin_zoom'] = plot_state_dict['xmin_global']
-    plot_state_dict['xmax_zoom'] = plot_state_dict['xmax_global']
-    plot_state_dict['ymin_zoom'] = plot_state_dict['ymin_global']
-    plot_state_dict['ymax_zoom'] = plot_state_dict['ymax_global']
+def reset_zoom_to_global(plot_state_dict):
+    plot_state_dict['ax'].set_xlim(plot_state_dict['xmin_global'],plot_state_dict['xmax_global'])
+    plot_state_dict['ax'].set_ylim(plot_state_dict['ymin_global'],plot_state_dict['ymax_global'])
     return None
 
 
@@ -284,68 +284,91 @@ def set_xylims(plot_state_dict):
     plot_state_dict['ax'].set_xlim(plot_state_dict['xmin_zoom'],plot_state_dict['xmax_zoom'])
     plot_state_dict['ax'].set_ylim(plot_state_dict['ymin_zoom'],plot_state_dict['ymax_zoom'])
 
-def set_scale_factor(plot_state_dict):
-    current_range_x = plot_state_dict['ax'].get_xlim()[1] - plot_state_dict['ax'].get_xlim()[0]
-    current_range_y = plot_state_dict['ax'].get_ylim()[1] - plot_state_dict['ax'].get_ylim()[0]
-    current_area = current_range_x * current_range_y
-    plot_state_dict['scale_factor'] = np.sqrt(plot_state_dict['global_area']/current_area)
+
+def set_zoom_threshold_crossed_boolean(plot_state_dict):
+
+    current_range_x = plot_state_dict['xmax_zoom'] - plot_state_dict['xmin_zoom']
+    current_range_y = plot_state_dict['ymax_zoom'] - plot_state_dict['ymin_zoom']
+    current_pseudo_area = current_range_x * current_range_y
+    scale_factor = np.sqrt(plot_state_dict['global_area']/current_pseudo_area)
+
+    if scale_factor > plot_state_dict['zoom_scale_threshold']:
+        plot_state_dict['zoom_threshold_crossed'] = True
+    else:
+        plot_state_dict['zoom_threshold_crossed'] = False
     return None
+
 
 def set_xy_minmax_zooms(plot_state_dict):
     plot_state_dict['xmin_zoom'] = plot_state_dict['ax'].get_xlim()[0]
     plot_state_dict['xmax_zoom'] = plot_state_dict['ax'].get_xlim()[1]
     plot_state_dict['ymin_zoom'] = plot_state_dict['ax'].get_ylim()[0]
-    plot_state_dict['max_zoom'] = plot_state_dict['ax'].get_ylim()[1]
+    plot_state_dict['ymax_zoom'] = plot_state_dict['ax'].get_ylim()[1]
+    return None
+
+def reset_global_xylims(plot_state_dict):
+    plot_state_dict['xmin_global'] = plot_state_dict['xmin_zoom'] = plot_state_dict['ax'].get_xlim()[0]
+    plot_state_dict['xmax_global'] = plot_state_dict['xmax_zoom'] = plot_state_dict['ax'].get_xlim()[1]
+    plot_state_dict['ymin_global'] = plot_state_dict['ymin_zoom'] = plot_state_dict['ax'].get_ylim()[0]
+    plot_state_dict['ymax_global'] = plot_state_dict['ymax_zoom'] = plot_state_dict['ax'].get_ylim()[1]
     return None
 
 
-
 def handle_keyboard_input(plot_state_dict, geodesic_bin_data_dict, event):
+
+    if plot_state_dict['setup_bool']:
+        return
 
     # Ensure the cursor is over the axes
     if event.inaxes is None:
         return
 
-    if event.key == ' ':
-        reset_zoom(plot_state_dict)
+    if event.key == '9':
+        reset_zoom_to_global(plot_state_dict)
+        set_xy_minmax_zooms(plot_state_dict)
 
-    elif event.key == 'backspace':
+    elif event.key == '0':
         plot_state_dict['depth_key_list_index'] = 0
-        reset_zoom(plot_state_dict)
+        reset_zoom_to_global(plot_state_dict)
+        set_xy_minmax_zooms(plot_state_dict)
 
-    elif event.key == 'up':
+    elif event.key == '1':
         variable_key, depth_key = get_keys(plot_state_dict, geodesic_bin_data_dict)
         if plot_state_dict['depth_key_list_index'] == 0:
             plot_state_dict['depth_key_list_index'] = len(plot_state_dict['depth_key_list_dict'][variable_key]) - 1
         else:
             plot_state_dict['depth_key_list_index'] -= 1
 
-    elif event.key == 'down':
+    elif event.key == '2':
         variable_key, depth_key = get_keys(plot_state_dict, geodesic_bin_data_dict)
         if plot_state_dict['depth_key_list_index'] == len(plot_state_dict['depth_key_list_dict'][variable_key]) - 1:
             plot_state_dict['depth_key_list_index'] = 0
         else:
             plot_state_dict['depth_key_list_index'] += 1
 
-    elif event.key == 'left':
-        reset_zoom(plot_state_dict)
+    elif event.key == '3':
         if plot_state_dict['variable_key_list_index'] == 0:
             plot_state_dict['variable_key_list_index'] = len(plot_state_dict['variable_key_list']) - 1
         else:
             plot_state_dict['variable_key_list_index'] -= 1
 
-    elif event.key == 'right':
-        reset_zoom(plot_state_dict)
+    elif event.key == '4':
         if plot_state_dict['variable_key_list_index'] == len(plot_state_dict['variable_key_list']) - 1:
             plot_state_dict['variable_key_list_index'] = 0
         else:
             plot_state_dict['variable_key_list_index'] += 1
 
-    if event.key == 'left' or event.key == 'right':
-        try:
-            variable_key, depth_key = get_keys(plot_state_dict, geodesic_bin_data_dict)
-        except IndexError:
-            plot_state_dict['depth_key_list_index'] = 0
+    if event.key == '3' or event.key == '4':
+        while True:
+            try:
+                variable_key, depth_key = get_keys(plot_state_dict, geodesic_bin_data_dict)
+                break
+            except IndexError:
+                print(f"No '{get_variable_key(plot_state_dict, geodesic_bin_data_dict)}' data at depth level {plot_state_dict['depth_key_list_index']}; checking one level up")
+                if plot_state_dict['depth_key_list_index'] == 0:
+                    plot_state_dict['depth_key_list_index'] = len(plot_state_dict['depth_key_list_dict'][variable_key]) - 1
+                else:
+                    plot_state_dict['depth_key_list_index'] -= 1
 
     redraw_axes(plot_state_dict, geodesic_bin_data_dict)
     return None
@@ -354,135 +377,98 @@ def handle_keyboard_input(plot_state_dict, geodesic_bin_data_dict, event):
 def set_global_axis_limits(plot_state_dict, geodesic_bin_data_dict, plotting_initial_dict):
 
     plot_state_dict['edge_buffer_size_degrees'] = plotting_initial_dict['edge_buffer_size_degrees']
-    plot_state_dict['xmin_zoom'] = plot_state_dict['xmin_global'] = plotting_initial_dict['lon_max']
-    plot_state_dict['xmax_zoom'] = plot_state_dict['xmax_global'] = plotting_initial_dict['lon_min']
-    plot_state_dict['ymin_zoom'] = plot_state_dict['ymin_global'] = plotting_initial_dict['lat_max']
-    plot_state_dict['ymax_zoom'] = plot_state_dict['ymax_global'] = plotting_initial_dict['lat_min']
+    plot_state_dict['xmin_global'] = plotting_initial_dict['lon_max']
+    plot_state_dict['xmax_global'] = plotting_initial_dict['lon_min']
+    plot_state_dict['ymin_global'] = plotting_initial_dict['lat_max']
+    plot_state_dict['ymax_global'] = plotting_initial_dict['lat_min']
 
-    for variable_key in geodesic_bin_data_dict.keys():
-        if type(geodesic_bin_data_dict[variable_key]) != dict:
-            continue
-
-        for depth_key in geodesic_bin_data_dict[variable_key].keys():
-            patch_collection_pieces_dict = geodesic_bin_data_dict[variable_key][depth_key]
-            patch_list_macro = []
-
-            for patch_dex in range(len(patch_collection_pieces_dict['macro']['polygon_vertex_list_of_lists'])): 
-                vertex_array = patch_collection_pieces_dict['macro']['polygon_vertex_list_of_lists'][patch_dex]
-                if np.min(vertex_array[:,0]) < plot_state_dict['xmin_global']:
-                    plot_state_dict['xmin_global'] = np.min(vertex_array[:,0])
-                if np.max(vertex_array[:,0]) > plot_state_dict['xmax_global']:
-                    plot_state_dict['xmax_global'] = np.max(vertex_array[:,0])
-                if np.min(vertex_array[:,1]) < plot_state_dict['ymin_global']:
-                    plot_state_dict['ymin_global'] = np.min(vertex_array[:,1])
-                if np.max(vertex_array[:,1]) > plot_state_dict['ymax_global']:
-                    plot_state_dict['ymax_global'] = np.max(vertex_array[:,1])
-
-    plot_state_dict['xmin_global'] = plot_state_dict['xmin_global'] - plot_state_dict['edge_buffer_size_degrees'] if plot_state_dict['xmin_global'] - plot_state_dict['edge_buffer_size_degrees'] > plotting_initial_dict['lon_min'] else plotting_initial_dict['lon_min']
-    plot_state_dict['xmax_global'] = plot_state_dict['xmax_global'] + plot_state_dict['edge_buffer_size_degrees'] if plot_state_dict['xmax_global'] + plot_state_dict['edge_buffer_size_degrees'] < plotting_initial_dict['lon_max'] else plotting_initial_dict['lon_max']
-    plot_state_dict['ymin_global'] = plot_state_dict['ymin_global'] - plot_state_dict['edge_buffer_size_degrees'] if plot_state_dict['ymin_global'] - plot_state_dict['edge_buffer_size_degrees'] > plotting_initial_dict['lat_min'] else plotting_initial_dict['lat_min']
-    plot_state_dict['ymax_global'] = plot_state_dict['ymax_global'] + plot_state_dict['edge_buffer_size_degrees'] if plot_state_dict['ymax_global'] + plot_state_dict['edge_buffer_size_degrees'] < plotting_initial_dict['lat_max'] else plotting_initial_dict['lat_max']
+    plot_state_dict['xmin_zoom'] = plot_state_dict['xmin_global']
+    plot_state_dict['xmax_zoom'] = plot_state_dict['xmax_global']
+    plot_state_dict['ymin_zoom'] = plot_state_dict['ymin_global']
+    plot_state_dict['ymax_zoom'] = plot_state_dict['ymax_global']
 
     return None
-
-
 
 
 def scale_with_zoom(plot_state_dict, geodesic_bin_data_dict, event):
 
-    current_time = time.time()
-    last_time = plot_state_dict.get('last_zoom_time', 0)
-
-    # Ignore callbacks firing within 100 milliseconds of each other
-    if current_time - last_time < 0.1:
+    if plot_state_dict['setup_bool'] or plot_state_dict['first_plot_bool']:
         return
 
-    # Update the timestamp immediately to block rapid double-fires
+    # Ignore callbacks firing within <plot_state_dict['callback_time_threshold']> of each other
+    # (These aren't due to human interaction at a small enough threshold)
+    current_time = time.time()
+    if current_time - plot_state_dict['last_zoom_time'] < plot_state_dict['callback_time_threshold']:
+        return
     plot_state_dict['last_zoom_time'] = current_time
 
-    #clear_axes(plot_state_dict)
     set_xy_minmax_zooms(plot_state_dict)
-    set_scale_factor(plot_state_dict)
+
+    previously_zoomed = plot_state_dict['zoom_threshold_crossed']
+
+    set_zoom_threshold_crossed_boolean(plot_state_dict)
 
     patch_information_dict = get_patch_information(plot_state_dict, geodesic_bin_data_dict)
 
-    if plot_state_dict['scale_factor'] > plot_state_dict['zoom_scale_threshold']:
-
-        clear_axes(plot_state_dict)
-        plot_state_dict['ax'].add_collection(patch_information_dict['patch_collection_micro'])
-        visible_patch_mask = get_visible_patch_mask(plot_state_dict['ax'], patch_information_dict['patch_collection_micro'])
-
-        if np.sum(visible_patch_mask) == 0:
-            redraw_axes(plot_state_dict, geodesic_bin_data_dict)
-            return
-
-        set_xylims(plot_state_dict)
+    if plot_state_dict['zoom_threshold_crossed']:
+        if not previously_zoomed:
+            clear_axes(plot_state_dict)
+            plot_state_dict['ax'].scatter(patch_information_dict['profiles_lons'], patch_information_dict['profiles_lats'], c='red', s=1, zorder=10)
+            plot_state_dict['ax'].add_collection(patch_information_dict['patch_collection_micro'])
+        visible_patch_mask = get_visible_patch_mask(plot_state_dict['ax'], patch_information_dict['patch_list_micro'])
 
     else:
-
-        clear_axes(plot_state_dict)
-        plot_state_dict['ax'].add_collection(patch_information_dict['patch_collection_macro'])
-        visible_patch_mask = get_visible_patch_mask(plot_state_dict['ax'], patch_information_dict['patch_collection_macro'])
-
-        if np.sum(visible_patch_mask) == 0:
-            redraw_axes(plot_state_dict, geodesic_bin_data_dict)
-            return
-
-        set_xylims(plot_state_dict)
-        set_scale_factor(plot_state_dict)
-
+        if previously_zoomed:
+            clear_axes(plot_state_dict)
+            plot_state_dict['ax'].add_collection(patch_information_dict['patch_collection_macro'])
+        visible_patch_mask = get_visible_patch_mask(plot_state_dict['ax'], patch_information_dict['patch_list_macro'])
 
     if plt.gca().get_legend() is not None:
         plt.gca().get_legend().remove()
-    custom_handles, legend_title = make_handles_and_titles(plot_state_dict, patch_information_dict)
-    plot_state_dict['ax'].legend(framealpha=0, handlelength=0, handletextpad=0, fontsize="xx-small", title_fontsize="xx-small",
-              handles=custom_handles, title=f"{legend_title}")
 
+    if np.sum(visible_patch_mask) > 0:
+        custom_handles, legend_title = make_handles_and_titles(plot_state_dict, patch_information_dict)
+        plot_state_dict['ax'].legend(framealpha=0, handlelength=0, handletextpad=0, fontsize="xx-small", title_fontsize="xx-small",
+              handles=custom_handles, title=f"{legend_title}", loc=plot_state_dict['legend_loc_tuple'])
 
     return None
-
 
 
 def redraw_axes(plot_state_dict, geodesic_bin_data_dict):
 
+    if plot_state_dict['setup_bool']:
+        return
+
+    if plot_state_dict['first_plot_bool'] and not plot_state_dict['setup_bool']:
+        plot_state_dict['first_plot_bool'] = False
+
     clear_axes(plot_state_dict, data_change=True)
 
     patch_information_dict = get_patch_information(plot_state_dict, geodesic_bin_data_dict)
-
-    #pdb.set_trace()
-
     plot_state_dict['ax'].add_collection(patch_information_dict['patch_collection_macro'])
-    visible_patch_mask = get_visible_patch_mask(plot_state_dict['ax'], patch_information_dict['patch_collection_macro'])
 
-    if np.sum(visible_patch_mask) == 0:
-        reset_zoom(plot_state_dict)
+    scale_string = "macro"
+    establish_colorbars(plot_state_dict, geodesic_bin_data_dict, patch_information_dict[f'patch_collection_{scale_string}'], scale_string)
 
     set_xylims(plot_state_dict)
-    set_scale_factor(plot_state_dict)
 
-    establish_colorbars(plot_state_dict, geodesic_bin_data_dict, patch_collection_macro)
+    if plot_state_dict['zoom_threshold_crossed']:
+        clear_axes(plot_state_dict)
+        plot_state_dict['ax'].scatter(patch_information_dict['profiles_lons'], patch_information_dict['profiles_lats'], c='red', s=1, zorder=10)
+        plot_state_dict['ax'].add_collection(patch_information_dict['patch_collection_micro'])
 
     if plt.gca().get_legend() is not None:
         plt.gca().get_legend().remove()
 
     custom_handles, legend_title = make_handles_and_titles(plot_state_dict, patch_information_dict)
 
-    # This shouldn't break... don't protect, it's a bug if it does... right?
-    #if custom_handles != 0:
-    plot_state_dict['ax'].legend(framealpha=0, handlelength=0, handletextpad=0, fontsize="xx-small", title_fontsize="xx-small",
-              handles=custom_handles, title=f"{legend_title}")
+    if custom_handles != 0:
+        plot_state_dict['ax'].legend(framealpha=0, handlelength=0, handletextpad=0, fontsize="xx-small", title_fontsize="xx-small",
+              handles=custom_handles, title=f"{legend_title}", loc=plot_state_dict['legend_loc_tuple'])
 
-
-    if plot_state_dict['scale_factor'] > plot_state_dict['zoom_scale_threshold']:
-
-        clear_axes(plot_state_dict)
-        plot_state_dict['ax'].scatter(patch_information_dict['profiles_lons'], patch_information_dict['profiles_lats'], c='red', s=1, zorder=10)
-        plot_state_dict['ax'].add_collection(patch_information_dict['patch_collection_micro'])
-
-    set_plot_text(plot_state_dict, geodesic_bin_data_dict)
+    set_plot_text(plot_state_dict, geodesic_bin_data_dict, patch_information_dict)
 
     plot_state_dict['fig'].canvas.draw_idle()
 
     return None
-
 

@@ -22,6 +22,8 @@ plotting_initial_dict = {
     'zoom_scale_threshold': 10,
     'linewidth_floor': 0,
     'figure_facecolor': 'lightskyblue',
+    'callback_time_threshold': 0.01,
+    'legend_loc_tuple': (0.75, 0.85),
 }
 
 zarr_file = "/Users/brucel/ecco/yip/ECCO-Insitu-Python/geodesic_binning/plotting_data/10242_geodesic_bins/num_subpolygons_max_100/WOD_WO_2002_GLD__ncei_step_10.zarr"
