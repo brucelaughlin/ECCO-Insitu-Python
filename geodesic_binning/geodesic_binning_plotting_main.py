@@ -29,9 +29,7 @@ sys.path.append(geodesic_dir)
 from  geodesic_binning_utilities_binning import zarr_to_dict
 import geodesic_binning_utilities_plotting as utils
 
-def plot_spawner(zarr_file, plot_initial_dict):
-
-    plot_state_dict = {'linewidth_floor': plot_initial_dict['linewidth_floor'], 'zoom_scale_threshold': plot_initial_dict['zoom_scale_threshold'], 'global_area': plot_initial_dict['global_area'], 'callback_time_threshold': plot_initial_dict['callback_time_threshold'], 'legend_loc_tuple': plot_initial_dict['legend_loc_tuple']}
+def plot_spawner(zarr_file, plot_state_dict):
 
     opened_root = zarr.open(zarr_file, mode='r')
     geodesic_bin_data_dict = zarr_to_dict(opened_root)
@@ -50,9 +48,10 @@ def plot_spawner(zarr_file, plot_initial_dict):
 
     plot_state_dict.update({'depth_key_list_dict': depth_key_list_dict, 'depth_key_list_index': depth_key_list_index})
 
-    utils.set_global_axis_limits(plot_state_dict, geodesic_bin_data_dict, plot_initial_dict)
+    # Establish all colorbar information
+    utils.set_colorbar_information_dictionary(plot_state_dict, geodesic_bin_data_dict)
 
-    fig = plt.figure(figsize=(plot_initial_dict['fig_width'], plot_initial_dict['fig_height']), facecolor=plot_initial_dict['figure_facecolor'])
+    fig = plt.figure(figsize=(plot_state_dict['fig_width'], plot_state_dict['fig_height']), facecolor=plot_state_dict['figure_facecolor'])
     fig.subplots_adjust(left=0.2, right=0.8, bottom=0.2, top=0.75)
     ax, cax_left, cax_right = utils.prepare_axes(fig)
 
@@ -60,13 +59,13 @@ def plot_spawner(zarr_file, plot_initial_dict):
 
     plot_state_dict.update({'fig': fig, 'ax': ax, 'cax_left': cax_left, 'cax_right': cax_right})
 
-    # Trying to get initial axis limits calculated properly
+    # To make things easy, I'm just setting my "global" axis limits to be those produced by utils.prepare_axes(fig) above, ie
+    # from these lines: ax = plt.axes(projection=ccrs.PlateCarree()); ax.coastlines(color='black', linewidth=0.15).
+    # Note that the initial plot is thus zoomed out to make the entire world visible.
     plot_state_dict['fig'].canvas.draw()
-    utils.reset_global_xylims(plot_state_dict)
+    utils.set_global_xylims(plot_state_dict)
 
-    # Just starting with global view for now, so can set this to false by default, rather than trying to start zoomed in 
     plot_state_dict['zoom_threshold_crossed'] = False
-
     plot_state_dict['setup_bool'] = True
     plot_state_dict['first_plot_bool'] = True
 
