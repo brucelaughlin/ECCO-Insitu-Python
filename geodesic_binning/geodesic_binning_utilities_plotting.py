@@ -311,6 +311,40 @@ def set_global_xylims(plot_state_dict):
     return None
 
 
+def scale_with_zoom(plot_state_dict, geodesic_bin_data_dict, event):
+    if plot_state_dict['setup_bool'] or plot_state_dict['first_plot_bool']:
+        return
+    # Ignore callbacks firing within <callback_time_threshold> seconds of each other
+    # (This is meant to prevent our code from running during internal callback triggering, which often happens multiple times during a single figure update)
+    callback_time_threshold = 0.01
+    current_time = time.time()
+    if current_time - plot_state_dict['last_zoom_time'] < callback_time_threshold:
+        return
+    plot_state_dict['last_zoom_time'] = current_time
+    set_xy_minmax_zooms(plot_state_dict)
+    previously_zoomed = plot_state_dict['zoom_threshold_crossed']
+    set_zoom_threshold_crossed_boolean(plot_state_dict)
+    patch_information_dict = get_patch_information(plot_state_dict, geodesic_bin_data_dict)
+    if plot_state_dict['zoom_threshold_crossed']:
+        if not previously_zoomed:
+            clear_axes(plot_state_dict)
+            plot_state_dict['ax'].scatter(patch_information_dict['profiles_lons'], patch_information_dict['profiles_lats'], c='red', s=1, zorder=10)
+            plot_state_dict['ax'].add_collection(patch_information_dict['patch_collection_micro'])
+        visible_patch_mask = get_visible_patch_mask(plot_state_dict['ax'], patch_information_dict['patch_list_micro'])
+    else:
+        if previously_zoomed:
+            clear_axes(plot_state_dict)
+            plot_state_dict['ax'].add_collection(patch_information_dict['patch_collection_macro'])
+        visible_patch_mask = get_visible_patch_mask(plot_state_dict['ax'], patch_information_dict['patch_list_macro'])
+    if plt.gca().get_legend() is not None:
+        plt.gca().get_legend().remove()
+    if np.sum(visible_patch_mask) > 0:
+        custom_handles, legend_title = make_handles_and_titles(plot_state_dict, patch_information_dict)
+        plot_state_dict['ax'].legend(framealpha=0, handlelength=0, handletextpad=0, fontsize="xx-small", title_fontsize="xx-small",
+              handles=custom_handles, title=f"{legend_title}", loc=plot_state_dict['legend_loc_twotuple'])
+    return None
+
+
 def handle_keyboard_input(plot_state_dict, geodesic_bin_data_dict, event):
     if plot_state_dict['setup_bool']:
         return
@@ -360,40 +394,6 @@ def handle_keyboard_input(plot_state_dict, geodesic_bin_data_dict, event):
                 else:
                     plot_state_dict['depth_key_list_index'] -= 1
     redraw_axes(plot_state_dict, geodesic_bin_data_dict)
-    return None
-
-
-def scale_with_zoom(plot_state_dict, geodesic_bin_data_dict, event):
-    if plot_state_dict['setup_bool'] or plot_state_dict['first_plot_bool']:
-        return
-    # Ignore callbacks firing within <callback_time_threshold> seconds of each other
-    # (This is meant to prevent our code from running during internal callback triggering, which often happens multiple times during a single figure update)
-    callback_time_threshold = 0.01
-    current_time = time.time()
-    if current_time - plot_state_dict['last_zoom_time'] < callback_time_threshold:
-        return
-    plot_state_dict['last_zoom_time'] = current_time
-    set_xy_minmax_zooms(plot_state_dict)
-    previously_zoomed = plot_state_dict['zoom_threshold_crossed']
-    set_zoom_threshold_crossed_boolean(plot_state_dict)
-    patch_information_dict = get_patch_information(plot_state_dict, geodesic_bin_data_dict)
-    if plot_state_dict['zoom_threshold_crossed']:
-        if not previously_zoomed:
-            clear_axes(plot_state_dict)
-            plot_state_dict['ax'].scatter(patch_information_dict['profiles_lons'], patch_information_dict['profiles_lats'], c='red', s=1, zorder=10)
-            plot_state_dict['ax'].add_collection(patch_information_dict['patch_collection_micro'])
-        visible_patch_mask = get_visible_patch_mask(plot_state_dict['ax'], patch_information_dict['patch_list_micro'])
-    else:
-        if previously_zoomed:
-            clear_axes(plot_state_dict)
-            plot_state_dict['ax'].add_collection(patch_information_dict['patch_collection_macro'])
-        visible_patch_mask = get_visible_patch_mask(plot_state_dict['ax'], patch_information_dict['patch_list_macro'])
-    if plt.gca().get_legend() is not None:
-        plt.gca().get_legend().remove()
-    if np.sum(visible_patch_mask) > 0:
-        custom_handles, legend_title = make_handles_and_titles(plot_state_dict, patch_information_dict)
-        plot_state_dict['ax'].legend(framealpha=0, handlelength=0, handletextpad=0, fontsize="xx-small", title_fontsize="xx-small",
-              handles=custom_handles, title=f"{legend_title}", loc=plot_state_dict['legend_loc_twotuple'])
     return None
 
 
