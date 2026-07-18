@@ -24,8 +24,15 @@ import zarr
 import random
 import time
 
-geodesic_dir = str(Path(__file__).parent.resolve())
-sys.path.append(geodesic_dir)
+#geodesic_dir = str(Path(__file__).parent.parent.resolve())
+#sys.path.append(geodesic_dir)
+
+binning_dir = str(Path(__file__).parent.parent.resolve() / "binning")
+sys.path.append(binning_dir)
+
+plotting_dir = str(Path(__file__).parent.parent.resolve() / "plotting")
+sys.path.append(plotting_dir)
+
 from  geodesic_binning_utilities_binning import zarr_to_dict
 import geodesic_binning_utilities_plotting as utils
 

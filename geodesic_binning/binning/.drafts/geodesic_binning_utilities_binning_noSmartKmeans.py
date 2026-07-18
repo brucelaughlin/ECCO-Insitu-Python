@@ -19,8 +19,9 @@ from shapely.geometry import Polygon as ShapelyPolygon
 from shapely.geometry import Point
 from shapely import get_coordinates as ShapelyCoordinates
 from sklearn.cluster import KMeans
+import time
 
-base_dir = str(Path(__file__).parent.parent.resolve())
+base_dir = str(Path(__file__).parent.parent.parent.resolve())
 sys.path.append(base_dir)
 from tools import sph2cart
 
@@ -39,7 +40,18 @@ def bin_around_geodesic_vertices(geodesic_file: str, profile_file: str, variable
     profiles_lats = profiles_ds['prof_lat'].data
     profiles_lons = np.where(profiles_lons > 180, profiles_lons - 360, profiles_lons)
     profiles_coordinates_cartesian_tuple = sph2cart(np.radians(profiles_lons), np.radians(profiles_lats), 1)
-    distance, nearest_bin_numbers_profiles = tree.query(np.stack(profiles_coordinates_cartesian_tuple, axis=-1))
+
+    # Surely there's a pythonic way to do this
+
+    profiles_coordinates_cartesian_tuple = filter_tuple_of_1D_arrays_for_nans(profiles_coordinates_cartesian_tuple)
+
+    try:
+        distance, nearest_bin_numbers_profiles = tree.query(np.stack(profiles_coordinates_cartesian_tuple, axis=-1))
+    except Exception:
+        print("tree.query failed ")
+        pdb.set_trace()
+
+    num_bins_expected = len(np.unique(nearest_bin_numbers_profiles))
 
     artificial_lons = np.arange(-180,180,angular_precision)
     artificial_lats = np.arange(-90,90,angular_precision)
@@ -62,21 +74,41 @@ def bin_around_geodesic_vertices(geodesic_file: str, profile_file: str, variable
 
     geodesic_bin_data_dict = {}
 
+
+    print()
+    print(f"     angular_precision: {angular_precision}") 
+    print(f"     num_geodesic_bins: {num_geodesic_bins}")
+    print(f"   num_subpolygons_max: {num_subpolygons_max}")
+    print(f"num_samples_for_kmeans: {num_samples_for_kmeans}\n")
+
+
     # Assuming <num_depth_levels_profile_file> is fixed for a given profile file....
     num_depth_levels_profile_file = anomalies_global_dict[list(anomalies_global_dict.keys())[0]][prof_keys["values"]].shape[-1] 
-    for variable_key in variables_of_interest.keys():
+    #for variable_key in variables_of_interest.keys():
+    #for variable_key in list(variables_of_interest.keys())[1]:
+    for variable_key in list(variables_of_interest.keys())[0]:
         geodesic_bin_data_dict.setdefault(variable_key, {})
+
+        num_valid_depths = 0
+
         for i_depth in range(num_depth_levels_profile_file):
             valid_indices = ~np.isnan(anomalies_global_dict[variable_key][prof_keys["values"]][:,i_depth])
             patch_collection_pieces_dict = {}
 
             if np.sum(valid_indices) > 0:
 
+                time_marker = time.time()
+
+                num_valid_depths += 1
+                #print(f"variable: {variable_key}; depth level {i_depth+1:03}/{num_depth_levels_profile_file:03}; any valid indices: yes")
+
                 depth_key =  f"{i_depth:02}"
                 geodesic_bin_data_dict[variable_key].setdefault(depth_key, {})
-                print(f"Valid data found for depth level: {depth_key}/{num_depth_levels_profile_file}; variable: {variable_key}")
-                
                 patch_collection_pieces_dict["bin_data"] = {}
+
+
+                prof_count = 0 
+
 
                 for index, value in zip(anomalies_global_dict[variable_key][prof_keys["bin_indices"]][valid_indices], anomalies_global_dict[variable_key][prof_keys["values"]][:,i_depth][valid_indices]):
                     index_print = f"{index:0{num_digits}}"
@@ -84,7 +116,10 @@ def bin_around_geodesic_vertices(geodesic_file: str, profile_file: str, variable
                     patch_collection_pieces_dict["bin_data"][index_print].setdefault("values", [])
                     patch_collection_pieces_dict["bin_data"][index_print]["values"].append(float(value))
 
+
                 for index in patch_collection_pieces_dict["bin_data"].keys():
+
+                    prof_count += len(patch_collection_pieces_dict["bin_data"][index]["values"])
 
                     patch_collection_pieces_dict["bin_data"][index]["count"] = len(patch_collection_pieces_dict["bin_data"][index]["values"])
                     patch_collection_pieces_dict["bin_data"][index]["mean"] = np.mean(patch_collection_pieces_dict["bin_data"][index]["values"])
@@ -109,6 +144,12 @@ def bin_around_geodesic_vertices(geodesic_file: str, profile_file: str, variable
 
                 geodesic_bin_data_dict[variable_key][depth_key] = patch_collection_pieces_dict
 
+                print(f"variable: {variable_key}; depth level {i_depth+1:03}/{num_depth_levels_profile_file:03}; profile count: {prof_count}; time (seconds): {(time.time() - time_marker):06.2f}")
+
+#            else:
+#                print(f"variable: {variable_key}; depth level {i_depth+1:03}/{num_depth_levels_profile_file:03}; any valid indices: NO")
+
+        print(f"variable: {variable_key}; num depths with invalid data: {num_depth_levels_profile_file - num_valid_depths:03}/{num_depth_levels_profile_file:03}; num depths with valid data: {num_valid_depths:03}/{num_depth_levels_profile_file:03}")
 
     geodesic_bin_data_dict["num_depth_levels_profile_file"] = num_depth_levels_profile_file - 1
     geodesic_bin_data_dict["profile_file_stem"] = Path(profile_file).stem
@@ -116,9 +157,20 @@ def bin_around_geodesic_vertices(geodesic_file: str, profile_file: str, variable
     geodesic_bin_data_dict["num_geodesic_bins"] = num_geodesic_bins
     geodesic_bin_data_dict["num_subpolygons_max"] = num_subpolygons_max
 
-        #break
+    print("\n")
 
     return geodesic_bin_data_dict
+
+
+def filter_tuple_of_1D_arrays_for_nans(tuple_of_1D_arrays):
+    good_indices = ~np.isnan(tuple_of_1D_arrays[0])
+    for ii in range(1, len(tuple_of_1D_arrays)):
+        good_indices *= ~np.isnan(tuple_of_1D_arrays[ii])
+    new_tuple_elements_list = []
+    for ii in range(len(tuple_of_1D_arrays)):
+        new_tuple_elements_list.append(tuple_of_1D_arrays[ii][good_indices])
+    tuple_of_1D_arrays = tuple(new_tuple_elements_list)
+    return(tuple_of_1D_arrays)
 
 
 def determine_patch_collections_pieces(patch_collection_pieces_dict: dict, num_subpolygons_max: int, num_samples_for_kmeans) -> None:
@@ -173,7 +225,7 @@ def determine_patch_collections_pieces(patch_collection_pieces_dict: dict, num_s
     profiles_lats = patch_collection_pieces_dict['profiles_lats']
     profiles_lons = patch_collection_pieces_dict['profiles_lons']
 
-    print(f'debug: {num_zero_area_bins} zero-area bins encountered')
+    #print(f'debug: {num_zero_area_bins} zero-area bins encountered')
 
     individual_profile_anomalies_list_of_bin_lists = []
     patch_face_value_list = []
@@ -235,44 +287,65 @@ def determine_micro_patch_collections_pieces(patch_collection_pieces_dict : dict
     patch_edge_value_list = []
     linewidths_list = []
 
-    for patch_dex in range(len(patch_collection_pieces_dict['count_array'])):
+    num_patches = len(patch_collection_pieces_dict['count_array']) 
 
-        num_profiles = patch_collection_pieces_dict['count_array'][patch_dex]
+    start_again = True
+    attempt_count = 1
 
-        if num_profiles > num_subpolygons_max:
-            patch_polygon_vertex_list_of_lists.append(patch_collection_pieces_dict['macro']['polygon_vertex_list_of_lists'][patch_dex])
-            patch_face_value_list.append(patch_collection_pieces_dict['macro']['face_value_list'][patch_dex])
-            patch_edge_value_list.append(patch_collection_pieces_dict['macro']['edge_value_list'][patch_dex])
-            linewidths_list.append(patch_collection_pieces_dict['macro']['linewidths_unclipped_list'][patch_dex])
-        else:
-            orig_poly = ShapelyPolygon(patch_collection_pieces_dict['macro']['polygon_vertex_list_of_lists'][patch_dex])
+    while start_again:
 
-            # VIBING OUT
-            minx, miny, maxx, maxy = orig_poly.bounds
-            points = []
-            while len(points) < num_samples_for_kmeans:
-                p = Point(np.random.uniform(minx, maxx), np.random.uniform(miny, maxy))
-                if orig_poly.contains(p):
-                    points.append([p.x, p.y])
+        start_again = False
 
-            random_points_array = np.array(points)
-            kmeans = KMeans(n_clusters=num_profiles, n_init=10, random_state=42)
-            labels = kmeans.fit_predict(random_points_array)
-            for profile_index in range(num_profiles):
-                cluster_points = random_points_array[labels == profile_index]
-                #try:
-                polygon_coords = ShapelyCoordinates(ShapelyPolygon(cluster_points).convex_hull)
-                #except:
-                #    pdb.set_trace()
-                patch_polygon_vertex_list_of_lists.append(polygon_coords)
-                #patch_polygon_vertex_list_of_lists.append(patches.Polygon(polygon_coords, closed=True))
+        for patch_dex in range(num_patches):
 
-            patch_face_value_list += patch_collection_pieces_dict['individual_profile_anomalies_list_of_bin_lists'][patch_dex]
-            patch_edge_value_list += [patch_collection_pieces_dict['macro']['edge_value_list'][patch_dex]] * num_profiles
-            if num_profiles == 1:
-                linewidths_list.append(0)
+            num_profiles = patch_collection_pieces_dict['count_array'][patch_dex]
+
+            print(f"patch {patch_dex:03}/{num_patches:03}")
+            print(f"profiles in patch: {num_profiles:04}")
+
+            if num_profiles > num_subpolygons_max:
+                print("     skipping!")
+                patch_polygon_vertex_list_of_lists.append(patch_collection_pieces_dict['macro']['polygon_vertex_list_of_lists'][patch_dex])
+                patch_face_value_list.append(patch_collection_pieces_dict['macro']['face_value_list'][patch_dex])
+                patch_edge_value_list.append(patch_collection_pieces_dict['macro']['edge_value_list'][patch_dex])
+                linewidths_list.append(patch_collection_pieces_dict['macro']['linewidths_unclipped_list'][patch_dex])
             else:
-                linewidths_list += [1] * num_profiles
+                orig_poly = ShapelyPolygon(patch_collection_pieces_dict['macro']['polygon_vertex_list_of_lists'][patch_dex])
+
+                # VIBING OUT
+                minx, miny, maxx, maxy = orig_poly.bounds
+                points = []
+                while len(points) < num_samples_for_kmeans:
+                    p = Point(np.random.uniform(minx, maxx), np.random.uniform(miny, maxy))
+                    if orig_poly.contains(p):
+                        points.append([p.x, p.y])
+
+                random_points_array = np.array(points)
+                kmeans = KMeans(n_clusters=num_profiles, n_init=10, random_state=42)
+                labels = kmeans.fit_predict(random_points_array)
+                for profile_index in range(num_profiles):
+                    cluster_points = random_points_array[labels == profile_index]
+                    try:
+                        polygon_coords = ShapelyCoordinates(ShapelyPolygon(cluster_points).convex_hull)
+                        patch_polygon_vertex_list_of_lists.append(polygon_coords)
+                    except Exception:
+                        attempt_count += 1
+                        print(f"micro patch error: convex hull calculation failed for a profile, with num profiles: {num_profiles}; beginning attempt {attempt_count}")
+                        num_profiles -= 1
+                        start_again = True
+                        break
+
+                if start_again:
+                    break
+
+
+                patch_face_value_list += patch_collection_pieces_dict['individual_profile_anomalies_list_of_bin_lists'][patch_dex]
+                patch_edge_value_list += [patch_collection_pieces_dict['macro']['edge_value_list'][patch_dex]] * num_profiles
+                if num_profiles == 1:
+                    linewidths_list.append(0)
+                else:
+                    linewidths_list += [1] * num_profiles
+
 
     patch_collection_pieces_dict['micro'] = {}
     patch_collection_pieces_dict['micro']['polygon_vertex_list_of_lists'] = patch_polygon_vertex_list_of_lists 

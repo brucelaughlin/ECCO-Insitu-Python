@@ -40,9 +40,8 @@ def get_variable_key(plot_state_dict, geodesic_bin_data_dict):
     return variable_key
 
 
-def find_colorbar_limits(colorbar, value_list):
-    cbar_min = np.min(value_list)
-    cbar_max = np.max(value_list)
+def find_colorbar_limits(colorbar, value_min_max_twotuple):
+    cbar_min, cbar_max = value_min_max_twotuple
     extend_up = False
     extend_down = False
     if cbar_max > colorbar.norm.vmax:
@@ -119,8 +118,8 @@ def set_plot_text(plot_state_dict, geodesic_bin_data_dict, patch_information_dic
             f"depth level: {depth_key}/{geodesic_bin_data_dict['num_depth_levels_profile_file']}\n"
             f"num bins populated: {len(patch_information_dict['count_array'])}/{geodesic_bin_data_dict['num_geodesic_bins']}\n"
             f"num profiles binned: {np.sum(patch_information_dict['count_array'])}\n"
-            "Navigation: holding the mouse cursor over the plot, left/right keys change variable, up/down keys change depth level.\n"
-            "Spacebar resets zoom to 0, backspace resets zoom and depth to 0.  Click the magnifying glass to enable zooming.\n\n"
+            "Navigation: with the mouse cursor over the figure, 1/2 keys change depth level, 3/4 keys change variable.\n"
+            "9 key resets zoom, 0 key resets both zoom and depth.  Click the magnifying glass to enable zooming (click and drag).\n\n"
             )
     caption_string = (
             f"Polygon face colors represent {variable_key} anomalies (geodesic bin mean at low zoom levels, individual profile anomalies at "
@@ -198,28 +197,25 @@ def set_colorbar_information_dictionary(plot_state_dict, geodesic_bin_data_dict)
     for variable_key in plot_state_dict['variable_key_list']:
         polygon_two_cbar_dict = copy.deepcopy(plot_state_dict['polygon_two_cbar_dict_template'])
         for polygon_component_string, cbar_dict in polygon_two_cbar_dict.items():
-            first_loop_per_component_switch = True
             value_min, value_max = 1e36, -1e36
             value_list_universal = []
             for depth_key in plot_state_dict['depth_key_list_dict'][variable_key]:
                 patch_collection_pieces_dict = geodesic_bin_data_dict[variable_key][depth_key]
-                if first_loop_per_component_switch:
-                    cbar_dict['cbar_params']['units_string'] = patch_collection_pieces_dict["units_string"]
-                    # ^^^This allows for different units between the colorbars in a figure, though with mean and std they are the same.
-                    first_loop_per_component_switch = False
                 value_list = patch_collection_pieces_dict['macro'][f'{polygon_component_string}_value_list']
                 if value_min > np.min(value_list): value_min = np.min(value_list)
                 if value_max < np.max(value_list): value_max = np.max(value_list)
                 value_list_universal += value_list
-            cbar_dict['limits'] = {}
-            cbar_dict['limits']['value_min'] = value_min
-            cbar_dict['limits']['value_max'] = value_max
+            cbar_dict['value_min_max_twotuple'] = (value_min, value_max)
             cbar_dict['quantiles'] = np.quantile(np.array(value_list_universal), plot_state_dict['quantiles_fractions'])
             if cbar_dict['use_centered_norm']:
                 norm = mcolors.CenteredNorm(vcenter=0)
+                norm.autoscale(value_list_universal)
             else:
                 norm = mcolors.Normalize(vmin=value_min, vmax=value_max)
             cbar_dict['norm'] = norm
+
+            cbar_dict['cbar_params']['units_string'] = patch_collection_pieces_dict["units_string"]
+            # ^^^This allows for the two colorbars to have different units, though for mean and std they are the same.
         plot_state_dict[f'polygon_two_cbar_dict_{variable_key}'] = polygon_two_cbar_dict
         plot_state_dict['change_variable_bool'] = True
 
@@ -231,10 +227,12 @@ def establish_colorbars(plot_state_dict, geodesic_bin_data_dict):
         norm = cbar_dict['norm']
         units_string = cbar_dict['cbar_params']['units_string']
         statistic_string = cbar_dict['statistic_string']
-        cbar_side_string = cbar_dict['cbar_params']['side']
+        cbar_side_string = cbar_dict['cbar_params']['side_string']
         cmap = cm.get_cmap(cbar_dict['cbar_params']['cmap_string'])
         cbar = plt.colorbar(mpl.cm.ScalarMappable(norm=norm, cmap=cmap),
                  ax=plot_state_dict['ax'], orientation='vertical', label=rf'{variable_key} {statistic_string} ({units_string})', cax=plot_state_dict[f'cax_{cbar_side_string}'])
+        cbar_min, cbar_max = find_colorbar_limits(cbar, cbar_dict['value_min_max_twotuple'])
+        cbar.ax.set_ylim(cbar_min, cbar_max)
         if not cbar_dict['use_centered_norm']:
             quantiles = cbar_dict['quantiles']
             quantiles_strings = plot_state_dict['quantiles_strings']
@@ -273,23 +271,27 @@ def clear_axes(plot_state_dict, data_change=False):
 def reset_zoom_to_global(plot_state_dict):
     plot_state_dict['ax'].set_xlim(plot_state_dict['xmin_global'],plot_state_dict['xmax_global'])
     plot_state_dict['ax'].set_ylim(plot_state_dict['ymin_global'],plot_state_dict['ymax_global'])
+    plot_state_dict['fig'].canvas.draw()
     return None
 
 
 def set_xylims(plot_state_dict):
     plot_state_dict['ax'].set_xlim(plot_state_dict['xmin_zoom'],plot_state_dict['xmax_zoom'])
     plot_state_dict['ax'].set_ylim(plot_state_dict['ymin_zoom'],plot_state_dict['ymax_zoom'])
+    plot_state_dict['fig'].canvas.draw()
 
 
 def set_zoom_threshold_crossed_boolean(plot_state_dict):
     current_range_x = plot_state_dict['xmax_zoom'] - plot_state_dict['xmin_zoom']
     current_range_y = plot_state_dict['ymax_zoom'] - plot_state_dict['ymin_zoom']
     current_pseudo_area = current_range_x * current_range_y
+    #print(f"current_pseudo_area: {current_pseudo_area}")
     scale_factor = np.sqrt(plot_state_dict['global_pseudo_area']/current_pseudo_area)
     if scale_factor > plot_state_dict['zoom_scale_threshold']:
         plot_state_dict['zoom_threshold_crossed'] = True
     else:
         plot_state_dict['zoom_threshold_crossed'] = False
+    #print(f"scale factor: {scale_factor} / {plot_state_dict['zoom_scale_threshold']}\n")
     return None
 
 
@@ -316,11 +318,19 @@ def scale_with_zoom(plot_state_dict, geodesic_bin_data_dict, event):
         return
     # Ignore callbacks firing within <callback_time_threshold> seconds of each other
     # (This is meant to prevent our code from running during internal callback triggering, which often happens multiple times during a single figure update)
+    #callback_time_threshold = 0.1
     callback_time_threshold = 0.01
     current_time = time.time()
     if current_time - plot_state_dict['last_zoom_time'] < callback_time_threshold:
         return
     plot_state_dict['last_zoom_time'] = current_time
+
+    toolbar = plot_state_dict['ax'].figure.canvas.toolbar
+    # 2. Skip logic entirely if the user is currently panning
+    if toolbar is not None and toolbar.mode == "pan/zoom":
+        return  # Do nothing while panning
+
+
     set_xy_minmax_zooms(plot_state_dict)
     previously_zoomed = plot_state_dict['zoom_threshold_crossed']
     set_zoom_threshold_crossed_boolean(plot_state_dict)
