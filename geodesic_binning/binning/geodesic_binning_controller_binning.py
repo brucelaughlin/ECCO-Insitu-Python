@@ -96,22 +96,21 @@ profile_file_list_unproven = [
 profile_file_list = profile_file_list_total
 ############################################
 
-print()
 for profile_file_index in range(len(profile_file_list)):
     profile_file = profile_file_list[profile_file_index]
     print(f"File: {profile_file}")
     save_dir = output_dir / f"{num_samples_for_kmeans_per_profile}_kmeans_samples_per_profile/{num_geodesic_bins_string}_geodesic_bins" / f"num_subpolygons_max_{num_subpolygons_max}" 
     Path(save_dir).mkdir(parents=True, exist_ok=True)
     try:
+        print(f"ncei file: {profile_file}")
         geodesic_bin_data_dict = utils.bin_around_geodesic_vertices(geodesic_file, profile_file, variables_of_interest_dict, angular_precision, num_geodesic_bins, num_subpolygons_max, num_samples_for_kmeans_per_profile)
     except Exception as e:
-        print(f"binning controller failed for ncei file: {profile_file}")
-        print(f"Error message: {e}")
-        print("Continuing to next file")
+        #print(f"binning controller failed for ncei file: {profile_file}")
+        #print(f"Error message: {e}")
+        #print("Continuing to next file")
         print(f"binning controller failed for ncei file: {profile_file}", file=sys.stderr)
         print(f"Error message: {e}", file=sys.stderr)
-        print("Continuing to next file", file=sys.stderr)
-        print()
+        print("Continuing to next file\n", file=sys.stderr)
         continue
 
     save_file_zarr = save_dir / f"{geodesic_bin_data_dict['profile_file_stem']}.zarr"
@@ -119,7 +118,6 @@ for profile_file_index in range(len(profile_file_list)):
     root = zarr.group(store=store, overwrite=True)
     utils.dict_to_zarr(geodesic_bin_data_dict, root)
     print(f"output_file: {save_file_zarr}\n")
-print()
 
 
 

@@ -281,103 +281,97 @@ def determine_micro_patch_collections_pieces(patch_collection_pieces_dict : dict
 
     num_patches = len(patch_collection_pieces_dict['count_array']) 
 
-    start_again = True
-    attempt_count = 1
+    #start_again = True
+    #attempt_count = 1
+    #subtract_from_num_profiles = {}
 
-    subtract_from_num_profiles = {}
+#while start_again:
 
-    while start_again:
+    patch_polygon_vertex_list_of_lists = []
+    patch_face_value_list = []
+    patch_edge_value_list = []
+    linewidths_list = []
 
-        patch_polygon_vertex_list_of_lists = []
-        patch_face_value_list = []
-        patch_edge_value_list = []
-        linewidths_list = []
+    start_again = False
 
-        start_again = False
+    for patch_dex in range(num_patches):
 
-        for patch_dex in range(num_patches):
+        #subtract_from_num_profiles.setdefault(str(patch_dex), 0) 
 
-            subtract_from_num_profiles.setdefault(str(patch_dex), 0) 
+        num_profiles = patch_collection_pieces_dict['count_array'][patch_dex]
 
-            num_profiles = patch_collection_pieces_dict['count_array'][patch_dex]
+        if num_profiles > num_subpolygons_max:
+            patch_polygon_vertex_list_of_lists.append(patch_collection_pieces_dict['macro']['polygon_vertex_list_of_lists'][patch_dex])
+            patch_face_value_list.append(patch_collection_pieces_dict['macro']['face_value_list'][patch_dex])
+            patch_edge_value_list.append(patch_collection_pieces_dict['macro']['edge_value_list'][patch_dex])
+            linewidths_list.append(patch_collection_pieces_dict['macro']['linewidths_unclipped_list'][patch_dex])
 
-            if num_profiles > num_subpolygons_max:
-                #print("     skipping!")
+        else:
+            orig_poly = ShapelyPolygon(patch_collection_pieces_dict['macro']['polygon_vertex_list_of_lists'][patch_dex])
+
+            # VIBING OUT
+            minx, miny, maxx, maxy = orig_poly.bounds
+            points = []
+        
+            num_samples_for_kmeans = num_profiles * num_samples_for_kmeans_per_profile
+
+            while len(points) < num_samples_for_kmeans_per_profile:
+                p = Point(np.random.uniform(minx, maxx), np.random.uniform(miny, maxy))
+                if orig_poly.contains(p):
+                    points.append([p.x, p.y])
+
+            ## safety modification
+            #num_profiles -= subtract_from_num_profiles[str(patch_dex)]
+
+            random_points_array = np.array(points)
+            kmeans = KMeans(n_clusters=num_profiles, n_init=10, random_state=42)
+                
+            try:
+                labels = kmeans.fit_predict(random_points_array)
+            except Exception as e:
+                print(f"\tkmeans error: {e}", file=sys.stderr)
+                print("\tLikely subtracted too many profiles; just using macro patch", file=sys.stderr)
                 patch_polygon_vertex_list_of_lists.append(patch_collection_pieces_dict['macro']['polygon_vertex_list_of_lists'][patch_dex])
                 patch_face_value_list.append(patch_collection_pieces_dict['macro']['face_value_list'][patch_dex])
                 patch_edge_value_list.append(patch_collection_pieces_dict['macro']['edge_value_list'][patch_dex])
                 linewidths_list.append(patch_collection_pieces_dict['macro']['linewidths_unclipped_list'][patch_dex])
 
-            else:
-
-                orig_poly = ShapelyPolygon(patch_collection_pieces_dict['macro']['polygon_vertex_list_of_lists'][patch_dex])
-
-                # VIBING OUT
-                minx, miny, maxx, maxy = orig_poly.bounds
-                points = []
-            
-                num_samples_for_kmeans = num_profiles * num_samples_for_kmeans_per_profile
-
-                while len(points) < num_samples_for_kmeans_per_profile:
-                    p = Point(np.random.uniform(minx, maxx), np.random.uniform(miny, maxy))
-                    if orig_poly.contains(p):
-                        points.append([p.x, p.y])
-
-                # safety modification
-                num_profiles -= subtract_from_num_profiles[str(patch_dex)]
-
-                random_points_array = np.array(points)
-                kmeans = KMeans(n_clusters=num_profiles, n_init=10, random_state=42)
-                    
+            for profile_index in range(num_profiles):
+                cluster_points = random_points_array[labels == profile_index]
                 try:
-                    labels = kmeans.fit_predict(random_points_array)
-                except Exception as e:
-                    print(f"\tkmeans error: {e}", file=sys.stderr)
-                    print("\tLikely subtracted too many profiles; just using macro patch", file=sys.stderr)
+                    polygon_coords = ShapelyCoordinates(ShapelyPolygon(cluster_points).convex_hull)
+                    patch_polygon_vertex_list_of_lists.append(polygon_coords)
+                    patch_face_value_list += patch_collection_pieces_dict['individual_profile_anomalies_list_of_bin_lists'][patch_dex]
+                    patch_edge_value_list += [patch_collection_pieces_dict['macro']['edge_value_list'][patch_dex]] * num_profiles
+                    if num_profiles == 1:
+                        linewidths_list.append(0)
+                    else:
+                        linewidths_list += [1] * num_profiles
+
+                except Exception:
+                    print("micro patch error: convex hull calculation failed for a profile", file=sys.stderr)
+                    print(f"kmeans samples per profile: {num_samples_for_kmeans_per_profile}; num profiles: {num_profiles}; total kmeans samples: {num_samples_for_kmeans}", file=sys.stderr)
                     patch_polygon_vertex_list_of_lists.append(patch_collection_pieces_dict['macro']['polygon_vertex_list_of_lists'][patch_dex])
                     patch_face_value_list.append(patch_collection_pieces_dict['macro']['face_value_list'][patch_dex])
                     patch_edge_value_list.append(patch_collection_pieces_dict['macro']['edge_value_list'][patch_dex])
                     linewidths_list.append(patch_collection_pieces_dict['macro']['linewidths_unclipped_list'][patch_dex])
 
-                for profile_index in range(num_profiles):
-                    cluster_points = random_points_array[labels == profile_index]
-                    try:
-                        polygon_coords = ShapelyCoordinates(ShapelyPolygon(cluster_points).convex_hull)
-                        patch_polygon_vertex_list_of_lists.append(polygon_coords)
-                    except Exception:
-                        print("micro patch error: convex hull calculation failed for a profile", file=sys.stderr)
-                        print(f"kmeans samples per profile: {num_samples_for_kmeans_per_profile}; num profiles: {num_profiles}; total kmeans samples: {num_samples_for_kmeans}", file=sys.stderr)
-                        patch_polygon_vertex_list_of_lists.append(patch_collection_pieces_dict['macro']['polygon_vertex_list_of_lists'][patch_dex])
-                        patch_face_value_list.append(patch_collection_pieces_dict['macro']['face_value_list'][patch_dex])
-                        patch_edge_value_list.append(patch_collection_pieces_dict['macro']['edge_value_list'][patch_dex])
-                        linewidths_list.append(patch_collection_pieces_dict['macro']['linewidths_unclipped_list'][patch_dex])
-
-                        '''
-                        # Turns out that it is inconsistent to do this and expect the user to accurately interpret the plot
-                        attempt_count += 1
-                        subtract_from_num_profiles[str(patch_dex)] += 100
-                        start_again = True
-                        break
-                        '''
-
-                #if start_again:
+                    '''
+                    # Turns out that it is inconsistent to do this and expect the user to accurately interpret the plot
+                    attempt_count += 1
+                    subtract_from_num_profiles[str(patch_dex)] += 100
+                    start_again = True
+                    break
+                    '''
+            #if start_again:
                 #    break
-
-                patch_face_value_list += patch_collection_pieces_dict['individual_profile_anomalies_list_of_bin_lists'][patch_dex]
-                patch_edge_value_list += [patch_collection_pieces_dict['macro']['edge_value_list'][patch_dex]] * num_profiles
-                if num_profiles == 1:
-                    linewidths_list.append(0)
-                else:
-                    linewidths_list += [1] * num_profiles
-
+            ### This was the end of the while loop
 
     patch_collection_pieces_dict['micro'] = {}
     patch_collection_pieces_dict['micro']['polygon_vertex_list_of_lists'] = patch_polygon_vertex_list_of_lists 
     patch_collection_pieces_dict['micro']['face_value_list'] = patch_face_value_list
     patch_collection_pieces_dict['micro']['edge_value_list'] = patch_edge_value_list
     patch_collection_pieces_dict['micro']['linewidths_list'] = linewidths_list
-
-
 
 
 #--------------------------------------------------------------------------------------------------------
