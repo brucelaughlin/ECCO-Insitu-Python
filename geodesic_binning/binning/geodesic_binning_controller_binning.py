@@ -1,6 +1,7 @@
 
 import pdb
 import zarr
+#import zarr.convenience
 import xarray as xr
 import numpy as np
 import sys
@@ -92,8 +93,8 @@ profile_file_list_unproven = [
 # Testing step
 ############################################
 #profile_file_list = profile_file_list_unproven
-#profile_file_list = profile_file_list_proved
-profile_file_list = profile_file_list_total
+profile_file_list = profile_file_list_proved
+#profile_file_list = profile_file_list_total
 ############################################
 
 for profile_file_index in range(len(profile_file_list)):
@@ -117,6 +118,8 @@ for profile_file_index in range(len(profile_file_list)):
     store = zarr.storage.LocalStore(save_file_zarr)
     root = zarr.group(store=store, overwrite=True)
     utils.dict_to_zarr(geodesic_bin_data_dict, root)
+    #zarr.convenience.consolidate_metadata(store) # Combines all internal paths
+
     print(f"output_file: {save_file_zarr}\n")
 
 

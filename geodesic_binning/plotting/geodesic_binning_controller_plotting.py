@@ -37,6 +37,9 @@ plot_state_dict = {
 
 #zarr_file = "/Users/brucel/ecco/yip/ECCO-Insitu-Python/geodesic_binning/binning/binned_output/1000_kmeans_samples_per_profile/10242_geodesic_bins/num_subpolygons_max_1000/WOD_WO_2002_GLD__ncei_step_10.zarr"
 
+#zarr_file = "/Users/brucel/ecco/yip/ECCO-Insitu-Python/geodesic_binning/binning/binned_output/30000_kmeans_samples_per_profile/10242_geodesic_bins/num_subpolygons_max_1000/WOD_WO_2002_GLD__ncei_step_10.zarr"
+
+
 zarr_file = "/Users/brucel/ecco/yip/ECCO-Insitu-Python/geodesic_binning/binning/binned_output/30000_kmeans_samples_per_profile/10242_geodesic_bins/num_subpolygons_max_1000/WOD_WO_2002_GLD__ncei_step_10.zarr"
 
 geodesic_binning_plotting_main.plot_spawner(zarr_file, plot_state_dict)
