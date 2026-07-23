@@ -1,14 +1,26 @@
 
 import pdb
 import zarr
+import pickle
 import xarray as xr
 import numpy as np
 import sys
 from pathlib import Path
-binning_dir = str(Path(__file__).parent.resolve())
-#binning_dir = str(Path(__file__).parent.parent.resolve())
+#binning_dir = str(Path(__file__).parent.resolve())
+#sys.path.append(binning_dir)
+
+#geodesic_dir = str(Path(__file__).parent.parent.resolve())
+#sys.path.append(geodesic_dir)
+
+binning_dir = str(Path(__file__).parent.parent.resolve() / "binning")
 sys.path.append(binning_dir)
-import geodesic_binning_utilities_binning as utils
+
+plotting_dir = str(Path(__file__).parent.parent.resolve() / "plotting")
+sys.path.append(plotting_dir)
+
+import geodesic_binning_utilities_binning as utils_binning
+import geodesic_binning_utilities_plotting as utils_plotting
+
 
 
 output_dir_stem = "binned_output"
@@ -92,8 +104,8 @@ profile_file_list_unproven = [
 # Testing step
 ############################################
 #profile_file_list = profile_file_list_unproven
-#profile_file_list = profile_file_list_proved
-profile_file_list = profile_file_list_total
+profile_file_list = profile_file_list_proved
+#profile_file_list = profile_file_list_total
 ############################################
 
 for profile_file_index in range(len(profile_file_list)):
@@ -101,23 +113,67 @@ for profile_file_index in range(len(profile_file_list)):
     print(f"File: {profile_file}")
     save_dir = output_dir / f"{num_samples_for_kmeans_per_profile}_kmeans_samples_per_profile/{num_geodesic_bins_string}_geodesic_bins" / f"num_subpolygons_max_{num_subpolygons_max}" 
     Path(save_dir).mkdir(parents=True, exist_ok=True)
-    try:
-        print(f"ncei file: {profile_file}")
-        geodesic_bin_data_dict = utils.bin_around_geodesic_vertices(geodesic_file, profile_file, variables_of_interest_dict, angular_precision, num_geodesic_bins, num_subpolygons_max, num_samples_for_kmeans_per_profile)
+    #try:
+    print(f"ncei file: {profile_file}")
+    geodesic_bin_data_dict = utils_binning.bin_around_geodesic_vertices(geodesic_file, profile_file, variables_of_interest_dict, angular_precision, num_geodesic_bins, num_subpolygons_max, num_samples_for_kmeans_per_profile)
+
+
+    # This is a bit crude, but I think the idea is right.  
+
+    plot_state_dict = utils_plotting.generate_new_plot_state_dict()
+
+    variable_key_list = [variable_key for variable_key in list(geodesic_bin_data_dict.keys()) if type(geodesic_bin_data_dict[variable_key]) == dict]
+    variable_key_list.sort()
+    variable_key_list_index = 0
+
+    plot_state_dict.update({'variable_key_list': variable_key_list, 'variable_key_list_index': variable_key_list_index})
+
+    depth_key_list_dict = {}
+    for variable_key in variable_key_list: 
+        depth_key_list_dict[variable_key] = list(geodesic_bin_data_dict[variable_key].keys())
+        depth_key_list_dict[variable_key].sort()
+    depth_key_list_index = 0
+
+
+    plot_state_dict.update({'depth_key_list_dict': depth_key_list_dict, 'depth_key_list_index': depth_key_list_index})
+
+    plot_state_dict["num_depth_levels_profile_file"] = geodesic_bin_data_dict["num_depth_levels_profile_file"]
+    plot_state_dict["profile_file_stem"] = geodesic_bin_data_dict["profile_file_stem"]
+    plot_state_dict["geodesic_bin_file_stem"] = geodesic_bin_data_dict["geodesic_bin_file_stem"]
+    plot_state_dict["num_geodesic_bins"] = geodesic_bin_data_dict["num_geodesic_bins"]
+    plot_state_dict["num_subpolygons_max"] = geodesic_bin_data_dict["num_subpolygons_max"]
+
+    # now set the patch information for the binning just completed.  Note that this uses colorbar information defined elsewhere.
+    utils_plotting.set_patch_information(plot_state_dict, geodesic_bin_data_dict)
+    #geodesic_bin_data_dict = utils_binning.add_patches_to_geodesic_data(geodesic_bin_data_dict, plot_state_dict)
+
+
+    """
     except Exception as e:
-        #print(f"binning controller failed for ncei file: {profile_file}")
-        #print(f"Error message: {e}")
-        #print("Continuing to next file")
         print(f"binning controller failed for ncei file: {profile_file}", file=sys.stderr)
         print(f"Error message: {e}", file=sys.stderr)
         print("Continuing to next file\n", file=sys.stderr)
         continue
+    """
 
+    """
     save_file_zarr = save_dir / f"{geodesic_bin_data_dict['profile_file_stem']}.zarr"
     store = zarr.storage.LocalStore(save_file_zarr)
     root = zarr.group(store=store, overwrite=True)
-    utils.dict_to_zarr(geodesic_bin_data_dict, root)
+    utils_binning.dict_to_zarr(geodesic_bin_data_dict, root)
     print(f"output_file: {save_file_zarr}\n")
+    """
+
+    save_file_bin_data_pickle = save_dir / f"{geodesic_bin_data_dict['profile_file_stem']}_binning_data.pickle"
+    with open(save_file_bin_data_pickle, 'wb') as handle:
+        pickle.dump(geodesic_bin_data_dict, handle, protocol=pickle.HIGHEST_PROTOCOL)
+        #pickle.dump(geodesic_bin_data_dict, handle, protocol=pickle.DEFAULT_PROTOCOL)
+    print(f"binning data output_file: {save_file_bin_data_pickle}\n")
+
+    save_file_plot_data_pickle = save_dir / f"{geodesic_bin_data_dict['profile_file_stem']}_plot_data.pickle"
+    with open(save_file_plot_data_pickle, 'wb') as handle:
+        pickle.dump(plot_state_dict, handle, protocol=pickle.HIGHEST_PROTOCOL)
+    print(f"plot data output_file: {save_file_plot_data_pickle}\n")
 
 
 
@@ -126,7 +182,7 @@ for profile_file_index in range(len(profile_file_list)):
 # Check that the dict saved is the same as the dict loaded
 
 opened_root = zarr.open(save_file_zarr, mode='r')
-loaded_dict = utils.zarr_to_dict(opened_root)
+loaded_dict = utils_binning.zarr_to_dict(opened_root)
 try:
     # Raises an AssertionError if they are not equal, returns None if they match
     np.testing.assert_equal(geodesic_bin_data_dict, loaded_dict)
