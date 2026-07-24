@@ -106,13 +106,11 @@ def plot_spawner(pickle_file_binning, pickle_file_plot):
     plot_state_dict['first_plot_bool'] = True
 
     bound_keyboard_callback = partial(utils.handle_keyboard_input, plot_state_dict)
-    #bound_keyboard_callback = partial(utils.handle_keyboard_input, plot_state_dict, geodesic_bin_data_dict)
     fig.canvas.mpl_connect('key_press_event', bound_keyboard_callback)
 
     plot_state_dict['last_zoom_time'] = time.time()
 
     bound_mouse_callback = partial(utils.scale_with_zoom, plot_state_dict)
-    #bound_mouse_callback = partial(utils.scale_with_zoom, plot_state_dict, geodesic_bin_data_dict)
     ax.callbacks.connect('xlim_changed', bound_mouse_callback)
     ax.callbacks.connect('ylim_changed', bound_mouse_callback)
 
@@ -123,8 +121,6 @@ def plot_spawner(pickle_file_binning, pickle_file_plot):
     depth_key = plot_state_dict['depth_key_list_dict'][variable_key][plot_state_dict['depth_key_list_index']]
 
     utils.redraw_axes(plot_state_dict)
-    #utils.redraw_axes(plot_state_dict, variable_key, depth_key)
-    #utils.redraw_axes(plot_state_dict, geodesic_bin_data_dict)
 
     plt.show()
 

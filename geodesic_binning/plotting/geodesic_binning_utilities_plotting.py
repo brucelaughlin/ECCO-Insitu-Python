@@ -90,11 +90,15 @@ def get_visible_patch_mask(ax, patch_list):
 
 
 def make_handles_and_titles(plot_state_dict):
+
+    if plt.gca().get_legend() is not None:
+        plt.gca().get_legend().remove()
+
     variable_key, depth_key = get_keys(plot_state_dict)
 
     visible_patch_mask = get_visible_patch_mask(plot_state_dict['ax'], plot_state_dict['patch_information_dict'][variable_key][depth_key]['patch_list_macro'])
     if np.sum(visible_patch_mask) == 0:
-        return 0, 0
+        return 
     else:
         count_array = plot_state_dict['patch_information_dict'][variable_key][depth_key]['count_array'] 
         count_min_zoom = np.min(count_array[visible_patch_mask])
@@ -130,10 +134,20 @@ def make_handles_and_titles(plot_state_dict):
                 Line2D([0], [0], color='gray', label=f"max {count_max_zoom}")
             ]
             legend_title = "profiles per patch:"
-        return custom_handles, legend_title
+
+        if custom_handles != 0:
+            plot_state_dict['ax'].legend(framealpha=0, handlelength=0, handletextpad=0, fontsize="xx-small", title_fontsize="xx-small",
+                  handles=custom_handles, title=f"{legend_title}", loc=plot_state_dict['legend_loc_twotuple'])
+
 
 
 def set_plot_text(plot_state_dict):
+
+    # reset stuff
+    #plot_state_dict['fig'].suptitle("")
+    #if 'caption_obj' in plot_state_dict:
+    #    plot_state_dict['caption_obj'].remove()
+
     variable_key, depth_key = get_keys(plot_state_dict)
     suptitle_string = (
             f"\nprofile_file: {plot_state_dict['profile_file_stem']}\n"
@@ -152,19 +166,25 @@ def set_plot_text(plot_state_dict):
             "At low zoom levels, polygon edge widths scale linearly with the number of profiles binned at the current depth level.  "
             "At higher zoom levels, profile locations are shown in red."
             )
+
     wrap_width = 100
     caption_string_wrapped_list = [textwrap.fill(paragraph, width=wrap_width) for paragraph in caption_string.split('\n')]
     caption_string_wrapped = '\n'.join(caption_string_wrapped_list)
     plot_state_dict['fig'].suptitle(suptitle_string, y=1.0, fontsize=8)
-    plot_state_dict['ax'].annotate(
-        caption_string_wrapped,
-        xy=(0.5, -0.10),
-        xycoords='axes fraction',
-        ha='center',
-        va='top',
-        fontsize=7,
-        annotation_clip=False
+
+    if not plot_state_dict['first_plot_bool']:
+        plot_state_dict['caption_obj'].set_text(caption_string_wrapped)
+    else:
+        plot_state_dict['caption_obj'] = plot_state_dict['ax'].annotate(
+            caption_string_wrapped,
+            xy=(0.5, -0.10),
+            xycoords='axes fraction',
+            ha='center',
+            va='top',
+            fontsize=7,
+            annotation_clip=False
     )
+
     return None
 
 
@@ -194,7 +214,6 @@ def set_patch_information(plot_state_dict, geodesic_bin_data_dict):
         var_time = time.time()
 
         for depth_key in plot_state_dict['depth_key_list_dict'][variable_key]:  
-            plot_state_dict['patch_information_dict'][variable_key][depth_key] = {}
 
             depth_time = time.time()
 
@@ -202,51 +221,51 @@ def set_patch_information(plot_state_dict, geodesic_bin_data_dict):
 
             print(f"var {var_counter}/{num_vars}; depth {depth_counter:02}/{num_depths:02}")
 
-            patch_collection_pieces_dict = geodesic_bin_data_dict[variable_key][depth_key]
-
-            count_array = patch_collection_pieces_dict['count_array']
-
+            patch_dict_single_var_depth = geodesic_bin_data_dict[variable_key][depth_key]
             polygon_two_cbar_dict = plot_state_dict[f'polygon_two_cbar_dict_{variable_key}']
+
+            norm_face = polygon_two_cbar_dict['face']['norm']
+            cmap_face = cm.get_cmap(polygon_two_cbar_dict['face']['cbar_params']['cmap_string'])
 
             norm_edge = polygon_two_cbar_dict['edge']['norm']
             cmap_edge = cm.get_cmap(polygon_two_cbar_dict['edge']['cbar_params']['cmap_string'])
+
             edgecolors_list_macro = []
-            for edge_value in patch_collection_pieces_dict['macro']['edge_value_list']:
+            for edge_value in patch_dict_single_var_depth['macro']['edge_value_list']:
                 edgecolors_list_macro.append(cmap_edge(norm_edge(edge_value)))
-            edgecolors_list_micro = []
-            for edge_value in patch_collection_pieces_dict['micro']['edge_value_list']:
-                edgecolors_list_micro.append(cmap_edge(norm_edge(edge_value)))
-            norm_face = polygon_two_cbar_dict['face']['norm']
-            cmap_face = cm.get_cmap(polygon_two_cbar_dict['face']['cbar_params']['cmap_string'])
+
             patch_list_macro = []
-            for patch_dex in range(len(patch_collection_pieces_dict['macro']['polygon_vertex_list_of_lists'])): 
-                patch_list_macro.append(patches.Polygon(patch_collection_pieces_dict['macro']['polygon_vertex_list_of_lists'][patch_dex], closed=True))
+            for patch_dex in range(len(patch_dict_single_var_depth['macro']['polygon_vertex_list_of_lists'])): 
+                patch_list_macro.append(patches.Polygon(patch_dict_single_var_depth['macro']['polygon_vertex_list_of_lists'][patch_dex], closed=True))
             patch_collection_macro = PatchCollection(patch_list_macro, transform=ccrs.PlateCarree(), joinstyle='miter')
-            patch_collection_macro.set_array(np.array(patch_collection_pieces_dict['macro']['face_value_list']))
+            patch_collection_macro.set_array(np.array(patch_dict_single_var_depth['macro']['face_value_list']))
             patch_collection_macro.set_edgecolors(edgecolors_list_macro)
-            patch_collection_macro.set_linewidths(patch_collection_pieces_dict['macro']['linewidths_list'])
+            patch_collection_macro.set_linewidths(patch_dict_single_var_depth['macro']['linewidths_list'])
             patch_collection_macro.set_cmap(cmap_face)
             patch_collection_macro.set_norm(norm_face)
+
+            edgecolors_list_micro = []
+            for edge_value in patch_dict_single_var_depth['micro']['edge_value_list']:
+                edgecolors_list_micro.append(cmap_edge(norm_edge(edge_value)))
+
             patch_list_micro = []
-            for patch_dex in range(len(patch_collection_pieces_dict['micro']['polygon_vertex_list_of_lists'])): 
-                patch_list_micro.append(patches.Polygon(patch_collection_pieces_dict['micro']['polygon_vertex_list_of_lists'][patch_dex], closed=True))
+            for patch_dex in range(len(patch_dict_single_var_depth['micro']['polygon_vertex_list_of_lists'])): 
+                patch_list_micro.append(patches.Polygon(patch_dict_single_var_depth['micro']['polygon_vertex_list_of_lists'][patch_dex], closed=True))
             patch_collection_micro = PatchCollection(patch_list_micro, transform=ccrs.PlateCarree(), joinstyle='miter')
-            patch_collection_micro.set_array(np.array(patch_collection_pieces_dict['micro']['face_value_list']))
+            patch_collection_micro.set_array(np.array(patch_dict_single_var_depth['micro']['face_value_list']))
             patch_collection_micro.set_edgecolors(edgecolors_list_micro)
-            patch_collection_micro.set_linewidths(patch_collection_pieces_dict['micro']['linewidths_list'])
+            patch_collection_micro.set_linewidths(patch_dict_single_var_depth['micro']['linewidths_list'])
             patch_collection_micro.set_cmap(cmap_face)
             patch_collection_micro.set_norm(norm_face)
-            profiles_lons = patch_collection_pieces_dict['profiles_lons']
-            profiles_lats = patch_collection_pieces_dict['profiles_lats']
 
             plot_state_dict['patch_information_dict'][variable_key][depth_key] = {}
             plot_state_dict['patch_information_dict'][variable_key][depth_key]['patch_collection_macro'] = patch_collection_macro 
             plot_state_dict['patch_information_dict'][variable_key][depth_key]['patch_collection_micro'] = patch_collection_micro 
             plot_state_dict['patch_information_dict'][variable_key][depth_key]['patch_list_macro'] = patch_list_macro 
             plot_state_dict['patch_information_dict'][variable_key][depth_key]['patch_list_micro'] = patch_list_micro 
-            plot_state_dict['patch_information_dict'][variable_key][depth_key]['count_array'] = count_array 
-            plot_state_dict['patch_information_dict'][variable_key][depth_key]['profiles_lons'] = profiles_lons 
-            plot_state_dict['patch_information_dict'][variable_key][depth_key]['profiles_lats'] = profiles_lats 
+            plot_state_dict['patch_information_dict'][variable_key][depth_key]['count_array'] = patch_dict_single_var_depth['count_array']
+            plot_state_dict['patch_information_dict'][variable_key][depth_key]['profiles_lons'] = patch_dict_single_var_depth['profiles_lons']
+            plot_state_dict['patch_information_dict'][variable_key][depth_key]['profiles_lats'] = patch_dict_single_var_depth['profiles_lats']
 
             print(f"{time.time() - depth_time} seconds")
             depth_time = time.time()
@@ -257,6 +276,7 @@ def set_patch_information(plot_state_dict, geodesic_bin_data_dict):
 
 
 def set_colorbar_information_dictionary(plot_state_dict, geodesic_bin_data_dict):
+
     plot_state_dict['quantiles_strings'] = [rf'$\downarrow${int(100 * qval)}%' for qval in plot_state_dict['quantiles_fractions']]
     for variable_key in plot_state_dict['variable_key_list']:
         polygon_two_cbar_dict = copy.deepcopy(plot_state_dict['polygon_two_cbar_dict_template'])
@@ -264,8 +284,8 @@ def set_colorbar_information_dictionary(plot_state_dict, geodesic_bin_data_dict)
             value_min, value_max = 1e36, -1e36
             value_list_universal = []
             for depth_key in plot_state_dict['depth_key_list_dict'][variable_key]:
-                patch_collection_pieces_dict = geodesic_bin_data_dict[variable_key][depth_key]
-                value_list = patch_collection_pieces_dict['macro'][f'{polygon_component_string}_value_list']
+                patch_dict_single_var_depth = geodesic_bin_data_dict[variable_key][depth_key]
+                value_list = patch_dict_single_var_depth['macro'][f'{polygon_component_string}_value_list']
                 if value_min > np.min(value_list): value_min = np.min(value_list)
                 if value_max < np.max(value_list): value_max = np.max(value_list)
                 value_list_universal += value_list
@@ -278,7 +298,7 @@ def set_colorbar_information_dictionary(plot_state_dict, geodesic_bin_data_dict)
                 norm = mcolors.Normalize(vmin=value_min, vmax=value_max)
             cbar_dict['norm'] = norm
 
-            cbar_dict['cbar_params']['units_string'] = patch_collection_pieces_dict["units_string"]
+            cbar_dict['cbar_params']['units_string'] = patch_dict_single_var_depth["units_string"]
             # ^^^This allows for the two colorbars to have different units, though for mean and std they are the same.
         plot_state_dict[f'polygon_two_cbar_dict_{variable_key}'] = polygon_two_cbar_dict
 
@@ -318,16 +338,15 @@ def prepare_axes(fig):
     return ax, cax_left, cax_right
 
 
-def clear_axes(plot_state_dict, change_variable_bool=False):
+def clear_axes(plot_state_dict):
+    if plt.gca().get_legend() is not None:
+        plt.gca().get_legend().remove()
     for coll in list(plot_state_dict['ax'].collections):
         if isinstance(coll, (PathCollection, PatchCollection)):
             coll.remove()
-    if change_variable_bool:
+    if plot_state_dict['change_variable_bool']:
         plot_state_dict['cax_left'].clear()
         plot_state_dict['cax_right'].clear()
-        for t in list(plot_state_dict['ax'].texts):
-            if isinstance(t, mpl.text.Annotation):
-                t.remove()
     return None
 
 
@@ -378,16 +397,60 @@ def set_global_xylims(plot_state_dict):
     return None
 
 
+
+def redraw_axes(plot_state_dict):
+
+#    if plot_state_dict['setup_bool']:
+#        return
+
+    #if plot_state_dict['first_plot_bool'] and not plot_state_dict['setup_bool']:
+
+    clear_axes(plot_state_dict)
+    #clear_axes(plot_state_dict, change_variable_bool=plot_state_dict['change_variable_bool'])
+
+    #patch_information_dict = get_patch_information(plot_state_dict, geodesic_bin_data_dict)
+
+
+    variable_key, depth_key = get_keys(plot_state_dict)
+
+
+    if plot_state_dict['change_variable_bool']:
+        establish_colorbars(plot_state_dict)
+        plot_state_dict['change_variable_bool'] = False
+    set_xylims(plot_state_dict)
+
+    if not plot_state_dict['zoom_threshold_crossed']:
+        #plot_state_dict['ax'].add_collection(plot_state_dict['patch_information_dict'][variable_key][depth_key]['patch_collection_micro'])
+        plot_state_dict['ax'].add_collection(plot_state_dict['patch_information_dict'][variable_key][depth_key]['patch_collection_macro'])
+    else:
+        plot_state_dict['ax'].scatter(plot_state_dict['patch_information_dict'][variable_key][depth_key]['profiles_lons'], plot_state_dict['patch_information_dict'][variable_key][depth_key]['profiles_lats'], c='red', s=1, zorder=10)
+        plot_state_dict['ax'].add_collection(plot_state_dict['patch_information_dict'][variable_key][depth_key]['patch_collection_micro'])
+
+    make_handles_and_titles(plot_state_dict)
+    set_plot_text(plot_state_dict)
+    #plot_state_dict['fig'].canvas.draw()
+    plot_state_dict['fig'].canvas.draw_idle()
+
+
+    if plot_state_dict['first_plot_bool']:
+        plot_state_dict['first_plot_bool'] = False
+
+    return None
+
+
+
 def scale_with_zoom(plot_state_dict, event):
+
     if plot_state_dict['setup_bool'] or plot_state_dict['first_plot_bool']:
         return
+
     # Ignore callbacks firing within <callback_time_threshold> seconds of each other
     # (This is meant to prevent our code from running during internal callback triggering, which often happens multiple times during a single figure update)
     #callback_time_threshold = 0.1
     callback_time_threshold = 0.01
     current_time = time.time()
-    if current_time - plot_state_dict['last_zoom_time'] < callback_time_threshold:
-        return
+    #if current_time - plot_state_dict['last_zoom_time'] < callback_time_threshold:
+    #    return
     plot_state_dict['last_zoom_time'] = current_time
 
     
@@ -400,33 +463,34 @@ def scale_with_zoom(plot_state_dict, event):
 
     variable_key, depth_key = get_keys(plot_state_dict)
 
+
     previously_zoomed = plot_state_dict['zoom_threshold_crossed']
+
+    #pdb.set_trace()
+
     set_zoom_threshold_crossed_boolean(plot_state_dict)
     if plot_state_dict['zoom_threshold_crossed']:
         if not previously_zoomed:
-            if plt.gca().get_legend() is not None:
-                plt.gca().get_legend().remove()
             clear_axes(plot_state_dict)
             plot_state_dict['ax'].scatter(plot_state_dict['patch_information_dict'][variable_key][depth_key]['profiles_lons'], plot_state_dict['patch_information_dict'][variable_key][depth_key]['profiles_lats'], c='red', s=1, zorder=10)
             plot_state_dict['ax'].add_collection(plot_state_dict['patch_information_dict'][variable_key][depth_key]['patch_collection_micro'])
-        visible_patch_mask = get_visible_patch_mask(plot_state_dict['ax'], plot_state_dict['patch_information_dict'][variable_key][depth_key]['patch_list_micro'])
     else:
         if previously_zoomed:
-            if plt.gca().get_legend() is not None:
-                plt.gca().get_legend().remove()
             clear_axes(plot_state_dict)
+            #plot_state_dict['ax'].add_collection(plot_state_dict['patch_information_dict'][variable_key][depth_key]['patch_collection_micro'])
             plot_state_dict['ax'].add_collection(plot_state_dict['patch_information_dict'][variable_key][depth_key]['patch_collection_macro'])
-        visible_patch_mask = get_visible_patch_mask(plot_state_dict['ax'], plot_state_dict['patch_information_dict'][variable_key][depth_key]['patch_list_macro'])
-    if np.sum(visible_patch_mask) > 0:
-        custom_handles, legend_title = make_handles_and_titles(plot_state_dict)
-        plot_state_dict['ax'].legend(framealpha=0, handlelength=0, handletextpad=0, fontsize="xx-small", title_fontsize="xx-small",
-              handles=custom_handles, title=f"{legend_title}", loc=plot_state_dict['legend_loc_twotuple'])
+
+
+    make_handles_and_titles(plot_state_dict)
+    plot_state_dict['fig'].canvas.draw_idle()
+
     return None
 
 
 def handle_keyboard_input(plot_state_dict, event):
     if plot_state_dict['setup_bool']:
         return
+
     # Ensure the cursor is over the axes
     if event.inaxes is None:
         return
@@ -480,47 +544,4 @@ def handle_keyboard_input(plot_state_dict, event):
     return None
 
 
-def redraw_axes(plot_state_dict):
-#def redraw_axes(plot_state_dict, variable_key, depth_key):
-#def redraw_axes(plot_state_dict, geodesic_bin_data_dict):
-    if plot_state_dict['setup_bool']:
-        return
-
-    #if plot_state_dict['first_plot_bool'] and not plot_state_dict['setup_bool']:
-    if plot_state_dict['first_plot_bool']:
-        plot_state_dict['first_plot_bool'] = False
-
-    if plt.gca().get_legend() is not None:
-        plt.gca().get_legend().remove()
-
-    clear_axes(plot_state_dict, change_variable_bool=plot_state_dict['change_variable_bool'])
-
-    #patch_information_dict = get_patch_information(plot_state_dict, geodesic_bin_data_dict)
-
-
-    variable_key, depth_key = get_keys(plot_state_dict)
-
-
-    plot_state_dict['ax'].add_collection(plot_state_dict['patch_information_dict'][variable_key][depth_key]['patch_collection_macro'])
-    #plot_state_dict['ax'].add_collection(plot_state_dict['patch_information_dict'][variable_key][depth_key]['patch_collection_macro'])
-
-    if plot_state_dict['change_variable_bool']:
-        establish_colorbars(plot_state_dict)
-        plot_state_dict['change_variable_bool'] = False
-    set_xylims(plot_state_dict)
-    if plot_state_dict['zoom_threshold_crossed']:
-        clear_axes(plot_state_dict)
-        plot_state_dict['ax'].scatter(plot_state_dict['patch_information_dict'][variable_key][depth_key]['profiles_lons'], plot_state_dict['patch_information_dict'][variable_key][depth_key]['profiles_lats'], c='red', s=1, zorder=10)
-        #plot_state_dict['ax'].scatter(plot_state_dict['patch_information_dict'][variable_key][depth_key]['profiles_lons'], plot_state_dict['patch_information_dict'][variable_key][depth_key]['profiles_lats'], c='red', s=1, zorder=10)
-        plot_state_dict['ax'].add_collection(plot_state_dict['patch_information_dict'][variable_key][depth_key]['patch_collection_micro'])
-
-        #plot_state_dict['ax'].add_collection(plot_state_dict['patch_information_dict'][variable_key][depth_key]['patch_collection_micro'])
-
-    custom_handles, legend_title = make_handles_and_titles(plot_state_dict)
-    if custom_handles != 0:
-        plot_state_dict['ax'].legend(framealpha=0, handlelength=0, handletextpad=0, fontsize="xx-small", title_fontsize="xx-small",
-              handles=custom_handles, title=f"{legend_title}", loc=plot_state_dict['legend_loc_twotuple'])
-    set_plot_text(plot_state_dict)
-    plot_state_dict['fig'].canvas.draw_idle()
-    return None
 

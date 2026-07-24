@@ -125,7 +125,6 @@ for profile_file_index in range(len(profile_file_list)):
     variable_key_list = [variable_key for variable_key in list(geodesic_bin_data_dict.keys()) if type(geodesic_bin_data_dict[variable_key]) == dict]
     variable_key_list.sort()
     variable_key_list_index = 0
-
     plot_state_dict.update({'variable_key_list': variable_key_list, 'variable_key_list_index': variable_key_list_index})
 
     depth_key_list_dict = {}
@@ -133,8 +132,6 @@ for profile_file_index in range(len(profile_file_list)):
         depth_key_list_dict[variable_key] = list(geodesic_bin_data_dict[variable_key].keys())
         depth_key_list_dict[variable_key].sort()
     depth_key_list_index = 0
-
-
     plot_state_dict.update({'depth_key_list_dict': depth_key_list_dict, 'depth_key_list_index': depth_key_list_index})
 
     plot_state_dict["num_depth_levels_profile_file"] = geodesic_bin_data_dict["num_depth_levels_profile_file"]
