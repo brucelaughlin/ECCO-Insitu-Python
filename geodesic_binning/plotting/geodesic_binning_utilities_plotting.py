@@ -45,7 +45,9 @@ def generate_new_plot_state_dict():
         'fig_height': 6,
         'figure_facecolor': 'lightskyblue',
         'legend_loc_twotuple': (0.75, 0.85),
-        'quantiles_fractions': [0.25, 0.5, 0.75, 0.95, 0.99],
+        'quantiles_fractions_edge': [0.05, 0.25, 0.5, 0.75, 0.95, 0.99],
+        #'quantiles_fractions': [0.25, 0.5, 0.75, 0.95, 0.99],
+        'quantiles_fractions_face_limits': [0.05, 0.95],
         'polygon_two_cbar_dict_template': {'face': polygon_face_plotting_dict, 'edge': polygon_edge_plotting_dict},
         'zoom_scale_threshold': 10,
         #'zoom_scale_threshold': 5,
@@ -150,27 +152,28 @@ def set_plot_text(plot_state_dict):
 
     variable_key, depth_key = get_keys(plot_state_dict)
     suptitle_string = (
-            f"\nprofile_file: {plot_state_dict['profile_file_stem']}\n"
-            f"geodesic_bin_file: {plot_state_dict['geodesic_bin_file_stem']}\n"
-            f"variable: {variable_key}\n"
-            f"depth level: {depth_key}/{plot_state_dict['num_depth_levels_profile_file']}\n"
+            f"\nvariable: {variable_key}\n"
+            f"depth level: {int(depth_key) + 1:02}/{int(plot_state_dict['num_depth_levels_profile_file']) + 1:02}\n"
             f"num bins populated: {len(plot_state_dict['patch_information_dict'][variable_key][depth_key]['count_array'])}/{plot_state_dict['num_geodesic_bins']}\n"
             f"num profiles binned: {np.sum(plot_state_dict['patch_information_dict'][variable_key][depth_key]['count_array'])}\n"
-            "Navigation: with the mouse cursor over the figure, keys 1 and 2 change depth level, keys 3 and 4 change variable.\n"
-            "Key 9 resets zoom, key 0 resets both zoom and depth.  Click the magnifying glass to enable zooming (then click and drag).\n\n"
+            f"profile_file: {plot_state_dict['profile_file_stem']}\n"
+            f"geodesic_bin_file: {plot_state_dict['geodesic_bin_file_stem']}\n\n"
+            "Navigation: with the mouse held over the figure, use number keys as follows: 1 and 2 to change depth level, 3 and 4 to change variable,\n"
+            "8 to reset depth level to zero, 9 to reset zoom level to zero, 0 to reset zoom and depth levels to zero.\n"
+            "Click the magnifying glass in the figure toolbar (lower left) to enable zooming, then click and drag to zoom in on a selected region.\n\n"
             )
     caption_string = (
-            f"Polygon face colors represent {variable_key} anomalies (geodesic bin mean at low zoom levels, individual profile anomalies at "
-            f"higher zoom levels unless a bin contains more than {plot_state_dict['num_subpolygons_max']} profiles).  "
-            f"Polygon edge colors represent {variable_key} anomaly standard deviation for an entire geodesic bin, regardless of zoom level.  "
-            "At low zoom levels, polygon edge widths scale linearly with the number of profiles binned at the current depth level.  "
-            "At higher zoom levels, profile locations are shown in red."
+            f"Polygon face colors represent {variable_key} anomalies (low zoom levels: geodesic bin mean, higher zoom levels: individual profile values "
+            f"(unless a bin contains more than {plot_state_dict['num_subpolygons_max']} profiles)).  "
+            f"Polygon edge colors represent a geodesic bin's overall {variable_key} anomaly standard deviation.  "
+            "At low zoom levels, polygon edge widths scale linearly with number of profiles binned.  "
+            "At higher zoom levels, true profile locations appear as red dots."
             )
 
     wrap_width = 100
     caption_string_wrapped_list = [textwrap.fill(paragraph, width=wrap_width) for paragraph in caption_string.split('\n')]
     caption_string_wrapped = '\n'.join(caption_string_wrapped_list)
-    plot_state_dict['fig'].suptitle(suptitle_string, y=1.0, fontsize=8)
+    plot_state_dict['fig'].suptitle(suptitle_string, y=1.0, fontsize=7)
 
     if not plot_state_dict['first_plot_bool']:
         plot_state_dict['caption_obj'].set_text(caption_string_wrapped)
@@ -214,7 +217,6 @@ def set_patch_information(plot_state_dict, geodesic_bin_data_dict):
 
             if polygon_two_cbar_dict['face']['cmap_was_modified']:
                 cmap_face = polygon_two_cbar_dict['face']['modified_cmap']
-                print('hi')
             else:
                 cmap_face = cm.get_cmap(polygon_two_cbar_dict['face']['cbar_params']['cmap_string'])
 
@@ -225,14 +227,10 @@ def set_patch_information(plot_state_dict, geodesic_bin_data_dict):
             for edge_value in patch_dict_single_var_depth['macro']['edge_value_list']:
                 edgecolors_list_macro.append(cmap_edge(norm_edge(edge_value)))
 
-            #polygon_list_macro = []
             polygon_list_macro = []
             for patch_dex in range(len(patch_dict_single_var_depth['macro']['polygon_vertex_list_of_lists'])): 
                 polygon_list_macro.append(ShapelyPolygon(patch_dict_single_var_depth['macro']['polygon_vertex_list_of_lists'][patch_dex]))
-                #polygon_list_macro.append(MatplotlibPolygon(patch_dict_single_var_depth['macro']['polygon_vertex_list_of_lists'][patch_dex], closed=True))
-                #polygon_list_macro.append(MatplotlibPolygon(patch_dict_single_var_depth['macro']['polygon_vertex_list_of_lists'][patch_dex], closed=True))
             patch_collection_macro = create_patch_collection(polygon_list_macro)
-            #patch_collection_macro = PatchCollection(polygon_list_macro, transform=ccrs.PlateCarree(), joinstyle='miter')
 
             patch_collection_macro.set_array(np.array(patch_dict_single_var_depth['macro']['face_value_list']))
             patch_collection_macro.set_edgecolors(edgecolors_list_macro)
@@ -244,15 +242,11 @@ def set_patch_information(plot_state_dict, geodesic_bin_data_dict):
             for edge_value in patch_dict_single_var_depth['micro']['edge_value_list']:
                 edgecolors_list_micro.append(cmap_edge(norm_edge(edge_value)))
 
-            #polygon_list_micro = []
             polygon_list_micro = []
             for patch_dex in range(len(patch_dict_single_var_depth['micro']['polygon_vertex_list_of_lists'])): 
-                #polygon_list_micro.append(patch_dict_single_var_depth['micro']['polygon_vertex_list_of_lists'][patch_dex])
-                #polygon_list_micro.append(MatplotlibPolygon(patch_dict_single_var_depth['micro']['polygon_vertex_list_of_lists'][patch_dex], closed=True))
                 polygon_list_micro.append(ShapelyPolygon(patch_dict_single_var_depth['micro']['polygon_vertex_list_of_lists'][patch_dex]))
 
             patch_collection_micro = create_patch_collection(polygon_list_micro)
-            #patch_collection_micro = PatchCollection(polygon_list_micro, transform=ccrs.PlateCarree(), joinstyle='miter')
             patch_collection_micro.set_array(np.array(patch_dict_single_var_depth['micro']['face_value_list']))
             patch_collection_micro.set_edgecolors(edgecolors_list_micro)
             patch_collection_micro.set_linewidths(patch_dict_single_var_depth['micro']['linewidths_list'])
@@ -274,6 +268,7 @@ def set_patch_information(plot_state_dict, geodesic_bin_data_dict):
         print(f"{time.time() - var_time} seconds")
         var_time = time.time()
 
+# Vibing
 def create_patch_collection(polygon_list):
 
     patches = []
@@ -295,43 +290,34 @@ def create_patch_collection(polygon_list):
                 patches.append(MatplotlibPolygon(coords, closed=True))
 
     # Create the ultra-fast rendering collection
-    #collection = PatchCollection(patches, match_original=False)
     collection = PatchCollection(patches, match_original=False, transform=ccrs.PlateCarree())
-    #collection = PatchCollection(patches, match_original=False, transform=ccrs.PlateCarree(), jointstyle='miter')
-
-
 
     return collection
 
 
-
-
 def set_colorbar_information_dictionary(plot_state_dict, geodesic_bin_data_dict):
 
-    plot_state_dict['quantiles_strings'] = [rf'$\downarrow${int(100 * qval)}%' for qval in plot_state_dict['quantiles_fractions']]
     for variable_key in plot_state_dict['variable_key_list']:
         polygon_two_cbar_dict = copy.deepcopy(plot_state_dict['polygon_two_cbar_dict_template'])
+        all_values_all_depths_list = geodesic_bin_data_dict[variable_key]["all_values_all_depths_list"]
         for polygon_component_string, cbar_dict in polygon_two_cbar_dict.items():
-            value_min, value_max = 1e36, -1e36
-            value_list_universal = []
+            value_min_macro, value_max_macro = 1e36, -1e36
+            value_list_macro_universal = []
             for depth_key in plot_state_dict['depth_key_list_dict'][variable_key]:
                 patch_dict_single_var_depth = geodesic_bin_data_dict[variable_key][depth_key]
-                value_list = patch_dict_single_var_depth['macro'][f'{polygon_component_string}_value_list']
-                if value_min > np.min(value_list): value_min = np.min(value_list)
-                if value_max < np.max(value_list): value_max = np.max(value_list)
-                value_list_universal += value_list
-            cbar_dict['value_min_max_twotuple'] = (value_min, value_max)
-            cbar_dict['quantiles'] = np.quantile(np.array(value_list_universal), plot_state_dict['quantiles_fractions'])
+                value_list_macro = patch_dict_single_var_depth['macro'][f'{polygon_component_string}_value_list']
+                if value_min_macro > np.min(value_list_macro): value_min = np.min(value_list_macro)
+                if value_max_macro < np.max(value_list_macro): value_max = np.max(value_list_macro)
+                value_list_macro_universal += value_list_macro
+
             if cbar_dict['pos_and_neg']:
-                #norm = mcolors.CenteredNorm(vcenter=0)
-                #norm = mcolors.TwoSlopeNorm(vmin=value_min, vcenter=0.0, vmax=value_max)
 
+                quantiles= np.quantile(np.array(all_values_all_depths_list), plot_state_dict['quantiles_fractions_face_limits'])
+                cbar_dict['quantiles'] = quantiles
+                cbar_dict['quantiles_strings'] = [rf'$\downarrow${int(100 * qval)}%' for qval in plot_state_dict['quantiles_fractions_face_limits']] 
 
-                cbar_dict['value_min_max_twotuple'] = (geodesic_bin_data_dict[variable_key]["value_min_individual"], geodesic_bin_data_dict[variable_key]["value_max_individual"])
-                value_min = geodesic_bin_data_dict[variable_key]["value_min_individual"]
-                value_max = geodesic_bin_data_dict[variable_key]["value_max_individual"]
-
-                norm = mcolors.Normalize(vmin=value_min, vmax=value_max)
+                value_min = quantiles[0]
+                value_max = quantiles[-1]
 
                 max_abs = max(abs(value_min), abs(value_max))
 
@@ -348,37 +334,26 @@ def set_colorbar_information_dictionary(plot_state_dict, geodesic_bin_data_dict)
                 cbar_dict['modified_cmap'] = mcolors.ListedColormap(shifted_colors)
                 cbar_dict['cmap_was_modified'] = True
 
-
                 #norm.autoscale(value_list_universal)
+
             else:
-                norm = mcolors.Normalize(vmin=value_min, vmax=value_max)
+                quantiles = np.quantile(np.array(value_list_macro_universal), plot_state_dict['quantiles_fractions_edge'])
+                cbar_dict['quantiles'] = quantiles
+                cbar_dict['quantiles_strings'] = [rf'$\downarrow${int(100 * qval)}%' for qval in plot_state_dict['quantiles_fractions_edge']]
+
+                value_min = quantiles[1]
+                value_max = quantiles[-2]
                 cbar_dict['cmap_was_modified'] = False
-            cbar_dict['norm'] = norm
+
+            cbar_dict['norm'] = mcolors.Normalize(vmin=value_min, vmax=value_max)
+            cbar_dict['value_min_max_twotuple'] = (value_min, value_max)
 
             cbar_dict['cbar_params']['units_string'] = patch_dict_single_var_depth["units_string"]
             # ^^^This allows for the two colorbars to have different units, though for mean and std they are the same.
         plot_state_dict[f'polygon_two_cbar_dict_{variable_key}'] = polygon_two_cbar_dict
 
-"""
-                # 3. Calculate where 0 sits relative to your bounds
-                zero_position = (0.0 - value_min) / (value_max - value_min)
 
-                linear_grid = np.linspace(0, 1, 256)
-
-                # 5. Map the target grid positions back to the original colormap's scale
-                # We want physical start (0.0) -> original start (0.0)
-                # We want physical zero (zero_position) -> original midpoint/white (0.5)
-                # We want physical end (1.0) -> original end (1.0)
-                mapped_positions = np.interp(linear_grid, [0.0, zero_position, 1.0], [0.0, 0.5, 1.0])
-
-                # 6. Sample the original colormap at these mapped positions and save it
-                shifted_colors = original_cmap(mapped_positions)
-
-                # 5. Overwrite the dictionary key with the newly shifted colormap
-                cbar_dict['modified_cmap'] = mcolors.ListedColormap(shifted_colors)
-                cbar_dict['cmap_was_modified'] = True
-"""
-
+# In vibe we trust
 def establish_colorbars(plot_state_dict):
     variable_key, depth_key = get_keys(plot_state_dict)
     polygon_two_cbar_dict = plot_state_dict[f'polygon_two_cbar_dict_{variable_key}']
@@ -388,6 +363,162 @@ def establish_colorbars(plot_state_dict):
         norm = cbar_dict['norm']
         units_string = cbar_dict['cbar_params']['units_string']
         statistic_string = cbar_dict['statistic_string']
+
+
+
+        if cbar_dict['cmap_was_modified'] == True:
+            cmap = cbar_dict['modified_cmap']
+        else:
+            cmap = cm.get_cmap(cbar_dict['cbar_params']['cmap_string'])
+        #cmap = cm.get_cmap(cbar_dict['cbar_params']['cmap_string'])
+
+
+        if cbar_dict['cmap_was_modified'] == True:
+            cmap = cbar_dict['modified_cmap']
+        else:
+            cmap = cm.get_cmap(cbar_dict['cbar_params']['cmap_string'])
+        #cmap = cm.get_cmap(cbar_dict['cbar_params']['cmap_string'])
+
+        # 1. Fetch your target colorbar axis
+        target_cax = plot_state_dict[f'cax_{cbar_side_string}']
+
+        # 2. Extract parent figure context and surgically clean previous drawn items
+        parent_fig = target_cax.figure
+        
+        # Remove custom lines, text collections, or previous colorbar fills cleanly
+        for artist in list(target_cax.lines + target_cax.texts + target_cax.collections):
+            artist.remove()
+            
+        target_cax.figure = parent_fig
+
+        # 3. Calculate your limits *before* creating the colorbar
+        temp_mappable = mpl.cm.ScalarMappable(norm=norm, cmap=cmap)
+        cbar_min, cbar_max = find_colorbar_limits(temp_mappable, cbar_dict['value_min_max_twotuple'])
+        #pdb.set_trace()
+
+        # 4. Generate a clamped norm so the colorbar natively stays in bounds
+        clamped_norm = mpl.colors.Normalize(vmin=cbar_min, vmax=cbar_max)
+
+        # 1. Instantiate the boundary-accurate ColorbarBase
+        cbar = mpl.colorbar.ColorbarBase(
+            target_cax,
+            cmap=cmap,
+            norm=clamped_norm,
+            orientation='vertical',
+            label=rf'{variable_key} {statistic_string} ({units_string})'
+        )
+        
+        # 2. Lock layout sizing, but let Matplotlib manage its native coordinate spaces
+        cbar.ax.autoscale(False)
+        
+        # Freeze the limits so navigation tools (Zoom/Pan/Home) cannot manipulate this axis window
+        cbar.ax.set_navigate(False) 
+
+        # 3. Draw custom quantiles mapped via the colorbar's own normalization transformer
+        quantiles = cbar_dict['quantiles']
+        quantiles_strings = cbar_dict['quantiles_strings']
+
+        for q_dex in range(len(quantiles)):
+            q_val = quantiles[q_dex]
+            
+            if cbar_min <= q_val <= cbar_max:
+                norm_y = cbar.norm(q_val)
+                
+                # Draw the line exactly at the normalized height position spanning edge to edge
+                cbar.ax.hlines(y=norm_y, xmin=0, xmax=1, color='white', zorder=3, linewidth=0.2, 
+                               transform=cbar.ax.transAxes, clip_on=True)
+                               
+                # Default configuration for middle-of-the-bar labels
+                text_va = 'center'
+                text_y = norm_y
+                text_color = 'black'  # Default color for inside labels
+                
+                # If the line sits exactly at the physical bottom (0.0)
+                if norm_y <= 0.001:
+                    text_va = 'bottom'
+                    text_y = norm_y + 0.01  # Nudge it slightly upwards into the colorbar
+                    
+                    if cbar_side_string == 'right':
+                        if variable_key == "S":
+                            text_color = 'white'
+                        elif variable_key == "T":
+                            text_color = 'black'
+                        else:
+                            text_color = 'white'
+                    else:
+                        text_color = 'black'
+                    
+                # If the line sits exactly at the physical top (1.0)
+                elif norm_y >= 0.999:
+                    text_va = 'top'
+                    text_y = norm_y - 0.01  # Nudge it slightly downwards into the colorbar
+                    
+                    if cbar_side_string == 'right':
+                        if variable_key == "S":
+                            text_color = 'black'
+                        elif variable_key == "T":
+                            text_color = 'white'
+                        else:
+                            text_color = 'black'
+                    else:
+                        text_color = 'white'
+
+                cbar.ax.text(x=0.5, y=text_y, s=quantiles_strings[q_dex], color=text_color,
+                             va=text_va, ha='center', fontsize='xx-small', 
+                             transform=cbar.ax.transAxes, clip_on=True)
+
+        # --- FIXED: ACCURATELY CAPTURE & PIN AUTOMATED TICKS FOR "S" ---
+        # Query the exact tick positions Matplotlib evaluated for this clamped range
+        current_ticks = cbar.ax.get_yticks()
+        
+        # Pull the official formatter engine generated by the colorbar class
+        formatter = cbar.ax.yaxis.get_major_formatter()
+        
+        # Evaluate strings cleanly via the true formatter engine to prevent format mismatching
+        current_tick_labels = [formatter(t) for t in current_ticks]
+        
+        # Re-verify and drop empty elements safely if strings returned blank unrendered vectors
+        if not any([str(lbl).strip() for lbl in current_tick_labels]):
+            current_tick_labels = [f'{t:.2f}'.rstrip('0').rstrip('.') for t in current_ticks]
+
+        # Filter out ticks that sit exactly on or beyond the boundaries to keep the frame pristine
+        clean_ticks = []
+        clean_labels = []
+        for t_val, t_lbl in zip(current_ticks, current_tick_labels):
+            if cbar_min < t_val < cbar_max:
+                clean_ticks.append(t_val)
+                clean_labels.append(t_lbl)
+
+        # Apply Fixed locators/formatters using the filtered array
+        # This completely strips out the engine's ability to recalculate when clicking Home
+        cbar.ax.yaxis.set_major_locator(mpl.ticker.FixedLocator(clean_ticks))
+        cbar.ax.yaxis.set_major_formatter(mpl.ticker.FixedFormatter(clean_labels))
+
+        # 4. Update the state dictionary reference
+        plot_state_dict[f'cbar_{cbar_side_string}'] = cbar
+
+
+
+
+
+
+        # ----------------------------------------------------
+        # KEYBOARD CALLBACK EXCLUSIVE: FORCE CANVAS FRESH REFRESH
+        # ----------------------------------------------------
+        # Extract the active figure container
+        fig = target_cax.figure
+        
+        # Force the canvas renderer to flush its drawing queues immediately
+        fig.canvas.draw_idle()
+        fig.canvas.flush_events()
+
+    return None
+
+
+
+
+
+"""
         if cbar_dict['cmap_was_modified'] == True:
             cmap = cbar_dict['modified_cmap']
         else:
@@ -416,8 +547,8 @@ def establish_colorbars(plot_state_dict):
         cbar = mpl.colorbar.ColorbarBase(
             target_cax,
             cmap=cmap,
-            norm=norm,
-            #norm=clamped_norm,
+            #norm=norm,
+            norm=clamped_norm,
             orientation='vertical',
             label=rf'{variable_key} {statistic_string} ({units_string})'
         )
@@ -425,91 +556,27 @@ def establish_colorbars(plot_state_dict):
         # 2. Prevent the layout engine from resizing the box
         cbar.ax.autoscale(False)
 
-        if not cbar_dict['pos_and_neg']:
-            quantiles = cbar_dict['quantiles']
-            quantiles_strings = plot_state_dict['quantiles_strings']
+        #if cbar_dict['pos_and_neg']:
+        #    quantiles = cbar_dict['quantiles_cbar_face_limits']
+        #    quantiles_strings = plot_state_dict['quantiles_strings_limits']
+        #else:
+        #if not cbar_dict['pos_and_neg']:
+            #quantiles_strings = plot_state_dict['quantiles_strings']
 
-            for q_dex in range(len(quantiles)):
-                q_val = quantiles[q_dex]
-                
-                if cbar_min <= q_val <= cbar_max:
-                    cbar.ax.hlines(y=q_val, xmin=0, xmax=1, color='white', zorder=3, linewidth=0.2)
-                    cbar.ax.text(x=0.5, y=q_val, s=quantiles_strings[q_dex], color='black',
-                                 va='center', ha='center', fontsize='xx-small')
+        quantiles = cbar_dict['quantiles']
+        quantiles_strings = cbar_dict['quantiles_strings']
+
+        for q_dex in range(len(quantiles)):
+            q_val = quantiles[q_dex]
+            
+            if cbar_min <= q_val <= cbar_max:
+                cbar.ax.hlines(y=q_val, xmin=0, xmax=1, color='white', zorder=3, linewidth=0.2)
+                cbar.ax.text(x=0.5, y=q_val, s=quantiles_strings[q_dex], color='black',
+                             va='center', ha='center', fontsize='xx-small')
 
         # 3. Update the state dictionary reference
         plot_state_dict[f'cbar_{cbar_side_string}'] = cbar
-
-        # ----------------------------------------------------
-        # KEYBOARD CALLBACK EXCLUSIVE: FORCE CANVAS FRESH REFRESH
-        # ----------------------------------------------------
-        # Extract the active figure container
-        fig = target_cax.figure
-        
-        # Force the canvas renderer to flush its drawing queues immediately
-        fig.canvas.draw_idle()
-        fig.canvas.flush_events()
-
-    return None
-
-
-
-
-
-
-
-
-def establish_colorbars_BAD(plot_state_dict):
-    variable_key, depth_key = get_keys(plot_state_dict)
-    polygon_two_cbar_dict = plot_state_dict[f'polygon_two_cbar_dict_{variable_key}']
-
-    for cbar_dict in polygon_two_cbar_dict.values():
-        cbar_side_string = cbar_dict['cbar_params']['side_string']
-        norm = cbar_dict['norm']
-        units_string = cbar_dict['cbar_params']['units_string']
-        statistic_string = cbar_dict['statistic_string']
-        cmap = cm.get_cmap(cbar_dict['cbar_params']['cmap_string'])
-
-        target_cax = plot_state_dict[f'cax_{cbar_side_string}']
-
-        # 2. Hard reset the axes back to an empty, fresh state
-        target_cax.clear()
-
-        # 3. Use ColorbarBase to forcefully overwrite everything on this axis
-        cbar = mpl.colorbar.ColorbarBase(
-            target_cax,
-            cmap=cmap,
-            norm=norm,
-            orientation='vertical',
-            label=rf'{variable_key} {statistic_string} ({units_string})'
-        )
-
-        # 4. Save the reference to your dictionary just in case
-
-
-
-        ###plot_state_dict[f'cbar_{cbar_side_string}'] = plt.colorbar(mpl.cm.ScalarMappable(norm=norm, cmap=cmap),
-        #cbar = plt.colorbar(mpl.cm.ScalarMappable(norm=norm, cmap=cmap),
-        #         ax=plot_state_dict['ax'], orientation='vertical', label=rf'{variable_key} {statistic_string} ({units_string})', cax=plot_state_dict[f'cax_{cbar_side_string}'])
-        #cbar_min, cbar_max = find_colorbar_limits(plot_state_dict[f'cbar_{cbar_side_string}'], cbar_dict['value_min_max_twotuple'])
-
-        cbar_min, cbar_max = find_colorbar_limits(cbar, cbar_dict['value_min_max_twotuple'])
-        cbar.ax.set_ylim(cbar_min, cbar_max)
-        if not cbar_dict['pos_and_neg']:
-            quantiles = cbar_dict['quantiles']
-            quantiles_strings = plot_state_dict['quantiles_strings']
-            for q_dex in range(len(quantiles)):
-                cbar.ax.axhline(quantiles[q_dex], color='white', zorder=3, linewidth=0.2)
-                cbar.ax.text(x=0.5, y=quantiles[q_dex], s=quantiles_strings[q_dex], color='black',
-                     va='center', ha='center', fontsize='xx-small')
-
-        plot_state_dict[f'cbar_{cbar_side_string}'] = cbar
-
-    return None
-
-        #plot_state_dict[f'cbar_{cbar_side_string}'].ax.set_ylim(cbar_min, cbar_max)
-                #plot_state_dict[f'cbar_{cbar_side_string}'].ax.axhline(quantiles[q_dex], color='white', zorder=3, linewidth=0.2)
-                #plot_state_dict[f'cbar_{cbar_side_string}'].ax.text(x=0.5, y=quantiles[q_dex], s=quantiles_strings[q_dex], color='black',
+"""
 
 
 def prepare_axes(fig):

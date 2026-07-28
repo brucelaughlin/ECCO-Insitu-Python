@@ -29,13 +29,14 @@ output_dir.mkdir(parents=True, exist_ok=True)
 
 
 # This is for determining sub-polygons.  It shouldn't need to be higher than 100
-num_samples_for_clustering_per_profile = 5
+#num_samples_for_clustering_per_profile = 5
 #num_samples_for_clustering_per_profile = 10
-#num_samples_for_clustering_per_profile = 50
+num_samples_for_clustering_per_profile = 50
 
 # This parameter, <num_subpolygons_max>, was originally to keep computing cost down (see previous comment), but,
 # now it's basically just to keep plots from getting too cluttered.
-num_subpolygons_max = 1000
+num_subpolygons_max = 2000
+#num_subpolygons_max = 1000
 
 variables_of_interest_dict = {}
 variables_of_interest_dict["T"] = "$^\circ$C"
@@ -108,21 +109,18 @@ profile_file_list_unproven = [
 ############################################
 #profile_file_list = profile_file_list_unproven
 #profile_file_list = profile_file_list_proved
-#profile_file_list = profile_file_list_total
-profile_file_list = profile_file_list_test
+profile_file_list = profile_file_list_total
+#profile_file_list = profile_file_list_test
 ############################################
 
 for profile_file_index in range(len(profile_file_list)):
+
     profile_file = profile_file_list[profile_file_index]
     print(f"File: {profile_file}")
     save_dir = output_dir / f"{num_samples_for_clustering_per_profile}_clustering_samples_per_profile/{num_geodesic_bins_string}_geodesic_bins" / f"num_subpolygons_max_{num_subpolygons_max}" 
     Path(save_dir).mkdir(parents=True, exist_ok=True)
-    #try:
-    print(f"ncei file: {profile_file}")
+
     geodesic_bin_data_dict = utils_binning.bin_around_geodesic_vertices(geodesic_file, profile_file, variables_of_interest_dict, angular_precision, num_geodesic_bins, num_subpolygons_max, num_samples_for_clustering_per_profile)
-
-
-    # This is a bit crude, but I think the idea is right.  
 
     plot_state_dict = utils_plotting.generate_new_plot_state_dict()
 
@@ -133,7 +131,6 @@ for profile_file_index in range(len(profile_file_list)):
 
     depth_key_list_dict = {}
     for variable_key in variable_key_list: 
-        #depth_key_list_dict[variable_key] = list(geodesic_bin_data_dict[variable_key].keys())
         depth_key_list_dict[variable_key] = [depth_key for depth_key in list(geodesic_bin_data_dict[variable_key].keys()) if type(geodesic_bin_data_dict[variable_key][depth_key]) == dict]
 
         depth_key_list_dict[variable_key].sort()
@@ -147,71 +144,16 @@ for profile_file_index in range(len(profile_file_list)):
     plot_state_dict["num_subpolygons_max"] = geodesic_bin_data_dict["num_subpolygons_max"]
 
     # now set the patch information for the binning just completed.  Note that this uses colorbar information defined elsewhere.
-
     utils_plotting.set_patch_information(plot_state_dict, geodesic_bin_data_dict)
-    #geodesic_bin_data_dict = utils_binning.add_patches_to_geodesic_data(geodesic_bin_data_dict, plot_state_dict)
 
-
-    """
-    except Exception as e:
-        print(f"binning controller failed for ncei file: {profile_file}", file=sys.stderr)
-        print(f"Error message: {e}", file=sys.stderr)
-        print("Continuing to next file\n", file=sys.stderr)
-        continue
-    """
-
-    """
-    save_file_zarr = save_dir / f"{geodesic_bin_data_dict['profile_file_stem']}.zarr"
-    store = zarr.storage.LocalStore(save_file_zarr)
-    root = zarr.group(store=store, overwrite=True)
-    utils_binning.dict_to_zarr(geodesic_bin_data_dict, root)
-    print(f"output_file: {save_file_zarr}\n")
-    """
-
-
-    """
-    save_file_bin_data_zarr = save_dir / f"{geodesic_bin_data_dict['profile_file_stem']}_binning_data.zarr"
-    store = zarr.storage.LocalStore(save_file_bin_data_zarr)
-    root = zarr.group(store=store, overwrite=True)
-    utils_binning.dict_to_zarr(geodesic_bin_data_dict, root)
-    print(f"binning data output_file: {save_file_bin_data_zarr}\n")
-
-    save_file_plot_data_zarr = save_dir / f"{geodesic_bin_data_dict['profile_file_stem']}_plot_data.zarr"
-    store = zarr.storage.LocalStore(save_file_plot_data_zarr)
-    root = zarr.group(store=store, overwrite=True)
-    utils_binning.dict_to_zarr(plot_state_dict, root)
-    print(f"plot data output_file: {save_file_plot_data_zarr}\n")
-    """
-
-    #"""
     save_file_bin_data_pickle = save_dir / f"{geodesic_bin_data_dict['profile_file_stem']}_binning_data.pickle"
     with open(save_file_bin_data_pickle, 'wb') as handle:
         pickle.dump(geodesic_bin_data_dict, handle, protocol=pickle.HIGHEST_PROTOCOL)
-        #pickle.dump(geodesic_bin_data_dict, handle, protocol=pickle.DEFAULT_PROTOCOL)
     print(f"binning data output_file: {save_file_bin_data_pickle}\n")
 
     save_file_plot_data_pickle = save_dir / f"{geodesic_bin_data_dict['profile_file_stem']}_plot_data.pickle"
     with open(save_file_plot_data_pickle, 'wb') as handle:
         pickle.dump(plot_state_dict, handle, protocol=pickle.HIGHEST_PROTOCOL)
     print(f"plot data output_file: {save_file_plot_data_pickle}\n")
-    #"""
-
-
-
-'''
-# Crazy.  AI is amaazing
-# Check that the dict saved is the same as the dict loaded
-
-opened_root = zarr.open(save_file_zarr, mode='r')
-loaded_dict = utils_binning.zarr_to_dict(opened_root)
-try:
-    # Raises an AssertionError if they are not equal, returns None if they match
-    np.testing.assert_equal(geodesic_bin_data_dict, loaded_dict)
-    are_equal = True
-except AssertionError:
-    are_equal = False
-
-print(are_equal)  # True
-'''
 
 
