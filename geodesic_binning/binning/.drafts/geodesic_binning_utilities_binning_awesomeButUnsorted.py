@@ -35,7 +35,7 @@ import geodesic_binning_utilities_plotting as utils_plotting
 
 
 
-def bin_around_geodesic_vertices(geodesic_file: str, profile_file: str, variables_of_interest: dict, angular_precision: float, num_geodesic_bins: int, num_subpolygons_max: int, num_samples_for_clustering_per_profile: int) -> dict :
+def bin_around_geodesic_vertices(geodesic_file: str, profile_file: str, variables_of_interest: dict, angular_precision: float, num_geodesic_bins: int, num_subpolygons_max: int, num_samples_for_kmeans_per_profile: int) -> dict :
 
     num_digits = len(str(num_geodesic_bins))
 
@@ -52,6 +52,7 @@ def bin_around_geodesic_vertices(geodesic_file: str, profile_file: str, variable
     profiles_coordinates_cartesian_tuple = sph2cart(np.radians(profiles_lons), np.radians(profiles_lats), 1)
 
     # Surely there's a pythonic way to do this
+
     profiles_coordinates_cartesian_tuple = filter_tuple_of_1D_arrays_for_nans(profiles_coordinates_cartesian_tuple)
 
     try:
@@ -60,36 +61,7 @@ def bin_around_geodesic_vertices(geodesic_file: str, profile_file: str, variable
         print(f"file: {Path(profile_file).stem}", file=sys.stderr)
         print(f"tree.query failed with error: {e}", file=sys.stderr)
 
-
-    # Note that missing data in profiles_ds appears as a nan, so profiles_ds has full shape, but is only non-nan where valid data was present
-    anomalies_global_dict = {}
-    for variable in variables_of_interest.keys():
-
-        sorted_anomaly_slices_list = []
-        sorted_bin_indices_slices_list = []
-        sorted_lons_list = []
-        sorted_lats_list = []
-
-        unsorted_anomalies = profiles_ds[f'prof_{variable}'].data - profiles_ds[f'prof_{variable}clim'].data
-
-        value_min_individual = np.nanmin(unsorted_anomalies)
-        value_max_individual = np.nanmax(unsorted_anomalies)
-
-        for depth_index in range(unsorted_anomalies.shape[-1]):
-            sort_indices = np.argsort(unsorted_anomalies[:,depth_index])
-            sorted_anomaly_slices_list.append(unsorted_anomalies[:,depth_index][sort_indices])
-            sorted_bin_indices_slices_list.append(nearest_bin_numbers_profiles[sort_indices])
-            sorted_lons_list.append(profiles_lons[sort_indices])
-            sorted_lats_list.append(profiles_lats[sort_indices])
-
-        anomalies_global_dict[variable] = {
-                "profiles_anomaly_values": np.array(sorted_anomaly_slices_list).T,
-                "profiles_bin_indices": np.array(sorted_bin_indices_slices_list).T,
-                "profiles_lons": np.array(sorted_lons_list).T,
-                "profiles_lats": np.array(sorted_lats_list).T,
-                "value_min_individual": value_min_individual, 
-                "value_max_individual": value_max_individual, 
-                }
+    num_bins_expected = len(np.unique(nearest_bin_numbers_profiles))
 
     artificial_lons = np.arange(-180,180,angular_precision)
     artificial_lats = np.arange(-90,90,angular_precision)
@@ -99,6 +71,14 @@ def bin_around_geodesic_vertices(geodesic_file: str, profile_file: str, variable
 
     artificial_grid_geo_bins = artificial_grid_geo_bins.reshape(artificial_lon_meshgrid.shape)
 
+    # Note that missing data in profiles_ds appears as a nan, so profiles_ds has full shape, but is only non-nan where valid data was present
+    anomalies_global_dict = {}
+    for variable in variables_of_interest.keys():
+        anomalies_global_dict[variable] = {
+                "profiles_anomaly_values": profiles_ds[f'prof_{variable}'].data - profiles_ds[f'prof_{variable}clim'].data,
+                "profiles_bin_indices": nearest_bin_numbers_profiles,
+                }
+
     geodesic_bin_data_dict = {}
 
     '''
@@ -107,7 +87,7 @@ def bin_around_geodesic_vertices(geodesic_file: str, profile_file: str, variable
     print(f"                 angular_precision: {angular_precision}") 
     print(f"                 num_geodesic_bins: {num_geodesic_bins}")
     print(f"               num_subpolygons_max: {num_subpolygons_max}")
-    print(f"num_samples_for_clustering_per_profile: {num_samples_for_clustering_per_profile}\n")
+    print(f"num_samples_for_kmeans_per_profile: {num_samples_for_kmeans_per_profile}\n")
     '''
 
     # Assuming <num_depth_levels_profile_file> is fixed for a given profile file....
@@ -122,7 +102,7 @@ def bin_around_geodesic_vertices(geodesic_file: str, profile_file: str, variable
         num_valid_depths = 0
 
         for i_depth in range(num_depth_levels_profile_file):
-        #for i_depth in range(4):
+        #for i_depth in range(16,18):
         #for i_depth in range(16,17):
         #for i_depth in range(16,20):
             valid_indices = ~np.isnan(anomalies_global_dict[variable_key]["profiles_anomaly_values"][:,i_depth])
@@ -139,13 +119,14 @@ def bin_around_geodesic_vertices(geodesic_file: str, profile_file: str, variable
                 geodesic_bin_data_dict[variable_key].setdefault(depth_key, {})
                 patch_dict_single_var_depth["bin_indices"] = {}
 
+
                 prof_count = 0 
+
 
                 #print("initial binning, before micro patch calculation")
 
                 # loop over all of the valid anomaly data, adding each value to the appropriate bin list (index = geodesic bin number)
-                for index, value in zip(anomalies_global_dict[variable_key]["profiles_bin_indices"][valid_indices][:,i_depth], anomalies_global_dict[variable_key]["profiles_anomaly_values"][:,i_depth][valid_indices]):
-                #for index, value in zip(anomalies_global_dict[variable_key]["profiles_bin_indices"][valid_indices], anomalies_global_dict[variable_key]["profiles_anomaly_values"][:,i_depth][valid_indices]):
+                for index, value in zip(anomalies_global_dict[variable_key]["profiles_bin_indices"][valid_indices], anomalies_global_dict[variable_key]["profiles_anomaly_values"][:,i_depth][valid_indices]):
                     index_print = f"{index:0{num_digits}}"
                     patch_dict_single_var_depth["bin_indices"].setdefault(index_print, {})
                     patch_dict_single_var_depth["bin_indices"][index_print].setdefault("individual_values", [])
@@ -165,12 +146,6 @@ def bin_around_geodesic_vertices(geodesic_file: str, profile_file: str, variable
                     artificial_coord_mask_current_index = artificial_grid_geo_bins == int(index)
                     artificial_lons_current_index = artificial_lon_meshgrid[artificial_coord_mask_current_index]
                     artificial_lats_current_index = artificial_lat_meshgrid[artificial_coord_mask_current_index]
-                    
-                    if np.max(artificial_lons_current_index) - np.min(artificial_lons_current_index) > 100:
-                        patch_dict_single_var_depth["bin_indices"][index]["map_span_bug"] = True
-                    else:
-                        patch_dict_single_var_depth["bin_indices"][index]["map_span_bug"] = False
-
                     coords_within_geodesic_bin = np.stack((artificial_lons_current_index,artificial_lats_current_index), axis=-1)
                     patch_dict_single_var_depth["bin_indices"][index]["artificial_grid_coords_within_geodesic_bin"] = coords_within_geodesic_bin
 
@@ -178,13 +153,11 @@ def bin_around_geodesic_vertices(geodesic_file: str, profile_file: str, variable
                     patch_dict_single_var_depth["bin_indices"][index]["artificial_grid_bounding_polygon_for_geodesic_bin"] = bounding_polygon
 
 
-                determine_patch_collections_pieces(patch_dict_single_var_depth, num_subpolygons_max, num_samples_for_clustering_per_profile)
+                determine_patch_collections_pieces(patch_dict_single_var_depth, num_subpolygons_max, num_samples_for_kmeans_per_profile)
 
-                patch_dict_single_var_depth["profiles_lats"] = anomalies_global_dict[variable_key]["profiles_lats"][valid_indices][:,i_depth]
-                patch_dict_single_var_depth["profiles_lons"] = anomalies_global_dict[variable_key]["profiles_lons"][valid_indices][:,i_depth]
 
-                #patch_dict_single_var_depth["profiles_lats"] = profiles_lats[valid_indices]
-                #patch_dict_single_var_depth["profiles_lons"] = profiles_lons[valid_indices]
+                patch_dict_single_var_depth["profiles_lats"] = profiles_lats[valid_indices]
+                patch_dict_single_var_depth["profiles_lons"] = profiles_lons[valid_indices]
                 patch_dict_single_var_depth["units_string"] = variables_of_interest[variable_key]
 
                 geodesic_bin_data_dict[variable_key][depth_key] = patch_dict_single_var_depth
@@ -192,10 +165,6 @@ def bin_around_geodesic_vertices(geodesic_file: str, profile_file: str, variable
 
 
                 print(f"variable: {variable_key}; depth level {i_depth+1:03}/{num_depth_levels_profile_file:03}; profile count: {prof_count}; time (seconds): {(time.time() - time_marker):06.2f}")
-
-
-        geodesic_bin_data_dict[variable_key]["value_min_individual"] = anomalies_global_dict[variable_key]["value_min_individual"]
-        geodesic_bin_data_dict[variable_key]["value_max_individual"] = anomalies_global_dict[variable_key]["value_max_individual"]
 
         print(f"variable: {variable_key}; num depths with invalid data: {num_depth_levels_profile_file - num_valid_depths:03}/{num_depth_levels_profile_file:03}; num depths with valid data: {num_valid_depths:03}/{num_depth_levels_profile_file:03}")
 
@@ -219,7 +188,7 @@ def filter_tuple_of_1D_arrays_for_nans(tuple_of_1D_arrays):
     return(tuple_of_1D_arrays)
 
 
-def determine_patch_collections_pieces(patch_dict_single_var_depth: dict, num_subpolygons_max: int, num_samples_for_clustering_per_profile) -> None:
+def determine_patch_collections_pieces(patch_dict_single_var_depth: dict, num_subpolygons_max: int, num_samples_for_kmeans_per_profile) -> None:
 
     # Some plotting parameters that have seemed to work
     linewidth_floor_initial = 0
@@ -249,9 +218,6 @@ def determine_patch_collections_pieces(patch_dict_single_var_depth: dict, num_su
         #if not isinstance(patch_dict_single_var_depth["bin_indices"][index], dict):
         #    continue
 
-        if patch_dict_single_var_depth["bin_indices"][index]["map_span_bug"]:
-            continue
-
         if patch_dict_single_var_depth["bin_indices"][index]["artificial_grid_bounding_polygon_for_geodesic_bin"].size == 0:
             num_zero_area_bins += 1
 
@@ -280,9 +246,6 @@ def determine_patch_collections_pieces(patch_dict_single_var_depth: dict, num_su
         # Had to add this bc of the profiles_lons/lats, which aren't specific to any bins 
         #if not isinstance(patch_dict_single_var_depth["bin_indices"][index], dict):
         #    continue
-
-        if patch_dict_single_var_depth["bin_indices"][index]["map_span_bug"]:
-            continue
 
         # safety check in case a geodesic bin polygon is zero size
         gbd_polygon = patch_dict_single_var_depth["bin_indices"][index]["artificial_grid_bounding_polygon_for_geodesic_bin"]
@@ -324,10 +287,10 @@ def determine_patch_collections_pieces(patch_dict_single_var_depth: dict, num_su
     patch_dict_single_var_depth['macro']['linewidth_floor_initial'] = linewidth_floor_initial
     patch_dict_single_var_depth['macro']['linewidth_ceil_initial'] = linewidth_ceil_initial
 
-    determine_micro_patch_collections_pieces(patch_dict_single_var_depth, num_subpolygons_max, num_samples_for_clustering_per_profile)
+    determine_micro_patch_collections_pieces(patch_dict_single_var_depth, num_subpolygons_max, num_samples_for_kmeans_per_profile)
 
 
-def determine_micro_patch_collections_pieces(patch_dict_single_var_depth : dict, num_subpolygons_max: int, num_samples_for_clustering_per_profile: int) -> None:
+def determine_micro_patch_collections_pieces(patch_dict_single_var_depth : dict, num_subpolygons_max: int, num_samples_for_kmeans_per_profile: int) -> None:
 
     num_patches = len(patch_dict_single_var_depth['count_array']) 
 
@@ -361,9 +324,10 @@ def determine_micro_patch_collections_pieces(patch_dict_single_var_depth : dict,
             minx, miny, maxx, maxy = orig_poly.bounds
             points = []
         
-            num_samples_for_clustering = num_profiles * num_samples_for_clustering_per_profile
+            #num_samples_for_kmeans = num_profiles * num_samples_for_kmeans_per_profile
+            num_samples_for_kmeans = num_profiles * 100
 
-            while len(points) < num_samples_for_clustering:
+            while len(points) < num_samples_for_kmeans:
                 p = Point(np.random.uniform(minx, maxx), np.random.uniform(miny, maxy))
                 if orig_poly.contains(p):
                     points.append([p.x, p.y])
@@ -825,4 +789,41 @@ def zarr_to_dict(current_group):
     return d
 
 """
+
+"""
+
+            kmeans = KMeans(n_clusters=num_profiles, n_init=10, random_state=42)
+                
+            try:
+                labels = kmeans.fit_predict(random_points_array)
+                #print(f"kmeans time: {time.time() - timestamp}s")
+                #timestamp = time.time()
+                #pdb.set_trace()
+                for profile_index in range(num_profiles):
+                    cluster_points = random_points_array[labels == profile_index]
+                    try:
+                        polygon_coords = ShapelyCoordinates(ShapelyPolygon(cluster_points).convex_hull)
+                        patch_polygon_vertex_list_of_lists.append(polygon_coords)
+                        #print(f"chull time: {time.time() - timestamp}s")
+                    except Exception as e:
+                        print(f"micro patch error: convex hull calculation failed for a profile: {e}", file=sys.stderr)
+                        print(f"kmeans samples per profile: {num_samples_for_kmeans_per_profile}; num profiles: {num_profiles}; total kmeans samples: {num_samples_for_kmeans}", file=sys.stderr)
+                patch_face_value_list += patch_dict_single_var_depth['individual_profile_anomalies_list_of_bin_lists'][patch_dex]
+                patch_edge_value_list += [patch_dict_single_var_depth['macro']['edge_value_list'][patch_dex]] * num_profiles
+                if num_profiles == 1:
+                    linewidths_list.append(0)
+                else:
+                    linewidths_list += [1] * num_profiles
+
+            except Exception as e:
+                print(f"\tmicro patch kmeans error: {e}", file=sys.stderr)
+                print("\tLikely subtracted too many profiles; just using macro patch", file=sys.stderr)
+                patch_polygon_vertex_list_of_lists.append(patch_dict_single_var_depth['macro']['polygon_vertex_list_of_lists'][patch_dex])
+                patch_face_value_list.append(patch_dict_single_var_depth['macro']['face_value_list'][patch_dex])
+                patch_edge_value_list.append(patch_dict_single_var_depth['macro']['edge_value_list'][patch_dex])
+                linewidths_list.append(patch_dict_single_var_depth['macro']['linewidths_list'][patch_dex])
+                #linewidths_list.append(patch_dict_single_var_depth['macro']['linewidths_unclipped_list'][patch_dex])
+
+"""
+
 
