@@ -1,12 +1,7 @@
-import logging
-#logging.getLogger('matplotlib').setLevel(logging.ERROR)
-
 import sys
 from pathlib import Path
-from functools import partial
 from matplotlib.lines import Line2D
 import textwrap
-import math
 import pdb
 import cartopy.crs as ccrs
 import matplotlib as mpl
@@ -16,15 +11,9 @@ import matplotlib.cm as cm
 import matplotlib.colors as mcolors
 from matplotlib.collections import PatchCollection, PathCollection
 from matplotlib.patches import Polygon as MatplotlibPolygon
-
 import numpy as np
 from shapely.geometry import Polygon as ShapelyPolygon
-from shapely.geometry import Point
-from shapely import get_coordinates as ShapelyCoordinates
-import xarray as xr
-import random
 import time
-import matplotlib.transforms as mtransforms
 import copy
 
 geodesic_dir = str(Path(__file__).parent.resolve())
@@ -44,13 +33,15 @@ def generate_new_plot_state_dict():
         'fig_width': 14,
         'fig_height': 6,
         'figure_facecolor': 'lightskyblue',
-        'legend_loc_twotuple': (0.75, 0.85),
         'quantiles_fractions_edge': [0.05, 0.25, 0.5, 0.75, 0.95, 0.99],
-        #'quantiles_fractions': [0.25, 0.5, 0.75, 0.95, 0.99],
         'quantiles_fractions_face_limits': [0.05, 0.95],
         'polygon_two_cbar_dict_template': {'face': polygon_face_plotting_dict, 'edge': polygon_edge_plotting_dict},
         'zoom_scale_threshold': 10,
-        #'zoom_scale_threshold': 5,
+        'zoom_scale_threshold_legend_loc': 2,
+        'zoom_scale_print_num_digits_plus_period': 5,
+        'zoom_scale_print_decimal_places': 1,
+        'legend_frame_alpha': 0.8,
+        'legend_zorder': 20,
     }
     return plot_state_dict
 
@@ -82,10 +73,7 @@ def find_colorbar_limits(colorbar, value_min_max_twotuple):
 def get_visible_patch_mask(ax, polygon_list):
     visible_patch_mask = np.zeros(len(polygon_list)).astype(bool)
     for patch_dex in range(len(polygon_list)):
-
         patch_coords = np.array(polygon_list[patch_dex].exterior.coords)
-        #patch_coords = polygon_list[patch_dex].get_xy()
-
         for coord_dex in range(patch_coords.shape[0]):
             if (patch_coords[coord_dex,0] > ax.get_xlim()[0]
                 and patch_coords[coord_dex,0] < ax.get_xlim()[1] 
@@ -122,13 +110,13 @@ def make_handles_and_titles(plot_state_dict):
             custom_handles = [
                 Line2D([0], [0], color='gray', label=f"{count_min_zoom}"),
             ]
-            legend_title = "profiles per patch:"
+            legend_title = "profiles per visible patch:"
         elif len(np.unique(count_array[visible_patch_mask])) == 2: 
             custom_handles = [
                 Line2D([0], [0], color='gray', label=f"min {count_min_zoom}"),
                 Line2D([0], [0], color='gray', label=f"max {count_max_zoom}")
             ]
-            legend_title = "profiles per patch:"
+            legend_title = "profiles per visible patch:"
         else:
             count_mid_zoom = int(np.median(np.sort(count_array[visible_patch_mask])))
             if count_mid_zoom > 1:
@@ -140,40 +128,61 @@ def make_handles_and_titles(plot_state_dict):
                 Line2D([0], [0], color='gray', label=f"med {count_mid_zoom}"),
                 Line2D([0], [0], color='gray', label=f"max {count_max_zoom}")
             ]
-            legend_title = "profiles per patch:"
+            legend_title = "profiles per visible patch:"
 
         if custom_handles != 0:
-            plot_state_dict['ax'].legend(framealpha=0, handlelength=0, handletextpad=0, fontsize="xx-small", title_fontsize="xx-small",
-                  handles=custom_handles, title=f"{legend_title}", loc=plot_state_dict['legend_loc_twotuple'])
 
+            legend = plot_state_dict['ax'].legend(plot_state_dict['legend_frame_alpha'], handlelength=0, handletextpad=0, fontsize="xx-small", title_fontsize="xx-small",
+                  handles=custom_handles, title=f"{legend_title}", loc="upper right")
+            legend.set_zorder(plot_state_dict['legend_zorder'])
+
+            # vibe me bb
+            extent = plot_state_dict['ax'].get_extent(crs=ccrs.PlateCarree())
+            visible_right = extent[1]
+            visible_top = extent[3]
+
+            mpl_transform = ccrs.PlateCarree()._as_mpl_transform(plot_state_dict['ax'])
+
+            # Update the existing legend's anchor point to the map's new right edge
+            legend.set_bbox_to_anchor((visible_right, visible_top), mpl_transform)
 
 
 def set_plot_text(plot_state_dict):
 
     variable_key, depth_key = get_keys(plot_state_dict)
-    suptitle_string = (
+
+    num_digits_print_depth_level = plot_state_dict["num_digits_print_depth_level"] 
+    num_digits_print_bins = plot_state_dict["num_digits_print_bins"]
+    num_digits_print_profiles = plot_state_dict["num_digits_print_profiles"]
+
+    profile_count_per_variable = plot_state_dict["profile_count_per_variable"][variable_key]
+    depth_count_per_variable = plot_state_dict["depth_count_per_variable"][variable_key]
+
+    title_string = (
             f"\nvariable: {variable_key}\n"
-            f"depth level: {int(depth_key) + 1:02}/{int(plot_state_dict['num_depth_levels_profile_file']) + 1:02}\n"
-            f"num bins populated: {len(plot_state_dict['patch_information_dict'][variable_key][depth_key]['count_array'])}/{plot_state_dict['num_geodesic_bins']}\n"
-            f"num profiles binned: {np.sum(plot_state_dict['patch_information_dict'][variable_key][depth_key]['count_array'])}\n"
+            f"{depth_count_per_variable}/{(int(plot_state_dict['num_depth_levels_ncei_file']) + 1):{num_digits_print_depth_level}} total depth levels populated; current depth level: {(int(depth_key) + 1):{num_digits_print_depth_level}}/{(int(plot_state_dict['num_depth_levels_ncei_file']) + 1):{num_digits_print_depth_level}}\n"
+            f"geodesic bins populated at current depth level: {len(plot_state_dict['patch_information_dict'][variable_key][depth_key]['count_array']):{num_digits_print_bins}}/{plot_state_dict['num_geodesic_bins']}\n"
+            f"{profile_count_per_variable:,} total profiles binned; profiles binned at current depth level: {np.sum(plot_state_dict['patch_information_dict'][variable_key][depth_key]['count_array']):{num_digits_print_profiles},}/{profile_count_per_variable:,}\n"
             f"profile_file: {plot_state_dict['profile_file_stem']}\n"
-            f"geodesic_bin_file: {plot_state_dict['geodesic_bin_file_stem']}\n\n"
+            f"geodesic_bin_file: {plot_state_dict['geodesic_bin_file_stem']}\n"
+            f"current zoom level/zoom threshold for plotting individual profile data: {round(plot_state_dict['scale_factor'], plot_state_dict['zoom_scale_print_decimal_places']):{plot_state_dict['zoom_scale_print_num_digits_plus_period']}}/{plot_state_dict['zoom_scale_threshold']}\n\n"
+
             "Navigation: with the mouse held over the figure, use number keys as follows: 1 and 2 to change depth level, 3 and 4 to change variable,\n"
             "8 to reset depth level to zero, 9 to reset zoom level to zero, 0 to reset zoom and depth levels to zero.\n"
-            "Click the magnifying glass in the figure toolbar (lower left) to enable zooming, then click and drag to zoom in on a selected region.\n\n"
+            "Built-in tools (pan, zoom, save, etc.) are accessible via the toolbar in the lower left corner of this window.\n\n"
             )
     caption_string = (
-            f"Polygon face colors represent {variable_key} anomalies (low zoom levels: geodesic bin mean, higher zoom levels: individual profile values "
-            f"(unless a bin contains more than {plot_state_dict['num_subpolygons_max']} profiles)).  "
+            f"Polygon face colors represent {variable_key} anomalies (low zoom levels: geodesic bin means, higher zoom levels: individual profile values "
+            f"(unless a geodesic bin contains more than {plot_state_dict['num_subpolygons_max']} profiles)).  "
             f"Polygon edge colors represent a geodesic bin's overall {variable_key} anomaly standard deviation.  "
-            "At low zoom levels, polygon edge widths scale linearly with number of profiles binned.  "
+            "At low zoom levels, polygon edge widths scale linearly with the number of profiles binned within.  "
             "At higher zoom levels, true profile locations appear as red dots."
             )
 
     wrap_width = 100
     caption_string_wrapped_list = [textwrap.fill(paragraph, width=wrap_width) for paragraph in caption_string.split('\n')]
     caption_string_wrapped = '\n'.join(caption_string_wrapped_list)
-    plot_state_dict['fig'].suptitle(suptitle_string, y=1.0, fontsize=7)
+    plot_state_dict['ax'].set_title(title_string, fontsize=7)
 
     if not plot_state_dict['first_plot_bool']:
         plot_state_dict['caption_obj'].set_text(caption_string_wrapped)
@@ -197,18 +206,19 @@ def set_patch_information(plot_state_dict, geodesic_bin_data_dict):
     set_colorbar_information_dictionary(plot_state_dict, geodesic_bin_data_dict)
 
     plot_state_dict['patch_information_dict'] = {}
-    var_counter = 0
-    num_vars = len(plot_state_dict['variable_key_list'])
+    variable_counter = 0
+    num_variables = len(plot_state_dict['variable_key_list'])
     for variable_key in plot_state_dict['variable_key_list']:
         plot_state_dict['patch_information_dict'][variable_key] = {}
-        var_counter += 1
+        variable_counter += 1
         depth_counter = 0
         num_depths = len(plot_state_dict['depth_key_list_dict'][variable_key])
+        num_digits_depth_print = len(str(abs(num_depths)))
+
         var_time = time.time()
         for depth_key in plot_state_dict['depth_key_list_dict'][variable_key]:  
             depth_time = time.time()
             depth_counter += 1
-            print(f"var {var_counter}/{num_vars}; depth {depth_counter:02}/{num_depths:02}")
 
             patch_dict_single_var_depth = geodesic_bin_data_dict[variable_key][depth_key]
             polygon_two_cbar_dict = plot_state_dict[f'polygon_two_cbar_dict_{variable_key}']
@@ -262,11 +272,12 @@ def set_patch_information(plot_state_dict, geodesic_bin_data_dict):
             plot_state_dict['patch_information_dict'][variable_key][depth_key]['profiles_lons'] = patch_dict_single_var_depth['profiles_lons']
             plot_state_dict['patch_information_dict'][variable_key][depth_key]['profiles_lats'] = patch_dict_single_var_depth['profiles_lats']
 
-            print(f"{time.time() - depth_time} seconds")
+            print(f"variable {variable_counter}/{num_variables}: {variable_key}; depth level {depth_counter:{num_digits_depth_print}}/{num_depths:{num_digits_depth_print}}; time (seconds): {time.time() - depth_time:.2f}")
             depth_time = time.time()
         
-        print(f"{time.time() - var_time} seconds")
+        print(f"variable {variable_counter}/{num_variables}: {variable_key}; total time: {time.time() - var_time:.2f} seconds\n")
         var_time = time.time()
+
 
 # Vibing
 def create_patch_collection(polygon_list):
@@ -334,8 +345,6 @@ def set_colorbar_information_dictionary(plot_state_dict, geodesic_bin_data_dict)
                 cbar_dict['modified_cmap'] = mcolors.ListedColormap(shifted_colors)
                 cbar_dict['cmap_was_modified'] = True
 
-                #norm.autoscale(value_list_universal)
-
             else:
                 quantiles = np.quantile(np.array(value_list_macro_universal), plot_state_dict['quantiles_fractions_edge'])
                 cbar_dict['quantiles'] = quantiles
@@ -355,6 +364,7 @@ def set_colorbar_information_dictionary(plot_state_dict, geodesic_bin_data_dict)
 
 # In vibe we trust
 def establish_colorbars(plot_state_dict):
+
     variable_key, depth_key = get_keys(plot_state_dict)
     polygon_two_cbar_dict = plot_state_dict[f'polygon_two_cbar_dict_{variable_key}']
 
@@ -364,20 +374,15 @@ def establish_colorbars(plot_state_dict):
         units_string = cbar_dict['cbar_params']['units_string']
         statistic_string = cbar_dict['statistic_string']
 
-
+        if cbar_dict['cmap_was_modified'] == True:
+            cmap = cbar_dict['modified_cmap']
+        else:
+            cmap = cm.get_cmap(cbar_dict['cbar_params']['cmap_string'])
 
         if cbar_dict['cmap_was_modified'] == True:
             cmap = cbar_dict['modified_cmap']
         else:
             cmap = cm.get_cmap(cbar_dict['cbar_params']['cmap_string'])
-        #cmap = cm.get_cmap(cbar_dict['cbar_params']['cmap_string'])
-
-
-        if cbar_dict['cmap_was_modified'] == True:
-            cmap = cbar_dict['modified_cmap']
-        else:
-            cmap = cm.get_cmap(cbar_dict['cbar_params']['cmap_string'])
-        #cmap = cm.get_cmap(cbar_dict['cbar_params']['cmap_string'])
 
         # 1. Fetch your target colorbar axis
         target_cax = plot_state_dict[f'cax_{cbar_side_string}']
@@ -394,7 +399,6 @@ def establish_colorbars(plot_state_dict):
         # 3. Calculate your limits *before* creating the colorbar
         temp_mappable = mpl.cm.ScalarMappable(norm=norm, cmap=cmap)
         cbar_min, cbar_max = find_colorbar_limits(temp_mappable, cbar_dict['value_min_max_twotuple'])
-        #pdb.set_trace()
 
         # 4. Generate a clamped norm so the colorbar natively stays in bounds
         clamped_norm = mpl.colors.Normalize(vmin=cbar_min, vmax=cbar_max)
@@ -497,11 +501,6 @@ def establish_colorbars(plot_state_dict):
         # 4. Update the state dictionary reference
         plot_state_dict[f'cbar_{cbar_side_string}'] = cbar
 
-
-
-
-
-
         # ----------------------------------------------------
         # KEYBOARD CALLBACK EXCLUSIVE: FORCE CANVAS FRESH REFRESH
         # ----------------------------------------------------
@@ -513,70 +512,6 @@ def establish_colorbars(plot_state_dict):
         fig.canvas.flush_events()
 
     return None
-
-
-
-
-
-"""
-        if cbar_dict['cmap_was_modified'] == True:
-            cmap = cbar_dict['modified_cmap']
-        else:
-            cmap = cm.get_cmap(cbar_dict['cbar_params']['cmap_string'])
-        #cmap = cm.get_cmap(cbar_dict['cbar_params']['cmap_string'])
-
-        # 1. Fetch your target colorbar axis
-        target_cax = plot_state_dict[f'cax_{cbar_side_string}']
-
-        # 2. Extract parent figure context and purge old layout remnants
-        parent_fig = target_cax.figure
-        target_cax.clear()
-        target_cax.figure = parent_fig
-
-        # 3. Calculate your limits *before* creating the colorbar
-        # Create a temp ScalarMappable just to feed your 'find_colorbar_limits' logic
-        temp_mappable = mpl.cm.ScalarMappable(norm=norm, cmap=cmap)
-        cbar_min, cbar_max = find_colorbar_limits(temp_mappable, cbar_dict['value_min_max_twotuple'])
-        #pdb.set_trace()
-
-        # 4. Generate a clamped norm so the colorbar natively stays in bounds
-        clamped_norm = mpl.colors.Normalize(vmin=cbar_min, vmax=cbar_max)
-
-
-        # 1. Instantiate the boundary-accurate ColorbarBase
-        cbar = mpl.colorbar.ColorbarBase(
-            target_cax,
-            cmap=cmap,
-            #norm=norm,
-            norm=clamped_norm,
-            orientation='vertical',
-            label=rf'{variable_key} {statistic_string} ({units_string})'
-        )
-        
-        # 2. Prevent the layout engine from resizing the box
-        cbar.ax.autoscale(False)
-
-        #if cbar_dict['pos_and_neg']:
-        #    quantiles = cbar_dict['quantiles_cbar_face_limits']
-        #    quantiles_strings = plot_state_dict['quantiles_strings_limits']
-        #else:
-        #if not cbar_dict['pos_and_neg']:
-            #quantiles_strings = plot_state_dict['quantiles_strings']
-
-        quantiles = cbar_dict['quantiles']
-        quantiles_strings = cbar_dict['quantiles_strings']
-
-        for q_dex in range(len(quantiles)):
-            q_val = quantiles[q_dex]
-            
-            if cbar_min <= q_val <= cbar_max:
-                cbar.ax.hlines(y=q_val, xmin=0, xmax=1, color='white', zorder=3, linewidth=0.2)
-                cbar.ax.text(x=0.5, y=q_val, s=quantiles_strings[q_dex], color='black',
-                             va='center', ha='center', fontsize='xx-small')
-
-        # 3. Update the state dictionary reference
-        plot_state_dict[f'cbar_{cbar_side_string}'] = cbar
-"""
 
 
 def prepare_axes(fig):
@@ -592,6 +527,7 @@ def prepare_axes(fig):
 
 
 def clear_axes(plot_state_dict):
+
     if plt.gca().get_legend() is not None:
         plt.gca().get_legend().remove()
 
@@ -599,24 +535,11 @@ def clear_axes(plot_state_dict):
         plot_state_dict['cax_left'].clear()
         plot_state_dict['cax_right'].clear()
 
-    #print("----------------------------------------------------------------------------------------------------------")
-    #n_coll = len(list(plot_state_dict['ax'].collections))
-    #ii_coll = 0
     for coll in list(plot_state_dict['ax'].collections):
-        #ii_coll += 1
         if isinstance(coll, (PathCollection, PatchCollection)):
-    #        print(f'removing collection {ii_coll}/{n_coll}')
             coll.remove()
-        #else:
-    #        print(f"not removing collection {ii_coll}/{n_coll}: {coll}")
-    #print("----------------------------------------------------------------------------------------------------------")
 
     return None
-
-    #if plot_state_dict['change_variable_bool']:
-    #    plot_state_dict['cax_left'].clear()
-    #    plot_state_dict['cax_right'].clear()
-
 
 
 def reset_zoom_to_global(plot_state_dict):
@@ -633,18 +556,21 @@ def set_xylims(plot_state_dict):
     plot_state_dict['fig'].canvas.draw()
 
 
-def set_zoom_threshold_crossed_boolean(plot_state_dict):
+def set_zoom_thresholds_crossed_booleans(plot_state_dict):
     set_xy_minmax_zooms(plot_state_dict)
     current_range_x = plot_state_dict['xmax_zoom'] - plot_state_dict['xmin_zoom']
     current_range_y = plot_state_dict['ymax_zoom'] - plot_state_dict['ymin_zoom']
     current_pseudo_area = current_range_x * current_range_y
-    #print(f"current_pseudo_area: {current_pseudo_area}")
     scale_factor = np.sqrt(plot_state_dict['global_pseudo_area']/current_pseudo_area)
+    plot_state_dict['scale_factor'] = scale_factor
     if scale_factor > plot_state_dict['zoom_scale_threshold']:
-        plot_state_dict['zoom_threshold_crossed'] = True
+        plot_state_dict['zoom_threshold_crossed_bool'] = True
     else:
-        plot_state_dict['zoom_threshold_crossed'] = False
-    #print(f"scale factor: {scale_factor} / {plot_state_dict['zoom_scale_threshold']}\n")
+        plot_state_dict['zoom_threshold_crossed_bool'] = False
+    if scale_factor > plot_state_dict['zoom_scale_threshold_legend_loc']:
+        plot_state_dict['zoom_threshold_crossed_legend_bool'] = True
+    else:
+        plot_state_dict['zoom_threshold_crossed_legend_bool'] = False
     return None
 
 
@@ -664,16 +590,12 @@ def set_global_xylims(plot_state_dict):
     x_range = plot_state_dict['xmax_global'] - plot_state_dict['xmin_global']
     y_range = plot_state_dict['ymax_global'] - plot_state_dict['ymin_global']
     plot_state_dict['global_pseudo_area'] = x_range * y_range
+    plot_state_dict['scale_factor'] = 1
     return None
 
 
 
 def redraw_axes(plot_state_dict):
-
-#    if plot_state_dict['setup_bool']:
-#        return
-
-    #if plot_state_dict['first_plot_bool'] and not plot_state_dict['setup_bool']:
 
     clear_axes(plot_state_dict)
 
@@ -684,7 +606,7 @@ def redraw_axes(plot_state_dict):
         plot_state_dict['change_variable_bool'] = False
     set_xylims(plot_state_dict)
 
-    if not plot_state_dict['zoom_threshold_crossed']:
+    if not plot_state_dict['zoom_threshold_crossed_bool']:
         plot_state_dict['ax'].add_collection(plot_state_dict['patch_information_dict'][variable_key][depth_key]['patch_collection_macro'])
     else:
         plot_state_dict['ax'].scatter(plot_state_dict['patch_information_dict'][variable_key][depth_key]['profiles_lons'], plot_state_dict['patch_information_dict'][variable_key][depth_key]['profiles_lats'], c='red', s=1, zorder=10)
@@ -703,20 +625,11 @@ def scale_with_zoom(plot_state_dict, event):
     if plot_state_dict['setup_bool'] or plot_state_dict['first_plot_bool']:
         return
 
-    # Ignore callbacks firing within <callback_time_threshold> seconds of each other
-    # (This is meant to prevent our code from running during internal callback triggering, which often happens multiple times during a single figure update)
-    ###callback_time_threshold = 0.1
-    #callback_time_threshold = 0.01
-    #current_time = time.time()
-    #if current_time - plot_state_dict['last_zoom_time'] < callback_time_threshold:
-    #    return
-    #plot_state_dict['last_zoom_time'] = current_time
-
     variable_key, depth_key = get_keys(plot_state_dict)
-    previously_zoomed = plot_state_dict['zoom_threshold_crossed']
+    previously_zoomed = plot_state_dict['zoom_threshold_crossed_bool']
 
-    set_zoom_threshold_crossed_boolean(plot_state_dict)
-    if plot_state_dict['zoom_threshold_crossed']:
+    set_zoom_thresholds_crossed_booleans(plot_state_dict)
+    if plot_state_dict['zoom_threshold_crossed_bool']:
         if not previously_zoomed:
             clear_axes(plot_state_dict)
             plot_state_dict['ax'].scatter(plot_state_dict['patch_information_dict'][variable_key][depth_key]['profiles_lons'], plot_state_dict['patch_information_dict'][variable_key][depth_key]['profiles_lats'], c='red', s=1, zorder=10)
@@ -727,12 +640,14 @@ def scale_with_zoom(plot_state_dict, event):
             plot_state_dict['ax'].add_collection(plot_state_dict['patch_information_dict'][variable_key][depth_key]['patch_collection_macro'])
 
     make_handles_and_titles(plot_state_dict)
+    set_plot_text(plot_state_dict)
     plot_state_dict['fig'].canvas.draw_idle()
 
     return None
 
 
 def handle_keyboard_input(plot_state_dict, event):
+
     if plot_state_dict['setup_bool']:
         return
 
@@ -776,7 +691,7 @@ def handle_keyboard_input(plot_state_dict, event):
                 variable_key, depth_key = get_keys(plot_state_dict)
                 break
             except IndexError:
-                print(f"No '{get_variable_key(plot_state_dict)}' data at depth level {plot_state_dict['depth_key_list_index']}; checking one level up")
+                #print(f"No '{get_variable_key(plot_state_dict)}' data at depth level {plot_state_dict['depth_key_list_index']}; checking one level up")
                 if plot_state_dict['depth_key_list_index'] == 0:
                     plot_state_dict['depth_key_list_index'] = len(plot_state_dict['depth_key_list_dict'][variable_key]) - 1
                 else:

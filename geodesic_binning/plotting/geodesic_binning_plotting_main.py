@@ -4,38 +4,20 @@ logging.getLogger('matplotlib').setLevel(logging.ERROR)
 import sys
 from pathlib import Path
 from functools import partial
-from matplotlib.lines import Line2D
-import textwrap
-import math
 import pdb
-import cartopy.crs as ccrs
-import matplotlib as mpl
 import matplotlib.pyplot as plt
-import matplotlib.patches as patches
-import matplotlib.cm as cm
-import matplotlib.colors as mcolors
-from matplotlib.collections import PatchCollection, PathCollection
 import numpy as np
-from shapely.geometry import Polygon as ShapelyPolygon
-from shapely.geometry import Point
-from shapely import get_coordinates as ShapelyCoordinates
-import xarray as xr
-import zarr
 import pickle
-import random
 import time
 
-#geodesic_dir = str(Path(__file__).parent.parent.resolve())
-#sys.path.append(geodesic_dir)
-
-binning_dir = str(Path(__file__).parent.parent.resolve() / "binning")
-sys.path.append(binning_dir)
+plt.rcParams['font.family'] = 'monospace'
+plt.rcParams['font.monospace'] = ['Courier'] + plt.rcParams['font.monospace']
 
 plotting_dir = str(Path(__file__).parent.parent.resolve() / "plotting")
 sys.path.append(plotting_dir)
 
-#from  geodesic_binning_utilities_binning import zarr_to_dict
 import geodesic_binning_utilities_plotting as utils
+
 
 def plot_spawner(pickle_file_binning, pickle_file_plot):
 
@@ -53,16 +35,24 @@ def plot_spawner(pickle_file_binning, pickle_file_plot):
 
     plot_state_dict.update({'fig': fig, 'ax': ax, 'cax_left': cax_left, 'cax_right': cax_right})
 
-    # To make things easy, I'm just setting my "global" axis limits to be those produced by utils.prepare_axes(fig) above, ie
-    # from these lines: ax = plt.axes(projection=ccrs.PlateCarree()); ax.coastlines(color='black', linewidth=0.15).
-    # Note that the initial plot is thus zoomed out to make the entire world visible.
     plot_state_dict['fig'].canvas.draw()
     utils.set_global_xylims(plot_state_dict)
 
-    plot_state_dict['zoom_threshold_crossed'] = False
+    plot_state_dict['zoom_threshold_crossed_bool'] = False
+    plot_state_dict['zoom_threshold_crossed_legend_bool'] = False
     plot_state_dict['change_variable_bool'] = True
     plot_state_dict['setup_bool'] = True
     plot_state_dict['first_plot_bool'] = True
+
+   
+    #*************************************************************************************************************************************
+    # To make temporary visual fixes/tuning, in case your system requires adjusting of visual formatting parameters:
+    # You can update plot_state_dict here (see 'generate_new_plot_state_dict()' in 'geodesic_binning_utilities_plotting.py'
+    # to see what can be safely changed.  Make permanent changes there and then remove your temporary edits here, if you like).
+    #*************************************************************************************************************************************
+    #plot_state_dict['legend_loc_twotuples_dict'] = {'global': (0.72, 1), 'zoomed': (0.825, 1)}
+    #*************************************************************************************************************************************
+
 
     bound_keyboard_callback = partial(utils.handle_keyboard_input, plot_state_dict)
     fig.canvas.mpl_connect('key_press_event', bound_keyboard_callback)
@@ -75,7 +65,6 @@ def plot_spawner(pickle_file_binning, pickle_file_plot):
 
     plot_state_dict['setup_bool'] = False
 
-    # These should be the initial values, now determined during binning
     variable_key = plot_state_dict['variable_key_list'][plot_state_dict['variable_key_list_index']]
     depth_key = plot_state_dict['depth_key_list_dict'][variable_key][plot_state_dict['depth_key_list_index']]
 

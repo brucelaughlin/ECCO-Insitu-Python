@@ -1,25 +1,13 @@
-import json
 import pdb
 import sys
-import zarr
 from pathlib import Path
-import matplotlib.pyplot as plt
 import xarray as xr
-import pymatreader
 import numpy as np
 import pandas as pd
-from scipy.interpolate import NearestNDInterpolator
 from scipy.spatial import KDTree
 from scipy.spatial import ConvexHull
-import cartopy.crs as ccrs
-import matplotlib.patches as patches
-import matplotlib.cm as cm
-import matplotlib.colors as mcolors
-from matplotlib.collections import PatchCollection
 from shapely.geometry import Polygon as ShapelyPolygon
-from shapely.geometry import MultiPoint, Point, box, MultiPolygon
-from shapely import get_coordinates as ShapelyCoordinates
-from sklearn.cluster import KMeans
+from shapely.geometry import Point, box, MultiPolygon
 import time
 
 base_dir = str(Path(__file__).parent.parent.parent.resolve())
@@ -54,7 +42,6 @@ def bin_around_geodesic_vertices(geodesic_file: str, profile_file: str, variable
     except Exception as e:
         print(f"file: {Path(profile_file).stem}", file=sys.stderr)
         print(f"tree.query failed with error: {e}", file=sys.stderr)
-
 
     # Note that missing data in profiles_ds appears as a nan, so profiles_ds has full shape, but is only non-nan where valid data was present
     anomalies_global_dict = {}
@@ -105,41 +92,56 @@ def bin_around_geodesic_vertices(geodesic_file: str, profile_file: str, variable
     print(f"num_samples_for_clustering_per_profile: {num_samples_for_clustering_per_profile}\n")
     '''
 
-    # Assuming <num_depth_levels_profile_file> is fixed for a given profile file....
-    num_depth_levels_profile_file = anomalies_global_dict[list(anomalies_global_dict.keys())[0]]["profiles_anomaly_values"].shape[-1] 
+    # Assuming <num_depth_levels_ncei_file> is fixed for a given profile file....
+    num_depth_levels_ncei_file = anomalies_global_dict[list(anomalies_global_dict.keys())[0]]["profiles_anomaly_values"].shape[-1] 
+    num_digits_depth_print = len(str(abs(num_depth_levels_ncei_file)))
+
+    num_variables = len(list(variables_of_interest.keys()))
+
+    variable_counter = 0
 
     for variable_key in variables_of_interest.keys():
     #for variable_key in list(variables_of_interest.keys())[1]:  # (S)
     #for variable_key in list(variables_of_interest.keys())[0]:  # (T)
+
+        variable_counter += 1
+        var_time = time.time()
+        profile_count_per_variable = 0
+
+        max_prof_count = 0 
+        for i_depth in range(num_depth_levels_ncei_file):
+            valid_indices = ~np.isnan(anomalies_global_dict[variable_key]["profiles_anomaly_values"][:,i_depth])
+            num_valid_indices = np.sum(valid_indices)
+            if num_valid_indices > 0:
+                if num_valid_indices > max_prof_count: max_prof_count = num_valid_indices
+
+        num_prof_digits_print = len(str(abs(max_prof_count)))
     
         geodesic_bin_data_dict.setdefault(variable_key, {})
 
         num_valid_depths = 0
+        dummy_int = 0
 
         all_values_all_depths_list = []
 
-        for i_depth in range(num_depth_levels_profile_file):
-        #for i_depth in range(4):
-        #for i_depth in range(16,17):
-        #for i_depth in range(16,20):
+        for i_depth in range(num_depth_levels_ncei_file):
             valid_indices = ~np.isnan(anomalies_global_dict[variable_key]["profiles_anomaly_values"][:,i_depth])
             patch_dict_single_var_depth = {}
 
+            if np.sum(valid_indices) ==  0:
+                print(f"variable {variable_counter}/{num_variables}: {variable_key}; depth level {i_depth+1:{num_digits_depth_print}}/{num_depth_levels_ncei_file:{num_digits_depth_print}}; profile count: {dummy_int:{num_prof_digits_print}} -> no data survived the ncei processing chain")
 
             if np.sum(valid_indices) > 0:
 
                 time_marker = time.time()
 
                 num_valid_depths += 1
-                #print(f"variable: {variable_key}; depth level {i_depth+1:03}/{num_depth_levels_profile_file:03}; any valid indices: yes")
 
-                depth_key =  f"{i_depth:02}"
+                depth_key =  f"{i_depth:{num_digits_depth_print}}"
                 geodesic_bin_data_dict[variable_key].setdefault(depth_key, {})
                 patch_dict_single_var_depth["bin_indices"] = {}
 
                 prof_count = 0 
-
-                #print("initial binning, before micro patch calculation")
 
                 for index, value in zip(anomalies_global_dict[variable_key]["profiles_bin_indices"][valid_indices][:,i_depth], anomalies_global_dict[variable_key]["profiles_anomaly_values"][:,i_depth][valid_indices]):
                     index_print = f"{index:0{num_digits}}"
@@ -172,24 +174,28 @@ def bin_around_geodesic_vertices(geodesic_file: str, profile_file: str, variable
                     bounding_polygon = coords_within_geodesic_bin[ConvexHull(coords_within_geodesic_bin).vertices]
                     patch_dict_single_var_depth["bin_indices"][index]["artificial_grid_bounding_polygon_for_geodesic_bin"] = bounding_polygon
 
-
                 determine_patch_collections_pieces(patch_dict_single_var_depth, num_subpolygons_max, num_samples_for_clustering_per_profile)
 
                 patch_dict_single_var_depth["profiles_lats"] = anomalies_global_dict[variable_key]["profiles_lats"][valid_indices][:,i_depth]
                 patch_dict_single_var_depth["profiles_lons"] = anomalies_global_dict[variable_key]["profiles_lons"][valid_indices][:,i_depth]
                 patch_dict_single_var_depth["units_string"] = variables_of_interest[variable_key]
+                patch_dict_single_var_depth["profile_count"] = prof_count
 
                 geodesic_bin_data_dict[variable_key][depth_key] = patch_dict_single_var_depth
 
-                print(f"variable: {variable_key}; depth level {i_depth+1:03}/{num_depth_levels_profile_file:03}; profile count: {prof_count}; time (seconds): {(time.time() - time_marker):06.2f}")
+                print(f"variable {variable_counter}/{num_variables}: {variable_key}; depth level {i_depth+1:{num_digits_depth_print}}/{num_depth_levels_ncei_file:{num_digits_depth_print}}; profile count: {prof_count:{num_prof_digits_print}}; time (seconds): {(time.time() - time_marker):.2f}")
+
+            profile_count_per_variable += prof_count
 
         geodesic_bin_data_dict[variable_key]["value_min_individual"] = anomalies_global_dict[variable_key]["value_min_individual"]
         geodesic_bin_data_dict[variable_key]["value_max_individual"] = anomalies_global_dict[variable_key]["value_max_individual"]
         geodesic_bin_data_dict[variable_key]["all_values_all_depths_list"] = all_values_all_depths_list
 
-        print(f"variable: {variable_key}; num depths with invalid data: {num_depth_levels_profile_file - num_valid_depths:03}/{num_depth_levels_profile_file:03}; num depths with valid data: {num_valid_depths:03}/{num_depth_levels_profile_file:03}")
+        print(f"variable {variable_counter}/{num_variables}: {variable_key}; num depths with invalid data: {num_depth_levels_ncei_file - num_valid_depths}/{num_depth_levels_ncei_file}; num depths with valid data: {num_valid_depths}/{num_depth_levels_ncei_file}; total number of binned profiles: {profile_count_per_variable:,}; total time: {time.time() - var_time:.2f} seconds\n")
+        geodesic_bin_data_dict[variable_key]["profile_count_per_variable"] = profile_count_per_variable
+        var_time = time.time()
 
-    geodesic_bin_data_dict["num_depth_levels_profile_file"] = num_depth_levels_profile_file - 1
+    geodesic_bin_data_dict["num_depth_levels_ncei_file"] = num_depth_levels_ncei_file - 1
     geodesic_bin_data_dict["profile_file_stem"] = Path(profile_file).stem
     geodesic_bin_data_dict["geodesic_bin_file_stem"] = Path(geodesic_file).stem
     geodesic_bin_data_dict["num_geodesic_bins"] = num_geodesic_bins
@@ -232,7 +238,6 @@ def determine_patch_collections_pieces(patch_dict_single_var_depth: dict, num_su
 
     num_zero_area_bins = 0
 
-
     for index in patch_dict_single_var_depth["bin_indices"].keys():
         
         if patch_dict_single_var_depth["bin_indices"][index]["map_span_bug"]:
@@ -250,7 +255,6 @@ def determine_patch_collections_pieces(patch_dict_single_var_depth: dict, num_su
             value_min_face = patch_dict_single_var_depth["bin_indices"][index][key_for_patch_face]
         if patch_dict_single_var_depth["bin_indices"][index][key_for_patch_face] > value_max_face:
             value_max_face = patch_dict_single_var_depth["bin_indices"][index][key_for_patch_face]
-
 
     individual_profile_anomalies_list_of_bin_lists = []
     patch_face_value_list = []
@@ -283,7 +287,6 @@ def determine_patch_collections_pieces(patch_dict_single_var_depth: dict, num_su
 
             linewidths.append(linewidth_pre)
             patch_polygon_vertex_list_of_lists.append(gbd_polygon)
-
 
     linewidths_unclipped = np.array(linewidths)
     linewidths_clipped = np.clip(linewidths_unclipped, linewidth_floor_initial, linewidth_ceil_initial)
@@ -429,109 +432,8 @@ def fill_polygon_subdivide_fixed(polygon, internal_points, n_pieces):
                 
     return sub_polygons
 
-
-#--------------------------------------------------------------------------------------------------------
-#--------------------------------------------------------------------------------------------------------
-# zarr utilities (VIBING OUT)
-#--------------------------------------------------------------------------------------------------------
-#--------------------------------------------------------------------------------------------------------
-
-# Note: The code I vibecopied below is saving empy depths as attributes, which creates problems in my plotting alg.
-# So, for now, just don't save any attributes...
-
-
-def has_numpy_arrays(obj):
-    """
-    Deeply scans ANY object (dict, list, or scalar) to detect 
-    hidden NumPy arrays before Zarr tries to write to zarr.json.
-    """
-    if isinstance(obj, dict):
-        return any(has_numpy_arrays(v) for v in obj.values())
-    elif isinstance(obj, list):
-        return any(has_numpy_arrays(v) for v in obj)
-    elif isinstance(obj, np.ndarray):
-        return True
-    return False
-
-def dict_to_zarr(d, current_group):
-    for k, v in d.items():
-        if isinstance(v, dict):
-            # DEEP CHECK: Force a sub-group if ANY nested child is a NumPy array
-            if has_numpy_arrays(v):
-                sub_group = current_group.create_group(k)
-                dict_to_zarr(v, sub_group)
-            else:
-                current_group.attrs[k] = v
-                
-        elif isinstance(v, list):
-            if len(v) == 0:
-                current_group.attrs[k] = v
-                
-            # Case A: If the list contains actual array elements, handle it as an array list
-            elif any(isinstance(item, np.ndarray) for item in v):
-                list_group = current_group.create_group(k)
-                list_group.attrs["_is_list_of_arrays"] = True
-                list_dict = {str(i): arr for i, arr in enumerate(v)}
-                dict_to_zarr(list_dict, list_group)
-                
-            # FIX: Inspect the FIRST element inside the list to guarantee it is nested
-            elif isinstance(v[0], list):
-                # --- CASE 1: TRUE NESTED LIST OF LISTS LAYOUT (Your vertices) ---
-                lengths = [len(sublist) for sublist in v]
-                flattened_floats = [num for sublist in v for num in sublist]
-                
-                float_arr = np.array(flattened_floats, dtype=np.float64)
-                len_arr = np.array(lengths, dtype=np.int64)
-                
-                chunk_size_floats = min(50000, len(float_arr))
-                chunk_size_lens = min(10000, len(len_arr))
-                
-                current_group.create_array(k, data=float_arr, chunks=(chunk_size_floats,), overwrite=True)
-                current_group.create_array(f"{k}_B_LENGTHS_DATA", data=len_arr, chunks=(chunk_size_lens,), overwrite=True)
-                current_group.attrs[f"{k}_was_stored_as_lol"] = True
-                
-            else:
-                # --- CASE 2: FLAT FLOATING LISTS (Or other scalar lists) ---
-                if has_numpy_arrays(v):
-                    list_group = current_group.create_group(k)
-                    dict_to_zarr({str(i): item for i, item in enumerate(v)}, list_group)
-                elif len(v) > 1000:
-                    float_arr = np.array(v, dtype=np.float64)
-                    chunk_size = min(50000, len(float_arr))
-                    current_group.create_array(k, data=float_arr, chunks=(chunk_size,), overwrite=True)
-                    current_group.attrs[f"{k}_was_large_flat_list"] = True
-                else:
-                    current_group.attrs[k] = v
-                
-        elif isinstance(v, np.ndarray):
-            # Write standalone native NumPy arrays cleanly to binary chunk files
-            chunks_config = tuple(min(1000, dim) for dim in v.shape) if v.ndim > 1 else (min(50000, v.size),)
-            current_group.create_array(k, data=v, chunks=chunks_config, overwrite=True)
-        else:
-            current_group.attrs[k] = v
-
-
-def zarr_to_dict(current_group):
-    # Pull base metadata attributes safely
-    attrs = dict(current_group.attrs)
-    is_list = attrs.pop("_is_list_of_arrays", False)
-
-    d = {}
-
-    for name in current_group.keys():
-        item = current_group[name]
-        if isinstance(item, zarr.Group):
-            d[name] = zarr_to_dict(item)
-        elif isinstance(item, zarr.Array):
-            d[name] = item[:]
-
-    # Merge back the metadata attributes
-    d.update(attrs)
-
-    # Reconstruct the list if it was tagged as one
-    if is_list:
-        return [d[str(i)] for i in range(len(d))]
-
-    return d
-
+# Note: See older commits for zarr save/load utilites. 
+# These were abandoned in favor of computing patch collections immediately after binnning and then pickling everything, 
+# as all methods in which patch collections were computed at plot runtime were prohibitively slow at plot runtime, 
+# and patch collections can only be saved in pickle binary files (afaik).
 

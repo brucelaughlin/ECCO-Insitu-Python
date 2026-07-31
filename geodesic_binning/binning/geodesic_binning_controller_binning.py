@@ -1,16 +1,8 @@
 
 import pdb
-import zarr
 import pickle
-import xarray as xr
-import numpy as np
 import sys
 from pathlib import Path
-#binning_dir = str(Path(__file__).parent.resolve())
-#sys.path.append(binning_dir)
-
-#geodesic_dir = str(Path(__file__).parent.parent.resolve())
-#sys.path.append(geodesic_dir)
 
 binning_dir = str(Path(__file__).parent.parent.resolve() / "binning")
 sys.path.append(binning_dir)
@@ -22,16 +14,15 @@ import geodesic_binning_utilities_binning as utils_binning
 import geodesic_binning_utilities_plotting as utils_plotting
 
 
-
 output_dir_stem = "binned_output"
 output_dir = Path(binning_dir) / output_dir_stem 
 output_dir.mkdir(parents=True, exist_ok=True)
 
 
 # This is for determining sub-polygons.  It shouldn't need to be higher than 100
-#num_samples_for_clustering_per_profile = 5
+num_samples_for_clustering_per_profile = 5
 #num_samples_for_clustering_per_profile = 10
-num_samples_for_clustering_per_profile = 50
+#num_samples_for_clustering_per_profile = 50
 
 # This parameter, <num_subpolygons_max>, was originally to keep computing cost down (see previous comment), but,
 # now it's basically just to keep plots from getting too cluttered.
@@ -108,20 +99,28 @@ profile_file_list_unproven = [
 # Testing step
 ############################################
 #profile_file_list = profile_file_list_unproven
-#profile_file_list = profile_file_list_proved
-profile_file_list = profile_file_list_total
+profile_file_list = profile_file_list_proved
+#profile_file_list = profile_file_list_total
 #profile_file_list = profile_file_list_test
 ############################################
+
 
 for profile_file_index in range(len(profile_file_list)):
 
     profile_file = profile_file_list[profile_file_index]
-    print(f"File: {profile_file}")
+    print("-------------------------------------------------------------------")
+    print(f"NCEI chain processed profile file: {profile_file}")
+
+    print()
+    print("binning step 1/2: GEODESIC BIN BINNING!")
+
     save_dir = output_dir / f"{num_samples_for_clustering_per_profile}_clustering_samples_per_profile/{num_geodesic_bins_string}_geodesic_bins" / f"num_subpolygons_max_{num_subpolygons_max}" 
     Path(save_dir).mkdir(parents=True, exist_ok=True)
 
     geodesic_bin_data_dict = utils_binning.bin_around_geodesic_vertices(geodesic_file, profile_file, variables_of_interest_dict, angular_precision, num_geodesic_bins, num_subpolygons_max, num_samples_for_clustering_per_profile)
 
+    print()
+    print("binning step 2/2: PATCH INFORMATION CALCULATION!")
     plot_state_dict = utils_plotting.generate_new_plot_state_dict()
 
     variable_key_list = [variable_key for variable_key in list(geodesic_bin_data_dict.keys()) if type(geodesic_bin_data_dict[variable_key]) == dict]
@@ -129,15 +128,33 @@ for profile_file_index in range(len(profile_file_list)):
     variable_key_list_index = 0
     plot_state_dict.update({'variable_key_list': variable_key_list, 'variable_key_list_index': variable_key_list_index})
 
+    plot_state_dict["profile_count_per_variable"] = {}
+    plot_state_dict["depth_count_per_variable"] = {}
+    num_bins_populated_max = 0
+    num_profiles_max = 0
+    for variable_key in variable_key_list:
+        plot_state_dict["profile_count_per_variable"][variable_key] = geodesic_bin_data_dict[variable_key]["profile_count_per_variable"]
+        depth_key_list = [depth_key for depth_key in list(geodesic_bin_data_dict[variable_key].keys()) if type(geodesic_bin_data_dict[variable_key][depth_key]) == dict]
+        plot_state_dict["depth_count_per_variable"][variable_key] = len(depth_key_list) 
+        for depth_key in depth_key_list:
+            num_bins_populated = len(list(geodesic_bin_data_dict[variable_key][depth_key]["bin_indices"].keys()))
+            if num_bins_populated_max < num_bins_populated: num_bins_populated_max = num_bins_populated
+            profile_count = geodesic_bin_data_dict[variable_key][depth_key]["profile_count"]
+            if num_profiles_max < profile_count: num_profiles_max = profile_count
+        
+
     depth_key_list_dict = {}
     for variable_key in variable_key_list: 
         depth_key_list_dict[variable_key] = [depth_key for depth_key in list(geodesic_bin_data_dict[variable_key].keys()) if type(geodesic_bin_data_dict[variable_key][depth_key]) == dict]
-
         depth_key_list_dict[variable_key].sort()
+
     depth_key_list_index = 0
     plot_state_dict.update({'depth_key_list_dict': depth_key_list_dict, 'depth_key_list_index': depth_key_list_index})
 
-    plot_state_dict["num_depth_levels_profile_file"] = geodesic_bin_data_dict["num_depth_levels_profile_file"]
+    plot_state_dict["num_depth_levels_ncei_file"] = geodesic_bin_data_dict["num_depth_levels_ncei_file"]
+    plot_state_dict["num_digits_print_depth_level"] = len(str(abs(geodesic_bin_data_dict["num_depth_levels_ncei_file"])))
+    plot_state_dict["num_digits_print_bins"] = len(str(abs(num_bins_populated_max)))
+    plot_state_dict["num_digits_print_profiles"] = len(str(abs(num_profiles_max)))
     plot_state_dict["profile_file_stem"] = geodesic_bin_data_dict["profile_file_stem"]
     plot_state_dict["geodesic_bin_file_stem"] = geodesic_bin_data_dict["geodesic_bin_file_stem"]
     plot_state_dict["num_geodesic_bins"] = geodesic_bin_data_dict["num_geodesic_bins"]
