@@ -35,7 +35,7 @@ def bin_around_geodesic_vertices(geodesic_file: str, profile_file: str, variable
     profiles_coordinates_cartesian_tuple = sph2cart(np.radians(profiles_lons), np.radians(profiles_lats), 1)
 
     # Surely there's a pythonic way to do this
-    profiles_coordinates_cartesian_tuple = filter_tuple_of_1D_arrays_for_nans(profiles_coordinates_cartesian_tuple)
+    profiles_coordinates_cartesian_tuple, good_index_mask = filter_tuple_of_1D_arrays_for_nans(profiles_coordinates_cartesian_tuple)
 
     try:
         distance, nearest_bin_numbers_profiles = tree.query(np.stack(profiles_coordinates_cartesian_tuple, axis=-1))
@@ -52,7 +52,7 @@ def bin_around_geodesic_vertices(geodesic_file: str, profile_file: str, variable
         sorted_lons_list = []
         sorted_lats_list = []
 
-        unsorted_anomalies = profiles_ds[f'prof_{variable}'].data - profiles_ds[f'prof_{variable}clim'].data
+        unsorted_anomalies = (profiles_ds[f'prof_{variable}'].data - profiles_ds[f'prof_{variable}clim'].data)[good_index_mask]
 
         value_min_individual = np.nanmin(unsorted_anomalies)
         value_max_individual = np.nanmax(unsorted_anomalies)
@@ -60,9 +60,12 @@ def bin_around_geodesic_vertices(geodesic_file: str, profile_file: str, variable
         for depth_index in range(unsorted_anomalies.shape[-1]):
             sort_indices = np.argsort(unsorted_anomalies[:,depth_index])
             sorted_anomaly_slices_list.append(unsorted_anomalies[:,depth_index][sort_indices])
-            sorted_bin_indices_slices_list.append(nearest_bin_numbers_profiles[sort_indices])
-            sorted_lons_list.append(profiles_lons[sort_indices])
-            sorted_lats_list.append(profiles_lats[sort_indices])
+            try:
+                sorted_bin_indices_slices_list.append(nearest_bin_numbers_profiles[sort_indices])
+            except:
+                pdb.set_trace()
+            sorted_lons_list.append(profiles_lons[good_index_mask][sort_indices])
+            sorted_lats_list.append(profiles_lats[good_index_mask][sort_indices])
 
         anomalies_global_dict[variable] = {
                 "profiles_anomaly_values": np.array(sorted_anomaly_slices_list).T,
@@ -205,14 +208,14 @@ def bin_around_geodesic_vertices(geodesic_file: str, profile_file: str, variable
 
 
 def filter_tuple_of_1D_arrays_for_nans(tuple_of_1D_arrays):
-    good_indices = ~np.isnan(tuple_of_1D_arrays[0])
+    good_index_mask = ~np.isnan(tuple_of_1D_arrays[0])
     for ii in range(1, len(tuple_of_1D_arrays)):
-        good_indices *= ~np.isnan(tuple_of_1D_arrays[ii])
+        good_index_mask *= ~np.isnan(tuple_of_1D_arrays[ii])
     new_tuple_elements_list = []
     for ii in range(len(tuple_of_1D_arrays)):
-        new_tuple_elements_list.append(tuple_of_1D_arrays[ii][good_indices])
+        new_tuple_elements_list.append(tuple_of_1D_arrays[ii][good_index_mask])
     tuple_of_1D_arrays = tuple(new_tuple_elements_list)
-    return(tuple_of_1D_arrays)
+    return(tuple_of_1D_arrays, good_index_mask)
 
 
 def determine_patch_collections_pieces(patch_dict_single_var_depth: dict, num_subpolygons_max: int, num_samples_for_clustering_per_profile) -> None:

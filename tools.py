@@ -36,7 +36,7 @@ def MITprof_write_to_nc(dest_dir, MITprofs, step, basename):
 
     Path(dest_dir).mkdir(parents=True, exist_ok=True)
 
-    print("Writing NETCDF files {}".format(basename))
+    #print("Writing NETCDF files {}".format(basename))
 
     df_HHMMSS = xr.DataArray(MITprofs['prof_HHMMSS'], dims = ['iPROF'],                                
                             attrs=dict(

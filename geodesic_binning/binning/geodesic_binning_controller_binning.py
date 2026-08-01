@@ -29,6 +29,7 @@ num_samples_for_clustering_per_profile = 5
 num_subpolygons_max = 2000
 #num_subpolygons_max = 1000
 
+# in <variables_of_interest_dict>, keys should be variable names, values should be units (tex-friendly, for plotting)
 variables_of_interest_dict = {}
 variables_of_interest_dict["T"] = "$^\circ$C"
 variables_of_interest_dict["S"] = "psu"
@@ -49,21 +50,7 @@ geodesic_file_dict = {
 num_geodesic_bins_string = f"{num_geodesic_bins:05}"
 geodesic_file = geodesic_file_dict[num_geodesic_bins_string]
 
-'''
-Good files:
-1,4,2
-
-#profile_file_index = 2 # This is the good one with just 4 bins in NW america
-
-Bad files:
-5
-
-Files to test:
-3
-0
-'''
-
-profile_file_list_total = [
+profile_file_list_total_old = [
     "/Users/brucel/ecco/yip/ECCO-Insitu-Python/z_test_output/ITP_WO_2004_CTD__ncei_step_10.nc",
     "/Users/brucel/ecco/yip/ECCO-Insitu-Python/z_test_output/WOD_WO_1992_CTD_OSD__ncei_step_10.nc",
     "/Users/brucel/ecco/yip/ECCO-Insitu-Python/z_test_output/WOD_WO_2002_GLD__ncei_step_10.nc",
@@ -72,36 +59,33 @@ profile_file_list_total = [
     "/Users/brucel/ecco/yip/ECCO-Insitu-Python/z_test_output/ITP2_WO_2008_CTD__ncei_step_10.nc",
 ]
 
+profile_file_list_problematic = [
+    "/Users/brucel/ecco/yip/ECCO-Insitu-Python/z_test_output/ITP2_WO_2008_CTD__ncei_step_10.nc", 
+]
+
+profile_file_list_largeDemo = [
+    "/Users/brucel/ecco/yip/ECCO-Insitu-Python/z_test_output/WOD_WO_1992_CTD_OSD__ncei_step_10.nc",
+]
+
+profile_file_list_smallDemo = [
+    "/Users/brucel/ecco/yip/ECCO-Insitu-Python/z_test_output/WOD_WO_2002_GLD__ncei_step_10.nc",
+]
+
+
 profile_file_list_test = [
-    "/Users/brucel/ecco/yip/ECCO-Insitu-Python/z_test_output/WOD_WO_1992_CTD_OSD__ncei_step_10.nc", # has been our test case
-]
-
-"""
-profile_file_list_proved = [
-#    "/Users/brucel/ecco/yip/ECCO-Insitu-Python/z_test_output/WOD_WO_1992_CTD_OSD__ncei_step_10.nc", # has been our test case
-    "/Users/brucel/ecco/yip/ECCO-Insitu-Python/z_test_output/WOD_WO_2002_GLD__ncei_step_10.nc",  # small and fast, skip for now
-#    "/Users/brucel/ecco/yip/ECCO-Insitu-Python/z_test_output/ARGO_WO_2015_PFL_A__ncei_step_10.nc",
-]
-"""
-
-profile_file_list_proved = [
-    "/Users/brucel/ecco/yip/ECCO-Insitu-Python/z_test_output/WOD_WO_2002_GLD__ncei_step_10.nc",  # small and fast, skip for now
-#    "/Users/brucel/ecco/yip/ECCO-Insitu-Python/z_test_output/ARGO_WO_2015_PFL_A__ncei_step_10.nc",
-]
-
-profile_file_list_unproven = [
-    "/Users/brucel/ecco/yip/ECCO-Insitu-Python/z_test_output/ITP_WO_2004_CTD__ncei_step_10.nc",
-    "/Users/brucel/ecco/yip/ECCO-Insitu-Python/z_test_output/ARGO_WO_2001_PFL_A__ncei_step_10.nc",
-    "/Users/brucel/ecco/yip/ECCO-Insitu-Python/z_test_output/ITP2_WO_2008_CTD__ncei_step_10.nc",
+    #"/Users/brucel/ecco/yip/ECCO-Insitu-Python/processed_profile_files/ITP2_WO_2009_CTD__ncei_step_10.nc",
+    #"/Users/brucel/ecco/yip/ECCO-Insitu-Python/processed_profile_files/ITP2_WO_2012_CTD__ncei_step_10.nc",
+    "/Users/brucel/ecco/yip/ECCO-Insitu-Python/processed_profile_files/WOD_WO_2021_GLD__ncei_step_10.nc",
 ]
 
 ############################################
 # Testing step
 ############################################
-#profile_file_list = profile_file_list_unproven
-profile_file_list = profile_file_list_proved
 #profile_file_list = profile_file_list_total
-#profile_file_list = profile_file_list_test
+#profile_file_list = profile_file_list_smallDemo
+#profile_file_list = profile_file_list_largeDemo
+#profile_file_list = profile_file_list_problematic
+profile_file_list = profile_file_list_test
 ############################################
 
 

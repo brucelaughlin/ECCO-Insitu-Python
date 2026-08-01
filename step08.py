@@ -116,6 +116,7 @@ def update_remove_zero_T_S_weighted_profiles_from_MITprof(MITprofs):
     total_Tweight = np.sum(MITprofs['prof_Tweight'])
     total_Sweight = np.sum(MITprofs['prof_Sweight'])
 
+    # only np_orig, nzwtsi_* are used later, outside of print statements
     nnt_orig, nns_orig, nnts_orig, np_orig, zwti_orig, zwsi_orig, zwtsi_orig,nzwti_orig, nzwsi_orig, nzwtsi_orig = count_profs_with_nonzero_weights(MITprofs)
         
     #print(f'\tnum profs: {np_orig} \n\tnum nonzero T: {nnt_orig} \n\tnum nonzero S: {nns_orig} \n\tnum nonzero TS: {nnts_orig}')

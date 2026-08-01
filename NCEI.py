@@ -1,3 +1,4 @@
+import pdb
 import xarray as xr
 import numpy as np
 import cartopy
@@ -20,10 +21,10 @@ import step03
 import step04
 import step05
 import step06
-import step07
-import step08
-import step09
-import step10
+#import step07
+#import step08
+#import step09
+#import step10
 from tools import MITprof_read, MITprof_write_to_nc
 import tools
 
@@ -82,10 +83,14 @@ def NCEI_pipeline(dest_dir, input_dir):
     num_profile_files = len(input_profile_files)
     num_digits_print = len(str(num_profile_files))
 
+    print()
+
     #for original_file in input_profile_files:
     for file_dex in range(len(input_profile_files)):
 
         original_file = input_profile_files[file_dex]
+
+        print(f"ncei processing for file {file_dex+1:0{num_digits_print}}/{num_profile_files}: {original_file}")
 
         #print(f"step0, file {file_dex+1:0{num_digits_print}}/{num_profile_files}: {original_file}")
 
@@ -130,32 +135,48 @@ def NCEI_pipeline(dest_dir, input_dir):
         MITprof_ds = xr.merge([new_dataarrays])
         #MITprof_ds = xr.merge(new_dataarrays)
 
+        pdb.set_trace()
+
         # dignity has been restored
         #MITprof_ds
 
 
+        step_counter = 0
+        print_survivors(MITprof_ds, step_counter)
+        step_counter += 1
+
         try:
             step01.main(MITprof_ds, grid_dir, llcN, wet_or_all)
+            print_survivors(MITprof_ds, step_counter)
+            step_counter += 1
         except Exception as xcept:
             print(f"step01, file {file_dex+1:0{num_digits_print}}/{num_profile_files}: {original_file}\n\t\t{xcept}", file=sys.stderr)
             continue
         try:
             step02.main(sphere_dir, MITprof_ds, grid_dir)
+            print_survivors(MITprof_ds, step_counter)
+            step_counter += 1
         except Exception as xcept:
             print(f"step02, file {file_dex+1:0{num_digits_print}}/{num_profile_files}: {original_file}\n\t\t{xcept}", file=sys.stderr)
             continue
         try:
             step03.main(clim_dir, MITprof_ds)
+            print_survivors(MITprof_ds, step_counter)
+            step_counter += 1
         except Exception as xcept:
             print(f"step03, file {file_dex+1:0{num_digits_print}}/{num_profile_files}: {original_file}\n\t\t{xcept}", file=sys.stderr)
             continue
         try:
             step04.main(MITprof_ds, grid_dir, CTD_TS_bin, respect_existing_zero_weights, new_S_floor, new_T_floor)
+            print_survivors(MITprof_ds, step_counter)
+            step_counter += 1
         except Exception as xcept:
             print(f"step04, file {file_dex+1:0{num_digits_print}}/{num_profile_files}: {original_file}\n\t\t{xcept}", file=sys.stderr)
             continue
         try:
             step05.main(MITprof_ds, grid_dir, apply_gamma_factor, llcN)
+            print_survivors(MITprof_ds, step_counter)
+            step_counter += 1
         except Exception as xcept:
             print(f"step05, file {file_dex+1:0{num_digits_print}}/{num_profile_files}: {original_file}\n\t\t{xcept}", file=sys.stderr)
             continue
@@ -167,36 +188,60 @@ def NCEI_pipeline(dest_dir, input_dir):
             continue
         '''
         step06.main(MITprof_ds, replace_missing_S_with_clim_S)
+        print_survivors(MITprof_ds, step_counter)
+        step_counter += 1
         '''
         try:
-            step07.main('adjust', MITprof_ds)
+            #step07.main('adjust', MITprof_ds)
         except Exception as xcept:
             print(f"step07, file {file_dex+1:0{num_digits_print}}/{num_profile_files}: {original_file}\n\t\t{xcept}", file=sys.stderr)
             continue
         '''
-        step07.main('adjust', MITprof_ds)
+        #step07.main('adjust', MITprof_ds)
+        print_survivors(MITprof_ds, step_counter)
+        step_counter += 1
+        """
         try:
             step08.main(MITprof_ds)
+            print_survivors(MITprof_ds, step_counter)
+            step_counter += 1
         except Exception as xcept:
             print(f"step08, file {file_dex+1:0{num_digits_print}}/{num_profile_files}: {original_file}\n\t\t{xcept}", file=sys.stderr)
             continue
         try:
             step09.main(MITprof_ds)
+            print_survivors(MITprof_ds, step_counter)
+            step_counter += 1
         except Exception as xcept:
             print(f"step09, file {file_dex+1:0{num_digits_print}}/{num_profile_files}: {original_file}\n\t\t{xcept}", file=sys.stderr)
             continue
         try:
             step10.main(MITprof_ds, distance_tolerance, closest_time, method)
+            print_survivors(MITprof_ds, step_counter)
+            step_counter += 1
         except Exception as xcept:
             print(f"step10, file {file_dex+1:0{num_digits_print}}/{num_profile_files}: {original_file}\n\t\t{xcept}", file=sys.stderr)
             continue
 
-        print(f"success for file {file_dex+1:0{num_digits_print}}/{num_profile_files}: {original_file}")
 
-        MITprof_write_to_nc(dest_dir, MITprof_ds, 10, basename)
+        if total_survivors_TS(MITprof_ds) > 0:
+            MITprof_write_to_nc(dest_dir, MITprof_ds, 10, basename)
+            print(f"                SUCCESS:    {total_survivors_TS(MITprof_ds)} PROFILES SURVIVED THE NCEI PROCESSING ALGORITHM\n")
+        else:
+            print(f"                FAILURE:    {total_survivors_TS(MITprof_ds)} PROFILES SURVIVED THE NCEI PROCESSING ALGORITHM\n")
 
 
+"""
 
+
+def print_survivors(MITprofs, step_counter):
+    a=1
+    print(f"step: {step_counter}")
+    print(f"not nan T:    {np.sum(~np.isnan(MITprofs['prof_T'].values))}")
+    print(f"not nan S:    {np.sum(~np.isnan(MITprofs['prof_S'].values))}")
+
+def total_survivors_TS(MITprofs):
+    return np.sum(~np.isnan(MITprofs['prof_T'].values)) + np.sum(~np.isnan(MITprofs['prof_S'].values))
 
 
 
