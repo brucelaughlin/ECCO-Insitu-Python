@@ -11,124 +11,16 @@ import datetime as dt
 from tools import MITprof_read
 
 
+def modify_array_by_index_set_to_single_value(array, bool_mask, scalar):
+    array[bool_mask] = scalar
 
 
-def modify_array_by_index_set_to_zero(array, bool_mask)
-    array[bool_mask] = 0
-
-def modify_array_by_index_add_criteria_scalar_fn(array, bool_mask, zero_criteria_code)
+def modify_array_by_index_add_criteria_scalar_fn(array, bool_mask, zero_criteria_code):
     array[bool_mask] += 2**(zero_criteria_code - 1)
 
-def modify_array_by_index_add_scalar(array, bool_mask, scalar)
+
+def modify_array_by_index_add_scalar(array, bool_mask, scalar):
     array[bool_mask] += scalar 
-
-
-
-
-
-def chunk_modify_in_place_using_depth_index_set_to_nan(arr, index_tuple, chunk_size):
-    for ii in range(0, len(index_tuple[0]), chunk_size):
-        if len(index_tuple) == 1:
-            arr[:,index_tuple[0][ii:ii+chunk_size]] = np.nan
-        else:
-            raise RuntimeError("depth index should be 1D")
-
-def chunk_modify_in_place_using_depth_index_set_to_zero(arr, index_tuple, chunk_size):
-    for ii in range(0, len(index_tuple[0]), chunk_size):
-        if len(index_tuple) == 1:
-            arr[:,index_tuple[0][ii:ii+chunk_size]] = 0
-        else:
-            raise RuntimeError("depth index should be 1D")
-
-def chunk_modify_in_place_using_depth_index_add_scalar(arr, index_tuple, scalar, chunk_size):
-    for ii in range(0, len(index_tuple[0]), chunk_size):
-        if len(index_tuple) == 1:
-            arr[:,index_tuple[0][ii:ii+chunk_size]] += scalar
-        else:
-            raise RuntimeError("depth index should be 1D")
-
-
-
-def chunk_modify_in_place_using_profile_index_set_to_nan(arr, index_tuple, chunk_size):
-    for ii in range(0, len(index_tuple[0]), chunk_size):
-        if len(index_tuple) == 1:
-            arr[index_tuple[0][ii:ii+chunk_size],:] = np.nan
-        else:
-            raise RuntimeError("profile index should be 1D")
-
-def chunk_modify_in_place_using_profile_index_set_to_zero(arr, index_tuple, chunk_size):
-    for ii in range(0, len(index_tuple[0]), chunk_size):
-        if len(index_tuple) == 1:
-            arr[index_tuple[0][ii:ii+chunk_size],:] = 0
-        else:
-            raise RuntimeError("profile index should be 1D")
-
-def chunk_modify_in_place_using_profile_index_add_scalar(arr, index_tuple, scalar, chunk_size):
-    for ii in range(0, len(index_tuple[0]), chunk_size):
-        if len(index_tuple) == 1:
-            arr[index_tuple[0][ii:ii+chunk_size],:] += scalar
-        else:
-            raise RuntimeError("profile index should be 1D")
-
-
-
-
-def chunk_modify_in_place_set_to_zero(arr, index_tuple, chunk_size):
-    for ii in range(0, len(index_tuple[0]), chunk_size):
-        if len(index_tuple) == 1:
-            arr[index_tuple[0][ii:ii+chunk_size]] = 0   
-        else:
-            arr[index_tuple[0][ii:ii+chunk_size], index_tuple[1][ii:ii+chunk_size]] = 0   
-
-def chunk_modify_in_place_set_to_one(arr, index_tuple, chunk_size):
-    for ii in range(0, len(index_tuple[0]), chunk_size):
-        if len(index_tuple) == 1:
-            arr[index_tuple[0][ii:ii+chunk_size]] = 1
-        else:
-            arr[index_tuple[0][ii:ii+chunk_size], index_tuple[1][ii:ii+chunk_size]] = 1 
-
-def chunk_modify_in_place_add_scalar(arr, index_tuple, scalar, chunk_size):
-    for ii in range(0, len(index_tuple[0]), chunk_size):
-        if len(index_tuple) == 1:
-            arr[index_tuple[0][ii:ii+chunk_size]] += scalar   
-        else:
-            arr[index_tuple[0][ii:ii+chunk_size], index_tuple[1][ii:ii+chunk_size]] += scalar    
-
-
-
-
-def mynanmean(x, dim = None):
-    """
-    %   NANMEAN Mean value, ignoring NaNs.
-    %   M = NANMEAN(X) returns the sample mean of X, treating NaNs as missing
-    %   values.  For vector input, M is the mean value of the non-NaN elements
-    %   in X.  For matrix input, M is a row vector containing the mean value of
-    %   non-NaN elements in each column.  For N-D arrays, NANMEAN operates
-    %   along the first non-singleton dimension.
-    %
-    %   NANMEAN(X,DIM) takes the mean along dimension DIM of X.
-    %
-    %   See also MEAN, NANMEDIAN, NANSTD, NANVAR, NANMIN, NANMAX, NANSUM.
-    """
-
-    # Find NaNs and set them to zero
-    nans = np.isnan(x)
-    x[nans] = 0
-    
-    if dim is None: # let sum deal with figuring out which dimension to use
-        # Count up non-NaNs.
-        n = np.sum(~nans, axis = 0).astype(np.float64) # first row: all 0's in python
-        n[n == 0] = np.nan # prevent divideByZero warnings
-        # Sum up non-NaNs, and divide by the number of non-NaNs.
-        m = np.sum(x, axis = 0) / n
-    else:
-        # Count up non-NaNs.
-        n = np.sum(~nans, dim).astype(np.float64)
-        n[n==0] = np.nan # prevent divideByZero warnings
-        # Sum up non-NaNs, and divide by the number of non-NaNs.
-        m = np.sum(x,dim) / n
-
-    return m
 
 
 def update_zero_weight_points_on_prepared_profiles(run_code, MITprof_ds):
@@ -208,6 +100,8 @@ def update_zero_weight_points_on_prepared_profiles(run_code, MITprof_ds):
     % plot_map_bad_profiles : 0/1 whether to make a plot of bad profs locations
     """
 
+    prof_key_list = ['prof_T', 'prof_S']
+
     zero_criteria_codes = np.arange(1,12)
     
     # DEBUGGING
@@ -221,479 +115,188 @@ def update_zero_weight_points_on_prepared_profiles(run_code, MITprof_ds):
     var_dict = {}
     var_dict['prof_T'] = {'val_min': -2, 'val_max': 40}
     var_dict['prof_S'] = {'val_min': 20, 'val_max': 40}
-    var_dict['prof_S']['subsurface_val_threshold'] = [30, 34]
-    var_dict['prof_S']['subsurface_depth_threshold'] = [50, 250]
+    var_dict['prof_S']['subsurface_min_val_threshold'] = [30, 34]
+    var_dict['prof_S']['subsurface_min_depth_threshold'] = [50, 250]
     
     profile_avg_cost_threshold = 16
     single_datum_cost_threshold = 100
             
     num_profs = len(MITprof_ds['prof_lon'].data)
-    
 
-    for prof_key in ['prof_T', 'prof_S']:
+    zero_weight_reason_array_dict = {}
+    
+    for prof_key in prof_key_list:
 
         if prof_key in MITprof_ds:
 
-            zero_weight_reason_array = np.zeros_like(MITprof_ds[f'{prof_key}weight'].data)
+            zero_weight_reason_array_dict[prof_key] = np.zeros_like(MITprof_ds[f'{prof_key}weight'].data)
+            #zero_weight_reason_array = np.zeros_like(MITprof_ds[f'{prof_key}weight'].data)
       
             for zero_criteria_code in zero_criteria_codes:
            
                 if zero_criteria_code == 1: #  profiles already have zero or missing weights
                     bool_mask = (np.isnan(MITprof_ds[f'{prof_key}weight'].data)) | (MITprof_ds[f'{prof_key}weight'].data <= 0)
-                    modify_array_by_index_set_to_zero(MITprof_ds[f'{prof_key}weight'].data, bool_mask)
-                    modify_array_by_index_add_criteria_scalar_fn(zero_weight_reason_array, bool_mask, zero_criteria_code)
+                    modify_array_by_index_set_to_single_value(MITprof_ds[f'{prof_key}weight'].data, bool_mask, 0)
+                    modify_array_by_index_add_criteria_scalar_fn(zero_weight_reason_array_dict[prof_key], bool_mask, zero_criteria_code)
                 
                 if zero_criteria_code == 2: # nonzero prof T or S flag
-                    bool_mask = MITprof_ds[f'{prof_key}flag'].data > 1
-                    modify_array_by_index_set_to_zero(MITprof_ds[f'{prof_key}weight'].data, bool_mask)
-                    modify_array_by_index_add_criteria_scalar_fn(zero_weight_reason_array, bool_mask, zero_criteria_code)
+                    bool_mask = MITprof_ds[f'{prof_key}flag'].data > 0
+                    modify_array_by_index_set_to_single_value(MITprof_ds[f'{prof_key}weight'].data, bool_mask, 0)
+                    modify_array_by_index_add_criteria_scalar_fn(zero_weight_reason_array_dict[prof_key], bool_mask, zero_criteria_code)
                 
                 if zero_criteria_code == 3: #  missing T or S
                     bool_mask = (np.isnan(MITprof_ds[prof_key].data)) | (MITprof_ds[prof_key].data <= checkVal)
-                    modify_array_by_index_add_scalar(MITprof_ds[prof_key].data, bool_mask, fillVal)
-                    modify_array_by_index_set_to_zero(MITprof_ds[f'{prof_key}weight'].data, bool_mask)
-                    modify_array_by_index_add_criteria_scalar_fn(zero_weight_reason_array, bool_mask, zero_criteria_code)
+                    modify_array_by_index_set_to_single_value(MITprof_ds[prof_key].data, bool_mask, fillVal)
+                    modify_array_by_index_set_to_single_value(MITprof_ds[f'{prof_key}weight'].data, bool_mask, 0)
+                    modify_array_by_index_add_criteria_scalar_fn(zero_weight_reason_array_dict[prof_key], bool_mask, zero_criteria_code)
 
                 if zero_criteria_code == 4: # T or S identically zero
                     bool_mask = MITprof_ds[prof_key].data == 0
-                    modify_array_by_index_add_scalar(MITprof_ds[prof_key].data, bool_mask, fillVal)
-                    modify_array_by_index_set_to_zero(MITprof_ds[f'{prof_key}weight'].data, bool_mask)
-                    modify_array_by_index_add_criteria_scalar_fn(zero_weight_reason_array, bool_mask, zero_criteria_code)
+                    modify_array_by_index_set_to_single_value(MITprof_ds[prof_key].data, bool_mask, fillVal)
+                    modify_array_by_index_set_to_single_value(MITprof_ds[f'{prof_key}weight'].data, bool_mask, 0)
+                    modify_array_by_index_add_criteria_scalar_fn(zero_weight_reason_array_dict[prof_key], bool_mask, zero_criteria_code)
 
+                # Are we not also supposed to set these data values to fillVal?
                 if zero_criteria_code == 5: # T or S outside some legal range
-                    bool_mask = (MITprof_ds[prof_key].data < prof_Tmin) | (MITprof_ds[prof_key].data > checkVal)
+                    bool_mask = (MITprof_ds[prof_key].data < var_dict[prof_key]['val_min']) & (MITprof_ds[prof_key].data > checkVal)
+                    bool_mask = bool_mask | ((MITprof_ds[prof_key].data > var_dict[prof_key]['val_max']) & (MITprof_ds[prof_key].data > checkVal))
+                    modify_array_by_index_set_to_single_value(MITprof_ds[f'{prof_key}weight'].data, bool_mask, 0)
+                    modify_array_by_index_add_criteria_scalar_fn(zero_weight_reason_array_dict[prof_key], bool_mask, zero_criteria_code)
+
+                if zero_criteria_code == 6: # missing climatology value
+                    bool_mask = (np.isnan(MITprof_ds[f'{prof_key}clim'].data)) | (MITprof_ds[f'{prof_key}clim'].data <= checkVal) | (MITprof_ds[f'{prof_key}clim'].data == 0)
+                    modify_array_by_index_set_to_single_value(MITprof_ds[f'{prof_key}weight'].data, bool_mask, 0)
+                    modify_array_by_index_add_criteria_scalar_fn(zero_weight_reason_array_dict[prof_key], bool_mask, zero_criteria_code)
+
+                if zero_criteria_code == 7: # illegal dates/times
+                    y, m, d = [np.zeros(num_profs, dtype=int) for _ in range(3)]
+                    for ii in np.arange(num_profs):
+                        tmp = str(MITprof_ds['prof_YYYYMMDD'].data[ii])
+                        y[ii]  = int(tmp[0:4])
+                        m[ii]  = int(tmp[4:6])
+                        d[ii]  = int(tmp[6:8])
+                    # bad years are pre 1950 and after today's year
+                    bool_mask_1D = (y < 1950) | (y > dt.datetime.now().year) | (m < 1) | (m > 12) | (d < 1) | (d > 31) 
+                    bool_mask_1D = bool_mask_1D | (MITprof_ds['prof_HHMMSS'].data < 0) | (MITprof_ds['prof_HHMMSS'].data > 240000)
+                    bool_mask = np.broadcast_to(bool_mask_1D[:, None], MITprof_ds[prof_key].shape)
+                    modify_array_by_index_set_to_single_value(MITprof_ds[f'{prof_key}weight'].data, bool_mask, 0)
+                    modify_array_by_index_add_criteria_scalar_fn(zero_weight_reason_array_dict[prof_key], bool_mask, zero_criteria_code)
+
+                if zero_criteria_code == 8: # lat-lon out of bounds or  0 deg N and 0 deg E
+                    lats = MITprof_ds['prof_lat'].data
+                    lons = MITprof_ds['prof_lon'].data
+
+                    # Do we really want to mask (0,0) in lon, lat space?
+                    bool_mask_1D = (lats < -90) | (lats > 90) | (lons < -180) | (lons > 180) | ((lats == 0) & (lons == 0))
+                    bool_mask = np.broadcast_to(bool_mask_1D[:, None], MITprof_ds[prof_key].shape)
+                    modify_array_by_index_set_to_single_value(MITprof_ds[f'{prof_key}weight'].data, bool_mask, 0)
+                    modify_array_by_index_add_criteria_scalar_fn(zero_weight_reason_array_dict[prof_key], bool_mask, zero_criteria_code)
 
 
-            ins1 = np.nonzero((MITprof_ds['prof_T'].data.flatten() < prof_Tmin) & (
-            ins2 = np.nonzero((MITprof_ds['prof_T'].data.flatten()  > prof_Tmax) & (MITprof_ds['prof_T'].data.flatten()  > checkVal))
-            ins3 = np.union1d(ins1, ins2)
+                if zero_criteria_code == 9 or zero_criteria_code == 10: # high cost vs. climatology
 
+                    variable_data = MITprof_ds[prof_key].data
+                    variable_data[variable_data < checkVal] = np.nan
+                    variable_data[variable_data == 0] = np.nan
 
+                    tmpClim = MITprof_ds[f'{prof_key}clim'].data
+                    tmpClim[tmpClim < checkVal] = np.nan
+                    tmpClim[tmpClim == 0] = np.nan
 
-            # Profs with T or S outside legal range 
-            # find those that are less than the legal min
-            # but not already set to the -9999 missing data
-            ins1 = np.nonzero((MITprof_ds['prof_T'].data.flatten() < prof_Tmin) & (MITprof_ds['prof_T'].data.flatten()  > checkVal))
-            ins2 = np.nonzero((MITprof_ds['prof_T'].data.flatten()  > prof_Tmax) & (MITprof_ds['prof_T'].data.flatten()  > checkVal))
-            ins3 = np.union1d(ins1, ins2)
+                    tmpWeight = MITprof_ds[f'{prof_key}weight'].data
+                    tmpWeight[tmpWeight < 0] = np.nan
 
-            ins3 = np.unravel_index(ins3, MITprof_ds['prof_T'].data.shape)
-            
-            #MITprof_ds['prof_Tweight'].data[ins3] = 0
-            #zero_T_weight_reason[ins3] = zero_T_weight_reason[ins3] + 2**(zero_criteria_code - 1)
-            if len(ins3) > 0:
-                chunk_modify_in_place_set_to_zero(MITprof_ds['prof_Tweight'].data, ins3, chunk_size)
-                chunk_modify_in_place_add_scalar(zero_T_weight_reason, ins3, 2**(zero_criteria_code - 1), chunk_size)
+                    cost_vs_clim = (variable_data - tmpClim)**2 * tmpWeight
 
-            if 'prof_S' in MITprof_ds:
-                # PART 2: FIND S VALUES OUTSIDE OF RANGE.
-                # find those that are less than the legal min
-                # but not already set to the -9999 missing data
-                ins1 = np.nonzero((MITprof_ds['prof_S'].data.flatten() < prof_Smin) & (MITprof_ds['prof_S'].data.flatten() > checkVal))
-                ins2 = np.nonzero((MITprof_ds['prof_S'].data.flatten() > prof_Smax) & (MITprof_ds['prof_S'].data.flatten() > checkVal))
-                ins3 = np.union1d(ins1, ins2)
+                    if exclude_high_latitude_profiles_from_clim_cost:
+                        # find all profiles that are outside of high
+                        # latitudes (high_lat_cutoff), e.g., -60 to 60)
+                        bool_mask_1D_lat =  (MITprof_ds['prof_lat'].data <= -high_lat_cutoff) | (MITprof_ds['prof_lat'].data >= high_lat_cutoff)
+                        bool_mask_lat = np.broadcast_to(bool_mask_1D[:, None], MITprof_ds[prof_key].shape)
 
-                ins3 = np.unravel_index(ins3, MITprof_ds['prof_S'].data.shape)
-
-                #MITprof_ds['prof_Sweight'].data[ins3] = 0
-                #zero_S_weight_reason[ins3] = zero_S_weight_reason[ins3] + 2**(zero_criteria_code -1)
-                if len(ins3) > 0:
-                    chunk_modify_in_place_set_to_zero(MITprof_ds['prof_Sweight'].data, ins3, chunk_size)
-                    chunk_modify_in_place_add_scalar(zero_S_weight_reason, ins3, 2**(zero_criteria_code - 1), chunk_size)
-
-
-        if zero_criteria_code == 6: # missing climatology value
- 
-
-            ins1 = np.nonzero(MITprof_ds['prof_Tclim'].data.flatten() <= checkVal)
-            ins2 = np.nonzero(np.isnan(MITprof_ds['prof_Tclim'].data.flatten() ))
-            ins3 = np.nonzero(MITprof_ds['prof_Tclim'].data.flatten()  == 0)
-            ins4 = np.union1d(ins3, np.union1d(ins1, ins2))
-
-            ins4 = np.unravel_index(ins4, MITprof_ds['prof_Tclim'].data.shape)
-
-            #MITprof_ds['prof_Tweight'].data[ins4] = 0
-            #zero_T_weight_reason[ins4] = zero_T_weight_reason[ins4] + 2**(zero_criteria_code - 1)
-            if len(ins4) > 0:
-                chunk_modify_in_place_set_to_zero(MITprof_ds['prof_Tweight'].data, ins4, chunk_size)
-                chunk_modify_in_place_add_scalar(zero_T_weight_reason, ins4, 2**(zero_criteria_code - 1), chunk_size)
-
-  
-            if 'prof_S' in MITprof_ds:
-
+                    if zero_criteria_code == 9: # CHECK AVERAGE COST VS CLIM
+                        bool_mask= np.broadcast_to((np.nanmean(cost_vs_clim, axis=1) >= profile_avg_cost_threshold)[:, None], MITprof_ds[prof_key].shape).copy()
+                        if exclude_high_latitude_profiles_from_clim_cost:
+                            bool_mask[bool_mask_lat] = False
+                        modify_array_by_index_set_to_single_value(MITprof_ds[f'{prof_key}weight'].data, bool_mask, 0)
+                        modify_array_by_index_add_criteria_scalar_fn(zero_weight_reason_array_dict[prof_key], bool_mask, zero_criteria_code)
+                        
+                    if zero_criteria_code == 10: # individual points exceed cost threshold
+                        bool_mask = cost_vs_clim >= single_datum_cost_threshold
+                        if exclude_high_latitude_profiles_from_clim_cost:
+                            bool_mask[bool_mask_lat] = False
+                        modify_array_by_index_set_to_single_value(MITprof_ds[f'{prof_key}weight'].data, bool_mask, 0)
+                        modify_array_by_index_add_criteria_scalar_fn(zero_weight_reason_array_dict[prof_key], bool_mask, zero_criteria_code)
                 
-                ins1 = np.nonzero(MITprof_ds['prof_Sclim'].data.flatten() <= checkVal)
-                ins2 = np.nonzero(np.isnan(MITprof_ds['prof_Sclim'].data.flatten()))
-                ins3 = np.nonzero(MITprof_ds['prof_Sclim'].data.flatten() == 0)
-                ins4 = np.union1d(ins3, np.union1d(ins1, ins2))
 
-                ins4 = np.unravel_index(ins4, MITprof_ds['prof_Sclim'].data.shape)
-                
-                #MITprof_ds['prof_Sweight'].data[ins4] = 0
-                #zero_S_weight_reason[ins4] = zero_S_weight_reason[ins4] + 2**(zero_criteria_code -1)
-                if len(ins4) > 0:
-                    chunk_modify_in_place_set_to_zero(MITprof_ds['prof_Sweight'].data, ins4, chunk_size)
-                    chunk_modify_in_place_add_scalar(zero_S_weight_reason, ins4, 2**(zero_criteria_code - 1), chunk_size)
-
-
-        if zero_criteria_code == 7: # illegal dates/times
-
-
-            y = np.zeros(num_profs, dtype=int)
-            m = np.zeros(num_profs, dtype=int)
-            d = np.zeros(num_profs, dtype=int)
-
-            for i in np.arange(num_profs):
-                tmp = str(MITprof_ds['prof_YYYYMMDD'].data[i])
-                y[i]  = int(tmp[0:4])
-                m[i]  = int(tmp[4:6])
-                d[i]  = int(tmp[6:8])
-
-            todays_year = dt.datetime.now().year
-
-            # bad years are pre 1950 and after today's year
-            bad_years = np.nonzero((y < 1950) | (y > todays_year))
-            bad_mons  = np.nonzero((m < 1)|(m > 12))
-            bad_days  = np.nonzero((d < 1) | (d > 31))
-            bad_times = np.nonzero((MITprof_ds['prof_HHMMSS'].data < 0) | (MITprof_ds['prof_HHMMSS'].data > 240000))
-
-            bad_profs = np.union1d(bad_times, np.union1d(bad_days, np.union1d(bad_years, bad_mons)))
-
-            bad_profs = np.unravel_index(bad_profs, MITprof_ds['prof_Tweight'].data.shape)
-
-            #MITprof_ds['prof_Tweight'].data[bad_profs, :] = 0
-            #zero_T_weight_reason[bad_profs] = zero_T_weight_reason[bad_profs] + 2**(zero_criteria_code -1)
-            if len(bad_profs) > 0:
-                chunk_modify_in_place_set_to_zero(MITprof_ds['prof_Tweight'].data, bad_profs, chunk_size)
-                chunk_modify_in_place_add_scalar(zero_T_weight_reason, bad_profs, 2**(zero_criteria_code - 1), chunk_size)
-                #chunk_modify_in_place_using_profile_index_set_to_zero(MITprof_ds['prof_Tweight'].data, bad_profs, chunk_size)
-                #chunk_modify_in_place_using_profile_index_add_scalar(zero_T_weight_reason, bad_profs, 2**(zero_criteria_code - 1), chunk_size)
-
-   
-            if 'prof_S' in MITprof_ds:
-                #MITprof_ds['prof_Sweight'].data[bad_profs, :] = 0
-                #zero_S_weight_reason[bad_profs] = zero_S_weight_reason[bad_profs] + 2**(zero_criteria_code -1)
-                if len(bad_profs) > 0:
-                    chunk_modify_in_place_set_to_zero(MITprof_ds['prof_Sweight'].data, bad_profs, chunk_size)
-                    chunk_modify_in_place_add_scalar(zero_S_weight_reason, bad_profs, 2**(zero_criteria_code - 1), chunk_size)
-                    #chunk_modify_in_place_using_profile_index_set_to_zero(MITprof_ds['prof_Sweight'].data, bad_profs, chunk_size)
-                    #chunk_modify_in_place_using_profile_index_add_scalar(zero_S_weight_reason, bad_profs, 2**(zero_criteria_code - 1), chunk_size)
-
-
-        if zero_criteria_code == 8: # lat-lon out of bounds or  0 deg N and 0 deg E
-
-            
-            lats = MITprof_ds['prof_lat'].data
-            lons = MITprof_ds['prof_lon'].data
-            
-            outside_lat_lim_ins = np.nonzero((lats < -90) | (lats > 90))
-            outside_lon_lim_ins = np.nonzero((lons < -180) | (lons > 180))
-            zero_lat_lon_ins = np.nonzero((lats == 0) & (lons == 0))
-
-            bad_profs = np.union1d(outside_lat_lim_ins, np.union1d(outside_lon_lim_ins, zero_lat_lon_ins))
-            bad_profs = np.unravel_index(bad_profs, MITprof_ds['prof_Tweight'].data.shape)
-
-            #MITprof_ds['prof_Tweight'].data[bad_profs, :] = 0
-            #zero_T_weight_reason[bad_profs] = zero_T_weight_reason[bad_profs] + 2**(zero_criteria_code -1)
-            if len(bad_profs) > 0:
-                chunk_modify_in_place_set_to_zero(MITprof_ds['prof_Tweight'].data, bad_profs, chunk_size)
-                chunk_modify_in_place_add_scalar(zero_T_weight_reason, bad_profs, 2**(zero_criteria_code - 1), chunk_size)
-                #chunk_modify_in_place_using_profile_index_set_to_zero(MITprof_ds['prof_Tweight'].data, bad_profs, chunk_size)
-                #chunk_modify_in_place_using_profile_index_add_scalar(zero_T_weight_reason, bad_profs, 2**(zero_criteria_code - 1), chunk_size)
-
-            if 'prof_S' in MITprof_ds:
-                #MITprof_ds['prof_Sweight'].data[bad_profs, :] = 0
-                #zero_S_weight_reason[bad_profs] = zero_S_weight_reason[bad_profs] + 2**(zero_criteria_code -1)
-                if len(bad_profs) > 0:
-                    chunk_modify_in_place_set_to_zero(MITprof_ds['prof_Sweight'].data, bad_profs, chunk_size)
-                    chunk_modify_in_place_add_scalar(zero_S_weight_reason, bad_profs, 2**(zero_criteria_code - 1), chunk_size)
-                    #chunk_modify_in_place_using_profile_index_set_to_zero(MITprof_ds['prof_Sweight'].data, bad_profs, chunk_size)
-                    #chunk_modify_in_place_using_profile_index_add_scalar(zero_S_weight_reason, bad_profs, 2**(zero_criteria_code - 1), chunk_size)
-
-
-        if zero_criteria_code == 9 or zero_criteria_code == 10: # high cost vs. climatology
-
-            #print(f"{zero_criteria_code:02}: {np.sum(~np.isnan(MITprof_ds['prof_T'].data)).data}")
-            
-            ct = 1
-
-            # T FIRST 
-            tmpT = MITprof_ds['prof_T'].data
-            tmpC = MITprof_ds['prof_Tclim'].data
-            tmpW = MITprof_ds['prof_Tweight'].data
-            
-            tmpT[np.nonzero(tmpT < checkVal)] = np.nan
-
-            #print(f"{zero_criteria_code:02}: {np.sum(~np.isnan(MITprof_ds['prof_T'].data)).data}")
-
-            #
-            #print(f'debug_step: {ct}')
-            ct += 1
-            #
-            tmpT[np.nonzero(tmpT == 0)] = np.nan
-            #
-            #print(f'debug_step: {ct}')
-            ct += 1
-            #
-            tmpC[np.nonzero(tmpC < checkVal)] = np.nan
-            #
-            #print(f'debug_step: {ct}')
-            ct += 1
-            #
-            tmpC[np.nonzero(tmpC == 0)] = np.nan
-            #
-            #print(f'debug_step: {ct}')
-            ct += 1
-            #
-            
-            tmpW[np.nonzero(tmpW < 0)] = np.nan
-            
-            T_cost_vs_clim = (tmpT - tmpC)**2 * tmpW
-
-            if 'prof_S' in MITprof_ds:
-                tmpS = MITprof_ds['prof_S'].data
-                tmpC = MITprof_ds['prof_Sclim'].data
-                tmpW = MITprof_ds['prof_Sweight'].data
-                
-                tmpS[np.nonzero(tmpS < checkVal)] = np.nan
-                tmpS[np.nonzero(tmpS == 0)] = np.nan
-                
-                tmpC[np.nonzero(tmpC < checkVal)] = np.nan
-                tmpC[np.nonzero(tmpC == 0)] = np.nan
-                
-                tmpW[np.nonzero(tmpW < 0)] = np.nan
-
-                S_cost_vs_clim = (tmpS - tmpC)**2 * tmpW
-             
-            if exclude_high_latitude_profiles_from_clim_cost:
-                # find all profiles that are outside of high
-                # latitudes (high_lat_cutoff), e.g., -60 to 60)
-                too_high = np.nonzero(MITprof_ds['prof_lat'].data <= -high_lat_cutoff)
-                too_low  = np.nonzero(MITprof_ds['prof_lat'].data >= high_lat_cutoff)
-
-                high_lat_profs_ins = np.union1d(too_high, too_low)
-                high_lat_profs_ins_unraveled = np.unravel_index(high_lat_profs_ins, MITprof_ds['prof_Tweight'].data.shape)
-  
-                high_lat_points_mat = np.zeros(MITprof_ds['prof_Tweight'].data.shape)
-                chunk_modify_in_place_set_to_one(high_lat_points_mat, high_lat_profs_ins_unraveled, chunk_size)
-                #high_lat_points_mat[high_lat_profs_ins_unraveled, :] = 1
-
-                high_lat_points_ins = np.nonzero(high_lat_points_mat.flatten() == 1)
-            
-            if zero_criteria_code == 9: # CHECK AVERAGE COST VS CLIM
-
-                avg_T_costs = mynanmean(T_cost_vs_clim, 1)
-                bad_profs = np.nonzero(avg_T_costs >= profile_avg_cost_threshold)
-
-                if exclude_high_latitude_profiles_from_clim_cost:
-                    bad_profs = np.setdiff1d(bad_profs, high_lat_profs_ins)
-
-                bad_profs = np.unravel_index(bad_profs, MITprof_ds['prof_Tweight'].data.shape)
-                
-                #MITprof_ds['prof_Tweight'].data[bad_profs, :] = 0
-                #zero_T_weight_reason[bad_profs, :] = zero_T_weight_reason[bad_profs, :] + 2**(zero_criteria_code -1)
-                if len(bad_profs) > 0:
-                    chunk_modify_in_place_set_to_zero(MITprof_ds['prof_Tweight'].data, bad_profs, chunk_size)
-                    chunk_modify_in_place_add_scalar(zero_T_weight_reason, bad_profs, 2**(zero_criteria_code - 1), chunk_size)
-                    #chunk_modify_in_place_using_profile_index_set_to_zero(MITprof_ds['prof_Tweight'].data, bad_profs, chunk_size)
-                    #chunk_modify_in_place_using_profile_index_add_scalar(zero_T_weight_reason, bad_profs, 2**(zero_criteria_code - 1), chunk_size)
                
 
 
-                if 'prof_S' in MITprof_ds:
-                
-                    avg_S_costs = mynanmean(S_cost_vs_clim, 1)
-                    bad_profs = np.nonzero(avg_S_costs >= profile_avg_cost_threshold)
-            
-                    if exclude_high_latitude_profiles_from_clim_cost:
-                        bad_profs = np.setdiff1d(bad_profs, high_lat_profs_ins)
-
-                    bad_profs = np.unravel_index(bad_profs, MITprof_ds['prof_Sweight'].data.shape)
-          
-                    #MITprof_ds['prof_Sweight'].data[bad_profs, :] = 0
-                    #zero_S_weight_reason[bad_profs, :] = zero_S_weight_reason[bad_profs, :] + 2**(zero_criteria_code -1)
-                    if len(bad_profs) > 0:
-                        chunk_modify_in_place_set_to_zero(MITprof_ds['prof_Sweight'].data, bad_profs, chunk_size)
-                        chunk_modify_in_place_add_scalar(zero_S_weight_reason, bad_profs, 2**(zero_criteria_code - 1), chunk_size)
-                        #chunk_modify_in_place_using_profile_index_set_to_zero(MITprof_ds['prof_Sweight'].data, bad_profs, chunk_size)
-                        #chunk_modify_in_place_using_profile_index_add_scalar(zero_S_weight_reason, bad_profs, 2**(zero_criteria_code - 1), chunk_size)
-                
-
-            if zero_criteria_code == 10: # individual points exceed cost threshold
-
-                bad_profs = np.nonzero(T_cost_vs_clim.flatten() >= single_datum_cost_threshold)
-    
-                if exclude_high_latitude_profiles_from_clim_cost:
-                    bad_profs = np.setdiff1d(bad_profs, high_lat_points_ins[0])
-                
-                bad_profs = np.unravel_index(bad_profs, MITprof_ds['prof_Tweight'].data.shape)
-
-                #MITprof_ds['prof_Tweight'].data[bad_profs] = 0
-                #zero_T_weight_reason[bad_profs] = zero_T_weight_reason[bad_profs] + 2**(zero_criteria_code -1)
-                if len(bad_profs) > 0:
-                    chunk_modify_in_place_set_to_zero(MITprof_ds['prof_Tweight'].data, bad_profs, chunk_size)
-                    chunk_modify_in_place_add_scalar(zero_T_weight_reason, bad_profs, 2**(zero_criteria_code - 1), chunk_size)
-                    #chunk_modify_in_place_using_profile_index_set_to_zero(MITprof_ds['prof_Tweight'].data, bad_profs, chunk_size)
-                    #chunk_modify_in_place_using_profile_index_add_scalar(zero_T_weight_reason, bad_profs, 2**(zero_criteria_code - 1), chunk_size)
-
-               
-                if 'prof_S' in MITprof_ds:
-
-                    bad_profs = np.nonzero(S_cost_vs_clim.flatten() >= single_datum_cost_threshold)
-                    
-                    if exclude_high_latitude_profiles_from_clim_cost:
-                        bad_profs = np.setdiff1d(bad_profs, high_lat_points_ins[0])
-
-
-                    bad_profs = np.unravel_index(bad_profs, MITprof_ds['prof_Sweight'].data.shape)
-     
-                    #MITprof_ds['prof_Sweight'].data[bad_profs] = 0
-                    #zero_S_weight_reason[bad_profs] = zero_S_weight_reason[bad_profs] + 2**(zero_criteria_code -1)
-                    if len(bad_profs) > 0:
-                        chunk_modify_in_place_set_to_zero(MITprof_ds['prof_Sweight'].data, bad_profs, chunk_size)
-                        chunk_modify_in_place_add_scalar(zero_S_weight_reason, bad_profs, 2**(zero_criteria_code - 1), chunk_size)
-                        #chunk_modify_in_place_using_profile_index_set_to_zero(MITprof_ds['prof_Sweight'].data, bad_profs, chunk_size)
-                        #chunk_modify_in_place_using_profile_index_add_scalar(zero_S_weight_reason, bad_profs, 2**(zero_criteria_code - 1), chunk_size)
-
-
-            ########print(f"{zero_criteria_code:02}: {np.sum(~np.isnan(MITprof_ds['prof_T'].data))}")
-
-        if zero_criteria_code == 11: # test for possible bad conducivity cell.
-            if 'prof_S' in MITprof_ds:
+        if zero_criteria_code == 11: # test for possible bad conductivity cell.
+            if prof_key == 'prof_S':
                 
                 # PART 1, FIND BAD CONDUCTIVITY CELLS
-                num_tests = len(prof_subsurface_min_S_threshold_depth)    
-                # pull the salinity field
-                tmpS = MITprof_ds['prof_S'].data
-                bad_profs = []
-
-
-                '''
-                # Bruce - still fixing stupidity
-                if len(tmpS.shape) == 2 and tmpS.shape[0] == 1:
-                    tmpS = tmpS.T
-                '''
-
+                num_tests = len(var_dict[prof_key]['subsurface_min_depth_threshold'])    
+                variable_data = MITprof_ds[prof_key].data
+                bool_mask = np.zeros_like(variable_data).astype(bool)
 
                 for ii in np.arange(num_tests):
 
-                    prof_S_sst = prof_subsurface_min_S_threshold[ii]
-                    prof_S_sstd = prof_subsurface_min_S_threshold_depth[ii]
+                    # make a mask of nans, one for each value of prof_S
+                    symbol_array = np.full_like(variable_data, np.nan)
+
+                    prof_S_sub_surface_threshold = var_dict[prof_key]['subsurface_min_val_threshold'][ii]
+                    prof_S_sub_surface_threshold_depth = var_dict[prof_key]['subsurface_min_depth_threshold'][ii]
                     
-                    # find profile depths that are shallower than the
-                    # subsurface depth threshold
-                    ssdi = np.nonzero(np.abs(MITprof_ds['prof_depth'].data) <= np.abs(prof_S_sstd))
+                    # find profile depths that are shallower than the subsurface depth threshold
+                    bool_mask_subsurface_depth = np.broadcast_to((np.abs(MITprof_ds['prof_depth'].data) <= np.abs(prof_S_sub_surface_threshold_depth))[None,:], symbol_array.shape)
+                    #bool_mask_subsurface_depth = np.abs(MITprof_ds['prof_depth'].data) <= np.abs(prof_S_sub_surface_threshold_depth)
                     
                     # find data where S <= threshold
-                    ins1 = np.nonzero((tmpS <= prof_S_sst) & (tmpS > checkVal))
-                    #ins1 = np.nonzero((tmpS <= prof_S_sst) & (MITprof_ds['prof_S'].data > checkVal))
+                    bool_mask_S_below_threshold_val = (variable_data <= prof_S_sub_surface_threshold) & (variable_data > checkVal)
                     
                     # find data where S > threshold
-                    ins2 = np.nonzero((tmpS >= prof_S_sst) & (tmpS > checkVal))
-                    #ins2 = np.nonzero((tmpS >= prof_S_sst) & (MITprof_ds['prof_S'].data > checkVal))
+                    bool_mask_S_above_threshold_val = (variable_data >= prof_S_sub_surface_threshold) & (variable_data > checkVal)
                    
-                    # make a mask of nans, one for each value of prof_S
-                    tmp = np.full_like(tmpS, np.nan)
+                    modify_array_by_index_set_to_single_value(symbol_array, bool_mask_S_below_threshold_val, 1)
+                    modify_array_by_index_set_to_single_value(symbol_array, bool_mask_S_above_threshold_val, 0)
+                    modify_array_by_index_set_to_single_value(symbol_array, bool_mask_subsurface_depth, np.nan)
 
-                    #tmp[ins1] = 1
-                    #tmp[ins2] = 0
-                    '''
-                    ins2 = np.unravel_index(ins2, tmp.shape)
-                    ins1 = np.unravel_index(ins1, tmp.shape)
-                   '''
-                    if len(ins1) > 0:
-                        chunk_modify_in_place_set_to_one(tmp, ins1, chunk_size)
-                        chunk_modify_in_place_set_to_zero(tmp, ins2, chunk_size)
-
-                    # exclude points in the upper ocean above the prof_S_subsurface_threshold
-                    #tmp[:, ssdi] = np.nan
-                    if len(ssdi) > 0:
-                        try:
-                            chunk_modify_in_place_using_depth_index_set_to_nan(tmp, ssdi, chunk_size)
-                        except:
-                            pdb.set_trace()
-
-            
-
-                    '''
-                    # find the median value of tmp
-                    x = np.nanmedian(tmp.T, axis = 0)
-                    '''
                     
-                    #NoTE BRUCE: had to add this exception handling, since some rows of tmp are all NaNs.  Now, some elements of x will be NaN...
-                    with warnings.catch_warnings(): 
-                        warnings.simplefilter("ignore", category=RuntimeWarning)
-                        if len(tmp.shape) == 1:
-                            x = np.nanmedian(tmp)
+                    #NoTE BRUCE: had to add this exception handling, since some rows of symbol_array are all NaNs.  Now, some elements of x will be NaN...
+                    #with warnings.catch_warnings(): 
+                    #    warnings.simplefilter("ignore", category=RuntimeWarning)
+
+                    # I believe this will be the case when data only exists at a single depth (ie for surface/satellite data...)
+                    if len(symbol_array.shape) == 1:
+                        symbol_array_nanmedian = np.nanmedian(symbol_array)
+                        if np.isnan(symbol_array_nanmedian): # <symbol_array> is all nans
+                            bool_mask = np.ones_like(symbol_array).astype(bool)
                         else:
-                            x = np.nanmedian(tmp, axis = 1)
+                            bool_mask = (bool_mask) | (np.isnan(symbol_array_nanmedian))
 
-                        if type(x) == np.float64:
-                            if np.isnan(x):
-                                bad_profs = np.nonzero(np.ones_like(tmp).astype(bool))
-                            else:
-                                bad_profs = ()
-                        else:
+                    else:
+                        symbol_array_nanmedian = np.nanmedian(symbol_array, axis = 1)
+                        bool_mask = (bool_mask) | (np.broadcast_to(np.isnan(symbol_array_nanmedian)[:, None], symbol_array.shape))
 
-                            # also set nan profiles to zero?
-                            insNaNs = np.nonzero(np.isnan(x))
-                            bad_profs = np.union1d(bad_profs, insNaNs)
-                            #bad_profs = np.union1d(bad_profs, insNaNs)
+                        # Note - Bruce: I really don't know what the next comment and lines mean
+                        # identify as likely bad profiles all of those profiles where the median value of S below the treshold depth is less than the threshold salinity
+                        # Does this mean to say "above the threshold depth?"  .... because everything below it was marked as NaN above, so didn't factor into the
+                        # nanmedian calculation...
+                        bool_mask = (bool_mask) | (np.broadcast_to((symbol_array_nanmedian == 1)[:, None], symbol_array.shape))
 
-                            # Bruce - what the heck is happening here????
+                # Mask all variables according to this analysis
+                # (this is sloppy, but since we are only entering the above loop when prof_key=='prof_S', this will work)
+                for prof_key in prof_key_list:
+                    modify_array_by_index_set_to_single_value(MITprof_ds[f'{prof_key}weight'].data, bool_mask, 0)
+                    modify_array_by_index_add_criteria_scalar_fn(zero_weight_reason_array_dict[prof_key], bool_mask, zero_criteria_code)
 
-                            # identify as likely bad profiles all of those profiles where the median value of S below the treshold depth is less than the threshold salinity
-                            ins3 = np.nonzero(x == 1)
-
-                            bad_profs = np.union1d(bad_profs, ins3)
-                    
-
-                '''
-                try:
-                    bad_profs = tuple(int(dex) for dex in bad_profs)
-                except Exception:
-                    pdb.set_trace()
-                #bad_profs = bad_profs.astype(int)
-                #bad_profs = np.unravel_index(bad_profs, MITprof_ds['prof_Sweight'].data.shape)
-                '''
-
-                bad_profs = bad_profs.astype(int)
-
-                # set the weights of all of those profiles to zero
-                #MITprof_ds['prof_Sweight'].data[bad_profs,:] = 0
-                #if len(bad_profs[0]) > 0:
-                if len(bad_profs) > 0:
-                    chunk_modify_in_place_using_profile_index_set_to_zero(MITprof_ds['prof_Sweight'].data, tuple([bad_profs]), chunk_size)
-                    #chunk_modify_in_place_using_profile_index_set_to_zero(MITprof_ds['prof_Sweight'].data, bad_profs, chunk_size)
-                    
-            
-                # record the reason that we're zeroing it out.
-                #zero_S_weight_reason[bad_profs,:] = zero_S_weight_reason[bad_profs,:] + 2**(zero_criteria_code -1)
-                    chunk_modify_in_place_using_profile_index_add_scalar(zero_S_weight_reason, tuple([bad_profs]), 2**(zero_criteria_code - 1), chunk_size)
-                    #chunk_modify_in_place_using_profile_index_add_scalar(zero_S_weight_reason, bad_profs, 2**(zero_criteria_code - 1), chunk_size)
-
-
-                # ALSO DO T IN CASE IT IS THE T MEASURMENT
-                # THAT CAUSED S TO BE CRAZY.
-                # set the weights of all of those profiles to zero
-                #MITprof_ds['prof_Tweight'].data[bad_profs,:] = 0
                 
-                # record the reason that we're zeroing it out.
-                #zero_T_weight_reason[bad_profs,:] = zero_T_weight_reason[bad_profs,:] + 2**(zero_criteria_code -1)
-                    chunk_modify_in_place_using_profile_index_set_to_zero(MITprof_ds['prof_Tweight'].data, tuple([bad_profs]), chunk_size)
-                    chunk_modify_in_place_using_profile_index_add_scalar(zero_T_weight_reason, tuple([bad_profs]), 2**(zero_criteria_code - 1), chunk_size)
-
+    for prof_key in prof_key_list:
+        if np.sum(np.isnan(zero_weight_reason_array_dict[prof_key])) > 0:
+            raise Exception(f'nans found in {prof_key} weight code')
+        MITprof_ds[f'{prof_key}weight_code'] = xr.DataArray(zero_weight_reason_array_dict[prof_key], dims=['iPROF','iWEIGHT'], name=f'{prof_key}_zero_weight_reason')
             
-        if np.sum(np.isnan(zero_T_weight_reason)) > 0:
-            raise Exception('nans found in prof t weight code')
-        MITprof_ds['prof_Tweight_code'] = xr.DataArray(zero_T_weight_reason, dims=['iPROF','iWEIGHT'], name='zero_T_wight_reason')
-            
-        if 'prof_S' in MITprof_ds:
-            if np.sum(np.isnan(zero_S_weight_reason)) > 0:
-                raise Exception('nans found in prof s weight code')
-            MITprof_ds['prof_Sweight_code'] = xr.DataArray(zero_S_weight_reason, dims=['iPROF','iWEIGHT'], name='zero_S_wight_reason')
-
-
     """
     # NOTE: code for testing in case issues arise in future 
     mat_contents = sio.loadmat('/home/sweet/Desktop/ECCO-Insitu-Ian/Original-Matlab-Dest/converted_to_MITprof/zero_S_wr.mat')

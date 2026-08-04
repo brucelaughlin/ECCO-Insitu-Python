@@ -6,28 +6,141 @@ import netCDF4 as nc
 import xarray as xr
 from scipy.interpolate import griddata
 
-def MITprof_dataset_from_dict(data_dict: dict, dim_dict: dict):
 
-    new_dataarrays = dict()
+def print_survivors(MITprof_ds, step_counter):
+    a=1
+    print(f"step: {step_counter}")
+    print(f"not nan T:    {np.sum(~np.isnan(MITprof_ds['prof_T'].data))}")
+    print(f"not nan S:    {np.sum(~np.isnan(MITprof_ds['prof_S'].data))}")
 
-    for data_var in data_dict.keys():
-        if len(data_dict[data_var].shape) == 1:
+def count_total_survivors_TS(MITprof_ds):
+    return np.sum(~np.isnan(MITprof_ds['prof_T'].data)) + np.sum(~np.isnan(MITprof_ds['prof_S'].data))
+
+
+def count_profs_with_nonzero_weights(MITprof_ds):
+
+    info_dict = {}
+    info_dict['num_profiles'] = len(MITprof_ds['prof_lon'].data)
+    #nonzero_T_ins
+
+    prof_key_list = ['prof_T', 'prof_S']
+    prof_key_counter = 0
+
+    for prof_key in prof_key_list:
+
+
+        # feels backwards but whatever
+        if prof_key in MITprof_ds.data_vars:
+            print('-----')
+            print("BLARG")
+            print('-----')
+
+            info_dict[prof_key] = {}
+            info_dict[prof_key]['nonzero_weight_1D_profile_mask'] = np.sum(MITprof_ds[f'{prof_key}weight'].data, axis = 1) > 0
+            info_dict[prof_key]['zero_weight_1D_profile_mask'] = np.sum(MITprof_ds[f'{prof_key}weight'].data, axis= 1) == 0
+
+            if prof_key_counter == 0:
+                prof_key_counter += 1
+                zero_weight_mask = info_dict[prof_key]['zero_weight_1D_profile_mask']
+                nonzero_weight_mask = info_dict[prof_key]['nonzero_weight_1D_profile_mask']
+            else:
+                zero_weight_mask = (zero_weight_mask) | (info_dict[prof_key]['zero_weight_1D_profile_mask'])
+                nonzero_weight_mask = (nonzero_weight_mask) | (info_dict[prof_key]['nonzero_weight_1D_profile_mask'])
+
+    info_dict['zero_weight_1D_profile_mask_all_vars'] = zero_weight_mask
+    info_dict['nonzero_weight_1D_profile_mask_all_vars'] = nonzero_weight_mask
+
+    #return num_nonzero_T, num_nonzero_S, num_nonzero_TS, num_profs, zero_weight_T_ins, zero_weight_S_ins, zero_weight_TS_ins, nonzero_T_ins, nonzero_S_ins, nonzero_TS_ins
+    return info_dict
+
+
+def extract_profile_subset_from_MITprof(MITprof_ds, 1D_bool_mask_profile_dim, 1D_bool_mask_depth_dim):
+
+    num_profiles = len(MITprof_ds['prof_lon'].data)
+    num_depths = len(MITprof_ds['prof_depth'].data)
+
+    if len(1D_bool_mask_profile_dim) == 0:
+        1D_bool_mask_profile_dim = np.ones(num_profiles).as_type(bool)
+    if len(1D_bool_mask_depth_dim) == 0:
+        1D_bool_mask_depth_dim = np.ones(num_depths).as_type(bool)
+    
+    MITprof_subset_dict = {}
+
+    for data_var in MITprof_ds.data_vars:
+        variable_data = MITprof_ds[data_var].data
+        var_shape = variable_data.shape
+        if var_shape[0] == num_profiles:
+
+            if len(var_shape) == 1 or 1 in var_shape:
+                subsample = variable_data[1D_bool_mask_profile_dim]
+
+            elif len(var_shape) == 2 and var_shape[1] == num_depths:
+                subsample = variable_data[1D_bool_mask_profile_dim, :][:, 1D_bool_mask_depth_dim] 
+                #subsample = variable_data[(np.broadcast_to(1D_bool_mask_profile_dim[:,None],(num_profiles,num_depths))) & (np.broadcast_to(1D_bool_mask_depth_dim[None,:],(num_profiles,num_depths)))] 
+                #subsample = variable_data[1D_bool_mask_profile_dim, 1D_bool_mask_depth_dim] 
+                #subsample = variable_data[1D_bool_mask_profile_dim[:, np.newaxis], 1D_bool_mask_depth_dim] # Bruce: what was this business of adding a dimension about???
+
+            elif len(var_shape) == 2 and var_shape[1] > 1:
+                subsample = variable_data[1D_bool_mask_profile_dim, :]
+            else:
+                raise Exception(f'Do not know what to do with {data_var} of size {variable_data.shape}')
+                
+        # if the length of the first dimension is the number of depths
+        # then subset to the 1D_bool_mask_depth_dim
+        elif var_shape[0] == num_depths:
+            subsample = variable_data[1D_bool_mask_depth_dim]
+        else:
+            # if the object length is not the same as the number of profiles
+            # then we'll just copy it over 
+            subsample = variable_data
+
+        #MITprof_ds[data_var] = subsample
+        #print(f"{data_var}  {subsample.shape}")
+        MITprof_subset_dict.update({data_var: subsample})
+
+    # lazy hardcoded "dim_dict" for construction of dataset at the end.  
+    #dim_dict = {'iPROF': len(MITprof_subset_dict['prof_YYYYMMDD']), 'iDEPTH': len(MITprof_subset_dict['prof_depth'])} # Bruce - the dreaded hardcoding.... ugh
+
+    MITprof_dataset_new = tools.MITprof_dataset_from_dict(MITprof_subset_dict) 
+    #MITprof_dataset_new = tools.MITprof_dataset_from_dict(MITprof_subset_dict, dim_dict) 
+    #return MITprof_dataset_from_dict(MITprof_subset_dict, dim_dict) 
+
+    return MITprof_dataset_new
+
+
+
+
+
+
+def MITprof_dataset_from_dict(MITprofs_dict: dict):
+
+    """
+def MITprof_dataset_from_dict(MITprofs_dict: dict, dim_dict: dict = None):
+    if dim_dict is None:
+        num_depth_levels = len(MITprofs_dict['prof_depth'])
+        num_profs = len(MITprofs_dict['prof_lat'])
+        dim_dict = {'iPROF': num_profs, 'iDEPTH': num_depth_levels}
+    """
+
+    new_data_arrays = dict()
+
+    for data_var in MITprofs_dict.keys():
+        if len(MITprofs_dict[data_var].shape) == 1:
             for dim in dim_dict.keys():
-                if data_dict[data_var].shape[0] == dim_dict[dim]:
-                    new_dataarrays[data_var] = xr.DataArray(data_dict[data_var], dims=dim, name=data_var)
+                if MITprofs_dict[data_var].shape[0] == dim_dict[dim]:
+                    new_data_arrays[data_var] = xr.DataArray(MITprofs_dict[data_var], dims=dim, name=data_var)
                     break
 
-
-        elif len(data_dict[data_var].shape) == 2:
-            if data_dict[data_var].shape[0] == list(dim_dict.values())[0] and  data_dict[data_var].shape[1] == list(dim_dict.values())[1]:
-                new_dataarrays[data_var] = xr.DataArray(data_dict[data_var], dims=list(dim_dict.keys()), name=data_var)
+        elif len(MITprofs_dict[data_var].shape) == 2:
+            if MITprofs_dict[data_var].shape[0] == list(dim_dict.data())[0] and  MITprofs_dict[data_var].shape[1] == list(dim_dict.data())[1]:
+                new_data_arrays[data_var] = xr.DataArray(MITprofs_dict[data_var], dims=list(dim_dict.keys()), name=data_var)
             else:
                 print('something wacky is going on here (interal)')
 
         else:
             print('something wacky is going on here (external)')
 
-    new_dataset = xr.merge([new_dataarrays])
+    new_dataset = xr.merge([new_data_arrays])
 
     return new_dataset
 

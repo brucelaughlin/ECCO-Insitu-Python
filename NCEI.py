@@ -10,6 +10,8 @@ import logging
 import glob
 from pathlib import Path
 import argparse
+from functools import partial
+
 
 
 # Add the directory containing the package to the search path
@@ -21,11 +23,11 @@ import step03
 import step04
 import step05
 import step06
-#import step07
-#import step08
+import step07
+import step08
 #import step09
 #import step10
-from tools import MITprof_read, MITprof_write_to_nc
+#from tools import MITprof_read, MITprof_write_to_nc, MITprof_dataset_from_dict
 import tools
 
 
@@ -78,10 +80,9 @@ def NCEI_pipeline(dest_dir, input_dir):
                                     # that is closest in time to 'closest time' default is noon
     method = 1                      # method 0 or 1
 
-    largest_numbered_step_to_run = 10
-
-    num_profile_files = len(input_profile_files)
-    num_digits_print = len(str(num_profile_files))
+    #largest_numbered_step_to_run = 7
+    largest_numbered_step_to_run = 8
+    #largest_numbered_step_to_run = 10
 
     print()
 
@@ -89,159 +90,48 @@ def NCEI_pipeline(dest_dir, input_dir):
     for file_dex in range(len(input_profile_files)):
 
         original_file = input_profile_files[file_dex]
-
-        print(f"ncei processing for file {file_dex+1:0{num_digits_print}}/{num_profile_files}: {original_file}")
-
-        #print(f"step0, file {file_dex+1:0{num_digits_print}}/{num_profile_files}: {original_file}")
-
         basename = os.path.basename(original_file)
 
-        MITprofs = MITprof_read(original_file,largest_numbered_step_to_run)
+        print(f"ncei processing for file {file_dex+1:0{len(str(len(input_profile_files)))}}/{len(input_profile_files)}: {original_file}")
 
-        prof_vars = list(MITprofs)
+        MITprofs_dict = tools.MITprof_read(original_file,largest_numbered_step_to_run)
+        MITprof_ds = tools.MITprof_dataset_from_dict(MITprofs_dict) 
 
-        # bucket to hold my new, beautiful xarray data arrays 
-        new_dataarrays = dict()
-
-        prof_vars_dims = dict()
-        # find the number of depth levels
-        num_k = len(MITprofs['prof_depth'])
-        # find the number of profiles
-        num_profs = len(MITprofs['prof_lat'])
-
-        # loop through the different variables in the MITprofs structure
-        for pv in prof_vars:
-            #print(MITprofs[pv].shape)
-            field_shape = MITprofs[pv].shape 
-            ndims = len(field_shape)
-            if ndims == 1:
-                if field_shape[0] == num_profs:
-                    #print(f'{pv} is 1D and len={num_profs}')
-                    new_dataarrays[pv] = xr.DataArray(MITprofs[pv], dims='iPROF', name=pv)
-                elif field_shape[0] == num_k:
-                    #print(f'{pv} is 1D and len={num_k}')
-                    new_dataarrays[pv] = xr.DataArray(MITprofs[pv], dims='iDEPTH', name=pv)
-            elif ndims== 2:
-                #print(f'{pv} is 2D and shape is {field_shape}')
-                if field_shape[0] == num_profs and field_shape[1] == num_k:
-                    new_dataarrays[pv] = xr.DataArray(MITprofs[pv], dims=['iPROF', 'iDEPTH'], name=pv)
-                else:
-                    print('====== fail fail fail fail fail ===  calll help lol')
-
-            else:
-                print('====== fail fail fail fail fail ===  calll help lol')
-                continue
-
-        MITprof_ds = xr.merge([new_dataarrays])
-        #MITprof_ds = xr.merge(new_dataarrays)
-
-        pdb.set_trace()
-
-        # dignity has been restored
-        #MITprof_ds
-
+        ncei_function_list = [
+            partial(step01.main, MITprof_ds, grid_dir, llcN, wet_or_all), 
+            partial(step02.main, sphere_dir, MITprof_ds, grid_dir), 
+            partial(step03.main, clim_dir, MITprof_ds), 
+            partial(step04.main, MITprof_ds, grid_dir, CTD_TS_bin, respect_existing_zero_weights, new_S_floor, new_T_floor), 
+            partial(step05.main, MITprof_ds, grid_dir, apply_gamma_factor, llcN), 
+            partial(step06.main, MITprof_ds, replace_missing_S_with_clim_S), 
+            partial(step07.main, 'adjust', MITprof_ds), 
+            partial(step08.main, MITprof_ds), 
+            #partial(step09.main, MITprof_ds), 
+            #partial(step10.main, MITprof_ds, distance_tolerance, closest_time, method)
+        ]
 
         step_counter = 0
-        print_survivors(MITprof_ds, step_counter)
-        step_counter += 1
+        tools.print_survivors(MITprof_ds, step_counter)
 
-        try:
-            step01.main(MITprof_ds, grid_dir, llcN, wet_or_all)
-            print_survivors(MITprof_ds, step_counter)
+        for ii in range(len(ncei_function_list)):
+
+            #try:
+            ncei_function_list[ii]()
+            #except Exception as xcept:
+            #    print(f"step{ii:02}, file {file_dex+1:0{len(str(len(input_profile_files)))}}/{len(input_profile_files)}: {original_file}\n\t\t{xcept}", file=sys.stderr)
+            #    continue
             step_counter += 1
-        except Exception as xcept:
-            print(f"step01, file {file_dex+1:0{num_digits_print}}/{num_profile_files}: {original_file}\n\t\t{xcept}", file=sys.stderr)
-            continue
-        try:
-            step02.main(sphere_dir, MITprof_ds, grid_dir)
-            print_survivors(MITprof_ds, step_counter)
-            step_counter += 1
-        except Exception as xcept:
-            print(f"step02, file {file_dex+1:0{num_digits_print}}/{num_profile_files}: {original_file}\n\t\t{xcept}", file=sys.stderr)
-            continue
-        try:
-            step03.main(clim_dir, MITprof_ds)
-            print_survivors(MITprof_ds, step_counter)
-            step_counter += 1
-        except Exception as xcept:
-            print(f"step03, file {file_dex+1:0{num_digits_print}}/{num_profile_files}: {original_file}\n\t\t{xcept}", file=sys.stderr)
-            continue
-        try:
-            step04.main(MITprof_ds, grid_dir, CTD_TS_bin, respect_existing_zero_weights, new_S_floor, new_T_floor)
-            print_survivors(MITprof_ds, step_counter)
-            step_counter += 1
-        except Exception as xcept:
-            print(f"step04, file {file_dex+1:0{num_digits_print}}/{num_profile_files}: {original_file}\n\t\t{xcept}", file=sys.stderr)
-            continue
-        try:
-            step05.main(MITprof_ds, grid_dir, apply_gamma_factor, llcN)
-            print_survivors(MITprof_ds, step_counter)
-            step_counter += 1
-        except Exception as xcept:
-            print(f"step05, file {file_dex+1:0{num_digits_print}}/{num_profile_files}: {original_file}\n\t\t{xcept}", file=sys.stderr)
-            continue
-        '''
-        try:
-            step06.main(MITprof_ds, replace_missing_S_with_clim_S)
-        except Exception as xcept:
-            print(f"step06, file {file_dex+1:0{num_digits_print}}/{num_profile_files}: {original_file}\n\t\t{xcept}", file=sys.stderr)
-            continue
-        '''
-        step06.main(MITprof_ds, replace_missing_S_with_clim_S)
-        print_survivors(MITprof_ds, step_counter)
-        step_counter += 1
-        '''
-        try:
-            #step07.main('adjust', MITprof_ds)
-        except Exception as xcept:
-            print(f"step07, file {file_dex+1:0{num_digits_print}}/{num_profile_files}: {original_file}\n\t\t{xcept}", file=sys.stderr)
-            continue
-        '''
-        #step07.main('adjust', MITprof_ds)
-        print_survivors(MITprof_ds, step_counter)
-        step_counter += 1
-        """
-        try:
-            step08.main(MITprof_ds)
-            print_survivors(MITprof_ds, step_counter)
-            step_counter += 1
-        except Exception as xcept:
-            print(f"step08, file {file_dex+1:0{num_digits_print}}/{num_profile_files}: {original_file}\n\t\t{xcept}", file=sys.stderr)
-            continue
-        try:
-            step09.main(MITprof_ds)
-            print_survivors(MITprof_ds, step_counter)
-            step_counter += 1
-        except Exception as xcept:
-            print(f"step09, file {file_dex+1:0{num_digits_print}}/{num_profile_files}: {original_file}\n\t\t{xcept}", file=sys.stderr)
-            continue
-        try:
-            step10.main(MITprof_ds, distance_tolerance, closest_time, method)
-            print_survivors(MITprof_ds, step_counter)
-            step_counter += 1
-        except Exception as xcept:
-            print(f"step10, file {file_dex+1:0{num_digits_print}}/{num_profile_files}: {original_file}\n\t\t{xcept}", file=sys.stderr)
-            continue
+            tools.print_survivors(MITprof_ds, step_counter)
 
 
-        if total_survivors_TS(MITprof_ds) > 0:
-            MITprof_write_to_nc(dest_dir, MITprof_ds, 10, basename)
-            print(f"                SUCCESS:    {total_survivors_TS(MITprof_ds)} PROFILES SURVIVED THE NCEI PROCESSING ALGORITHM\n")
-        else:
-            print(f"                FAILURE:    {total_survivors_TS(MITprof_ds)} PROFILES SURVIVED THE NCEI PROCESSING ALGORITHM\n")
+
+    if tools.count_total_survivors_TS(MITprof_ds) > 0:
+        tools.MITprof_write_to_nc(dest_dir, MITprof_ds, 10, basename)
+        print(f"                SUCCESS:    {tools.count_total_survivors_TS(MITprof_ds)} PROFILES SURVIVED THE NCEI PROCESSING ALGORITHM\n")
+    else:
+        print(f"                FAILURE:    {tools.count_total_survivors_TS(MITprof_ds)} PROFILES SURVIVED THE NCEI PROCESSING ALGORITHM\n")
 
 
-"""
-
-
-def print_survivors(MITprofs, step_counter):
-    a=1
-    print(f"step: {step_counter}")
-    print(f"not nan T:    {np.sum(~np.isnan(MITprofs['prof_T'].values))}")
-    print(f"not nan S:    {np.sum(~np.isnan(MITprofs['prof_S'].values))}")
-
-def total_survivors_TS(MITprofs):
-    return np.sum(~np.isnan(MITprofs['prof_T'].values)) + np.sum(~np.isnan(MITprofs['prof_S'].values))
 
 
 

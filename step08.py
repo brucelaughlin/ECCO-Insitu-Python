@@ -4,104 +4,14 @@ import glob
 import os
 import numpy as np
 import numpy.ma as ma
-from step07 import count_profs_with_nonzero_weights
-from tools import MITprof_read
-from tools import MITprof_dataset_from_dict
 import xarray as xr
+import tools 
 
-def extract_profile_subset_from_MITprof(MITprofs, prof_ins, prof_depth_ins):
-    """
-    % this script extracts a subset of profiles from an MITprof object.
-    % it returns this subset as a new MITprof object
-
-    % --- arguments --- 
-    % MITprof : a MITprof object
-
-    % prof_ins : a list of profiles to extract from MITprof
-    %            if empty then we take them all
-
-    % prof_depth_ins : a list of depth indices to extract from the MITprof
-    %                  if empty then we take them all.
-    """
-    ## create an empty dictionary
-    MITprofSub_dict = {}
-
-    # the number of profiles is the length of any one of the 1D fields of
-    # MITprof.  I pick the date field arbitrarily.
-    num_profs = len(MITprofs['prof_YYYYMMDD'])
-    num_depths = len(MITprofs['prof_depth'])
-
-    # lazy hardcoded "dim_dict" for construction of dataset at the end.  
-    dim_dict = {'iPROF':num_profs, 'iDEPTH':num_depths} # Bruce - the dreaded hardcoding.... ugh
-
-    # check whether an empty set of profile indices was passed
-    if len(prof_ins) == 0:
-        prof_ins = np.arange(num_profs)
-        #print('including all profiles')
-    '''
-    else:
-        print('subsetting some profiles')
-    '''
-    # check whether an empty set of profile depth indices was passed
-    if len(prof_depth_ins) == 0:
-        prof_depth_ins = np.arange(num_depths)
-        #print('including all depths')
-    '''
-    else:
-        print('subsetting depths')
-    '''
-    
-    # loop through every field in MITprof
-    for data_var in MITprofs.data_vars:
-        # pull the values of this filed
-        x = MITprofs[data_var]
-        # determine the dimensions of the field
-        sz = x.shape
-        # if the length of the first dimension of the object is the number
-        # of profiles then this is a object that we need to subset
-        #if data_var == "prof_S":
-        #    pdb.set_trace()
-        if sz[0] == num_profs:
-            if len(sz) == 1 or sz[1] == 1:
-                # if it's a 1D object then just directly pull the subset
-                tmp = x[prof_ins]
-            elif len(sz) == 2 and sz[1] == num_depths:
-                # otherwise it's 2D.  then we pull the subset from the first
-                # dimension (second dimension is depth)
-                #if data_var == 'prof_Tweight':
-                #    pdb.set_trace()
-                tmp = x[prof_ins, prof_depth_ins] 
-                #tmp = x[prof_ins[:, np.newaxis], prof_depth_ins] # Bruce: what was this business of adding a dimension about???
-            elif len(sz) == 2 and sz[1] > 1:
-                tmp = x[prof_ins, :]
-            else:
-                raise Exception('Do not know what to do with {} of size {}'.format(data_var, x.shape))
-                
-        # if the length of the first dimension is the number of depths
-        # then subset to the prof_depth_ins
-        elif sz[0] == num_depths:
-            tmp = x[prof_depth_ins]
-        else:
-            # if the object length is not the same as the number of profiles
-            # then we'll just copy it over 
-            tmp = x
-
-        #MITprofs[data_var] = tmp
-        #print(f"{data_var}  {tmp.shape}")
-        MITprofSub_dict.update({data_var: tmp})
-
-    # lazy hardcoded "dim_dict" for construction of dataset at the end.  
-    dim_dict = {'iPROF': len(MITprofSub_dict['prof_YYYYMMDD']), 'iDEPTH': len(MITprofSub_dict['prof_depth'])} # Bruce - the dreaded hardcoding.... ugh
-
-    MITprof_dataset_new = MITprof_dataset_from_dict(MITprofSub_dict, dim_dict) 
-    #return MITprof_dataset_from_dict(MITprofSub_dict, dim_dict) 
-
-    return MITprof_dataset_new
          
 
     
 
-def update_remove_zero_T_S_weighted_profiles_from_MITprof(MITprofs):
+def update_remove_zero_T_S_weighted_profiles_from_MITprof(MITprof_ds):
     """
     Remove profiles that whose T and S weights are all zero from 
     from MITprof structures
@@ -110,24 +20,28 @@ def update_remove_zero_T_S_weighted_profiles_from_MITprof(MITprofs):
         MITprof: a single MITprof object
 
     Output:
-        Operates on MITprofs directly 
+        Operates on MITprof_ds directly 
     """     
 
-    total_Tweight = np.sum(MITprofs['prof_Tweight'])
-    total_Sweight = np.sum(MITprofs['prof_Sweight'])
+    total_Tweight = np.sum(MITprof_ds['prof_Tweight'].data)
+    total_Sweight = np.sum(MITprof_ds['prof_Sweight'].data)
 
     # only np_orig, nzwtsi_* are used later, outside of print statements
-    nnt_orig, nns_orig, nnts_orig, np_orig, zwti_orig, zwsi_orig, zwtsi_orig,nzwti_orig, nzwsi_orig, nzwtsi_orig = count_profs_with_nonzero_weights(MITprofs)
+    #nnt_orig, nns_orig, nnts_orig, np_orig, zwti_orig, zwsi_orig, zwtsi_orig,nzwti_orig, nzwsi_orig, nzwtsi_orig = tools.count_profs_with_nonzero_weights(MITprof_ds)
+    info_dict_orig = tools.count_profs_with_nonzero_weights(MITprof_ds)
         
     #print(f'\tnum profs: {np_orig} \n\tnum nonzero T: {nnt_orig} \n\tnum nonzero S: {nns_orig} \n\tnum nonzero TS: {nnts_orig}')
     
     #pdb.set_trace()
 
-    num_nan_profs = np.where(np.isnan(MITprofs['prof_Tweight'].values.flatten(order = 'F')))[0]
-    num_profs_to_remove = np_orig - len(nzwtsi_orig)
+    #num_nan_profs = np.where(np.isnan(MITprof_ds['prof_Tweight'].data.flatten(order = 'F')))[0]
+    #num_profiles_to_remove = info_dict_orig['num_profiles'] - len(nzwtsi_orig)
+    #num_profiles_to_remove = len(MITprof_ds['prof_lon'].data) - len(info_dict_orig['nonzero_weight_1D_profile_mask_all_vars'])
+    num_nan_profs = np.sum(np.isnan(MITprof_ds['prof_Tweight'].data))
+    num_profiles_to_remove = np.sum(info_dict['zero_weight_1D_profile_mask_all_vars'])
 
     '''
-    print(f'\t# profs to nix: {num_profs_to_remove}')
+    print(f'\t# profs to nix: {num_profiles_to_remove}')
     print(f'\tTotal T weight: {total_Tweight}')
     print(f'\tTotal S weight: {total_Sweight}')
     '''
@@ -137,33 +51,40 @@ def update_remove_zero_T_S_weighted_profiles_from_MITprof(MITprofs):
     if len(num_nan_profs) > 0:
         raise Exception('you have nans in your weights, this should never happen')
 
-    
-    if len(nzwtsi_orig) > 0:
-        if num_profs_to_remove > 0:
+    #if len(info_dict_orig['nonzero_weight_1D_profile_mask_all_vars']) > 0:
+    #    if num_profiles_to_remove > 0:
+
+    if len(info_dict_orig['nonzero_weight_1D_profile_mask_all_vars']) > 0 and num_profiles_to_remove > 0:
             
-            MITprofs_new = extract_profile_subset_from_MITprof(MITprofs, nzwtsi_orig, [])
+            # PICK UP HERE
+            # PICK UP HERE
+            # PICK UP HERE
+            # PICK UP HERE
+            # PICK UP HERE
+            MITprof_ds_new = tools.extract_profile_subset_from_MITprof(MITprof_ds, info_dict_orig['nonzero_weight_1D_profile_mask'], [])
 
-            total_Tweight = np.sum(MITprofs_new['prof_Tweight'])
-            total_Sweight = np.sum(MITprofs_new['prof_Sweight'])
+            total_Tweight = np.sum(MITprof_ds_new['prof_Tweight'].data)
+            total_Sweight = np.sum(MITprof_ds_new['prof_Sweight'].data)
 
-            nnt_new, nns_new, nnts_new, np_new, zwti_new, zwsi_new, zwtsi_new, nzwti_new, nzwsi_new, nzwtsi_new = count_profs_with_nonzero_weights(MITprofs_new)
+            #nnt_new, nns_new, nnts_new, np_new, zwti_new, zwsi_new, zwtsi_new, nzwti_new, nzwsi_new, nzwtsi_new = tools.count_profs_with_nonzero_weights(MITprof_ds_new)
+            info_dict = tools.count_profs_with_nonzero_weights(MITprof_ds_new)
 
             #print(f'\tnum profs: {np_new} \n\tnum nonzero T: {nnt_new} \n\tnum nonzero S: {nns_new} \n\tnum nonzero TS: {nnts_new}')
 
-            num_profs_to_remove = np_new - len(nzwtsi_new)
+            num_profiles_to_remove = np_new - len(nzwtsi_new)
 
             '''
-            print(f'\t# profs to nix: {num_profs_to_remove}')
+            print(f'\t# profs to nix: {num_profiles_to_remove}')
             print(f'\tTotal T weight: {total_Tweight}')
             print(f'\tTotal S weight: {total_Sweight}')
             '''
 
             # make sure subsetting worked
-            a1 = np.nansum(np.nansum((MITprofs['prof_S'] - MITprofs['prof_Sclim'])**2 * MITprofs['prof_Sweight']))
-            a2 = np.nansum(np.nansum((MITprofs_new['prof_S'] - MITprofs_new['prof_Sclim'])**2 * MITprofs_new['prof_Sweight']))
+            a1 = np.nansum(np.nansum((MITprof_ds['prof_S'] - MITprof_ds['prof_Sclim'])**2 * MITprof_ds['prof_Sweight']))
+            a2 = np.nansum(np.nansum((MITprof_ds_new['prof_S'] - MITprof_ds_new['prof_Sclim'])**2 * MITprof_ds_new['prof_Sweight']))
 
-            b1 = np.nansum(np.nansum((MITprofs['prof_T'] - MITprofs['prof_Tclim'])**2 * MITprofs['prof_Tweight']))
-            b2 = np.nansum(np.nansum((MITprofs_new['prof_T'] - MITprofs_new['prof_Tclim'])**2 * MITprofs_new['prof_Tweight']))
+            b1 = np.nansum(np.nansum((MITprof_ds['prof_T'] - MITprof_ds['prof_Tclim'])**2 * MITprof_ds['prof_Tweight']))
+            b2 = np.nansum(np.nansum((MITprof_ds_new['prof_T'] - MITprof_ds_new['prof_Tclim'])**2 * MITprof_ds_new['prof_Tweight']))
 
             diff = np.abs(b1 - b2)
             '''
@@ -182,62 +103,66 @@ def update_remove_zero_T_S_weighted_profiles_from_MITprof(MITprofs):
                 if np.abs(b1 - b2) > 1:
                     raise Exception('profile t costs is big')
                 
-            MITprofs = MITprofs_new
+            MITprof_ds = MITprof_ds_new
 
 
         '''
         else:
             print('no bad profs!')
-            #MITprofs_new = MITprofs 
-            #MITprofs_new = xr.Dataset() # DID WE WANT THE RETURNED/RESULTING DATASET TO BE COMPLETELY EMPTY????  THAT'S WHAT THIS WILL DO....??!?!?
+            #MITprof_ds_new = MITprof_ds 
+            #MITprof_ds_new = xr.Dataset() # DID WE WANT THE RETURNED/RESULTING DATASET TO BE COMPLETELY EMPTY????  THAT'S WHAT THIS WILL DO....??!?!?
         '''
     
     else: # no good profs left
-        #print('no good profs left, making empty MITprofs_new')
+        #print('no good profs left, making empty MITprof_ds_new')
         # WAIT, IS THE IDEA THAT WE NULLIFY THE ENTIRE DATASTRUCTURE???  BECAUSE THE "update" CALL BELOW WON'T DO THAT ... ????
-        #MITprofs_new = []
-        #MITprofs_new = xr.Dataset() # DID WE WANT THE RETURNED/RESULTING DATASET TO BE COMPLETELY EMPTY????  THAT'S WHAT THIS WILL DO....??!?!?
-        MITprofs = xr.Dataset() # DID WE WANT THE RETURNED/RESULTING DATASET TO BE COMPLETELY EMPTY????  THAT'S WHAT THIS WILL DO....??!?!?
+        #MITprof_ds_new = []
+        #MITprof_ds_new = xr.Dataset() # DID WE WANT THE RETURNED/RESULTING DATASET TO BE COMPLETELY EMPTY????  THAT'S WHAT THIS WILL DO....??!?!?
+        MITprof_ds = xr.Dataset() # DID WE WANT THE RETURNED/RESULTING DATASET TO BE COMPLETELY EMPTY????  THAT'S WHAT THIS WILL DO....??!?!?
 
-    #MITprofs = xr.merge([MITprofs, MITprofs_new])
+    #MITprof_ds = xr.merge([MITprof_ds, MITprof_ds_new])
     
     #pdb.set_trace()
-    #MITprofs.update(MITprofs_new) # Bruce - ??? in the case of 'no good profs left' (last else clause above), this was doing nothing...???
+    #MITprof_ds.update(MITprof_ds_new) # Bruce - ??? in the case of 'no good profs left' (last else clause above), this was doing nothing...???
 
     # Also, some very awesome assignment juggling going on here.  yeesh...
 
         
-def main(MITprofs):
+def main(MITprof_ds):
 
     #print("step08: update_remove_zero_T_S_weighted_profiles_from_MITprof")
-    update_remove_zero_T_S_weighted_profiles_from_MITprof(MITprofs)
+    update_remove_zero_T_S_weighted_profiles_from_MITprof(MITprof_ds)
 
 if __name__ == '__main__':
 
     parser = argparse.ArgumentParser()
     parser.add_argument("-m", "--MIT_dir", action= "store",
-                    help = "File path to NETCDF files containing MITprofs info." , dest= "MIT_dir",
+                    help = "File path to NETCDF files containing MITprof_ds info." , dest= "MIT_dir",
                     type = str, required= True)
     
 
+    """
     args = parser.parse_args()
 
     run_code = args.run_code
     grid_dir = args.grid_dir
-    MITprofs_fp = args.MIT_dir
+    MITprof_ds_fp = args.MIT_dir
 
-    MITprofs_fp = '/home/sweet/Desktop/ECCO-Insitu-Ian/Python-Dest'
-    MITprofs_fp = '/home/sweet/Desktop/ECCO-Insitu-Ian/Original-Matlab-Dest/20190131_END_CHAIN'
+    MITprof_ds_fp = '/home/sweet/Desktop/ECCO-Insitu-Ian/Python-Dest'
+    MITprof_ds_fp = '/home/sweet/Desktop/ECCO-Insitu-Ian/Original-Matlab-Dest/20190131_END_CHAIN'
 
-    nc_files = glob.glob(os.path.join(MITprofs_fp, '*.nc'))
+    nc_files = glob.glob(os.path.join(MITprof_ds_fp, '*.nc'))
     if len(nc_files) == 0:
         raise Exception("Invalid NC filepath")
     for file in nc_files:
-        MITprofs = MITprof_read(file, 8)
+        MITprof_ds = tools.MITprof_read(file, 8)
 
     # Convert all masked arrs to non-masked types
-    for data_var in MITprofs.data_vars:
-        if ma.isMaskedArray(MITprofs[data_var]):
-            MITprofs[data_var].values = MITprofs[data_var].filled(np.NaN)
+    for data_var in MITprof_ds.data_vars:
+        if ma.isMaskedArray(MITprof_ds[data_var]):
+            MITprof_ds[data_var].values = MITprof_ds[data_var].filled(np.NaN)
     
-    main(MITprofs)
+    main(MITprof_ds)
+    """
+
+
