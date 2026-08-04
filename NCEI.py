@@ -12,8 +12,6 @@ from pathlib import Path
 import argparse
 from functools import partial
 
-
-
 # Add the directory containing the package to the search path
 sys.path.append(os.path.abspath("/Users/brucel/ecco/yip/ECCO-Insitu-Python"))
 
@@ -25,9 +23,8 @@ import step05
 import step06
 import step07
 import step08
-#import step09
-#import step10
-#from tools import MITprof_read, MITprof_write_to_nc, MITprof_dataset_from_dict
+import step09
+import step10
 import tools
 
 
@@ -81,12 +78,11 @@ def NCEI_pipeline(dest_dir, input_dir):
     method = 1                      # method 0 or 1
 
     #largest_numbered_step_to_run = 7
-    largest_numbered_step_to_run = 8
-    #largest_numbered_step_to_run = 10
+    #largest_numbered_step_to_run = 8
+    largest_numbered_step_to_run = 10
 
     print()
 
-    #for original_file in input_profile_files:
     for file_dex in range(len(input_profile_files)):
 
         original_file = input_profile_files[file_dex]
@@ -106,8 +102,8 @@ def NCEI_pipeline(dest_dir, input_dir):
             partial(step06.main, MITprof_ds, replace_missing_S_with_clim_S), 
             partial(step07.main, 'adjust', MITprof_ds), 
             partial(step08.main, MITprof_ds), 
-            #partial(step09.main, MITprof_ds), 
-            #partial(step10.main, MITprof_ds, distance_tolerance, closest_time, method)
+            partial(step09.main, MITprof_ds), 
+            partial(step10.main, MITprof_ds, distance_tolerance, closest_time, method)
         ]
 
         step_counter = 0
@@ -124,7 +120,6 @@ def NCEI_pipeline(dest_dir, input_dir):
             tools.print_survivors(MITprof_ds, step_counter)
 
 
-
     if tools.count_total_survivors_TS(MITprof_ds) > 0:
         tools.MITprof_write_to_nc(dest_dir, MITprof_ds, 10, basename)
         print(f"                SUCCESS:    {tools.count_total_survivors_TS(MITprof_ds)} PROFILES SURVIVED THE NCEI PROCESSING ALGORITHM\n")
@@ -132,12 +127,9 @@ def NCEI_pipeline(dest_dir, input_dir):
         print(f"                FAILURE:    {tools.count_total_survivors_TS(MITprof_ds)} PROFILES SURVIVED THE NCEI PROCESSING ALGORITHM\n")
 
 
-
-
-
-
 def main(dest_dir, input_dir):
     NCEI_pipeline(dest_dir, input_dir)
+
 
 if __name__ == '__main__':
   

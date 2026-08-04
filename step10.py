@@ -3,53 +3,17 @@ import glob
 import os
 import numpy as np
 import numpy.ma as ma
-from step08 import update_remove_zero_T_S_weighted_profiles_from_MITprof
-from tools import MITprof_read, sph2cart
+from tools
 
-def distmat(xy, varargin):
+def distmat(xy):
 
     # process inputs
     n, dims = xy.shape
-    numels = n*n*dims
-    opt = 2
-    if numels > 5e4:
-        opt = 3
-    elif n < 20:
-        opt = 1
-
-    opt = max(1, min(4, round(abs(varargin))))
-
-    # distance matrix calculation options
-    if opt == 1: # half as many computations (symmetric upper triangular property)
-        """
-        [k,kk] = find(triu(ones(n),1));
-        dmat = zeros(n);
-        dmat(k+n*(kk-1)) = sqrt(sum((xy(k,:) - xy(kk,:)).^2,2));
-        dmat(kk+n*(k-1)) = dmat(k+n*(kk-1));
-        """
-        #print("uncoded")
-    if opt == 2: # fully vectorized calculation (very fast for medium inputs)
-        a = np.reshape(xy,(1 ,n ,dims), order = 'F') # 1 9 3
-        b = np.reshape(xy,(n ,1 ,dims), order= 'F')
-        dmat = np.sqrt(np.sum((a[np.zeros((n), dtype=int), :, :] - b[:, np.zeros((n), dtype= int),:])**2, axis = 2))
-        
-    if opt == 3: # partially vectorized (smaller memory requirement for large inputs)
-        """
-        dmat = zeros(n,n);
-        for k = 1:n
-            dmat(k,:) = sqrt(sum((xy(k*ones(n,1),:) - xy).^2,2));
-        end
-        """
-        #print("uncoded")
-    if opt == 4: # another compact method, generally slower than the others
-        """
-        a = (1:n);
-        b = a(ones(n,1),:);
-        dmat = reshape(sqrt(sum((xy(b,:) - xy(b',:)).^2,2)),n,n);
-        """
-        #print("uncoded")
-
-    return dmat, opt
+    a = np.reshape(xy,(1 ,n ,dims), order = 'F') # 1 9 3
+    b = np.reshape(xy,(n ,1 ,dims), order= 'F')
+    distances_array = np.sqrt(np.sum((a[np.zeros((n), dtype=int), :, :] - b[:, np.zeros((n), dtype= int),:])**2, axis = 2))
+    
+    return distances_array
 
 def update_decimate_profiles_subdaily_to_once_daily(MITprofs, distance_tolerance, closest_time, method):
     """
@@ -72,136 +36,48 @@ def update_decimate_profiles_subdaily_to_once_daily(MITprofs, distance_tolerance
 
     deg2rad = np.pi/180    
 
-    if method == 0:
-        unique_prof_lat = []
-        unique_prof_lon = [] 
-        prof_num = 0
+    # -----------------------------------------------------------------------------------------------------------------------------
+    # Just assuming method == 1, since that was the only completed algorithm in previous versions.
+    # -----------------------------------------------------------------------------------------------------------------------------
 
-        profs_to_decimate = np.ones(MITprofs['prof_YYYYMMDD'].shape)
+    X, Y, Z = tools.sph2cart(MITprof_ds['prof_lon']*deg2rad, MITprof_ds['prof_lat']*deg2rad, 6357000)
 
-        
-        X, Y, Z = sph2cart(MITprofs['prof_lon']*deg2rad, MITprofs['prof_lat']*deg2rad, 6357000)
-                 
-        while(np.sum(profs_to_decimate)) > 0:
-            
-            #print(f'profs left {np.sum(profs_to_decimate)}')
-            profs_left_ins = np.where(profs_to_decimate > 0)[0]
-            num_profs_left = len(profs_left_ins)
-           
-            if num_profs_left > 0:
+    days_with_data_unique = np.unique(MITprof_ds['prof_YYYYMMDD'])
 
-                prof_num = prof_num + 1
-
-                # consider the next on the list
-                cur_i = np.where(profs_to_decimate == 1)[0][0]
-
-                lat1 = MITprofs['prof_lat'][cur_i]
-                lon1 = MITprofs['prof_lon'][cur_i]
-
-                unique_prof_lon.append(lon1)
-                unique_prof_lat.append(lat1)
- 
-                X_prof = X[cur_i]
-                Y_prof = Y[cur_i]
-                Z_prof = Z[cur_i]
-
-                d = np.sqrt( (X_prof - X[profs_left_ins])**2 + (Y_prof - Y[profs_left_ins])**2 + (Z_prof - Z[profs_left_ins])**2)
+    bool_mask_profiles_to_remove_global = np.zeros_like(MITprof_ds['prof_lon']).astype(bool)
     
-                d[np.where(np.isnan(d))] = 0
+    toss_set_all = []
+    total_toss = 0
+    
+    for unique_day_index in range(len(days_with_data_unique)):
 
-                b = np.argsort(d)
-                a = d[b]
-      
-                ins_close_sort = np.where(a < distance_tolerance)
-                # the indexes of the points that are close on the
-                # same day on the 'sorted distance' list
-                ins_close = profs_left_ins[b[ins_close_sort]]
-
-                days = np.unique(MITprofs['prof_YYYYMMDD'][ins_close]).astype(int)
-                num_days = len(days)
-
-                num_in_day = np.zeros(num_days)
-                ins_day = np.zeros(num_days)
-
-                if num_days == 1:
-                    ins_day_close = np.where(MITprofs['prof_YYYYMMDD'][ins_close] == days)
-                    num_in_day = len(ins_day_close)
-                    ins_day = ins_close[ins_day_close]
-                    if len(ins_day) > 1:
-                        bb = np.argsort(np.abs(MITprofs['prof_HHMMSS'][ins_day] - closest_time))
-                        ins_to_decimate = ins_day[bb[1:]]
-                        MITprofs['prof_Tweight'][ins_to_decimate,:] = 0
-                        if 'prof_S' in MITprofs:
-                            MITprofs['prof_Sweight'][ins_to_decimate,:] = 0
-                        
-                    profs_to_decimate[ins_day] = 0
-                    
-                else: 
-                    for di in np.arange(days):
-                        day = days[di]
-                        # the indexes of the points that are 1) close and 2) on the
-                        # same day on the 'ins_close' list
-                        ins_day_close = np.where(MITprofs['prof_YYYYMMDD'][ins_close] == day)
-                        num_in_day[di] = len(ins_day_close)
-
-                        # the indexes of the points that are 1) close and 2) on the
-                        # same day on the original list
-                        ins_day[di] = ins_close[ins_day_close]
-                        
-                        if len(ins_day[di]) > 1:
-                            bb = np.argsort(np.abs(MITprofs['prof_HHMMSS'][ins_day[di]] - closest_time))
-                            ins_closest_to_target_time = bb[0]
-                            ins_to_decimate = ins_day[di][bb[1:]]
-                            MITprofs['prof_Tweight'][ins_to_decimate, :] = 0
-                            if 'prof_S' in MITprofs:
-                                MITprofs['prof_Sweight'][ins_to_decimate, :] = 0
-  
-                        profs_to_decimate[ins_day[di]] = 0 
-    elif method == 1:
+        indices_current_day = np.where(MITprof_ds['prof_YYYYMMDD'] == days_with_data_unique[unique_day_index])[0]
+        number_at_current_day = len(indices_current_day)
         
-        X, Y, Z = sph2cart(MITprofs['prof_lon']*deg2rad, MITprofs['prof_lat']*deg2rad, 6357000)
+        distances_array = distmat(np.stack((X[indices_current_day], Y[indices_current_day], Z[indices_current_day]), axis = 1))
 
-        days = np.unique(MITprofs['prof_YYYYMMDD'])
+        toss_set  = []
 
-        toss_set_all = []
-        total_toss = 0
-        
-        for di in np.arange(len(days)):
+        for profile_index in indices_current_day:
+            if profile_index not in toss_set: 
+                clustered_points_indices = np.where(distances_array[p,:] < distance_tolerance)[0] 
+                clustered_points_indices_current_day = indices_current_day[clustered_points_indices]
 
-            ins_day = np.where(MITprofs['prof_YYYYMMDD'] == days[di])[0]
-            n_di = len(ins_day)
-            
-            d, opt = distmat(np.stack((X[ins_day], Y[ins_day], Z[ins_day]), axis = 1), 2)
+                if len(clustered_points_indices_current_day) > 1:
+                    distances_from_noon = np.argsort(np.abs(MITprof_ds['prof_HHMMSS'][clustered_points_indices_current_day]-closest_time))
+                    toss_set = np.union1d(toss_set, clustered_points_indices_current_day[distances_from_noon[1:]])
+
+        total_toss = total_toss + len(toss_set)
+        toss_set_all = np.union1d(toss_set_all, toss_set)
+
+    toss_set_all = toss_set_all.astype(int)
+    MITprof_ds['prof_Tweight'][toss_set_all,:] = 0
+    MITprof_ds['prof_Sweight'][toss_set_all,:] = 0
    
-            keep_set = []
-            toss_set  = []
-
-            for p in np.arange(n_di):
-                if ins_day[p] not in toss_set and ins_day[p] not in keep_set:
-                    p_close = np.where(d[p,:] < distance_tolerance)[0]
-                    p_close_ins_day = ins_day[p_close]
-
-                    if len(p_close_ins_day) > 1:
-                        b = np.argsort(np.abs(MITprofs['prof_HHMMSS'][p_close_ins_day]-120000))
-                        toss_set = np.union1d(toss_set, p_close_ins_day[b[1:]])
+    MITprof_ds = tools.update_remove_extraneous_depth_levels(MITprof_ds)
 
 
-            total_toss = total_toss + len(toss_set)
-            toss_set_all = np.union1d(toss_set_all, toss_set)
-
-        toss_set_all = toss_set_all.astype(int)
-        MITprofs['prof_Tweight'][toss_set_all,:] = 0
-        MITprofs['prof_Sweight'][toss_set_all,:] = 0
-       
-
-        update_remove_zero_T_S_weighted_profiles_from_MITprof(MITprofs)
-
-    '''
-    print('Num T and S weight > 0, post')
-    print('{:>10} {:>10}'.format(np.sum(MITprofs['prof_Tweight'] > 0), np.sum(MITprofs['prof_Sweight'] > 0)))
-    '''
-
-def main(MITprofs, distance_tolerance, closest_time, method):
+def main(MITprof_ds, distance_tolerance, closest_time, method):
 
     #print("step10: update_decimate_profiles_subdaily_to_once_daily")
 
@@ -210,7 +86,7 @@ def main(MITprofs, distance_tolerance, closest_time, method):
     print('{:>10} {:>10}'.format(np.sum(MITprofs['prof_Tweight'] > 0), np.sum(MITprofs['prof_Sweight'] > 0)))
     '''
 
-    update_decimate_profiles_subdaily_to_once_daily(MITprofs, distance_tolerance, closest_time, method)
+    update_decimate_profiles_subdaily_to_once_daily(MITprof_ds, distance_tolerance, closest_time, method)
 
 if __name__ == '__main__':
  
@@ -233,7 +109,7 @@ if __name__ == '__main__':
     if len(nc_files) == 0:
         raise Exception("Invalid NC filepath")
     for file in nc_files:
-        MITprofs = MITprof_read(file, 10)
+        MITprofs = tools.MITprof_read(file, 10)
 
     # Convert all masked arrs to non-masked types
     for keys in MITprofs.keys():
