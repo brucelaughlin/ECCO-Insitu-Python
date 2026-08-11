@@ -11,7 +11,7 @@ import pymatreader
 import pdb
 import xarray as xr
 
-def update_monthly_mean_TS_clim_WOA13v2_on_prepared_profiles(TS_clim_dir, MITprofs):
+def update_monthly_mean_TS_clim_WOA13v2_on_prepared_profiles(TS_clim_dir, MITprof_ds):
     """
     Assigns the WOA13 T and S climatology values to MITprof objects. 
 
@@ -20,7 +20,7 @@ def update_monthly_mean_TS_clim_WOA13v2_on_prepared_profiles(TS_clim_dir, MITpro
         MITprof: a single MITprof object
 
     Output:
-        Operates on MITprofs directly 
+        Operates on MITprof_ds directly 
     
     """
 
@@ -33,21 +33,14 @@ def update_monthly_mean_TS_clim_WOA13v2_on_prepared_profiles(TS_clim_dir, MITpro
     TS_data_top_level = pymatreader.read_mat(TS_clim_filename)
     TS_data = TS_data_top_level['WOA_2013_v2_clim']
 
-    #T_clim = TS_data.variables['potential_T_monthly'][:].filled(np.nan)
-    #S_clim = TS_data.variables['S_monthly'][:].filled(np.nan)
-    #T_clim = TS_data['potential_T_monthly'][:].fill(np.nan)
-    #S_clim = TS_data['S_monthly'][:].fill(np.nan)
-    T_clim = TS_data['potential_T_monthly'][:]
-    S_clim = TS_data['S_monthly'][:]
+    T_clim = TS_data['potential_T_monthly']
+    S_clim = TS_data['S_monthly']
 
-    ##lon = TS_data.variables['lon'][:]
-    ##lat = TS_data.variables['lat'][:]
-    lon = TS_data['lon']['data'][:]
-    lat = TS_data['lat']['data'][:]
+    lon = TS_data['lon']['data']
+    lat = TS_data['lat']['data']
     
-    #clim_depths =  TS_data.variables['depth'][:]
-    clim_depths =  TS_data['depth']['data'][:]
-    num_clim_depths = len(clim_depths)
+    clim_depths =  TS_data['depth']['data']
+    num_clim_depths = len(clim_depths) # Assuming 1D, scary as an ex ROMS user
 
     # mesh the climatology lon and lats
     #lon_woam, lat_woam = np.meshgrid(lon.data, lat.data)
@@ -55,101 +48,61 @@ def update_monthly_mean_TS_clim_WOA13v2_on_prepared_profiles(TS_clim_dir, MITpro
     deg2rad = np.float64(np.pi/180.0)
  
     # POINTS TO USE ARE THOSE POINTS WITH VALID DATA at the surface
-    subset = S_clim[0,0].flatten()
-    #good_clim_ins = np.nonzero(~np.isnan(subset))[0]
-    #good_clim_ins = np.nonzero(~np.isnan(subset) & ~np.isnan(T_clim[0,0]))[0] # NoTE: Bruce - same as previous line, but seemed safer 
-    good_clim_ins = np.nonzero(~np.isnan(subset) & ~np.isnan(T_clim[0,0]).ravel())[0] # NoTE: Bruce - same as previous line, but seemed safer 
+    bool_mask_valid_surface_climatology = (~np.isnan(S_clim[0,0])) & (~np.isnan(T_clim[0,0]))
 
-    # Bruce: again, on a wing and a prayer
-    lon_woam = lon_woam.ravel()
-    lat_woam = lat_woam.ravel()
-
-    X_woa, Y_woa, Z_woa = sph2cart(lon_woam[good_clim_ins]*deg2rad, lat_woam[good_clim_ins]*deg2rad, 1)
-    AI = np.arange(0,X_woa.size)
+    X_woa, Y_woa, Z_woa = sph2cart(lon_woam[bool_mask_valid_surface_climatology]*deg2rad, lat_woam[bool_mask_valid_surface_climatology]*deg2rad, 1)
+    flattened_monotonic_grid_indices = np.arange(0,X_woa.size)
     
     # these are the x,y,z coordinates of all points in the climatology
-    xyz = np.column_stack((X_woa, Y_woa, Z_woa))
+    xyz_woa_masked = np.column_stack((X_woa, Y_woa, Z_woa))
 
     # verify that our little trick works in 4 parts of the earth
-    interp_check(xyz, AI, X_woa, Y_woa, Z_woa, lat_woam, lon_woam, 3, good_clim = good_clim_ins)
+    interp_check(xyz_woa_masked, flattened_monotonic_grid_indices, X_woa, Y_woa, Z_woa, lat_woam.ravel(), lon_woam.ravel(), 3, good_clim = np.nonzero(bool_mask_valid_surface_climatology.ravel())[0])
 
-    num_profs = len(MITprofs['prof_lat'])
-    num_prof_depths = len(MITprofs['prof_depth'])
+    num_profs = len(MITprof_ds['prof_lat'])
+    num_prof_depths = len(MITprof_ds['prof_depth'])
 
-    # bad data = profX_flag > 0 --> 0 weight, valid climatology value.
-    #  no data => profX == -9999, valid value in climatology, 0 in weight
-    
     # determine the month for every profile
-    prof_month = ((MITprofs['prof_YYYYMMDD'].data % 10000) // 100).astype(int)
-
-    points_lon = ma.masked_invalid(MITprofs["prof_lon"].data)
-    points_lat = ma.masked_invalid(MITprofs["prof_lat"].data)
-
+    prof_month = ((MITprof_ds['prof_YYYYMMDD'].data % 10000) // 100).astype(int)
 
     # 'mapping profiles to x,y,z'
-    prof_x, prof_y, prof_z = sph2cart(points_lon*deg2rad, points_lat*deg2rad, 1)
+    profiles_xyz_threetuple = sph2cart(MITprof_ds["prof_lon"]*deg2rad, MITprof_ds["prof_lat"]*deg2rad, 1)
 
-    #pdb.set_trace()
-    
     # map a climatology grid index to each profile.
-    prof_clim_cell_index = griddata(xyz, AI, (prof_x, prof_y, prof_z), method='nearest')
-    prof_clim_cell_index = prof_clim_cell_index.astype(int)
+    profile_flattened_monotonic_grid_indices = griddata(xyz_woa_masked, flattened_monotonic_grid_indices, profiles_xyz_threetuple, method='nearest').astype(int)
     
     # go through each z level in the profile array
     # set the default climatology value to be fillVal (-9999)
     prof_clim_T = np.ones((num_profs, num_prof_depths)) * fillVal
     prof_clim_S = np.ones((num_profs, num_prof_depths)) * fillVal
 
-    for k in np.arange(min(num_prof_depths, num_clim_depths)):
+    for k in range(min(num_prof_depths, num_clim_depths)):
         T_clim_k = T_clim[:,k,:,:]
         S_clim_k = S_clim[:,k,:,:]
         
         # get the T and S at each profile point at this depth level
-        for m in np.arange(12):
-            T_clim_mk = T_clim_k[m, :, :]
-            S_clim_mk = S_clim_k[m, :, :]
+        for ii_month in range(12):
+            T_clim_mk = T_clim_k[ii_month, :, :]
+            S_clim_mk = S_clim_k[ii_month, :, :]
     
-            T_clim_mk = T_clim_mk.flatten()[good_clim_ins]
-            S_clim_mk = S_clim_mk.flatten()[good_clim_ins]
+            T_clim_mk = T_clim_mk[bool_mask_valid_surface_climatology]
+            S_clim_mk = S_clim_mk[bool_mask_valid_surface_climatology]
 
-            profs_in_month = np.nonzero(prof_month == m + 1)[0]
-            prof_clim_cell_index_m = prof_clim_cell_index[profs_in_month]
+            bool_mask_current_month = prof_month == ii_month + 1
 
-            prof_clim_T_tmp = T_clim_mk[prof_clim_cell_index_m]
-            prof_clim_S_tmp = S_clim_mk[prof_clim_cell_index_m]
-
-            tmp_T = prof_clim_T[:,k]
-            tmp_T[profs_in_month] = prof_clim_T_tmp
-
-            tmp_S = prof_clim_S[:,k]
-            tmp_S[profs_in_month] = prof_clim_S_tmp
-            
-            prof_clim_T[:,k] = tmp_T
-            prof_clim_S[:,k] = tmp_S
+            prof_clim_T[:,k][bool_mask_current_month] = T_clim_mk[profile_flattened_monotonic_grid_indices[bool_mask_current_month]]
+            prof_clim_S[:,k][bool_mask_current_month] = S_clim_mk[profile_flattened_monotonic_grid_indices[bool_mask_current_month]]
     
+    prof_clim_S[np.isnan(prof_clim_S)] = fillVal
+    prof_clim_T[np.isnan(prof_clim_T)] = fillVal
 
-    # NOTE: print(np.nonzero(np.isnan(prof_clim_S))[0].size)
-    # Fill -9999 for NaNs
+    MITprof_ds['prof_Tclim'] = xr.DataArray(prof_clim_T, dims=['iPROF', 'iDEPTH'])
+    MITprof_ds['prof_Sclim'] = xr.DataArray(prof_clim_S, dims=['iPROF', 'iDEPTH'])
 
-    prof_clim_S_temp = prof_clim_S.flatten()
-    prof_clim_S_temp[np.nonzero(np.isnan(prof_clim_S_temp))[0]]= fillVal
-    prof_clim_S = prof_clim_S_temp.reshape((prof_clim_S.shape), order='F')
-
-    prof_clim_T_temp = prof_clim_T.flatten()
-    prof_clim_T_temp[np.nonzero(np.isnan(prof_clim_T_temp))[0]]= fillVal
-    prof_clim_T = prof_clim_T_temp.reshape((prof_clim_T.shape), order='F')
-
-    #pdb.set_trace()
-    
-    #MITprofs['prof_Tclim'] = prof_clim_T
-    #MITprofs['prof_Sclim'] = prof_clim_S
-    MITprofs['prof_Tclim'] = xr.DataArray(prof_clim_T, dims=['iPROF', 'iDEPTH'], name='prof_Tclim')
-    MITprofs['prof_Sclim'] = xr.DataArray(prof_clim_S, dims=['iPROF', 'iDEPTH'], name='prof_Sclim')
-
-def main(TS_clim_dir, MITprofs):
+def main(MITprof_ds, TS_clim_dir):
 
     #print("step03: update_monthly_mean_TS_clim_WOA13v2_on_prepared_profiles")
-    update_monthly_mean_TS_clim_WOA13v2_on_prepared_profiles(TS_clim_dir, MITprofs)
+    update_monthly_mean_TS_clim_WOA13v2_on_prepared_profiles(TS_clim_dir, MITprof_ds)
 
 if __name__ == '__main__':
 
@@ -160,19 +113,19 @@ if __name__ == '__main__':
                         type = int, required= True)
     
     parser.add_argument("-m", "--MIT_dir", action= "store",
-                    help = "File path to NETCDF files containing MITprofs info." , dest= "MIT_dir",
+                    help = "File path to NETCDF files containing MITprof_ds info." , dest= "MIT_dir",
                     type = str, required= True)
     
 
     args = parser.parse_args()
 
     TS_clim_dir = args.ts_dir
-    MITprofs_fp = args.MIT_dir
+    MITprof_ds_fp = args.MIT_dir
 
-    nc_files = glob.glob(os.path.join(MITprofs_fp, '*.nc'))
+    nc_files = glob.glob(os.path.join(MITprof_ds_fp, '*.nc'))
     if len(nc_files) == 0:
         raise Exception("Invalid NC filepath")
     for file in nc_files:
-        MITprofs = MITprof_read(file, 3)
+        MITprof_ds = MITprof_read(file, 3)
     
-    main(TS_clim_dir, MITprofs)
+    main(TS_clim_dir, MITprof_ds)

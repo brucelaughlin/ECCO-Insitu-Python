@@ -62,16 +62,16 @@ def make_llc90_z_map(z_top_90, z_bot_90):
     nz = 50
     z_map = np.zeros_like(z_entire_column)
 
-    for i in np.arange(nz):
-        ztop = z_top_90[i]
-        zbot = z_bot_90[i]
+    for ii in np.arange(nz):
+        ztop = z_top_90[ii]
+        zbot = z_bot_90[ii]
         #zinds = find(z_entire_column >= ztop & z_entire_column < zbot);
-        zinds = np.where((z_entire_column >= ztop) & (z_entire_column < zbot))[0]
-        z_map[zinds] = i
+        zinds = ((z_entire_column >= ztop) & (z_entire_column < zbot))[0]
+        z_map[zinds] = ii
     
     return z_map
 
-def update_sigmaTS_on_prepared_profiles(MITprofs, grid_dir, sigma_dir, respect_existing_zero_weights, new_S_floor, new_T_floor):
+def update_sigmaTS_on_prepared_profiles(MITprof_ds, grid_dir, sigma_dir, respect_existing_zero_weights, new_S_floor, new_T_floor):
     """
     Update MITprof objects with new T and S uncertainty fields 
     Input Parameters:
@@ -83,59 +83,58 @@ def update_sigmaTS_on_prepared_profiles(MITprofs, grid_dir, sigma_dir, respect_e
         **kwargs -> optional parem for setting new_S_floor
         
     Output:
-        Operates on MITprofs directly 
+        Operates on MITprof_ds directly 
     """
 
-    wet_ins_90_k, X_90, Y_90, Z_90, AI_90, z_cen_90, lat_90, lon_90 = load_llc90_grid(grid_dir, 4)
+    unmasked_grid_indices_by_depth_list, X_90, Y_90, Z_90, flattened_monotonic_grid_indices_90, z_cen_90, lat_90, lon_90 = load_llc90_grid(grid_dir, 4)
+
+    pdb.set_trace()
 
     # salt
-    sigma_S_path = os.path.join(sigma_dir, 'Salt_sigma_smoothed_method_02_masked_merged_capped_extrapolated.bin')
     llcN = 90
     mform = '>f4'
-    siz = [llcN, 13*llcN, 50]
-    with open(sigma_S_path, 'rb') as fid:
-        sigma_S = np.fromfile(fid, dtype=mform)
-        sigma_S = sigma_S.reshape((siz[0], siz[1], siz[2]), order='F')
+    tile_shape_list = [llcN, 13*llcN, 50]
 
-    # theta
+    sigma_S_path = os.path.join(sigma_dir, 'Salt_sigma_smoothed_method_02_masked_merged_capped_extrapolated.bin')
+    with open(sigma_S_path, 'rb') as fid:
+        sigma_S = np.fromfile(fid, dtype=mform).reshape((tile_shape_list[0], tile_shape_list[1], tile_shape_list[2]))
+
     sigma_T_path = os.path.join(sigma_dir, 'Theta_sigma_smoothed_method_02_masked_merged_capped_extrapolated.bin')
     with open(sigma_T_path, 'rb') as fid:
-        sigma_T = np.fromfile(fid, dtype=mform)
-        sigma_T = sigma_T.reshape((siz[0], siz[1], siz[2]), order='F')
+        sigma_T = np.fromfile(fid, dtype=mform).reshape((tile_shape_list[0], tile_shape_list[1], tile_shape_list[2]))
 
     # verify that our little trick works in 4 parts of the earth
     deg2rad = np.pi/180
-    xyz_wet = np.column_stack((X_90.flatten(order = 'F')[wet_ins_90_k[0]], Y_90.flatten(order = 'F')[wet_ins_90_k[0]], Z_90.flatten(order = 'F')[wet_ins_90_k[0]]))
-    AI = AI_90.flatten(order = 'F')[wet_ins_90_k[0]] 
-    interp_check(xyz_wet, AI, X_90, Y_90, Z_90, lat_90, lon_90, 4)
+    xyz_grid = np.column_stack((X_90.ravel()[unmasked_grid_indices_by_depth_list[0]], Y_90.ravel()[unmasked_grid_indices_by_depth_list[0]], Z_90.ravel()[unmasked_grid_indices_by_depth_list[0]]))
+    flattened_monotonic_grid_indices = flattened_monotonic_grid_indices_90.ravel()[unmasked_grid_indices_by_depth_list[0]] 
+    interp_check(xyz_grid, flattened_monotonic_grid_indices, X_90, Y_90, Z_90, lat_90, lon_90, 4)
 
     # initialize remapped sigma field
     sigma_T_MITprof_z = []
     sigma_S_MITprof_z = []
 
-    num_prof_depths = len(MITprofs['prof_depth'])
+    num_prof_depths = len(MITprof_ds['prof_depth'])
 
     # pull original weights
-    orig_profTweight = MITprofs['prof_Tweight'].data
-    if 'prof_S' in MITprofs:
-        orig_profSweight = MITprofs['prof_Sweight'].data
+    orig_profTweight = MITprof_ds['prof_Tweight'].data
+    if 'prof_S' in MITprof_ds:
+        orig_profSweight = MITprof_ds['prof_Sweight'].data
     
-    # ['mapping profiles to llc grid']
-    #prof_lon = MITprofs['prof_lon'].data
-    #prof_lat = MITprofs['prof_lat'].data
-    prof_lon = ma.masked_invalid(MITprofs['prof_lon'].data)
-    prof_lat = ma.masked_invalid(MITprofs['prof_lat'].data)
-    prof_x, prof_y, prof_z = sph2cart(prof_lon*deg2rad, prof_lat*deg2rad, 1)
+    xyz_profiles_threetuple = sph2cart(MITprof_ds['prof_lon']*deg2rad, MITprof_ds['prof_lat']*deg2rad, 1)
     
     # map a llc90 grid index to each profile.
-    xyz_wet = np.column_stack((X_90.flatten(order = 'F')[wet_ins_90_k[0]], Y_90.flatten(order = 'F')[wet_ins_90_k[0]], Z_90.flatten(order = 'F')[wet_ins_90_k[0]]))
-    AI = AI_90.flatten(order = 'F')[wet_ins_90_k[0]] 
-    prof_llc90_cell_index = griddata(xyz_wet, AI, np.column_stack((prof_x, prof_y, prof_z)), 'nearest').astype(int)
+    xyz_grid = np.column_stack((X_90.ravel()[unmasked_grid_indices_by_depth_list[0]], Y_90.ravel()[unmasked_grid_indices_by_depth_list[0]], Z_90.ravel()[unmasked_grid_indices_by_depth_list[0]]))
+    flattened_monotonic_grid_indices = flattened_monotonic_grid_indices_90.ravel()[unmasked_grid_indices_by_depth_list[0]] 
+    prof_llc90_cell_index = griddata(xyz_grid, flattened_monotonic_grid_indices, np.column_stack(xyz_profiles_threetuple), 'nearest').astype(int)
+
+
+### PICK UP HERE
+
 
     # interp sigmas to the new vertical levels if it hasn't already been interpolated
-    sigma_T_MITprof_z = interp_3D_to_arbitrary_z_levels(sigma_T, z_cen_90, MITprofs['prof_depth'].data) # BRUCE - I sure hope that's an array with nan's as fill values...
-    #sigma_T_MITprof_z = interp_3D_to_arbitrary_z_levels(sigma_T, z_cen_90, MITprofs['prof_depth'].data)
-    #sigma_T_MITprof_z = interp_3D_to_arbitrary_z_levels(sigma_T, z_cen_90, MITprofs['prof_depth'])
+    sigma_T_MITprof_z = interp_3D_to_arbitrary_z_levels(sigma_T, z_cen_90, MITprof_ds['prof_depth'].data) # BRUCE - I sure hope that's an array with nan's as fill values...
+    #sigma_T_MITprof_z = interp_3D_to_arbitrary_z_levels(sigma_T, z_cen_90, MITprof_ds['prof_depth'].data)
+    #sigma_T_MITprof_z = interp_3D_to_arbitrary_z_levels(sigma_T, z_cen_90, MITprof_ds['prof_depth'])
     # ['interpolated sigma T to new levels']
     sigma_T_MITprof_z_flat = np.reshape(sigma_T_MITprof_z, (90*1170, num_prof_depths), order = 'F')
     # ['finished interpolating and reshaping ']
@@ -143,9 +142,9 @@ def update_sigmaTS_on_prepared_profiles(MITprofs, grid_dir, sigma_dir, respect_e
     if new_T_floor > 0:
         ins = np.where(sigma_T_MITprof_z_flat >=0)[0]
         sigma_T_MITprof_z_flat[ins] = np.maximum(new_T_floor, sigma_T_MITprof_z_flat[ins])
-    if 'prof_S' in MITprofs and not sigma_S_MITprof_z:
-        sigma_S_MITprof_z = interp_3D_to_arbitrary_z_levels(sigma_S, z_cen_90, MITprofs['prof_depth'].data)
-        #sigma_S_MITprof_z = interp_3D_to_arbitrary_z_levels(sigma_S, z_cen_90, MITprofs['prof_depth'])
+    if 'prof_S' in MITprof_ds and not sigma_S_MITprof_z:
+        sigma_S_MITprof_z = interp_3D_to_arbitrary_z_levels(sigma_S, z_cen_90, MITprof_ds['prof_depth'].data)
+        #sigma_S_MITprof_z = interp_3D_to_arbitrary_z_levels(sigma_S, z_cen_90, MITprof_ds['prof_depth'])
         sigma_S_MITprof_z_flat = np.reshape(sigma_S_MITprof_z, (90*1170, num_prof_depths), order = 'F')
         if new_S_floor > 0:
             # Apply floor to sigma S where  sigma S >= 0
@@ -156,49 +155,40 @@ def update_sigmaTS_on_prepared_profiles(MITprofs, grid_dir, sigma_dir, respect_e
     tmp_sigma_T = sigma_T_MITprof_z_flat[prof_llc90_cell_index,:]
     tmp_weight_T = 1. / (tmp_sigma_T ** 2)
     #pdb.set_trace()
-    #MITprofs['prof_Tweight'] = tmp_weight_T
-    MITprofs['prof_Tweight'] = xr.DataArray(tmp_weight_T, dims=['iPROF', 'iDEPTH'], name='prof_Tweight')
+    #MITprof_ds['prof_Tweight'] = tmp_weight_T
+    MITprof_ds['prof_Tweight'] = xr.DataArray(tmp_weight_T, dims=['iPROF', 'iDEPTH'], name='prof_Tweight')
 
 
-    if 'prof_S' in MITprofs:
+    if 'prof_S' in MITprof_ds:
         tmp_sigma_S = sigma_S_MITprof_z_flat[prof_llc90_cell_index,:]
         tmp_weight_S = 1. / (tmp_sigma_S ** 2)
-        #MITprofs['prof_Sweight'] = tmp_weight_S
-        MITprofs['prof_Sweight'] = xr.DataArray(tmp_weight_S, dims=['iPROF', 'iDEPTH'], name='prof_Sweight')
+        #MITprof_ds['prof_Sweight'] = tmp_weight_S
+        MITprof_ds['prof_Sweight'] = xr.DataArray(tmp_weight_S, dims=['iPROF', 'iDEPTH'], name='prof_Sweight')
     
     if new_T_floor > 0:
-        if 'prof_Terr' in MITprofs:
-            # Set the field that notes whatever floor has been applied to the sigmas;
-            #MITprofs['prof_Terr'] = np.zeros_like(MITprofs['prof_Terr']) + new_T_floor
-            MITprofs['prof_Terr'].data = np.zeros_like(MITprofs['prof_Terr'].data) + new_T_floor
-    if new_S_floor > 0:
-        if 'prof_Serr' in MITprofs:
-            MITprofs['prof_Serr'].data = np.zeros_like(MITprofs['prof_Serr'].data) + new_S_floor
-    
-    # SET WEIGHTS TO ZERO IF THEY CAME WITH ZERO.
-    if respect_existing_zero_weights:
+        if 'prof_Terr' in MITprof_ds:
+            MITprof_ds['prof_Terr'] = xr.zeros_like(MITprof_ds['prof_Terr']) + new_T_floor
 
-        # FIND DATA WITH ZERO WEIGHT
-        zero_orig_weight_ins= np.where(orig_profTweight == 0)[0]
-  
-        # APPLY ZEROS TO WEIGHTS
-        #MITprofs['prof_Tweight'][zero_orig_weight_ins] = 0
-        MITprofs['prof_Tweight'].data[zero_orig_weight_ins] = 0
+    if new_S_floor > 0:
+        if 'prof_Serr' in MITprof_ds:
+            MITprof_ds['prof_Serr'] = xr.zeros_like(MITprof_ds['prof_Serr']) + new_S_floor
+    
+    # If original weights were 0, set the update weights to 0.
+    if respect_existing_zero_weights:
+        MITprof_ds['prof_Tweight'][orig_profTweight == 0] = 0
         
-        if 'prof_S' in MITprofs:
-            zero_orig_weight_ins= np.where(orig_profSweight == 0)[0]     
-            # APPLY ZEROS TO WEIGHTS
-            MITprofs['prof_Sweight'].data[zero_orig_weight_ins] = 0
+        if 'prof_S' in MITprof_ds:
+            MITprof_ds['prof_Sweight'][orig_profSweight == 0] = 0
 
     '''
     else:
         print("STEP 4: not respecting the zero weights of the original profiles")
     '''
     
-def main(MITprofs, grid_dir, sigma_dir, respect_existing_zero_weights, new_S_floor, new_T_floor):
+def main(MITprof_ds, grid_dir, sigma_dir, respect_existing_zero_weights, new_S_floor, new_T_floor):
 
     #print("step04: update_sigmaTS_on_prepared_profiles")
-    update_sigmaTS_on_prepared_profiles(MITprofs, grid_dir, sigma_dir, respect_existing_zero_weights, new_S_floor, new_T_floor)
+    update_sigmaTS_on_prepared_profiles(MITprof_ds, grid_dir, sigma_dir, respect_existing_zero_weights, new_S_floor, new_T_floor)
 
 if __name__ == '__main__':
 
@@ -209,7 +199,7 @@ if __name__ == '__main__':
                         type = str, required= True)
     
     parser.add_argument("-m", "--MIT_dir", action= "store",
-                    help = "File path to NETCDF files containing MITprofs info." , dest= "MIT_dir",
+                    help = "File path to NETCDF files containing MITprof_ds info." , dest= "MIT_dir",
                     type = str, required= True)
     
     parser.add_argument("-s", "--sigma_dir", action= "store",
@@ -220,17 +210,17 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     grid_dir = args.grid_dir
-    MITprofs_fp = args.MIT_dir
+    MITprof_ds_fp = args.MIT_dir
     sigma_dir = args.sigma_dir
     
-    nc_files = glob.glob(os.path.join(MITprofs_fp, '*.nc'))
+    nc_files = glob.glob(os.path.join(MITprof_ds_fp, '*.nc'))
     if len(nc_files) == 0:
         raise Exception("Invalid NC filepath")
     for file in nc_files:
-        MITprofs = MITprof_read(file, 4)
+        MITprof_ds = MITprof_read(file, 4)
 
     respect_existing_zero_weights = 0   # 0 = no, 1 = yes
     new_S_floor = 0.005                 # set this to zero if S_floor is unused 
     new_T_floor = 0                     # set this to zero if T_floor is unused 
 
-    main(MITprofs, grid_dir, sigma_dir, respect_existing_zero_weights, new_S_floor, new_T_floor)
+    main(MITprof_ds, grid_dir, sigma_dir, respect_existing_zero_weights, new_S_floor, new_T_floor)

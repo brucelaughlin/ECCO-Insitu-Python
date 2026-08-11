@@ -16,7 +16,7 @@ def get_profpoint_llc_ian(lon_llc, lat_llc, mask_llc, MITprof_ds):
     # Note: "ny" in the signature for "patchface3d" is never used...
 
     """
-    Finds the 'prof_point' of each profile in the MITprof_ds object for a global LLC grid
+    Finds the 'profile_flattened_monotonic_grid_indices' of each profile in the MITprof_ds object for a global LLC grid
 
     lon_llc, lat_llc: the XC and YC of the llc grid in compact format llc x (13* llc)
     mask_llc: a mask with 1/0 denoting whether to use a point or not in the search
@@ -33,28 +33,16 @@ def get_profpoint_llc_ian(lon_llc, lat_llc, mask_llc, MITprof_ds):
     Z_grid, faces = patchface3D(llc_horizontal_resolution, 13*llc_horizontal_resolution, 1, array_in = Z_grid_tiled, direction = 2)
     mask_untiled, faces = patchface3D(llc_horizontal_resolution, 13*llc_horizontal_resolution, 1, array_in = mask_llc, direction = 2)
 
-    arange_num_horizontal_grid_points = np.arange(0, X_grid.size)
-
     bool_mask_untiled = mask_untiled== 1
 
-    X_coords_valid = X_grid[bool_mask_untiled]
-    Y_coords_valid = Y_grid[bool_mask_untiled]
-    Z_coords_valid = Z_grid[bool_mask_untiled]
-    arange_num_horizontal_grid_points_valid = arange_num_horizontal_grid_points[bool_mask_untiled.ravel()]
+    model_xyz = np.column_stack((X_grid[bool_mask_untiled], Y_grid[bool_mask_untiled], Z_grid[bool_mask_untiled]))
+    profiles_xyz_threetuple = sph2cart(MITprof_ds["prof_lon"]*deg2rad, MITprof_ds["prof_lat"]*deg2rad, 1)
 
-    model_xyz = np.column_stack((X_coords_valid, Y_coords_valid, Z_coords_valid))
-    #point_lon = MITprof_ds["prof_lon"].dropna("iPROF")
-    #point_lat = MITprof_ds["prof_lat"].dropna("iPROF")
-    point_lon = MITprof_ds["prof_lon"]
-    point_lat = MITprof_ds["prof_lat"]
-    
-    profile_coords_x, profile_coords_y, profile_coords_z = sph2cart(point_lon*deg2rad, point_lat*deg2rad, 1)
+    flattened_monotonic_grid_indices_valid = np.arange(0, X_grid.size)[bool_mask_untiled.ravel()]
 
-    # So I think this interpolates profile coordinates to the nearest unmasked grid points, and assigns profiles the corresponding "iPROF" value
-    profile_grid_indices = griddata(model_xyz, arange_num_horizontal_grid_points_valid, (profile_coords_x, profile_coords_y, profile_coords_z), method='nearest')
-    profile_grid_indices = profile_grid_indices.astype(int)
+    profile_flattened_monotonic_grid_indices = griddata(model_xyz, flattened_monotonic_grid_indices_valid, profiles_xyz_threetuple, method='nearest').astype(int)
 
-    MITprof_ds["prof_point"] = xr.DataArray(profile_grid_indices, dims=("iPROF"))
+    MITprof_ds["profile_flattened_monotonic_grid_indices"] = xr.DataArray(profile_flattened_monotonic_grid_indices, dims=("iPROF"))
 
 
 def get_tile_point_llc_ian(lon_llc, lat_llc, ni, nj, MITprof_ds):
@@ -118,6 +106,7 @@ def get_tile_point_llc_ian(lon_llc, lat_llc, ni, nj, MITprof_ds):
                 tileCount += 1
                 tileNo[iF][ii*ni:(ii+1)*ni,jj*nj:(jj+1)*nj] = tileCount * np.ones((ni,nj))
 
+    """
     fig,ax = plt.subplots(len(iTile*3),2)
     tile_counter = 0
     font_size = 8
@@ -135,51 +124,33 @@ def get_tile_point_llc_ian(lon_llc, lat_llc, ni, nj, MITprof_ds):
         ax[ii+2, 1].pcolormesh(jTile[tile_counter])
         ax[ii+2, 1].set_ylabel(f"jTile \n(tile {tile_counter + 1})", fontsize=font_size)
         tile_counter += 1
-
     plt.show()
+    """
 
-    list_in = {0: tile_list_xgrid, 1: tile_list_ygrid, 2: XC11, 3: YC11, 4: XCNINJ, 5: YCNINJ, 6: iTile, 7: jTile, 8: tileNo}
+    interp_dict = {'prof_interp_lon': tile_list_xgrid, 'prof_interp_lat': tile_list_ygrid, 'prof_interp_XC11': XC11, 'prof_interp_YC11': YC11, 'prof_interp_XCNINJ': XCNINJ, 'prof_interp_YCNINJ': YCNINJ, 'prof_interp_i': iTile, 'prof_interp_j': jTile}
 
-    pdb.set_trace()
-        
+
     # now take these funky structures, cast them into patchface) form, then use
     # prof point to pull the value at the profile point that we need
-    for k in range(len(list_in) - 1):
+
+    for target_key, source_field in interp_dict.items():
         # puts this in the original llc messed up face
-        temp_var = list_in.get(k) # gets list of lists 
-        temp_var_list_concate = np.concatenate((temp_var[0], temp_var[1], temp_var[2], temp_var[3].T, temp_var[4].T), axis = 1)
-        list_in[k], faces = patchface3D(llc_horizontal_resolution, 13*llc_horizontal_resolution, 1, array_in = temp_var_list_concate, direction = 3.5)
+        source_field_list_concat = np.concatenate((source_field[0], source_field[1], source_field[2], source_field[3].T, source_field[4].T), axis = 1)
+        patchface_field, faces = patchface3D(llc_horizontal_resolution, 13*llc_horizontal_resolution, 1, array_in = source_field_list_concat, direction = 3.5)
 
-        # use the prof_point to pull the right value from whatever list_in{k}
-        # is.. list_in{k} is in patchface format, from above.    
+        # use the profile_flattened_monotonic_grid_indices to pull the right value from whatever interp_dict{k}
+        # is.. interp_dict{k} is in patchface format, from above.    
+        MITprof_ds[target_key] = xr.DataArray(patchface_field.ravel()[MITprof_ds['profile_flattened_monotonic_grid_indices']], dims=['iPROF'])
 
-        if k == 0:
-            MITprof_ds['prof_interp_lon'] = xr.DataArray(list_in[k].flatten(order = 'F')[MITprof_ds['prof_point'].astype(int)], dims=['iPROF'])
-        elif k == 1:
-            MITprof_ds['prof_interp_lat'] = xr.DataArray(list_in[k].flatten(order = 'F')[MITprof_ds['prof_point'].astype(int)], dims=['iPROF'])
-        elif k == 2:    
-            MITprof_ds['prof_interp_XC11'] = xr.DataArray(list_in[k].flatten(order = 'F')[MITprof_ds['prof_point'].astype(int)], dims=['iPROF'])
-        elif k == 3:    
-            MITprof_ds['prof_interp_YC11'] = xr.DataArray(list_in[k].flatten(order = 'F')[MITprof_ds['prof_point'].astype(int)], dims=['iPROF'])
-        elif k == 4:    
-            MITprof_ds['prof_interp_XCNINJ'] = xr.DataArray(list_in[k].flatten(order = 'F')[MITprof_ds['prof_point'].astype(int)], dims=['iPROF'])
-        elif k == 5:    
-            MITprof_ds['prof_interp_YCNINJ'] = xr.DataArray(list_in[k].flatten(order = 'F')[MITprof_ds['prof_point'].astype(int)], dims=['iPROF'])
-        elif k == 6:    
-            MITprof_ds['prof_interp_i'] = xr.DataArray(list_in[k].flatten(order = 'F')[MITprof_ds['prof_point'].astype(int)], dims=['iPROF'])
-        elif k == 7:    
-            MITprof_ds['prof_interp_j'] = xr.DataArray(list_in[k].flatten(order = 'F')[MITprof_ds['prof_point'].astype(int)], dims=['iPROF'])
-    
     # one last thing: "weights", which is 1 b/c we're using nearest neighbor:
-    MITprof_ds['prof_interp_weights'] = xr.DataArray(np.ones(MITprof_ds['prof_point'].shape), dims=['iPROF'])
-    #MITprof['prof_interp_weights'] = np.ones(MITprof['prof_point'].shape)
+    MITprof_ds['prof_interp_weights'] = xr.ones_like(MITprof_ds['profile_flattened_monotonic_grid_indices'])
 
     #return MITprof_ds
 
 def update_prof_and_tile_points_on_profiles(MITprof_ds, grid_dir, llc_horizontal_resolution, wet_or_all):
 #def update_prof_and_tile_points_on_profiles(MITprof_ds_orig, grid_dir, llc_horizontal_resolution, wet_or_all):
     """
-    This script updates the prof_points and tile interpolation points
+    This script updates the profile_flattened_monotonic_grid_indicess and tile interpolation points
     so that the MITgcm knows which grid points to use for the cost function
 
     Input Parameters:
@@ -236,51 +207,28 @@ def update_prof_and_tile_points_on_profiles(MITprof_ds, grid_dir, llc_horizontal
 
     #pdb.set_trace()
 
-    bool_mask_good_coords = (abs(MITprof_ds['prof_lat']) <= 90) & (MITprof_ds['prof_lat'].notnull()) | (MITprof_ds['prof_lon'].notnull())
+    bool_mask_good_coords = ((abs(MITprof_ds['prof_lat']) <= 90) & (MITprof_ds['prof_lat'].notnull()) | (MITprof_ds['prof_lon'].notnull())).data
 
-    good_coord_pairs = [
-            ((lat_orig, lon_orig), (lat_interp, lon_interp)) 
-            for lat_orig, lon_orig, lat_interp, lon_interp 
-            in zip(MITprof_ds['prof_lat'][bool_mask_good_coords], MITprof_ds['prof_lon'][bool_mask_good_coords], 
-                   MITprof_ds['prof_interp_lat'][bool_mask_good_coords], MITprof_ds['prof_interp_lon'][bool_mask_good_coords]
-                   ) 
-            ]
-
-    distances_good = [distance.distance(coord_orig, coord_interp).km for coord_orig, coord_interp in good_coord_pairs]
     distances = np.full_like(MITprof_ds['prof_lat'].data, np.nan)
-    distances[good_coord_pairs] = distances_good
+    # Note that this assumes our lat/lon grids are 1D
+    for profile_index in range(len(bool_mask_good_coords)):
+        if bool_mask_good_coords[profile_index]:
+            distances[profile_index] = distance.distance((MITprof_ds['prof_lat'][profile_index], MITprof_ds['prof_lon'][profile_index]), (MITprof_ds['prof_interp_lat'][profile_index], MITprof_ds['prof_interp_lon'][profile_index])).km
 
-    # distance between grid cells referenced to llc_horizontal_resolution 90
-    dx = 112* 90/llc_horizontal_resolution
+    if 'prof_flag' not in MITprof_ds:
+        MITprof_ds['prof_flag'] = xr.zeros_like(MITprof_ds['prof_YYYYMMDD'])
+
+    MITprof_ds['prof_flag'][~bool_mask_good_coords] = 100
+
+    # distance between grid cells referenced to llc_horizontal_resolution 90 (in km...?)
+    grid_cell_distance_x_fixed = 112* 90/llc_horizontal_resolution
 
     # find points where distance between the profile point and the 
     # closest grid point is further than twice the distance 
     # of the square root of the area.
-    bool_mask_too_far = np.nonzero(d / dx > 2)[0]
-    #ins_too_far = np.nonzero(d / dx > 2)[0]
+    bool_mask_too_far = distances / grid_cell_distance_x_fixed > 2
 
-    # if the profile lat is > |90| call it a bad lat
-    # if the distance between the profile and the nearest grid cell
-    # is greater than one grid cell distance then call it a bad point
-    # -- you may have to create the field prof_flag.
-    if 'prof_flag' not in MITprof_ds:
-        MITprof_ds['prof_flag'] = ('iPROF', np.zeros(len(MITprof_ds['prof_YYYYMMDD'])))
-        #MITprof_ds['prof_flag'] = np.zeros(len(MITprof_ds['prof_YYYYMMDD']))
-
-    if bool_mask_too_far.any():
-    #if ins_too_far.size != 0:
-        MITprof_ds['prof_flag'][bool_mask_too_far] = 101
-        #MITprof_ds['prof_flag'][ins_too_far] = 101
-
-    #if bad_lats_indices.size != 0:
-    #    MITprof_ds['prof_flag'][bad_lats_indices] = 100
-    if ~bool_mask_good_coords.any():
-    #if bad_coord_indices.size != 0:
-        MITprof_ds['prof_flag'][~bool_mask_good_coords] = 100
-        #MITprof_ds['prof_flag'][bad_coord_indices] = 100
-
-
-    #return MITprof
+    MITprof_ds['prof_flag'][bool_mask_too_far] = 101
 
 
 def main(MITprof_ds, grid_dir, llc_horizontal_resolution, wet_or_all):

@@ -96,14 +96,14 @@ def NCEI_pipeline(dest_dir, input_dir):
 
         ncei_function_list = [
             partial(step01.main, MITprof_ds, grid_dir, llcN, wet_or_all), 
+            partial(step02.main, MITprof_ds, sphere_dir, grid_dir), 
+            partial(step03.main, MITprof_ds, clim_dir), 
+            partial(step04.main, MITprof_ds, grid_dir, CTD_TS_bin, respect_existing_zero_weights, new_S_floor, new_T_floor), 
         ]
         """
-            partial(step02.main, sphere_dir, MITprof_ds, grid_dir), 
-            partial(step03.main, clim_dir, MITprof_ds), 
-            partial(step04.main, MITprof_ds, grid_dir, CTD_TS_bin, respect_existing_zero_weights, new_S_floor, new_T_floor), 
             partial(step05.main, MITprof_ds, grid_dir, apply_gamma_factor, llcN), 
             partial(step06.main, MITprof_ds, replace_missing_S_with_clim_S), 
-            partial(step07.main, 'adjust', MITprof_ds), 
+            partial(step07.main, MITprof_ds, 'adjust'), 
             partial(step08.main, MITprof_ds), 
             partial(step09.main, MITprof_ds), 
             partial(step10.main, MITprof_ds, distance_tolerance, closest_time, method)
