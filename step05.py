@@ -1,3 +1,4 @@
+import xarray as xr
 import pdb
 import argparse
 import copy
@@ -37,13 +38,11 @@ def update_gamma_factor_on_prepared_profiles(MITprofs, grid_dir, apply_gamma_fac
 
     #  load weights
     #pdb.set_trace()
-    tmpT = MITprofs['prof_Tweight'].values
-    #tmpT = MITprofs['prof_Tweight']
+    tmpT = MITprofs['prof_Tweight']
     tmpT[np.where(tmpT < 0)] = np.nan
     #tmpT[np.where(tmpT < 0)[0]] = np.nan  # I think this didn't break only because the index was empty... 
     if 'prof_S' in MITprofs:
-        tmpS = MITprofs['prof_Sweight'].values
-        #tmpS = MITprofs['prof_Sweight']
+        tmpS = MITprofs['prof_Sweight']
         tmpS[np.where(tmpS <0)] = np.nan
         #tmpS[np.where(tmpS <0)[0]] = np.nan
    
@@ -53,13 +52,13 @@ def update_gamma_factor_on_prepared_profiles(MITprofs, grid_dir, apply_gamma_fac
         alpha = np.squeeze(RAC/ np.max(RAC))
         pp = MITprofs['prof_point'].astype(int)
         alpha_pp = alpha.flatten(order = 'F')[pp]
-        MITprofs['prof_area_gamma'].values = alpha_pp
+        MITprofs['prof_area_gamma']= xr.DataArray(alpha_pp, dims=['iPROF'])
         fac = copy.deepcopy(alpha_pp)
         
     elif apply_gamma_factor == 0:
         alpha_pp = MITprofs['prof_area_gamma']
         fac = 1/ alpha_pp
-        MITprofs['prof_area_gamma'].values = np.ones(MITprofs['prof_area_gamma'].size)
+        MITprofs['prof_area_gamma']= xr.DataArray(np.ones(MITprofs['prof_area_gamma'].size), dims=['iPROF'])
     
     # loop through k, apply fac to T and S weights
     for k in np.arange(MITprofs['prof_depth'].size):
@@ -72,9 +71,9 @@ def update_gamma_factor_on_prepared_profiles(MITprofs, grid_dir, apply_gamma_fac
             tmpSk = tmpSk * fac
             tmpS[:,k] = tmpSk
 
-    MITprofs['prof_Tweight'].values = tmpT
+    MITprofs['prof_Tweight']= xr.DataArray(tmpT, dims=['iPROF', 'iDEPTH'])
     if 'prof_S' in MITprofs:
-        MITprofs['prof_Sweight'].values = tmpS
+        MITprofs['prof_Sweight']= xr.DataArray(tmpS, dims=['iPROF', 'iDEPTH'])
     
 def main(MITprofs, grid_dir, apply_gamma_factor, llcN):
     

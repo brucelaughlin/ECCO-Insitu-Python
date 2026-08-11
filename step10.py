@@ -3,7 +3,8 @@ import glob
 import os
 import numpy as np
 import numpy.ma as ma
-from tools
+import tools
+import pdb
 
 def distmat(xy):
 
@@ -15,7 +16,7 @@ def distmat(xy):
     
     return distances_array
 
-def update_decimate_profiles_subdaily_to_once_daily(MITprofs, distance_tolerance, closest_time, method):
+def update_decimate_profiles_subdaily_to_once_daily(MITprof_ds, distance_tolerance, closest_time, method):
     """
     This script decimates profiles with subdaily sampling at the same
     location to once-daily sampling.
@@ -49,26 +50,26 @@ def update_decimate_profiles_subdaily_to_once_daily(MITprofs, distance_tolerance
     toss_set_all = []
     total_toss = 0
     
-    for unique_day_index in range(len(days_with_data_unique)):
+    for ii_unique_day in range(len(days_with_data_unique)):
 
-        indices_current_day = np.where(MITprof_ds['prof_YYYYMMDD'] == days_with_data_unique[unique_day_index])[0]
+        indices_current_day = np.where(MITprof_ds['prof_YYYYMMDD'] == days_with_data_unique[ii_unique_day])[0]
         number_at_current_day = len(indices_current_day)
         
         distances_array = distmat(np.stack((X[indices_current_day], Y[indices_current_day], Z[indices_current_day]), axis = 1))
 
         toss_set  = []
 
-        for profile_index in indices_current_day:
-            if profile_index not in toss_set: 
-                clustered_points_indices = np.where(distances_array[p,:] < distance_tolerance)[0] 
+        for ii_profile in range(len(indices_current_day)):
+            if ii_profile not in toss_set: 
+                clustered_points_indices = np.where(distances_array[ii_profile,:] < distance_tolerance)[0] 
                 clustered_points_indices_current_day = indices_current_day[clustered_points_indices]
 
                 if len(clustered_points_indices_current_day) > 1:
                     distances_from_noon = np.argsort(np.abs(MITprof_ds['prof_HHMMSS'][clustered_points_indices_current_day]-closest_time))
                     toss_set = np.union1d(toss_set, clustered_points_indices_current_day[distances_from_noon[1:]])
-
-        total_toss = total_toss + len(toss_set)
-        toss_set_all = np.union1d(toss_set_all, toss_set)
+        
+                total_toss = total_toss + len(toss_set)
+                toss_set_all = np.union1d(toss_set_all, toss_set)
 
     toss_set_all = toss_set_all.astype(int)
     MITprof_ds['prof_Tweight'][toss_set_all,:] = 0

@@ -15,6 +15,7 @@ from functools import partial
 # Add the directory containing the package to the search path
 sys.path.append(os.path.abspath("/Users/brucel/ecco/yip/ECCO-Insitu-Python"))
 
+import tools
 import step01
 import step02
 import step03
@@ -25,7 +26,6 @@ import step07
 import step08
 import step09
 import step10
-import tools
 
 
 def NCEI_pipeline(dest_dir, input_dir):
@@ -79,7 +79,8 @@ def NCEI_pipeline(dest_dir, input_dir):
 
     #largest_numbered_step_to_run = 7
     #largest_numbered_step_to_run = 8
-    largest_numbered_step_to_run = 10
+    #largest_numbered_step_to_run = 10
+    largest_numbered_step_to_run = 1
 
     print()
 
@@ -90,11 +91,13 @@ def NCEI_pipeline(dest_dir, input_dir):
 
         print(f"ncei processing for file {file_dex+1:0{len(str(len(input_profile_files)))}}/{len(input_profile_files)}: {original_file}")
 
-        MITprofs_dict = tools.MITprof_read(original_file,largest_numbered_step_to_run)
-        MITprof_ds = tools.MITprof_dataset_from_dict(MITprofs_dict) 
+        MITprof_ds = xr.open_dataset(original_file)
+        MITprof_ds = MITprof_ds.assign_coords({dim: np.arange(MITprof_ds.sizes[dim]) for dim in MITprof_ds.dims if dim not in MITprof_ds.coords})
 
         ncei_function_list = [
             partial(step01.main, MITprof_ds, grid_dir, llcN, wet_or_all), 
+        ]
+        """
             partial(step02.main, sphere_dir, MITprof_ds, grid_dir), 
             partial(step03.main, clim_dir, MITprof_ds), 
             partial(step04.main, MITprof_ds, grid_dir, CTD_TS_bin, respect_existing_zero_weights, new_S_floor, new_T_floor), 
@@ -105,6 +108,8 @@ def NCEI_pipeline(dest_dir, input_dir):
             partial(step09.main, MITprof_ds), 
             partial(step10.main, MITprof_ds, distance_tolerance, closest_time, method)
         ]
+        """
+
 
         step_counter = 0
         tools.print_survivors(MITprof_ds, step_counter)
@@ -121,7 +126,7 @@ def NCEI_pipeline(dest_dir, input_dir):
 
 
     if tools.count_total_survivors_TS(MITprof_ds) > 0:
-        tools.MITprof_write_to_nc(dest_dir, MITprof_ds, 10, basename)
+        tools.MITprof_write_to_nc(dest_dir, MITprof_ds, largest_numbered_step_to_run, basename)
         print(f"                SUCCESS:    {tools.count_total_survivors_TS(MITprof_ds)} PROFILES SURVIVED THE NCEI PROCESSING ALGORITHM\n")
     else:
         print(f"                FAILURE:    {tools.count_total_survivors_TS(MITprof_ds)} PROFILES SURVIVED THE NCEI PROCESSING ALGORITHM\n")
