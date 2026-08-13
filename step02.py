@@ -1,12 +1,9 @@
 import xarray as xr
-import numpy.ma as ma
-import pdb
-import argparse
-import glob
 import os
-from tools import interp_check, load_llc90_grid, load_llc270_grid, sph2cart, MITprof_read
-from scipy.interpolate import griddata
 import numpy as np
+from tools import interp_check, load_llc90_grid, sph2cart
+from scipy.interpolate import griddata
+import pdb
 
 def update_spatial_bin_index_on_prepared_profiles(bin_dir, MITprof_ds, grid_dir):
     """
@@ -52,18 +49,13 @@ def update_spatial_bin_index_on_prepared_profiles(bin_dir, MITprof_ds, grid_dir)
         lon_llc = lon_90.ravel()
         lat_llc = lat_90.ravel()
 
-        # Bruce: And then I need to do this... oh boy here we go....
-        bin_1 = bin_1.ravel()
-        bin_2 = bin_2.ravel()
-
-
-        # Bruce: Are we sure that this is correct?  
         xyz_grid = np.column_stack((X, Y, Z))
         # map a grid index to each profile.
         flattened_monotonic_grid_indices = np.arange(X_90.size)
     
     # verify that our little trick works in 4 parts of the earth
 
+    #interp_check(xyz_grid, flattened_monotonic_grid_indices, lat_llc, lon_llc, 2)
     interp_check(xyz_grid, flattened_monotonic_grid_indices, X, Y, Z, lat_llc, lon_llc, 2)
  
     deg2rad = np.pi/180.0
@@ -74,43 +66,11 @@ def update_spatial_bin_index_on_prepared_profiles(bin_dir, MITprof_ds, grid_dir)
     profile_flattened_monotonic_grid_indices = griddata(xyz_grid, flattened_monotonic_grid_indices, np.column_stack(xyz_profiles_threetuple), 'nearest').astype(int)
 
     # loop through the different geodesic bins
-    MITprof_ds['prof_bin_id_a'] = xr.DataArray(bin_1[profile_flattened_monotonic_grid_indices], dims=['iPROF'])
-    MITprof_ds['prof_bin_id_b'] = xr.DataArray(bin_2[profile_flattened_monotonic_grid_indices], dims=['iPROF'])
+    MITprof_ds['prof_bin_id_a'] = xr.DataArray(bin_1.ravel()[profile_flattened_monotonic_grid_indices], dims=['iPROF'])
+    MITprof_ds['prof_bin_id_b'] = xr.DataArray(bin_2.ravel()[profile_flattened_monotonic_grid_indices], dims=['iPROF'])
 
 
 def main(MITprof_ds, bin_dir, grid_dir):
-
     #print("step02: update_spatial_bin_index_on_prepared_profiles")
-
     update_spatial_bin_index_on_prepared_profiles(bin_dir, MITprof_ds, grid_dir)
 
-if __name__ == '__main__':
-
-    parser = argparse.ArgumentParser()
-
-    parser.add_argument("-r", "--bin_dir", action= "store",
-                        help = "Directory to bin files" , dest= "bin_dir",
-                        type = int, required= True)
-
-    parser.add_argument("-g", "--grid_dir", action= "store",
-                        help = "File path to 90/270 grids" , dest= "grid_dir",
-                        type = str, required= True)
-    
-    parser.add_argument("-m", "--MIT_dir", action= "store",
-                    help = "File path to NETCDF files containing MITprof_ds info." , dest= "MIT_dir",
-                    type = str, required= True)
-    
-
-    args = parser.parse_args()
-
-    bin_dir = args.bin_dir
-    grid_dir = args.grid_dir
-    MITprof_ds_fp = args.MIT_dir
-
-    nc_files = glob.glob(os.path.join(MITprof_ds_fp, '*.nc'))
-    if len(nc_files) == 0:
-        raise Exception("Invalid NC filepath")
-    for file in nc_files:
-        MITprof_ds = MITprof_read(file, 2)
-    
-    main(bin_dir, MITprof_ds, grid_dir)

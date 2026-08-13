@@ -1,14 +1,9 @@
 import matplotlib.pyplot as plt
 import xarray as xr
-import numpy.ma as ma
-import argparse
-import glob
-import os
 import numpy as np
-import copy
 from geopy import distance
 from scipy.interpolate import griddata
-from tools import MITprof_read, load_llc270_grid, load_llc90_grid, patchface3D, sph2cart
+from tools import load_llc270_grid, load_llc90_grid, patchface3D, sph2cart
 import pdb
 
 def get_profpoint_llc_ian(lon_llc, lat_llc, mask_llc, MITprof_ds):
@@ -205,22 +200,21 @@ def update_prof_and_tile_points_on_profiles(MITprof_ds, grid_dir, llc_horizontal
     #bad_lats_indices = np.nonzero(abs(tmp_prof_lat)>90)[0]
     #bad_lats_index_array = abs(tmp_prof_lat)>90
 
-    #pdb.set_trace()
-
     bool_mask_good_coords = ((abs(MITprof_ds['prof_lat']) <= 90) & (MITprof_ds['prof_lat'].notnull()) | (MITprof_ds['prof_lon'].notnull())).data
 
     distances = np.full_like(MITprof_ds['prof_lat'].data, np.nan)
     # Note that this assumes our lat/lon grids are 1D
     for profile_index in range(len(bool_mask_good_coords)):
         if bool_mask_good_coords[profile_index]:
-            distances[profile_index] = distance.distance((MITprof_ds['prof_lat'][profile_index], MITprof_ds['prof_lon'][profile_index]), (MITprof_ds['prof_interp_lat'][profile_index], MITprof_ds['prof_interp_lon'][profile_index])).km
+            distances[profile_index] = distance.distance((MITprof_ds['prof_lat'][profile_index], MITprof_ds['prof_lon'][profile_index]), (MITprof_ds['prof_interp_lat'][profile_index], MITprof_ds['prof_interp_lon'][profile_index])).m
+            #distances[profile_index] = distance.distance((MITprof_ds['prof_lat'][profile_index], MITprof_ds['prof_lon'][profile_index]), (MITprof_ds['prof_interp_lat'][profile_index], MITprof_ds['prof_interp_lon'][profile_index])).km
 
     if 'prof_flag' not in MITprof_ds:
         MITprof_ds['prof_flag'] = xr.zeros_like(MITprof_ds['prof_YYYYMMDD'])
 
     MITprof_ds['prof_flag'][~bool_mask_good_coords] = 100
 
-    # distance between grid cells referenced to llc_horizontal_resolution 90 (in km...?)
+    # distance between grid cells referenced to llc_horizontal_resolution 90 (in m... or km...?)
     grid_cell_distance_x_fixed = 112* 90/llc_horizontal_resolution
 
     # find points where distance between the profile point and the 
@@ -232,36 +226,6 @@ def update_prof_and_tile_points_on_profiles(MITprof_ds, grid_dir, llc_horizontal
 
 
 def main(MITprof_ds, grid_dir, llc_horizontal_resolution, wet_or_all):
-
-    #print("     step01: update_prof_and_tile_points_on_profiles")
     #print("step01: update_prof_and_tile_points_on_profiles")
     update_prof_and_tile_points_on_profiles(MITprof_ds, grid_dir, llc_horizontal_resolution, wet_or_all)
 
-if __name__ == '__main__':
-
-    parser = argparse.ArgumentParser()
-
-    parser.add_argument("-g", "--grid_dir", action= "store",
-                        help = "File path to 90/270 grids" , dest= "grid_dir",
-                        type = str, required= True)
-    
-    parser.add_argument("-m", "--MIT_dir", action= "store",
-                    help = "File path to NETCDF files containing MITprofs info." , dest= "MIT_dir",
-                    type = str, required= True)
-    
-
-    args = parser.parse_args()
-
-    grid_dir = args.grid_dir
-    MITprofs_fp = args.MIT_dir
-
-    nc_files = glob.glob(os.path.join(MITprofs_fp, '*.nc'))
-    if len(nc_files) == 0:
-        raise Exception("Invalid NC filepath")
-    for file in nc_files:
-        MITprofs = MITprof_read(nc_files, 1) # BRUCE: hah...
-    
-    llc_horizontal_resolution = 90                       # Which grid to use, 90 or 270
-    wet_or_all = 1                  # 0 = interpolated to nearest wet point, 1 = interpolated all points, regardless of wet or dry
-
-    main(MITprofs, grid_dir, llc_horizontal_resolution, wet_or_all)

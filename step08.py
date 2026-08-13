@@ -81,40 +81,6 @@ def update_remove_zero_T_S_weighted_profiles_from_MITprof(MITprof_ds):
 
         
 def main(MITprof_ds):
-
     #print("step08: update_remove_zero_T_S_weighted_profiles_from_MITprof")
     update_remove_zero_T_S_weighted_profiles_from_MITprof(MITprof_ds)
-
-if __name__ == '__main__':
-
-    parser = argparse.ArgumentParser()
-    parser.add_argument("-m", "--MIT_dir", action= "store",
-                    help = "File path to NETCDF files containing MITprof_ds info." , dest= "MIT_dir",
-                    type = str, required= True)
-    
-
-    """
-    args = parser.parse_args()
-
-    run_code = args.run_code
-    grid_dir = args.grid_dir
-    MITprof_ds_fp = args.MIT_dir
-
-    MITprof_ds_fp = '/home/sweet/Desktop/ECCO-Insitu-Ian/Python-Dest'
-    MITprof_ds_fp = '/home/sweet/Desktop/ECCO-Insitu-Ian/Original-Matlab-Dest/20190131_END_CHAIN'
-
-    nc_files = glob.glob(os.path.join(MITprof_ds_fp, '*.nc'))
-    if len(nc_files) == 0:
-        raise Exception("Invalid NC filepath")
-    for file in nc_files:
-        MITprof_ds = tools.MITprof_read(file, 8)
-
-    # Convert all masked arrs to non-masked types
-    for data_var in MITprof_ds.data_vars:
-        if ma.isMaskedArray(MITprof_ds[data_var]):
-            MITprof_ds[data_var].values = MITprof_ds[data_var].filled(np.NaN)
-    
-    main(MITprof_ds)
-    """
-
 

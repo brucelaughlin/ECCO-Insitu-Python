@@ -79,47 +79,6 @@ def update_decimate_profiles_subdaily_to_once_daily(MITprof_ds, distance_toleran
 
 
 def main(MITprof_ds, distance_tolerance, closest_time, method):
-
     #print("step10: update_decimate_profiles_subdaily_to_once_daily")
-
-    '''
-    print('Num T and S weight > 0, pre')
-    print('{:>10} {:>10}'.format(np.sum(MITprofs['prof_Tweight'] > 0), np.sum(MITprofs['prof_Sweight'] > 0)))
-    '''
-
     update_decimate_profiles_subdaily_to_once_daily(MITprof_ds, distance_tolerance, closest_time, method)
 
-if __name__ == '__main__':
- 
-    parser = argparse.ArgumentParser()
-
-    parser.add_argument("-r", "--run_code", action= "store",
-                        help = "Run code: 90 or 270" , dest= "run_code",
-                        type = int, required= True)
-    
-    parser.add_argument("-m", "--MIT_dir", action= "store",
-                    help = "File path to NETCDF files containing MITprofs info." , dest= "MIT_dir",
-                    type = str, required= True)
-
-    args = parser.parse_args()
-
-    run_code = args.run_code
-    MITprofs_fp = args.MIT_dir
-    
-    nc_files = glob.glob(os.path.join(MITprofs_fp, '*.nc'))
-    if len(nc_files) == 0:
-        raise Exception("Invalid NC filepath")
-    for file in nc_files:
-        MITprofs = tools.MITprof_read(file, 10)
-
-    # Convert all masked arrs to non-masked types
-    for keys in MITprofs.keys():
-        if ma.isMaskedArray(MITprofs[keys]):
-            MITprofs[keys] = MITprofs[keys].filled(np.NaN)
-
-    distance_tolerance = 5e3        # radius within which profiles are considered to be at the same location [in meters]
-    closest_time = 120000           # HHMMSS: if there is more than one profile per day in a location, choose the one
-                                    # that is closest in time to 'closest time' default is noon 
-    method = 1                      # method 0 or 1
-    
-    main(MITprofs, distance_tolerance, closest_time, method)

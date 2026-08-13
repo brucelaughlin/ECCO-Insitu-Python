@@ -57,6 +57,7 @@ def update_monthly_mean_TS_clim_WOA13v2_on_prepared_profiles(TS_clim_dir, MITpro
     xyz_woa_masked = np.column_stack((X_woa, Y_woa, Z_woa))
 
     # verify that our little trick works in 4 parts of the earth
+    #interp_check(xyz_woa_masked, flattened_monotonic_grid_indices, lat_woam.ravel(), lon_woam.ravel(), 3, good_clim = np.nonzero(bool_mask_valid_surface_climatology.ravel())[0])
     interp_check(xyz_woa_masked, flattened_monotonic_grid_indices, X_woa, Y_woa, Z_woa, lat_woam.ravel(), lon_woam.ravel(), 3, good_clim = np.nonzero(bool_mask_valid_surface_climatology.ravel())[0])
 
     num_profs = len(MITprof_ds['prof_lat'])
@@ -99,33 +100,8 @@ def update_monthly_mean_TS_clim_WOA13v2_on_prepared_profiles(TS_clim_dir, MITpro
     MITprof_ds['prof_Tclim'] = xr.DataArray(prof_clim_T, dims=['iPROF', 'iDEPTH'])
     MITprof_ds['prof_Sclim'] = xr.DataArray(prof_clim_S, dims=['iPROF', 'iDEPTH'])
 
-def main(MITprof_ds, TS_clim_dir):
 
+def main(MITprof_ds, TS_clim_dir):
     #print("step03: update_monthly_mean_TS_clim_WOA13v2_on_prepared_profiles")
     update_monthly_mean_TS_clim_WOA13v2_on_prepared_profiles(TS_clim_dir, MITprof_ds)
 
-if __name__ == '__main__':
-
-    parser = argparse.ArgumentParser()
-
-    parser.add_argument("-t", "--TS_clim_dir", action= "store",
-                        help = "Directory to TS Clim file" , dest= "ts_dir",
-                        type = int, required= True)
-    
-    parser.add_argument("-m", "--MIT_dir", action= "store",
-                    help = "File path to NETCDF files containing MITprof_ds info." , dest= "MIT_dir",
-                    type = str, required= True)
-    
-
-    args = parser.parse_args()
-
-    TS_clim_dir = args.ts_dir
-    MITprof_ds_fp = args.MIT_dir
-
-    nc_files = glob.glob(os.path.join(MITprof_ds_fp, '*.nc'))
-    if len(nc_files) == 0:
-        raise Exception("Invalid NC filepath")
-    for file in nc_files:
-        MITprof_ds = MITprof_read(file, 3)
-    
-    main(TS_clim_dir, MITprof_ds)

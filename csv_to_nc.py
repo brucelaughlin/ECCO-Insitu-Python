@@ -178,9 +178,9 @@ def createNETCDF(file, dest_dir, prof_desc, prof_HHMMSS, prof_lat, prof_lon, pro
     prof_interp_YCNINJ = nc.createVariable('prof_interp_YCNINJ', np.float64, 'iPROF')
     prof_interp_YCNINJ[:] = arr_zeros
 
-    prof_point = nc.createVariable('prof_point', np.float64, 'iPROF')
-    prof_point.long_name = "grid point index (ecco 4g)"
-    prof_point[:] = arr_zeros
+    profile_flattened_monotonic_grid_indices = nc.createVariable('profile_flattened_monotonic_grid_indices', np.float64, 'iPROF')
+    profile_flattened_monotonic_grid_indices.long_name = "grid point index (ecco 4g)"
+    profile_flattened_monotonic_grid_indices[:] = arr_zeros
 
     # Serr, Sestim, Sflag, Sweight
     arr_zeros_2d = np.zeros(prof_T_np.shape)

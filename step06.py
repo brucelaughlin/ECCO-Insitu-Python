@@ -306,7 +306,11 @@ def sw_ptmp(S, T, P, PR):
 
     return PT
 
-def update_prof_insitu_T_to_potential_T(MITprofs, replace_missing_S_with_clim_S):
+
+#### NOW FIX ALL THE FUNCTIONS ABOVE THIS LINE TO BE SANE AND USE XARRAY AND NOT HAVE HARDCODED MADNESS
+
+
+def update_prof_insitu_T_to_potential_T(MITprof_ds, replace_missing_S_with_clim_S):
     """
     This script updates the profile insitu temperatures so that they are in
     potential temperature
@@ -316,144 +320,43 @@ def update_prof_insitu_T_to_potential_T(MITprofs, replace_missing_S_with_clim_S)
         MITprof: a single MITprof object
 
     Output:
-        Operates on MITprofs directly 
+        Operates on MITprof_ds directly 
     """
 
-    # SET INPUT PARAMETERS
-    fillVal=-9999
-    
-    lats = MITprofs['prof_lat'].values
-    #lats = MITprofs['prof_lat']
-    # flatten array and converted all NaN vals to fillval
-    #prof_T = MITprofs['prof_T'].values.flatten(order = 'F').filled(fillVal)
-    #prof_S = MITprofs['prof_S'].values.flatten(order = 'F').filled(fillVal)
-    #prof_T = np.where(np.isnan(MITprofs['prof_T'].values), MITprofs['prof_T'].values, fillVal).flatten(order= 'F') 
-    #prof_S = np.where(np.isnan(MITprofs['prof_S'].values), MITprofs['prof_S'].values, fillVal).flatten(order= 'F') 
-    prof_T = np.where(~np.isnan(MITprofs['prof_T'].values), MITprofs['prof_T'].values, fillVal) 
-    prof_S = np.where(~np.isnan(MITprofs['prof_S'].values), MITprofs['prof_S'].values, fillVal)
-
-    # hacky fix for 1d array broadcast issue?
-    if len(prof_T.shape) == 1:
-        prof_T = prof_T[:, np.newaxis]
-    if len(prof_S.shape) == 1:
-        prof_S = prof_S[:, np.newaxis]
-
-    # to qualify you need to have a valid T, S 
-    #good_T_and_S_ins = np.where((prof_T != fillVal) and (prof_S != fillVal))[0]
-    
     if replace_missing_S_with_clim_S:
-        #missing_S_ins = np.where((prof_T != fillVal) and (prof_S == fillVal))[0]
-        #prof_S[missing_S_ins] = MITprofs['prof_Sclim'].values.ravel(order = 'F')[missing_S_ins]
-        prof_S = np.where((prof_T != fillVal) & (prof_S == fillVal), MITprofs['prof_Sclim'].values, fillVal)
-        prof_S = np.where(~np.isnan(prof_S), prof_S, fillVal)
-        #prof_T = np.where(prof_T != fillVal and prof_S != fillVal, prof_T, fillVal)
+        MITprof_ds['prof_S'] = xr.where((MITprof_ds['prof_S'].isnull()) & (MITprof_ds['prof_T'].notnull()), MITprof_ds['prof_Sclim'], MITprof_ds['prof_S'])
 
-    # to qualify you need to have a valid T, S 
-    #good_T_and_S_ins = np.where((prof_T != fillVal) and (prof_S != fillVal))[0]
+        
+    # Check to see if **all** salinity values are missing
+    if MITprof_ds['prof_S'].isnull().all():
+        MITprof_ds['prof_S'] = MITprof_ds['prof_Sclim']
 
-
-    #prof_S = prof_S.reshape(MITprofs['prof_S'].shape, order = 'F')
-    #prof_T = prof_T.reshape(MITprofs['prof_T'].shape, order = 'F')
-
-    #python -u NCEI.py --input_dir /Users/brucel/ecco/yip/scripps_data/SOCAT --dest_dir z_socat
-
-
-    # Check to see if **all** salinty values are missing
-    #S_max = np.max(prof_S, axis = 1)
-      
-    #if max(S_max) == fillVal:
-    if np.max(prof_S) == fillVal:
-        #print('all S are missing, applying clim instead')
-        prof_S = MITprofs['prof_Sclim'].values
-        # to qualify you need to have a valid T, S  %%
-        #good_T_and_S_ins = np.where((prof_T != fillVal) and (prof_S != fillVal))[0]
-
-
-
-    '''
-    print(f"prof_T: {np.nanmax(prof_T)}")
-    print(np.sum(~np.isnan(prof_T)))
-    print()
-    '''
-
-
-    prof_T_tmp = np.where((prof_T != fillVal) & (prof_S != fillVal), prof_T, np.nan)
-    prof_S_tmp = np.where((prof_T != fillVal) & (prof_S != fillVal), prof_S, np.nan)
-
-
-    #prof_T_tmp = np.full_like(prof_T, np.nan)
-    #prof_S_tmp = np.full_like(prof_S, np.nan)
-
-    # set values at the good T and S pairs to be the original T and S
-    #prof_T_tmp.ravel(order = 'F')[good_T_and_S_ins] = prof_T.ravel(order = 'F')[good_T_and_S_ins]
-    #prof_S_tmp.ravel(order = 'F')[good_T_and_S_ins] = prof_S.ravel(order = 'F')[good_T_and_S_ins]
-    
     # define an empty ptemp;
-    ptemp = np.full_like(prof_T, fillVal)
+    ptemp = xr.full_like(MITprof_ds['prof_T'], fill_value=np.nan)
+
+    # really needed?
+    lats = MITprof_ds['prof_lat'].data
     
-    if len(np.where((prof_T != fillVal) & (prof_S != fillVal))[0]) > 0:
-    #if len(good_T_and_S_ins) > 0:
-        # Prepare 2D matrix of pres and lats required for sw_ptmp
-        depths = MITprofs['prof_depth'].values
+    #if len(np.where((prof_T != fillVal) & (prof_S != fillVal))[0]) > 0:
 
-        #if int(np.sum(depths.shape)) == 1:
-        #    depths = np.array([depths[0]*len(lats)])
+    if (MITprof_ds['prof_T'].notnull() & MITprof_ds['prof_S'].notnull()).any():
 
-
-        depths_mat = np.tile(depths, (len(lats), 1)).T
-
-        lats_mat = np.tile(lats, (len(depths), 1))
+        depths_mat = np.tile(MITprof_ds['prof_depth'], (len(MITprof_ds['prof_lat']), 1)).T
+        lats_mat = np.tile(MITprof_ds['prof_lat'], (len(MITprof_ds['prof_depth']), 1))
         
         # calculate equivalent pressure from depth
-        pres_mat = sw_pres(depths_mat, lats_mat)
-        pres_mat = pres_mat.T
-
+        pres_mat = sw_pres(depths_mat, lats_mat).T
     
         # Calc potential temperature w.r.t. to surf [pres = 0]
-        ptemp = sw_ptmp(prof_S_tmp, prof_T_tmp, pres_mat, np.zeros(pres_mat.shape))
+        ptemp = sw_ptmp(MITprof_ds['prof_S'], MITprof_ds['prof_T'], pres_mat, np.zeros(pres_mat.shape))
 
-    '''
+        MITprof_ds['prof_T'] = xr.DataArray(ptemp, dims=['iPROF','iDEPTH'])
+
     else:
         print("step06: There is not a single good T and S pair to use here")
-    '''
     
-    #ptemp = ptemp.filled(np.nan)
-    # set to -9999 if there no new ptemp
-    ptemp[np.isnan(ptemp)] = -9999
-
-    #print(f"ptemp_max: {np.nanmax(ptemp)}")
-
-
-    #MITprofs['prof_T'] = ptemp
-    MITprofs['prof_T'] = xr.DataArray(ptemp, dims=['iPROF','iDEPTH'], name='prof_T')
-
  
-    
-def main(MITprofs, replace_missing_S_with_clim_S):
-
-    #print("     step06: update_prof_insitu_T_to_potential_T")
+def main(MITprof_ds, replace_missing_S_with_clim_S):
     #print("step06: update_prof_insitu_T_to_potential_T")
-    update_prof_insitu_T_to_potential_T(MITprofs, replace_missing_S_with_clim_S)
+    update_prof_insitu_T_to_potential_T(MITprof_ds, replace_missing_S_with_clim_S)
 
-if __name__ == '__main__':
- 
-    parser = argparse.ArgumentParser()
-
-    parser.add_argument("-m", "--MIT_dir", action= "store",
-                    help = "File path to NETCDF files containing MITprofs info." , dest= "MIT_dir",
-                    type = str, required= True)
-
-    args = parser.parse_args()
-
-    run_code = args.run_code
-    MITprofs_fp = args.MIT_dir
-
-    nc_files = glob.glob(os.path.join(MITprofs_fp, '*.nc'))
-    if len(nc_files) == 0:
-        raise Exception("Invalid NC filepath")
-    for file in nc_files:
-        MITprofs = MITprof_read(file, 6)
-
-    replace_missing_S_with_clim_S = 1   # 1 = replace, 0 = do not replace
-    
-    main(MITprofs, replace_missing_S_with_clim_S)

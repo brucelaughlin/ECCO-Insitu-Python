@@ -238,11 +238,11 @@ def MITprof_write_to_nc(dest_dir, MITprofs, step, basename):
                             ))
     df_descr.name = 'prof_descr'
 
-    df_point = xr.DataArray(MITprofs['prof_point'], dims = ['iPROF'],
+    df_point = xr.DataArray(MITprofs['profile_flattened_monotonic_grid_indices'], dims = ['iPROF'],
                             attrs=dict(
                                 description = "grid point index (ecco 4g)"
                             ))
-    df_point.name = 'prof_point'
+    df_point.name = 'profile_flattened_monotonic_grid_indices'
     df_point.encoding
 
     df_S = xr.DataArray(MITprofs['prof_S'], dims = ['iPROF', 'iDEPTH'],
@@ -555,11 +555,11 @@ def MITprof_read(file, step):
         df_descr = np.ma.masked_invalid(arr_zeros)
     MITprofs.update({"prof_descr": df_desc})
     try:
-        df_point = dataset['prof_point'].to_masked_array()
+        df_point = dataset['profile_flattened_monotonic_grid_indices'].to_masked_array()
     except KeyError:
         #df_point = arr_zeros
         df_point = np.ma.masked_invalid(arr_zeros)
-    MITprofs.update({"prof_point": df_point})
+    MITprofs.update({"profile_flattened_monotonic_grid_indices": df_point})
 
     #=========== PROF_S VARS ===========
     try:
@@ -1095,8 +1095,8 @@ def load_llc270_grid(llc270_grid_dir, step):
         lon_270[np.unravel_index(bad_ins_270, lon_270.shape, order = 'F')] = np.NaN
         lat_270[np.unravel_index(bad_ins_270, lat_270.shape, order = 'F')] = np.NaN
 
-        AI_270 = np.arange(lon_270.size, dtype=np.float64).reshape(lon_270.shape, order = 'F')
-        good_ins_270 = np.setdiff1d(AI_270.flatten(order = 'F').T, bad_ins_270.flatten(order = 'F'))
+        flattened_monotonic_grid_indices_270 = np.arange(lon_270.size, dtype=np.float64).reshape(lon_270.shape, order = 'F')
+        good_ins_270 = np.setdiff1d(flattened_monotonic_grid_indices_270.flatten(order = 'F').T, bad_ins_270.flatten(order = 'F'))
         good_ins_270 = good_ins_270.astype(int)
 
         if step == 2:
@@ -1115,10 +1115,10 @@ def load_llc270_grid(llc270_grid_dir, step):
                 tmp = hFacC_270[:,:,k].flatten(order = 'F')
                 wet_ins_270_k.append(np.where(tmp > 0)[0])
 
-            AI_270[np.unravel_index(bad_ins_270, AI_270.shape, order = 'F')] = np.NaN
+            flattened_monotonic_grid_indices_270[np.unravel_index(bad_ins_270, flattened_monotonic_grid_indices_270.shape, order = 'F')] = np.NaN
             delR_270, z_top_270, z_bot_270, z_cen_270 = make_llc270_cell_centers()
 
-            return wet_ins_270_k, X_270, Y_270, Z_270, AI_270, z_cen_270, lat_270, lon_270
+            return wet_ins_270_k, X_270, Y_270, Z_270, flattened_monotonic_grid_indices_270, z_cen_270, lat_270, lon_270
 
     if step == 5:
 
@@ -1228,9 +1228,9 @@ def load_llc270_grid(llc270_grid_dir, step):
 
     # this is how we find bogus points in the compact grid.
     bad_ins_270 = np.where(np.logical_and(lat_270 == 0, lon_270 == 0, bathy_270 == 0).flatten(order = 'F'))[0]
-    AI_270 = np.arange(lon_270.size, dtype=np.float64).reshape(lon_270.shape, order = 'F')
+    flattened_monotonic_grid_indices_270 = np.arange(lon_270.size, dtype=np.float64).reshape(lon_270.shape, order = 'F')
 
-    good_ins_270 = np.setdiff1d(AI_270.flatten(order = 'F').T, bad_ins_270.flatten(order = 'F'))
+    good_ins_270 = np.setdiff1d(flattened_monotonic_grid_indices_270.flatten(order = 'F').T, bad_ins_270.flatten(order = 'F'))
     good_ins_270 = good_ins_270.astype(int)
     
     X_270, Y_270, Z_270 = sph2cart(lon_270*deg2rad, lat_270*deg2rad, 1)
@@ -1238,7 +1238,7 @@ def load_llc270_grid(llc270_grid_dir, step):
     X_270[np.unravel_index(bad_ins_270, X_270.shape, order = 'F')] = np.NaN
     Y_270[np.unravel_index(bad_ins_270, X_270.shape, order = 'F')] = np.NaN
     Z_270[np.unravel_index(bad_ins_270, X_270.shape, order = 'F')] = np.NaN
-    AI_270[np.unravel_index(bad_ins_270, AI_270.shape, order = 'F')] = np.NaN
+    flattened_monotonic_grid_indices_270[np.unravel_index(bad_ins_270, flattened_monotonic_grid_indices_270.shape, order = 'F')] = np.NaN
     lon_270[np.unravel_index(bad_ins_270, lon_270.shape, order = 'F')] = np.NaN
     lat_270[np.unravel_index(bad_ins_270, lat_270.shape, order = 'F')] = np.NaN
     
@@ -1368,8 +1368,8 @@ def load_llc90_grid(grootdir, step):
 
         X_90, Y_90, Z_90 = sph2cart(lon_90_64*deg2rad, lat_90_64*deg2rad, 1.0)
      
-        AI_90 = np.arange(0, lon_90.size)
-        AI_90 = AI_90.reshape(lon_90.shape, order = 'F')
+        flattened_monotonic_grid_indices_90 = np.arange(0, lon_90.size)
+        flattened_monotonic_grid_indices_90 = flattened_monotonic_grid_indices_90.reshape(lon_90.shape, order = 'F')
 
         hFacC_90_path = os.path.join(grootdir,'hFacC.data')
         size_template_all_tiles = [llcN, 13*llcN, 50]
@@ -1385,7 +1385,7 @@ def load_llc90_grid(grootdir, step):
         
         delR_90, z_top_90, z_bot_90, z_cen_90 = make_llc90_cell_centers()
 
-        return wet_ins_90_k, X_90, Y_90, Z_90, AI_90, z_cen_90, lat_90, lon_90
+        return wet_ins_90_k, X_90, Y_90, Z_90, flattened_monotonic_grid_indices_90, z_cen_90, lat_90, lon_90
 
     if step == 5:
         llcN = 90 # in matlab
@@ -1507,13 +1507,13 @@ def load_llc90_grid(grootdir, step):
 
     # 9 Good, index off by 1 to account for matlab/ Python difference
     # USED
-    AI_90 = np.arange(0, lon_90.size)
-    AI_90 = AI_90.reshape(lon_90.shape, order = 'F')
+    flattened_monotonic_grid_indices_90 = np.arange(0, lon_90.size)
+    flattened_monotonic_grid_indices_90 = flattened_monotonic_grid_indices_90.reshape(lon_90.shape, order = 'F')
 
     # NoTE: ADDED CODE BC need good_ins_90
     bad_ins_90 = np.where(np.logical_and(lat_90 == 0, lon_90 == 0, bathy_90 == 0).flatten(order = 'F'))[0]
     # USED
-    good_ins_90 = np.setdiff1d(AI_90.flatten(order = 'F').T, bad_ins_90.flatten(order = 'F'))
+    good_ins_90 = np.setdiff1d(flattened_monotonic_grid_indices_90.flatten(order = 'F').T, bad_ins_90.flatten(order = 'F'))
 
     # 10 Good - BLANK_90 USED
     blank_90 = np.full_like(bathy_90, np.nan)
@@ -1584,10 +1584,15 @@ def load_llc90_grid(grootdir, step):
     # 17 Good
     # landmask_90_pf, faces = patchface3D(llcN, llcN*13, 1, array_in = temp, direction = 2.5)
 
-    return lon_90, lat_90, blank_90, wet_ins_90_k, RAC_90_pf, bathy_90, good_ins_90, X_90, Y_90, Z_90, z_top_90, z_bot_90, hFacC_90, AI_90, z_cen_90 
+    return lon_90, lat_90, blank_90, wet_ins_90_k, RAC_90_pf, bathy_90, good_ins_90, X_90, Y_90, Z_90, z_top_90, z_bot_90, hFacC_90, flattened_monotonic_grid_indices_90, z_cen_90 
 
-def interp_check(xyz, AI, X, Y, Z, lat_vals, lon_vals, step, **kwargs):
+#def interp_check(xyz, flattened_monotonic_grid_indices, lat_vals, lon_vals, step, **kwargs):
+def interp_check(xyz, flattened_monotonic_grid_indices, X, Y, Z, lat_vals, lon_vals, step, **kwargs):
     
+    #X = xyz[:,0]
+    #Y = xyz[:,1]
+    #Z = xyz[:,2]
+
     good_clim_ins = kwargs.get('good_clim', None)
     
     deg2rad = np.pi/180.0
@@ -1611,16 +1616,17 @@ def interp_check(xyz, AI, X, Y, Z, lat_vals, lon_vals, step, **kwargs):
 
         test_x, test_y, test_z = sph2cart(test_lon*deg2rad, test_lat*deg2rad, 1)
 
-        ###test_ind = int(griddata(xyz, AI, np.asarray([test_x, test_y, test_z]), 'nearest'))
-        #test_ind = griddata(xyz, AI, np.column_stack([test_x, test_y, test_z]), 'nearest').astype(int)
-        test_ind = griddata(xyz, AI, np.asarray([test_x, test_y, test_z]), 'nearest').astype(int)
+        ###test_ind = int(griddata(xyz, flattened_monotonic_grid_indices, np.asarray([test_x, test_y, test_z]), 'nearest'))
+        #test_ind = griddata(xyz, flattened_monotonic_grid_indices, np.column_stack([test_x, test_y, test_z]), 'nearest').astype(int)
+        test_ind = griddata(xyz, flattened_monotonic_grid_indices, np.asarray([test_x, test_y, test_z]), 'nearest').astype(int)
 
         '''
         try:
-            test_ind = griddata(xyz, AI, np.column_stack([test_x, test_y, test_z]), 'nearest').astype(int)
-            #test_ind = griddata(xyz, AI, np.column_stack([test_x, test_y, test_z]), 'nearest').astype(int)
-            #test_ind = griddata(xyz, AI, np.asarray([test_x, test_y, test_z]), 'nearest').astype(int)
+            test_ind = griddata(xyz, flattened_monotonic_grid_indices, np.column_stack([test_x, test_y, test_z]), 'nearest').astype(int)
+            #test_ind = griddata(xyz, flattened_monotonic_grid_indices, np.column_stack([test_x, test_y, test_z]), 'nearest').astype(int)
+            #test_ind = griddata(xyz, flattened_monotonic_grid_indices, np.asarray([test_x, test_y, test_z]), 'nearest').astype(int)
         except:
+            pdb.set_trace()
             pdb.set_trace()
         '''
         

@@ -34,7 +34,7 @@ Please see the **preprocessing_examples** folder inside the linked google drive 
 ## NCEI.py
 This script creates a set of NETCDF files containing processed data. The steps of the data verification process are outlined below.
 1. **update_prof_and_tile_points_on_profiles(MITprofs, grid_dir, llcN, wet_or_all)**
-   - Updates prof_points and tile interpolation points so that the MITgcm knows which grid points to use for the cost 
+   - Updates profile_flattened_monotonic_grid_indicess and tile interpolation points so that the MITgcm knows which grid points to use for the cost 
 2. **update_spatial_bin_index_on_prepared_profiles(sphere_bin, MITprofs, grid_dir)**
    - Updates each profile with a bin index that is specified from some file.
 3. **update_monthly_mean_TS_clim_WOA13v2_on_prepared_profiles(clim_dir, MITprofs)**

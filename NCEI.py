@@ -57,16 +57,16 @@ def NCEI_pipeline(dest_dir, input_dir):
     wet_or_all = 1                  # 0 = interpolated to nearest wet point, 1 = interpolated all points, regardless of wet or dry
 
     # Step 4: update_sigmaTS_on_prepared_profiles parems
-    respect_existing_zero_weights = 0   # 0 = no, 1 = yes
-    new_S_floor = 0.005                 # set this to zero if S_floor is unused
-    new_T_floor = 0                     # set this to zero if T_floor is unused
+    respect_existing_zero_weights = False
+    new_S_floor = 0.005                     # set this to zero if S_floor is unused
+    new_T_floor = 0                         # set this to zero if T_floor is unused
 
     # Step 5: update_gamma_factor_on_prepared_profiles parems
-    apply_gamma_factor = 1          #   0 = remove gamma factor from sigma, 1 = apply gamma to sigma
+    apply_gamma_factor = True          #   0 = remove gamma factor from sigma, 1 = apply gamma to sigma
                                     #   gamma factor is factor 1/sqrt(alpha), where alpha = area/max(area) of the grid cell area in which this profile is found.
 
     # Step 6: update_prof_insitu_T_to_potential_T parems
-    replace_missing_S_with_clim_S = 1   # 1 = replace, 0 = do not replace
+    replace_missing_S_with_clim_S = True   # 1 = replace, 0 = do not replace
 
     # Step 7: update_zero_weight_points_on_prepared_profiles
     # Various parems inside of if block pretaining to 'adjust' on lines 142 - 161 within script
@@ -76,11 +76,6 @@ def NCEI_pipeline(dest_dir, input_dir):
     closest_time = 120000           # HHMMSS: if there is more than one profile per day in a location, choose the one
                                     # that is closest in time to 'closest time' default is noon
     method = 1                      # method 0 or 1
-
-    #largest_numbered_step_to_run = 7
-    #largest_numbered_step_to_run = 8
-    #largest_numbered_step_to_run = 10
-    largest_numbered_step_to_run = 1
 
     print()
 
@@ -99,10 +94,10 @@ def NCEI_pipeline(dest_dir, input_dir):
             partial(step02.main, MITprof_ds, sphere_dir, grid_dir), 
             partial(step03.main, MITprof_ds, clim_dir), 
             partial(step04.main, MITprof_ds, grid_dir, CTD_TS_bin, respect_existing_zero_weights, new_S_floor, new_T_floor), 
-        ]
-        """
             partial(step05.main, MITprof_ds, grid_dir, apply_gamma_factor, llcN), 
             partial(step06.main, MITprof_ds, replace_missing_S_with_clim_S), 
+        ]
+        """
             partial(step07.main, MITprof_ds, 'adjust'), 
             partial(step08.main, MITprof_ds), 
             partial(step09.main, MITprof_ds), 
@@ -126,7 +121,7 @@ def NCEI_pipeline(dest_dir, input_dir):
 
 
     if tools.count_total_survivors_TS(MITprof_ds) > 0:
-        tools.MITprof_write_to_nc(dest_dir, MITprof_ds, largest_numbered_step_to_run, basename)
+        tools.MITprof_write_to_nc(dest_dir, MITprof_ds, len(ncei_function_list), basename)
         print(f"                SUCCESS:    {tools.count_total_survivors_TS(MITprof_ds)} PROFILES SURVIVED THE NCEI PROCESSING ALGORITHM\n")
     else:
         print(f"                FAILURE:    {tools.count_total_survivors_TS(MITprof_ds)} PROFILES SURVIVED THE NCEI PROCESSING ALGORITHM\n")

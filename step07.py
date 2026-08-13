@@ -324,31 +324,6 @@ def update_zero_weight_points_on_prepared_profiles(run_code, MITprof_ds):
 
 
 def main(run_code, MITprof_ds):
-
     #print("step07: update_zero_weight_points_on_prepared_profiles")
     update_zero_weight_points_on_prepared_profiles(run_code, MITprof_ds)
 
-if __name__ == '__main__':
- 
-    parser = argparse.ArgumentParser()
-
-    parser.add_argument("-r", "--run_code", action= "store",
-                        help = "Run code: 90 or 270" , dest= "run_code",
-                        type = int, required= True)
-    
-    parser.add_argument("-m", "--MIT_dir", action= "store",
-                    help = "File path to NETCDF files containing MITprof_ds info." , dest= "MIT_dir",
-                    type = str, required= True)
-
-    args = parser.parse_args()
-
-    run_code = args.run_code
-    MITprof_ds_fp = args.MIT_dir
-
-    nc_files = glob.glob(os.path.join(MITprof_ds_fp, '*.nc'))
-    if len(nc_files) == 0:
-        raise Exception("Invalid NC filepath")
-    for file in nc_files:
-        MITprof_ds = MITprof_read(file, 7)
-
-    main(run_code, MITprof_ds)
