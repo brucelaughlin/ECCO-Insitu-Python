@@ -69,13 +69,19 @@ def NCEI_pipeline(dest_dir, input_dir):
     replace_missing_S_with_clim_S = True   # 1 = replace, 0 = do not replace
 
     # Step 7: update_zero_weight_points_on_prepared_profiles
-    # Various parems inside of if block pretaining to 'adjust' on lines 142 - 161 within script
+    exclude_high_latitude_profiles_from_clim_cost = True
+    dubious_clim_lat_threshold = 60
+    # More hardcoded parameters appear in the script...
+    #step07_run_code = "adjust"
+
 
     # Step 10: update_decimate_profiles_subdaily_to_once_daily
     distance_tolerance = 5e3        # radius within which profiles are considered to be at the same location [in meters]
     closest_time = 120000           # HHMMSS: if there is more than one profile per day in a location, choose the one
                                     # that is closest in time to 'closest time' default is noon
     method = 1                      # method 0 or 1
+
+
 
     print()
 
@@ -96,9 +102,10 @@ def NCEI_pipeline(dest_dir, input_dir):
             partial(step04.main, MITprof_ds, grid_dir, CTD_TS_bin, respect_existing_zero_weights, new_S_floor, new_T_floor), 
             partial(step05.main, MITprof_ds, grid_dir, apply_gamma_factor, llcN), 
             partial(step06.main, MITprof_ds, replace_missing_S_with_clim_S), 
+            partial(step07.main, MITprof_ds, exclude_high_latitude_profiles_from_clim_cost, dubious_clim_lat_threshold),
+            #partial(step07.main, MITprof_ds, exclude_high_latitude_profiles_from_clim_cost, dubious_clim_lat_threshold, step07_run_code),
         ]
         """
-            partial(step07.main, MITprof_ds, 'adjust'), 
             partial(step08.main, MITprof_ds), 
             partial(step09.main, MITprof_ds), 
             partial(step10.main, MITprof_ds, distance_tolerance, closest_time, method)
