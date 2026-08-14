@@ -16,7 +16,7 @@ def distmat(xy):
     
     return distances_array
 
-def update_decimate_profiles_subdaily_to_once_daily(MITprof_ds, distance_tolerance, closest_time, method):
+def update_decimate_profiles_subdaily_to_once_daily(MITprof_ds, profile_var_key_list, distance_tolerance, closest_time, method):
     """
     This script decimates profiles with subdaily sampling at the same
     location to once-daily sampling.
@@ -72,13 +72,14 @@ def update_decimate_profiles_subdaily_to_once_daily(MITprof_ds, distance_toleran
                 toss_set_all = np.union1d(toss_set_all, toss_set)
 
     toss_set_all = toss_set_all.astype(int)
-    MITprof_ds['prof_Tweight'][toss_set_all,:] = 0
-    MITprof_ds['prof_Sweight'][toss_set_all,:] = 0
+
+    for prof_key in profile_var_key_list:
+        MITprof_ds[f"{prof_key}weight"][toss_set_all,:] = 0
    
-    MITprof_ds = tools.update_remove_extraneous_depth_levels(MITprof_ds)
+    MITprof_ds = tools.update_remove_zero_T_S_weighted_profiles_from_MITprof(MITprof_ds, profile_var_key_list)
 
 
-def main(MITprof_ds, distance_tolerance, closest_time, method):
+def main(MITprof_ds, profile_var_key_list, distance_tolerance, closest_time, method):
     #print("step10: update_decimate_profiles_subdaily_to_once_daily")
-    update_decimate_profiles_subdaily_to_once_daily(MITprof_ds, distance_tolerance, closest_time, method)
+    update_decimate_profiles_subdaily_to_once_daily(MITprof_ds, profile_var_key_list, distance_tolerance, closest_time, method)
 

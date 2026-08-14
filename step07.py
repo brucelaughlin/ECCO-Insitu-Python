@@ -15,7 +15,7 @@ def new_data_array_by_mask_add_scalar(data_array, bool_mask_da, scalar):
     return xr.where(bool_mask_da, data_array + scalar, data_array)
 
 
-def update_zero_weight_points_on_prepared_profiles(MITprof_ds, exclude_high_latitude_profiles_from_clim_cost, dubious_clim_lat_threshold)
+def update_zero_weight_points_on_prepared_profiles(MITprof_ds, profile_var_key_list, exclude_high_latitude_profiles_from_clim_cost, dubious_clim_lat_threshold):
 #def update_zero_weight_points_on_prepared_profiles(MITprof_ds, exclude_high_latitude_profiles_from_clim_cost, dubious_clim_lat_threshold, step07_run_code)
     """
     This script zeros out profTweight and profSweight on
@@ -44,8 +44,6 @@ def update_zero_weight_points_on_prepared_profiles(MITprof_ds, exclude_high_lati
     % plot_map_bad_profiles : 0/1 whether to make a plot of bad profs locations
     """
 
-    prof_key_list = ['prof_T', 'prof_S']
-
     criteria_names =  [
         'T or S weight already zero',
         'nonzero prof T or S flag',
@@ -73,14 +71,14 @@ def update_zero_weight_points_on_prepared_profiles(MITprof_ds, exclude_high_lati
             
     num_profs = len(MITprof_ds['prof_lon'])
 
-    for prof_key in prof_key_list:
+    for prof_key in profile_var_key_list:
 
         if prof_key in MITprof_ds:
 
             MITprof_ds[f'{prof_key}weight_code'] = xr.full_like(MITprof_ds[f'{prof_key}weight'], fill_value=0)
 
             for zero_criteria_code in zero_criteria_codes:
-           
+
                 if zero_criteria_code == 1: #  profiles already have zero or missing weights
                     bool_mask_da = (MITprof_ds[f'{prof_key}weight'].isnull()) | (MITprof_ds[f'{prof_key}weight'] <= 0)
                     MITprof_ds[f'{prof_key}weight'] = new_data_array_by_mask_set_to_single_value(MITprof_ds[f'{prof_key}weight'], bool_mask_da, 0)
@@ -131,7 +129,7 @@ def update_zero_weight_points_on_prepared_profiles(MITprof_ds, exclude_high_lati
                     # bad years are pre 1950 and after today's year
                     bool_mask_da_1D = (y < 1950) | (y > datetime.datetime.now().year) | (m < 1) | (m > 12) | (d < 1) | (d > 31) 
                     bool_mask_da_1D = bool_mask_da_1D | (MITprof_ds['prof_HHMMSS'] < 0) | (MITprof_ds['prof_HHMMSS'] > 240000)
-                    bool_mask_da = MITprof_ds[prof_key].copy(deep=False)
+                    bool_mask_da = MITprof_ds[prof_key].copy(deep=True)
                     bool_mask_da.data = np.broadcast_to(bool_mask_da_1D.data[:, None], MITprof_ds[prof_key].shape)
                     MITprof_ds[f'{prof_key}weight'] = new_data_array_by_mask_set_to_single_value(MITprof_ds[f'{prof_key}weight'], bool_mask_da, 0)
                     MITprof_ds[f'{prof_key}weight_code'] = new_data_array_by_mask_add_criteria_scalar_fn(MITprof_ds[f'{prof_key}weight_code'], bool_mask_da, zero_criteria_code)
@@ -141,14 +139,22 @@ def update_zero_weight_points_on_prepared_profiles(MITprof_ds, exclude_high_lati
                     lats = MITprof_ds['prof_lat']
                     lons = MITprof_ds['prof_lon']
 
+                    if (lons > 360).sum().item() > 0:
+                        raise Exception("There are some bogus longitudes in this dataset")
+
+                    # Not sure if I'm masking problematic values here, but we need to do something...
+                    if (lons > 180).sum().item() > 0:
+                        lons[lons > 180] -= 360
+
                     # Do we really want to mask (0,0) in lon, lat space?
                     bool_mask_da_1D = (lats < -90) | (lats > 90) | (lons < -180) | (lons > 180) | ((lats == 0) & (lons == 0))
-                    bool_mask_da = MITprof_ds[prof_key].copy(deep=False)
+                    bool_mask_da = MITprof_ds[prof_key].copy(deep=True)
                     bool_mask_da.data = np.broadcast_to(bool_mask_da_1D.data[:, None], MITprof_ds[prof_key].shape)
                     MITprof_ds[f'{prof_key}weight'] = new_data_array_by_mask_set_to_single_value(MITprof_ds[f'{prof_key}weight'], bool_mask_da, 0)
                     MITprof_ds[f'{prof_key}weight_code'] = new_data_array_by_mask_add_criteria_scalar_fn(MITprof_ds[f'{prof_key}weight_code'], bool_mask_da, zero_criteria_code)
 
 
+                # WHOA, this nuked a ton of them
                 if zero_criteria_code == 9 or zero_criteria_code == 10: # high cost vs. climatology
 
                     # Out of curiousity, why are we waiting till here to nan-out 0's?
@@ -159,24 +165,24 @@ def update_zero_weight_points_on_prepared_profiles(MITprof_ds, exclude_high_lati
                     cost_vs_climatology = (MITprof_ds[prof_key] - MITprof_ds[f'{prof_key}clim'])**2 * MITprof_ds[f'{prof_key}weight']
 
                     if exclude_high_latitude_profiles_from_clim_cost:
-                        bool_mask_da_1D_lat =  (MITprof_ds['prof_lat'] <= -dubious_clim_lat_threshold) | (MITprof_ds['prof_lat'] >= dubious_clim_lat_threshold)
-                        bool_mask_da_lat = MITprof_ds[prof_key].copy(deep=False)
+                        bool_mask_da_1D_lat =  (MITprof_ds['prof_lat'] < -dubious_clim_lat_threshold) | (MITprof_ds['prof_lat'] > dubious_clim_lat_threshold)
+                        bool_mask_da_lat = MITprof_ds[prof_key].copy(deep=True)
                         bool_mask_da_lat.data = np.broadcast_to(bool_mask_da_1D_lat.data[:, None], MITprof_ds[prof_key].shape)
 
                     if zero_criteria_code == 9: 
-                        bool_mask_da = MITprof_ds[prof_key].copy(deep=False)
-                        fill_data = np.broadcast_to((cost_vs_climatology.mean(dim="iDEPTH") >= profile_avg_cost_threshold).data[:, None], MITprof_ds[prof_key].shape).copy()
+                        bool_mask_da = MITprof_ds[prof_key].copy(deep=True)
+                        fill_data_bools = np.broadcast_to((cost_vs_climatology.mean(dim="iDEPTH") >= profile_avg_cost_threshold).data[:, None], MITprof_ds[prof_key].shape).copy()
                         if exclude_high_latitude_profiles_from_clim_cost:
-                            fill_data[bool_mask_da_lat.data] = False
-                        bool_mask_da.data = fill_data
+                            fill_data_bools[bool_mask_da_lat.data] = False
+                        bool_mask_da.data = fill_data_bools
                         MITprof_ds[f'{prof_key}weight'] = new_data_array_by_mask_set_to_single_value(MITprof_ds[f'{prof_key}weight'], bool_mask_da, 0)
                         MITprof_ds[f'{prof_key}weight_code'] = new_data_array_by_mask_add_criteria_scalar_fn(MITprof_ds[f'{prof_key}weight_code'], bool_mask_da, zero_criteria_code)
                     if zero_criteria_code == 10:
-                        bool_mask_da = MITprof_ds[prof_key].copy(deep=False)
-                        fill_data = (cost_vs_climatology >= single_datum_cost_threshold).data.copy()
+                        bool_mask_da = MITprof_ds[prof_key].copy(deep=True)
+                        fill_data_bools = (cost_vs_climatology >= single_datum_cost_threshold).data.copy()
                         if exclude_high_latitude_profiles_from_clim_cost:
-                            fill_data[bool_mask_da_lat.data] = False
-                        bool_mask_da.data = fill_data
+                            fill_data_bools[bool_mask_da_lat.data] = False
+                        bool_mask_da.data = fill_data_bools
                         MITprof_ds[f'{prof_key}weight'] = new_data_array_by_mask_set_to_single_value(MITprof_ds[f'{prof_key}weight'], bool_mask_da, 0)
                         MITprof_ds[f'{prof_key}weight_code'] = new_data_array_by_mask_add_criteria_scalar_fn(MITprof_ds[f'{prof_key}weight_code'], bool_mask_da, zero_criteria_code)
 
@@ -192,7 +198,7 @@ def update_zero_weight_points_on_prepared_profiles(MITprof_ds, exclude_high_lati
                                 prof_S_sub_surface_threshold_depth = var_dict[prof_key]['subsurface_min_depth_thresholds'][ii]
                                 
                                 bool_mask_da_1D = np.abs(MITprof_ds['prof_depth']) <= np.abs(prof_S_sub_surface_threshold_depth)
-                                bool_mask_da_depth_ignore = MITprof_ds[prof_key].copy(deep=False)
+                                bool_mask_da_depth_ignore = MITprof_ds[prof_key].copy(deep=True)
                                 bool_mask_da_depth_ignore.data = np.broadcast_to(bool_mask_da_1D.data[None, :], MITprof_ds[prof_key].shape)
                                 
                                 bool_mask_da_S_below_threshold_val_bad = MITprof_ds[prof_key] <= prof_S_sub_surface_threshold
@@ -204,17 +210,26 @@ def update_zero_weight_points_on_prepared_profiles(MITprof_ds, exclude_high_lati
                                 threshold_flag_array = new_data_array_by_mask_set_to_single_value(threshold_flag_array, bool_mask_da_depth_ignore, np.nan)
                                 
                                 bool_mask_da_1D = threshold_flag_array.median(dim="iDEPTH") == 1
-                                bool_mask_da_threshold = MITprof_ds[prof_key].copy(deep=False)
+                                bool_mask_da_threshold = MITprof_ds[prof_key].copy(deep=True)
                                 bool_mask_da_threshold.data = np.broadcast_to(bool_mask_da_1D.data[:, None], MITprof_ds[prof_key].shape)
 
                                 bool_mask_da = (bool_mask_da) | (bool_mask_da_threshold)
 
-                            for prof_key in prof_key_list:
+                            for prof_key in profile_var_key_list:
                                 MITprof_ds[f'{prof_key}weight'] = new_data_array_by_mask_set_to_single_value(MITprof_ds[f'{prof_key}weight'], bool_mask_da, 0)
                                 MITprof_ds[f'{prof_key}weight_code'] = new_data_array_by_mask_add_criteria_scalar_fn(MITprof_ds[f'{prof_key}weight_code'], bool_mask_da, zero_criteria_code)
 
                 
-    for prof_key in prof_key_list:
+                """
+                print()
+                print(f"zero criteria code: {zero_criteria_code}")
+                print(f"sum of {prof_key} weights: {MITprof_ds[f'{prof_key}weight'].sum().item():.2f}")
+                print()
+                pdb.set_trace()
+                """
+
+                
+    for prof_key in profile_var_key_list:
         if MITprof_ds[f'{prof_key}weight_code'].isnull().any().item():
             raise Exception(f'nans found in {prof_key} weight code')
             
@@ -244,9 +259,9 @@ def update_zero_weight_points_on_prepared_profiles(MITprof_ds, exclude_high_lati
     """
 
 
-def main(MITprof_ds, exclude_high_latitude_profiles_from_clim_cost, dubious_clim_lat_threshold):
+def main(MITprof_ds, profile_var_key_list, exclude_high_latitude_profiles_from_clim_cost, dubious_clim_lat_threshold):
 #def main(MITprof_ds, exclude_high_latitude_profiles_from_clim_cost, dubious_clim_lat_threshold, step07_run_code):
     #print("step07: update_zero_weight_points_on_prepared_profiles")
-    update_zero_weight_points_on_prepared_profiles(MITprof_ds, exclude_high_latitude_profiles_from_clim_cost, dubious_clim_lat_threshold)
+    update_zero_weight_points_on_prepared_profiles(MITprof_ds, profile_var_key_list, exclude_high_latitude_profiles_from_clim_cost, dubious_clim_lat_threshold)
     #update_zero_weight_points_on_prepared_profiles(MITprof_ds, exclude_high_latitude_profiles_from_clim_cost, dubious_clim_lat_threshold, step07_run_code)
 

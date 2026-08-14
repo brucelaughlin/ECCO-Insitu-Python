@@ -74,8 +74,12 @@ def update_monthly_mean_TS_clim_WOA13v2_on_prepared_profiles(TS_clim_dir, MITpro
     
     # go through each z level in the profile array
     # set the default climatology value to be fillVal (-9999)
-    prof_clim_T = np.ones((num_profs, num_prof_depths)) * fillVal
-    prof_clim_S = np.ones((num_profs, num_prof_depths)) * fillVal
+    #prof_clim_T = np.ones((num_profs, num_prof_depths)) * fillVal
+    #prof_clim_S = np.ones((num_profs, num_prof_depths)) * fillVal
+
+    prof_clim_T = np.full((num_profs, num_prof_depths), np.nan)
+    prof_clim_S = np.full((num_profs, num_prof_depths), np.nan)
+
 
     for k in range(min(num_prof_depths, num_clim_depths)):
         T_clim_k = T_clim[:,k,:,:]
@@ -94,8 +98,8 @@ def update_monthly_mean_TS_clim_WOA13v2_on_prepared_profiles(TS_clim_dir, MITpro
             prof_clim_T[:,k][bool_mask_current_month] = T_clim_mk[profile_flattened_monotonic_grid_indices[bool_mask_current_month]]
             prof_clim_S[:,k][bool_mask_current_month] = S_clim_mk[profile_flattened_monotonic_grid_indices[bool_mask_current_month]]
     
-    prof_clim_S[np.isnan(prof_clim_S)] = fillVal
-    prof_clim_T[np.isnan(prof_clim_T)] = fillVal
+    #prof_clim_S[np.isnan(prof_clim_S)] = fillVal
+    #prof_clim_T[np.isnan(prof_clim_T)] = fillVal
 
     MITprof_ds['prof_Tclim'] = xr.DataArray(prof_clim_T, dims=['iPROF', 'iDEPTH'])
     MITprof_ds['prof_Sclim'] = xr.DataArray(prof_clim_S, dims=['iPROF', 'iDEPTH'])

@@ -8,128 +8,159 @@ from scipy.interpolate import griddata
 
 
 def print_survivors(MITprof_ds, step_counter):
-    a=1
     print(f"step: {step_counter}")
     print(f"not nan T:    {MITprof_ds['prof_T'].notnull().sum().item()}")
     print(f"not nan S:    {MITprof_ds['prof_S'].notnull().sum().item()}")
     print(f"survivors: {MITprof_ds['prof_T'].notnull().sum().item() + MITprof_ds['prof_S'].notnull().sum().item()}")
 
+
 def count_total_survivors_TS(MITprof_ds):
     return MITprof_ds['prof_T'].notnull().sum().item() + MITprof_ds['prof_S'].notnull().sum().item() 
 
 
-def update_remove_extraneous_depth_levels(MITprof_ds):
-
-    total_num_valid_T_per_depth = (MITprof_ds['prof_Tweight'] > 0).sum(dim = "iDEPTH").data
-    #total_num_valid_T_per_depth = (MITprof_ds['prof_Tweight'] > 0).sum(dim = "iDEPTH")
-    total_num_valid_S_per_depth = (MITprof_ds['prof_Sweight'] > 0).sum(dim = "iDEPTH").data if 'prof_S' in MITprof_ds else np.zeros_like(MITprof_ds['prof_depth'])
-    #total_num_valid_S_per_depth = (MITprof_ds['prof_Sweight'] > 0).sum(dim = "iDEPTH") if 'prof_S' in MITprof_ds else np.zeros_like(MITprof_ds['prof_depth'])
-
-    max_depth_level_T = np.nonzero(total_num_valid_T_per_depth)[0][-1] if np.size(np.nonzero(total_num_valid_T_per_depth)) > 0 else 0
-    max_depth_level_S = np.nonzero(total_num_valid_S_per_depth)[0][-1] if np.size(np.nonzero(total_num_valid_S_per_depth)) > 0 else 0
-
-    max_depth_level = max(max_depth_level_T, max_depth_level_S)
-
-    if max_depth_level < len(MITprof_ds['prof_depth'].data):
-        MITprof_ds_new = extract_profile_subset_from_MITprof(MITprof_ds, bool_mask_depth_dim = np.ones(max_depth_level).astype(bool))
-
-    return MITprof_ds_new
+def update_remove_extraneous_depth_levels(MITprof_ds, profile_var_key_list):
+    depth_level_max_list = []
+    for prof_key in profile_var_key_list:
+        total_num_valid_per_depth = (MITprof_ds[prof_key] > 0).sum(dim = "iPROF").data
+        depth_level_max_list.append(np.nonzero(total_num_valid_per_depth)[0][-1] if np.size(np.nonzero(total_num_valid_per_depth)) > 0 else 0)
+    max_depth_level = max(depth_level_max_list)
+    if max_depth_level < len(MITprof_ds['prof_depth']) - 1:
+        MITprof_ds['global_1D_mask_iDEPTH_max_depth'] = xr.full_like(MITprof_ds['prof_depth'], fill_value=False, dtype=bool)
+        MITprof_ds['global_1D_mask_iDEPTH_max_depth'].data = np.arange(len(MITprof_ds['prof_depth'])) <= max_depth_level
+        return extract_profile_subset_from_MITprof_iDEPTH_mask(MITprof_ds, bool_mask_name='global_1D_mask_iDEPTH_max_depth')
+    else:
+        return MITprof_ds
 
 
-def count_nonzero_weight_profiles_with_depth(MITprof_ds):
-
-    T_counts = (MITprof_ds['prof_Tweight'] > 0).sum(dim = "iPROFILE").data
-    #T_counts = (MITprof_ds['prof_Tweight'] > 0).sum(dim = "iPROFILE")
-    S_counts = (MITprof_ds['prof_Sweight'] > 0).sum(dim = "iPROFILE").data if 'prof_S' in MITprof_ds else np.zeros_like(MITprof_ds['prof_depth'].data)
-    #S_counts = (MITprof_ds['prof_Sweight'] > 0).sum(dim = "iPROFILE") if 'prof_S' in MITprof_ds else np.zeros_like(MITprof_ds['prof_depth'].data)
-    
-    return T_counts, S_counts
-
-
-def count_profs_with_nonzero_weights(MITprof_ds):
-
-    info_dict = {}
-    info_dict['num_profiles'] = len(MITprof_ds['prof_lon'].data)
-
-    prof_key_list = ['prof_T', 'prof_S']
-    prof_key_counter = 0
-
-    for prof_key in prof_key_list:
-
-        # feels backwards but whatever
+def update_remove_zero_T_S_weighted_profiles_from_MITprof(MITprof_ds, profile_var_key_list):
+    num_nan_weights = 0
+    for prof_key in profile_var_key_list:
         if prof_key in MITprof_ds.data_vars:
+            num_nan_weights += MITprof_ds[f'{prof_key}weight'].isnull().sum().item()
+    if num_nan_weights > 0:
+        raise Exception('you have nans in your weights, this should never happen')
+    MITprof_ds['global_1D_mask_iPROF_nonzero_weight'] = xr.full_like(MITprof_ds['prof_lon'], fill_value=False, dtype=bool)
+    for prof_key in profile_var_key_list:
+        if prof_key in MITprof_ds.data_vars:
+            try:
+                MITprof_ds['global_1D_mask_iPROF_nonzero_weight'] = (MITprof_ds['global_1D_mask_iPROF_nonzero_weight']) | (MITprof_ds[f'{prof_key}weight'].sum(dim="iDEPTH") > 0)
+            except:
+                pdb.set_trace()
+    return extract_profile_subset_from_MITprof_iPROF_mask(MITprof_ds, bool_mask_name='global_1D_mask_iPROF_nonzero_weight')
 
-            info_dict[prof_key] = {}
-            info_dict[prof_key]['nonzero_weight_1D_profile_mask'] = (MITprof_ds[f'{prof_key}weight'].sum(dim="iDEPTH") > 0).data
-            info_dict[prof_key]['zero_weight_1D_profile_mask'] = (MITprof_ds[f'{prof_key}weight'].sum(dim="iDEPTH") == 0).data
 
-            #if (MITprof_ds[f'{prof_key}weight'].sum(dim="iDEPTH") > 0).data > 0
-
-            prof_key_counter += 1
-            if prof_key_counter == 1:
-                zero_weight_mask_all_vars = info_dict[prof_key]['zero_weight_1D_profile_mask']
-                nonzero_weight_mask_all_vars = info_dict[prof_key]['nonzero_weight_1D_profile_mask']
+def extract_profile_subset_from_MITprof_iDEPTH_mask(MITprof_ds, bool_mask_name):
+    new_ds_dict = {}
+    for data_var in MITprof_ds.data_vars:
+        if "iDEPTH" not in MITprof_ds[data_var].coords:
+            new_ds_dict[data_var] = MITprof_ds[data_var].copy(deep=True)
+        else:
+            if len(MITprof_ds[data_var].dims) == 2:
+                new_data = MITprof_ds[data_var].data.copy()[:, MITprof_ds[bool_mask_name].data]
+                new_coords = {
+                    "iDEPTH": MITprof_ds[data_var].coords["iDEPTH"].data[MITprof_ds[bool_mask_name].data], 
+                    "iPROF": MITprof_ds[data_var].coords["iPROF"].data,
+                }
             else:
-                zero_weight_mask_all_vars = (zero_weight_mask_all_vars) | (info_dict[prof_key]['zero_weight_1D_profile_mask'])
-                nonzero_weight_mask_all_vars = (nonzero_weight_mask_all_vars) | (info_dict[prof_key]['nonzero_weight_1D_profile_mask'])
-
-    info_dict['zero_weight_1D_profile_mask_all_vars'] = zero_weight_mask_all_vars
-    info_dict['nonzero_weight_1D_profile_mask_all_vars'] = nonzero_weight_mask_all_vars
-
-
-    return info_dict
+                new_data = MITprof_ds[data_var].data.copy()[MITprof_ds[bool_mask_name].data]
+                new_coords = {
+                    "iDEPTH": MITprof_ds[data_var].coords["iDEPTH"].data[MITprof_ds[bool_mask_name].data], 
+                }
+            new_ds_dict[data_var] = xr.DataArray(data=new_data, dims=MITprof_ds[data_var].dims, coords=new_coords)
+    return xr.Dataset(new_ds_dict)
 
 
-def extract_profile_subset_from_MITprof(MITprof_ds, bool_mask_profile_dim = None, bool_mask_depth_dim = None):
+def extract_profile_subset_from_MITprof_iPROF_mask(MITprof_ds, bool_mask_name):
+    new_ds_dict = {}
+    for data_var in MITprof_ds.data_vars:
+        if "iPROF" not in MITprof_ds[data_var].coords:
+            new_ds_dict[data_var] = MITprof_ds[data_var].copy(deep=True)
+        else:
+            if len(MITprof_ds[data_var].dims) == 2:
+                new_data = MITprof_ds[data_var].data.copy()[MITprof_ds[bool_mask_name].data, :]
+                new_coords = {
+                    "iPROF": MITprof_ds[data_var].coords["iPROF"].data[MITprof_ds[bool_mask_name].data], 
+                    "iDEPTH": MITprof_ds[data_var].coords["iDEPTH"].data,
+                }
+            else:
+                new_data = MITprof_ds[data_var].data.copy()[MITprof_ds[bool_mask_name].data]
+                new_coords = {
+                    "iPROF": MITprof_ds[data_var].coords["iPROF"].data[MITprof_ds[bool_mask_name].data], 
+                }
+            new_ds_dict[data_var] = xr.DataArray(data=new_data, dims=MITprof_ds[data_var].dims, coords=new_coords)
+    return xr.Dataset(new_ds_dict)
+
+
+
+
+"""
+def extract_profile_subset_from_MITprof(MITprof_ds):
+#def extract_profile_subset_from_MITprof(MITprof_ds, bool_mask_profiles = None, bool_mask_depths = None):
 
     # this is the old dumb way.  we don't want to convert to dictionaries then back to datasets.  we are not babies
     
+    MITprof_ds['zero_weight_1D_profile_mask_all_vars']
+    MITprof_ds['global_1D_mask_iPROF_nonzero_weight']
 
-    num_profiles = len(MITprof_ds['prof_lon'].data)
-    num_depths = len(MITprof_ds['prof_depth'].data)
+    num_profiles = len(MITprof_ds['prof_lon'])
+    num_depths = len(MITprof_ds['prof_depth'])
 
-    if bool_mask_profile_dim is None:
-        bool_mask_profile_dim = np.ones(num_profiles).astype(bool)
-    elif len(bool_mask_profile_dim) == 0:
-        bool_mask_profile_dim = np.ones(num_profiles).astype(bool)
-    if bool_mask_depth_dim is None: #or len(bool_mask_depth_dim) == 0:
-        bool_mask_depth_dim = np.ones(num_depths).astype(bool)
-    elif len(bool_mask_depth_dim) == 0:
-        bool_mask_depth_dim = np.ones(num_depths).astype(bool)
+    # why check if len is 0...?  what case is that?
+    if bool_mask_profiles is None:
+        bool_mask_profiles = np.ones(num_profiles).astype(bool)
+    elif len(bool_mask_profiles) == 0:
+        bool_mask_profiles = np.ones(num_profiles).astype(bool)
+    if bool_mask_depths is None: 
+        bool_mask_depths = np.ones(num_depths).astype(bool)
+    elif len(bool_mask_depths) == 0:
+        bool_mask_depths = np.ones(num_depths).astype(bool)
     
-    #MITprof_subset_dict = {}
+    data_array_dict = {}
 
     for data_var in MITprof_ds.data_vars:
-        variable_data = MITprof_ds[data_var].data
+
+        variable_data = MITprof_ds[data_var].data.copy()
+
+        variable_dims = MITprof_ds[data_var].dims
+        variable_coords = MITprof_ds[data_var].coords
+
         var_shape = variable_data.shape
+
         if var_shape[0] == num_profiles:
 
             if len(var_shape) == 1 or 1 in var_shape:
-                subsample = variable_data[bool_mask_profile_dim]
+                subsample = variable_data[bool_mask_profiles]
+                dims = ("iPROF")
 
             elif len(var_shape) == 2 and var_shape[1] == num_depths:
-                subsample = variable_data[bool_mask_profile_dim, :][:, bool_mask_depth_dim] 
-                #subsample = variable_data[(np.broadcast_to(bool_mask_profile_dim[:,None],(num_profiles,num_depths))) & (np.broadcast_to(bool_mask_depth_dim[None,:],(num_profiles,num_depths)))] 
-                #subsample = variable_data[bool_mask_profile_dim, bool_mask_depth_dim] 
-                #subsample = variable_data[bool_mask_profile_dim[:, np.newaxis], bool_mask_depth_dim] # Bruce: what was this business of adding a dimension about???
+                subsample = variable_data[bool_mask_profiles, :][:, bool_mask_depths] 
 
+                dims = ("iPROF", "iDEPTH")
+
+                pdb.set_trace()
+                #subsample = variable_data[(np.broadcast_to(bool_mask_profiles[:,None],(num_profiles,num_depths))) & (np.broadcast_to(bool_mask_depths[None,:],(num_profiles,num_depths)))] 
+                #subsample = variable_data[bool_mask_profiles, bool_mask_depths] 
+                #subsample = variable_data[bool_mask_profiles[:, np.newaxis], bool_mask_depths] # Bruce: what was this business of adding a dimension about???
+
+            # What case is this...?
             elif len(var_shape) == 2 and var_shape[1] > 1:
-                subsample = variable_data[bool_mask_profile_dim, :]
+                subsample = variable_data[bool_mask_profiles, :]
+                dims = ("iPROF", "iDEPTH")
             else:
                 raise Exception(f'Do not know what to do with {data_var} of size {variable_data.shape}')
                 
         # if the length of the first dimension is the number of depths
-        # then subset to the bool_mask_depth_dim
+        # then subset to the bool_mask_depths
         elif var_shape[0] == num_depths:
-            subsample = variable_data[bool_mask_depth_dim]
+            subsample = variable_data[bool_mask_depths]
+            dims = ("iDEPTH")
         else:
             # if the object length is not the same as the number of profiles
             # then we'll just copy it over 
             subsample = variable_data
+            dims = ("iPROF", "iDEPTH")
 
-        #MITprof_ds[data_var] = subsample
-        #print(f"{data_var}  {subsample.shape}")
-        MITprof_subset_dict.update({data_var: subsample})
+        data_array_dict.update({data_var: xr.DataArray(subsample, dims=)})
 
     # lazy hardcoded "dim_dict" for construction of dataset at the end.  
     #dim_dict = {'iPROF': len(MITprof_subset_dict['prof_YYYYMMDD']), 'iDEPTH': len(MITprof_subset_dict['prof_depth'])} # Bruce - the dreaded hardcoding.... ugh
@@ -140,6 +171,7 @@ def extract_profile_subset_from_MITprof(MITprof_ds, bool_mask_profile_dim = None
 
     #return MITprof_dataset_new
 
+"""
 
 
 
@@ -490,6 +522,7 @@ def MITprof_write_to_nc(dest_dir, MITprofs, step, basename):
     name = f"{str(Path(basename).stem)}__ncei_step_{step}.nc"
     nc_path = os.path.join(dest_dir, name)
     output_DS.to_netcdf(nc_path, encoding= encoding)
+    print(f"output file: {nc_path}")
 
     
 def make_encoding(DS, fill_value = -9999):

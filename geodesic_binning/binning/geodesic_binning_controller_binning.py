@@ -75,7 +75,8 @@ profile_file_list_smallDemo = [
 profile_file_list_test = [
     #"/Users/brucel/ecco/yip/ECCO-Insitu-Python/processed_profile_files/ITP2_WO_2009_CTD__ncei_step_10.nc",
     #"/Users/brucel/ecco/yip/ECCO-Insitu-Python/processed_profile_files/ITP2_WO_2012_CTD__ncei_step_10.nc",
-    "/Users/brucel/ecco/yip/ECCO-Insitu-Python/processed_profile_files/WOD_WO_2021_GLD__ncei_step_10.nc",
+    #"/Users/brucel/ecco/yip/ECCO-Insitu-Python/processed_profile_files/WOD_WO_2021_GLD__ncei_step_10.nc",
+    "/Users/brucel/ecco/yip/sample_data/test_output_problematic_files/WOD_WO_2002_GLD__ncei_step_10.nc",
 ]
 
 ############################################

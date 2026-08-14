@@ -35,8 +35,10 @@ def NCEI_pipeline(dest_dir, input_dir):
     input_profile_files.sort()
 
     # ==========================================================================================
-    # ========================== START OF NEED PATHS/ PAREMS ===================================
+    # ========================== START OF NEED PATHS/ PARAMETERS ===================================
     # ==========================================================================================
+
+    profile_var_key_list = ['prof_T', 'prof_S']
 
     # Needed paths:
     # Set grid_dir
@@ -56,23 +58,23 @@ def NCEI_pipeline(dest_dir, input_dir):
     llcN = 90                       # Which grid to use, 90 or 270
     wet_or_all = 1                  # 0 = interpolated to nearest wet point, 1 = interpolated all points, regardless of wet or dry
 
-    # Step 4: update_sigmaTS_on_prepared_profiles parems
+    # Step 4: update_sigmaTS_on_prepared_profiles parameters
     respect_existing_zero_weights = False
     new_S_floor = 0.005                     # set this to zero if S_floor is unused
     new_T_floor = 0                         # set this to zero if T_floor is unused
 
-    # Step 5: update_gamma_factor_on_prepared_profiles parems
+    # Step 5: update_gamma_factor_on_prepared_profiles parameters
     apply_gamma_factor = True          #   0 = remove gamma factor from sigma, 1 = apply gamma to sigma
                                     #   gamma factor is factor 1/sqrt(alpha), where alpha = area/max(area) of the grid cell area in which this profile is found.
 
-    # Step 6: update_prof_insitu_T_to_potential_T parems
+    # Step 6: update_prof_insitu_T_to_potential_T parameters
     replace_missing_S_with_clim_S = True   # 1 = replace, 0 = do not replace
 
     # Step 7: update_zero_weight_points_on_prepared_profiles
     exclude_high_latitude_profiles_from_clim_cost = True
     dubious_clim_lat_threshold = 60
     # More hardcoded parameters appear in the script...
-    #step07_run_code = "adjust"
+    #step07_run_code = "adjust" # previously passed to step 7, but it just determined whether the code ran at all... so just avoid step 7 if you'd like not to run it..
 
 
     # Step 10: update_decimate_profiles_subdaily_to_once_daily
@@ -102,15 +104,11 @@ def NCEI_pipeline(dest_dir, input_dir):
             partial(step04.main, MITprof_ds, grid_dir, CTD_TS_bin, respect_existing_zero_weights, new_S_floor, new_T_floor), 
             partial(step05.main, MITprof_ds, grid_dir, apply_gamma_factor, llcN), 
             partial(step06.main, MITprof_ds, replace_missing_S_with_clim_S), 
-            partial(step07.main, MITprof_ds, exclude_high_latitude_profiles_from_clim_cost, dubious_clim_lat_threshold),
-            #partial(step07.main, MITprof_ds, exclude_high_latitude_profiles_from_clim_cost, dubious_clim_lat_threshold, step07_run_code),
+            partial(step07.main, MITprof_ds, profile_var_key_list, exclude_high_latitude_profiles_from_clim_cost, dubious_clim_lat_threshold),
+            partial(step08.main, MITprof_ds, profile_var_key_list), 
+            partial(step09.main, MITprof_ds, profile_var_key_list), 
+            partial(step10.main, MITprof_ds, profile_var_key_list, distance_tolerance, closest_time, method),
         ]
-        """
-            partial(step08.main, MITprof_ds), 
-            partial(step09.main, MITprof_ds), 
-            partial(step10.main, MITprof_ds, distance_tolerance, closest_time, method)
-        ]
-        """
 
 
         step_counter = 0
