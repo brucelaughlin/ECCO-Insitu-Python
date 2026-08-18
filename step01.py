@@ -7,14 +7,13 @@ from tools import load_llc270_grid, load_llc90_grid, patchface3D, sph2cart
 import pdb
 
 def get_profpoint_llc_ian(lon_llc, lat_llc, mask_llc, MITprof_ds):
-
-    # Note: "ny" in the signature for "patchface3d" is never used...
-
     """
     Finds the 'profile_flattened_monotonic_grid_indices' of each profile in the MITprof_ds object for a global LLC grid
 
     lon_llc, lat_llc: the XC and YC of the llc grid in compact format llc x (13* llc)
     mask_llc: a mask with 1/0 denoting whether to use a point or not in the search
+
+    # Note: "ny" in the signature for "patchface3d" is never used...
     """
 
     deg2rad = np.pi/180.0
@@ -102,6 +101,7 @@ def get_tile_point_llc_ian(lon_llc, lat_llc, ni, nj, MITprof_ds):
                 tileNo[iF][ii*ni:(ii+1)*ni,jj*nj:(jj+1)*nj] = tileCount * np.ones((ni,nj))
 
     """
+    # Out of interest, I plotted these strange tiling fields.  Not sure what to make of them, hopefully someone would think they look correct
     fig,ax = plt.subplots(len(iTile*3),2)
     tile_counter = 0
     font_size = 8
@@ -125,7 +125,7 @@ def get_tile_point_llc_ian(lon_llc, lat_llc, ni, nj, MITprof_ds):
     interp_dict = {'prof_interp_lon': tile_list_xgrid, 'prof_interp_lat': tile_list_ygrid, 'prof_interp_XC11': XC11, 'prof_interp_YC11': YC11, 'prof_interp_XCNINJ': XCNINJ, 'prof_interp_YCNINJ': YCNINJ, 'prof_interp_i': iTile, 'prof_interp_j': jTile}
 
 
-    # now take these funky structures, cast them into patchface) form, then use
+    # now take these funky structures, cast them into patchface form, then use
     # prof point to pull the value at the profile point that we need
 
     for target_key, source_field in interp_dict.items():
@@ -140,10 +140,8 @@ def get_tile_point_llc_ian(lon_llc, lat_llc, ni, nj, MITprof_ds):
     # one last thing: "weights", which is 1 b/c we're using nearest neighbor:
     MITprof_ds['prof_interp_weights'] = xr.ones_like(MITprof_ds['profile_flattened_monotonic_grid_indices'])
 
-    #return MITprof_ds
 
 def update_prof_and_tile_points_on_profiles(MITprof_ds, grid_dir, llc_horizontal_resolution, wet_or_all):
-#def update_prof_and_tile_points_on_profiles(MITprof_ds_orig, grid_dir, llc_horizontal_resolution, wet_or_all):
     """
     This script updates the profile_flattened_monotonic_grid_indicess and tile interpolation points
     so that the MITgcm knows which grid points to use for the cost function
@@ -184,10 +182,8 @@ def update_prof_and_tile_points_on_profiles(MITprof_ds, grid_dir, llc_horizontal
         else:
             mask_llc=np.ones(blank_270.shape, order = 'F')
    
-    #F = get_profpoint_llc_ian(lon_llc, lat_llc, mask_llc, MITprof_ds)
     get_profpoint_llc_ian(lon_llc, lat_llc, mask_llc, MITprof_ds)
 
-    #MITprof_ds = get_tile_point_llc_ian(lon_llc, lat_llc, ni, nj, MITprof_ds)
     get_tile_point_llc_ian(lon_llc, lat_llc, ni, nj, MITprof_ds)
         
     #  Sanity Check Interpolation 
@@ -196,10 +192,6 @@ def update_prof_and_tile_points_on_profiles(MITprof_ds, grid_dir, llc_horizontal
     #  also check to see if |lat| > 90, if so then assign flag 100.
     #  these flag values can be used later when assigning weights.
 
-        
-    #bad_lats_indices = np.nonzero(abs(tmp_prof_lat)>90)[0]
-    #bad_lats_index_array = abs(tmp_prof_lat)>90
-
     bool_mask_good_coords = ((abs(MITprof_ds['prof_lat']) <= 90) & (MITprof_ds['prof_lat'].notnull()) | (MITprof_ds['prof_lon'].notnull())).data
 
     distances = np.full_like(MITprof_ds['prof_lat'].data, np.nan)
@@ -207,7 +199,6 @@ def update_prof_and_tile_points_on_profiles(MITprof_ds, grid_dir, llc_horizontal
     for profile_index in range(len(bool_mask_good_coords)):
         if bool_mask_good_coords[profile_index]:
             distances[profile_index] = distance.distance((MITprof_ds['prof_lat'][profile_index], MITprof_ds['prof_lon'][profile_index]), (MITprof_ds['prof_interp_lat'][profile_index], MITprof_ds['prof_interp_lon'][profile_index])).m
-            #distances[profile_index] = distance.distance((MITprof_ds['prof_lat'][profile_index], MITprof_ds['prof_lon'][profile_index]), (MITprof_ds['prof_interp_lat'][profile_index], MITprof_ds['prof_interp_lon'][profile_index])).km
 
     if 'prof_flag' not in MITprof_ds:
         MITprof_ds['prof_flag'] = xr.zeros_like(MITprof_ds['prof_YYYYMMDD'])

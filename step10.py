@@ -16,7 +16,7 @@ def distmat(xy):
     
     return distances_array
 
-def update_decimate_profiles_subdaily_to_once_daily(MITprof_ds, profile_var_key_list, distance_tolerance, closest_time, method):
+def update_decimate_profiles_subdaily_to_once_daily(MITprof_ds, profile_var_key_set, distance_tolerance, closest_time, method):
     """
     This script decimates profiles with subdaily sampling at the same
     location to once-daily sampling.
@@ -27,13 +27,7 @@ def update_decimate_profiles_subdaily_to_once_daily(MITprof_ds, profile_var_key_
         closest_time = 120000           # HHMMSS: if there is more than one profile per day in a location, choose the one
                                         # that is closest in time to 'closest time' default is noon 
         method = 1                      # method 0 or 1
-        
-        MITprof: a single MITprof object
-
-    Output:
-        Operates on MITprofs directly 
     """
-
 
     deg2rad = np.pi/180    
 
@@ -73,13 +67,13 @@ def update_decimate_profiles_subdaily_to_once_daily(MITprof_ds, profile_var_key_
 
     toss_set_all = toss_set_all.astype(int)
 
-    for prof_key in profile_var_key_list:
+    for prof_key in profile_var_key_set:
         MITprof_ds[f"{prof_key}weight"][toss_set_all,:] = 0
    
-    MITprof_ds = tools.update_remove_zero_T_S_weighted_profiles_from_MITprof(MITprof_ds, profile_var_key_list)
+    MITprof_ds = tools.update_remove_zero_T_S_weighted_profiles_from_MITprof(MITprof_ds, profile_var_key_set)
 
 
-def main(MITprof_ds, profile_var_key_list, distance_tolerance, closest_time, method):
+def main(MITprof_ds, profile_var_key_set, distance_tolerance, closest_time, method):
     #print("step10: update_decimate_profiles_subdaily_to_once_daily")
-    update_decimate_profiles_subdaily_to_once_daily(MITprof_ds, profile_var_key_list, distance_tolerance, closest_time, method)
+    update_decimate_profiles_subdaily_to_once_daily(MITprof_ds, profile_var_key_set, distance_tolerance, closest_time, method)
 

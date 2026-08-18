@@ -38,21 +38,20 @@ def NCEI_pipeline(dest_dir, input_dir):
     # ========================== START OF NEED PATHS/ PARAMETERS ===================================
     # ==========================================================================================
 
-    profile_var_key_list = ['prof_T', 'prof_S']
+    profile_var_key_set = {'prof_T', 'prof_S'}
 
     # Needed paths:
-    # Set grid_dir
     grid_dir = '/Users/brucel/ecco/yip/sample_data/ecco-insitu/sweet_gdrive/grid_llc90'
 
     # Path to dir containing llc090_sphere_point_n_10242_ids.bin and llc090_sphere_point_n_02562_ids.bin
     sphere_dir = '/Users/brucel/ecco/yip/sample_data/ecco-insitu/sweet_gdrive/grid_llc90/sphere_point_distribution'
 
-    # Path to WOA13_v2_TS_clim_merged_with_potential_T.nc
-    clim_dir = '/Users/brucel/ecco/yip/sample_data/ecco-insitu/sweet_gdrive/TS_Climatology'
-    #clim_dir = '/Users/brucel/ecco/yip/sample_data/ecco-insitu/sweet_gdrive/TS_Climatology/WOA13_v2_TS_clim_merged_with_potential_T'
+    climatology_file = "/Users/brucel/ecco/yip/sample_data/ecco-insitu/sweet_gdrive/TS_Climatology/WOA13_v2_TS_clim_merged_with_potential_T.mat"
 
-    # Path to Salt_sigma_smoothed_method_02_masked_merged_capped_extrapolated.bin and Theta_sigma_smoothed_method_02_masked_merged_capped_extrapolated.bin
-    CTD_TS_bin = '/Users/brucel/ecco/yip/sample_data/ecco-insitu/sweet_gdrive/CTD_sigma_TS'
+    sigma_file_dict = {
+            'prof_T': '/Users/brucel/ecco/yip/sample_data/ecco-insitu/sweet_gdrive/CTD_sigma_TS/Theta_sigma_smoothed_method_02_masked_merged_capped_extrapolated.bin',
+            'prof_S': '/Users/brucel/ecco/yip/sample_data/ecco-insitu/sweet_gdrive/CTD_sigma_TS/Salt_sigma_smoothed_method_02_masked_merged_capped_extrapolated.bin',
+    }
 
     # Step 1: update_prof_and_tile_points_on_profiles
     llcN = 90                       # Which grid to use, 90 or 270
@@ -60,8 +59,10 @@ def NCEI_pipeline(dest_dir, input_dir):
 
     # Step 4: update_sigmaTS_on_prepared_profiles parameters
     respect_existing_zero_weights = False
-    new_S_floor = 0.005                     # set this to zero if S_floor is unused
-    new_T_floor = 0                         # set this to zero if T_floor is unused
+    new_floor_dict = {
+            'prof_T': 0,
+            'prof_S': 0.005,
+    }
 
     # Step 5: update_gamma_factor_on_prepared_profiles parameters
     apply_gamma_factor = True          #   0 = remove gamma factor from sigma, 1 = apply gamma to sigma
@@ -100,14 +101,14 @@ def NCEI_pipeline(dest_dir, input_dir):
         ncei_function_list = [
             partial(step01.main, MITprof_ds, grid_dir, llcN, wet_or_all), 
             partial(step02.main, MITprof_ds, sphere_dir, grid_dir), 
-            partial(step03.main, MITprof_ds, clim_dir), 
-            partial(step04.main, MITprof_ds, grid_dir, CTD_TS_bin, respect_existing_zero_weights, new_S_floor, new_T_floor), 
-            partial(step05.main, MITprof_ds, grid_dir, apply_gamma_factor, llcN), 
-            partial(step06.main, MITprof_ds, replace_missing_S_with_clim_S), 
-            partial(step07.main, MITprof_ds, profile_var_key_list, exclude_high_latitude_profiles_from_clim_cost, dubious_clim_lat_threshold),
-            partial(step08.main, MITprof_ds, profile_var_key_list), 
-            partial(step09.main, MITprof_ds, profile_var_key_list), 
-            partial(step10.main, MITprof_ds, profile_var_key_list, distance_tolerance, closest_time, method),
+            partial(step03.main, MITprof_ds, profile_var_key_set, climatology_file), 
+            partial(step04.main, MITprof_ds, profile_var_key_set, grid_dir, sigma_file_dict, respect_existing_zero_weights, new_floor_dict), 
+            partial(step05.main, MITprof_ds, profile_var_key_set, grid_dir, apply_gamma_factor, llcN), 
+            partial(step06.main, MITprof_ds, replace_missing_S_with_clim_S), # it's funny to me that all other modules check for S, but this one requires it...
+            partial(step07.main, MITprof_ds, profile_var_key_set, exclude_high_latitude_profiles_from_clim_cost, dubious_clim_lat_threshold),
+            partial(step08.main, MITprof_ds, profile_var_key_set), 
+            partial(step09.main, MITprof_ds, profile_var_key_set), 
+            partial(step10.main, MITprof_ds, profile_var_key_set, distance_tolerance, closest_time, method),
         ]
 
 

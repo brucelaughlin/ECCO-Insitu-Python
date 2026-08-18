@@ -43,6 +43,15 @@ def plot_spawner(pickle_file_binning, pickle_file_plot):
     plot_state_dict['change_variable_bool'] = True
     plot_state_dict['setup_bool'] = True
     plot_state_dict['first_plot_bool'] = True
+    #plot_state_dict['base_max_linewidth'] = 7.0
+    plot_state_dict['base_max_linewidth'] = 5.0
+    #plot_state_dict['base_max_linewidth'] = 10.0
+    plot_state_dict['linewidth_scale_oopsie_factor'] = 0.25
+
+
+    #plot_state_dict['patch_information_dict'][variable_key][depth_key]['base_max_linewidth_macro'] = calculate_collection_safe_lw(plot_state_dict['ax'], patch_collection)
+
+
 
    
     #*************************************************************************************************************************************
@@ -53,7 +62,6 @@ def plot_spawner(pickle_file_binning, pickle_file_plot):
     #plot_state_dict['legend_loc_twotuples_dict'] = {'global': (0.72, 1), 'zoomed': (0.825, 1)}
     #*************************************************************************************************************************************
 
-
     bound_keyboard_callback = partial(utils.handle_keyboard_input, plot_state_dict)
     fig.canvas.mpl_connect('key_press_event', bound_keyboard_callback)
 
@@ -63,10 +71,38 @@ def plot_spawner(pickle_file_binning, pickle_file_plot):
     ax.callbacks.connect('xlim_changed', bound_mouse_callback)
     ax.callbacks.connect('ylim_changed', bound_mouse_callback)
 
+    #fig.canvas.mpl_connect('draw_event', bound_mouse_callback)
+
+
+    #bound_draw_callback = partial(utils.sync_after_draw, plot_state_dict)
+    #fig.canvas.mpl_connect('draw_event', bound_draw_callback)
+
+
+    """
+    if hasattr(fig.canvas, 'manager') and fig.canvas.manager.toolmanager:
+        fig.canvas.manager.toolmanager.toolmanager_connect('tool_trigger_event', utils.handle_toolbar_actions)
+    else:
+        # Fallback for standard older toolbars if toolmanager isn't explicitly active
+        # We hook directly into the button click release frame
+        fig.canvas.mpl_connect('button_release_event', lambda e: utils.handle_toolbar_actions_fallback(e))
+    """
+
+
+
+
     plot_state_dict['setup_bool'] = False
 
-    variable_key = plot_state_dict['variable_key_list'][plot_state_dict['variable_key_list_index']]
-    depth_key = plot_state_dict['depth_key_list_dict'][variable_key][plot_state_dict['depth_key_list_index']]
+
+
+
+    """
+    variable_key, depth_key = utils.get_keys(plot_state_dict)
+    patch_collection = plot_state_dict['patch_information_dict'][variable_key][depth_key]['patch_collection_macro']
+    original_linewidths = plot_state_dict['patch_information_dict'][variable_key][depth_key]['macro']['linewidths_list']
+    base_max_linewidth = utils.calculate_collection_safe_lw(ax, patch_collection)
+    capped_linewidths = np.minimum(original_line_widths, base_max_linewidth)
+    patch_collection.set_linewidths(capped_linewidths)
+    """
 
     utils.redraw_axes(plot_state_dict)
 

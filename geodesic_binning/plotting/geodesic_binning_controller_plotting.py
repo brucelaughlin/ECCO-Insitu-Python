@@ -45,3 +45,6 @@ plot data output_file: /Users/brucel/ecco/yip/ECCO-Insitu-Python/geodesic_binnin
 binning data output_file: /Users/brucel/ecco/yip/ECCO-Insitu-Python/geodesic_binning/binning/binned_output/50_clustering_samples_per_profile/10242_geodesic_bins/num_subpolygons_max_2000/ARGO_WO_2015_PFL_A__ncei_step_10_binning_data.pickle
 plot data output_file: /Users/brucel/ecco/yip/ECCO-Insitu-Python/geodesic_binning/binning/binned_output/50_clustering_samples_per_profile/10242_geodesic_bins/num_subpolygons_max_2000/ARGO_WO_2015_PFL_A__ncei_step_10_plot_data.pickle
 """
+
+
+

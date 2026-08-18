@@ -10,19 +10,9 @@ from tools import MITprof_read, interp_check, load_llc90_grid, sph2cart
 from scipy import interpolate
 
 
-def update_sigmaTS_on_prepared_profiles(MITprof_ds, grid_dir, sigma_dir, respect_existing_zero_weights, new_S_floor, new_T_floor):
+def update_sigmaTS_on_prepared_profiles(MITprof_ds, profile_var_key_set, grid_dir, sigma_file_dict, respect_existing_zero_weights, new_floor_dict):
     """
     Update MITprof objects with new T and S uncertainty fields 
-    Input Parameters:
-        
-        MITprof: a single MITprof object
-        grid_dir: directory path of grid to be read in
-        sigma_dir: Path to Salt_sigma_smoothed_method_02_masked_merged_capped_extrapolated.bin and Theta_sigma_smoothed_method_02_masked_merged_capped_extrapolated.bin
-        respect_existing_zero_weights
-        **kwargs -> optional parem for setting new_S_floor
-        
-    Output:
-        Operates on MITprof_ds directly 
     """
 
     llcN = 90
@@ -37,75 +27,47 @@ def update_sigmaTS_on_prepared_profiles(MITprof_ds, grid_dir, sigma_dir, respect
     # i.e. [90, 90*13, 50] for llc90
     tile_shape_list = [llcN, num_mitgcm_tiles*llcN, num_mitgcm_depths]
 
-    sigma_S_path = os.path.join(sigma_dir, 'Salt_sigma_smoothed_method_02_masked_merged_capped_extrapolated.bin')
-    with open(sigma_S_path, 'rb') as fid:
-        sigma_S = np.fromfile(fid, dtype=mform).reshape((tile_shape_list[0], tile_shape_list[1], tile_shape_list[2]))
-
-    sigma_T_path = os.path.join(sigma_dir, 'Theta_sigma_smoothed_method_02_masked_merged_capped_extrapolated.bin')
-    with open(sigma_T_path, 'rb') as fid:
-        sigma_T = np.fromfile(fid, dtype=mform).reshape((tile_shape_list[0], tile_shape_list[1], tile_shape_list[2]))
-
     # verify that our little trick works in 4 parts of the earth
     xyz_grid = np.column_stack((X_mitgcm.ravel()[bools_masks_list_by_depth[0]], Y_mitgcm.ravel()[bools_masks_list_by_depth[0]], Z_mitgcm.ravel()[bools_masks_list_by_depth[0]]))
     flattened_monotonic_grid_indices = flattened_monotonic_grid_indices_mitgcm.ravel()[bools_masks_list_by_depth[0]] 
-    #interp_check(xyz_grid, flattened_monotonic_grid_indices, lat_mitgcm, lon_mitgcm, 4)
     interp_check(xyz_grid, flattened_monotonic_grid_indices, X_mitgcm, Y_mitgcm, Z_mitgcm, lat_mitgcm, lon_mitgcm, 4)
 
-    num_prof_depths = len(MITprof_ds['prof_depth'])
-
-    # Store original weights, since we reset modified weights to 0 if original weights were 0 (if <respect_existing_zero_weights> == True) 
-    orig_profTweight = MITprof_ds['prof_Tweight'].data.copy()
-    if 'prof_S' in MITprof_ds:
-        orig_profSweight = MITprof_ds['prof_Sweight'].data.copy()
-    
     xyz_profiles = np.column_stack(sph2cart(MITprof_ds['prof_lon']*deg2rad, MITprof_ds['prof_lat']*deg2rad, 1))
     xyz_grid = np.column_stack((X_mitgcm.ravel()[bools_masks_list_by_depth[0]], Y_mitgcm.ravel()[bools_masks_list_by_depth[0]], Z_mitgcm.ravel()[bools_masks_list_by_depth[0]]))
     flattened_monotonic_grid_indices = flattened_monotonic_grid_indices_mitgcm.ravel()[bools_masks_list_by_depth[0]] 
     prof_mitgcm_cell_indices = griddata(xyz_grid, flattened_monotonic_grid_indices, xyz_profiles, 'nearest').astype(int)
 
-    # Warning: this assumes that depth is the last dimension in a 3D array
-    sigma_T_MITprof = np.apply_along_axis(lambda y: np.interp(MITprof_ds['prof_depth'], z_cen_mitgcm, y, left=np.nan, right=np.nan), axis=2, arr=sigma_T)
-    sigma_T_MITprof_2D = np.reshape(sigma_T_MITprof, (sigma_T_MITprof.shape[0] * sigma_T_MITprof.shape[1], sigma_T_MITprof.shape[2]))
+    for prof_key in profile_var_key_set:
+        if prof_key in MITprof_ds:
+            with open(sigma_file_dict[prof_key], 'rb') as fid:
+                sigma_np_array = np.fromfile(fid, dtype=mform).reshape((tile_shape_list[0], tile_shape_list[1], tile_shape_list[2]))
 
-    if new_T_floor > 0:
-        bool_mask = sigma_T_MITprof_2D >= 0
-        sigma_T_MITprof_2D[bool_mask] = np.maximum(new_T_floor, sigma_T_MITprof_2D[bool_mask])
+            # Store original weights, since we reset modified weights to 0 if original weights were 0 (if <respect_existing_zero_weights> == True) 
+            orig_profweight_np_array = MITprof_ds[prof_key].data.copy()
+            
+            # Warning: this assumes that depth is the last dimension in a 3D array
+            sigma_np_array_MITprof = np.apply_along_axis(lambda y: np.interp(MITprof_ds['prof_depth'], z_cen_mitgcm, y, left=np.nan, right=np.nan), axis=2, arr=sigma_np_array)
+            sigma_np_array_MITprof_2D = np.reshape(sigma_np_array_MITprof, (sigma_np_array_MITprof.shape[0] * sigma_np_array_MITprof.shape[1], sigma_np_array_MITprof.shape[2]))
 
-    if 'prof_S' in MITprof_ds:
-        sigma_S_MITprof = np.apply_along_axis(lambda y: np.interp(MITprof_ds['prof_depth'], z_cen_mitgcm, y, left=np.nan, right=np.nan), axis=2, arr=sigma_S)
-        sigma_S_MITprof_2D = np.reshape(sigma_S_MITprof, (sigma_S_MITprof.shape[0] * sigma_S_MITprof.shape[1], sigma_S_MITprof.shape[2]))
-        if new_S_floor > 0:
-            bool_mask = sigma_S_MITprof_2D >= 0
-            sigma_S_MITprof_2D[bool_mask] = np.maximum(new_S_floor, sigma_S_MITprof_2D[bool_mask])
+            if new_floor_dict[prof_key] > 0:
+                bool_mask = sigma_np_array_MITprof_2D >= 0
+                sigma_np_array_MITprof_2D[bool_mask] = np.maximum(new_floor_dict[prof_key], sigma_np_array_MITprof_2D[bool_mask])
 
-    MITprof_ds['prof_Tweight'] = xr.DataArray(1/sigma_T_MITprof_2D[prof_mitgcm_cell_indices,:]**2, dims=['iPROF', 'iDEPTH'])
+            MITprof_ds[f'{prof_key}weight'] = xr.DataArray(1/sigma_np_array_MITprof_2D[prof_mitgcm_cell_indices,:]**2, dims=['iPROF', 'iDEPTH'])
 
-    if 'prof_S' in MITprof_ds:
-        MITprof_ds['prof_Sweight'] = xr.DataArray(1/sigma_S_MITprof_2D[prof_mitgcm_cell_indices,:]**2, dims=['iPROF', 'iDEPTH'])
+            ###############################################
+            # these "prof_T/Serr" fields seem strange to me... why are "floor" and "err" used interchangeably here?
+            ###############################################
+            if new_floor_dict[prof_key] > 0:
+                if f'{prof_key}err' in MITprof_ds:
+                    MITprof_ds[f'{prof_key}err'] = xr.zeros_like(MITprof_ds[f'{prof_key}err']) + new_floor_dict[prof_key]
+
+            # If original weights were 0, set the updated weights to 0.
+            if respect_existing_zero_weights:
+                MITprof_ds[f'{prof_key}weight'][orig_profweight_np_array == 0] = 0
+                
     
-    # these "prof_Xerr" fields seem strange to me
-    if new_T_floor > 0:
-        if 'prof_Terr' in MITprof_ds:
-            MITprof_ds['prof_Terr'] = xr.zeros_like(MITprof_ds['prof_Terr']) + new_T_floor
-
-    if new_S_floor > 0:
-        if 'prof_Serr' in MITprof_ds:
-            MITprof_ds['prof_Serr'] = xr.zeros_like(MITprof_ds['prof_Serr']) + new_S_floor
-    
-    # If original weights were 0, set the updated weights to 0.
-    if respect_existing_zero_weights:
-        MITprof_ds['prof_Tweight'][orig_profTweight == 0] = 0
-        
-        if 'prof_S' in MITprof_ds:
-            MITprof_ds['prof_Sweight'][orig_profSweight == 0] = 0
-
-    '''
-    else:
-        print("STEP 4: not respecting the zero weights of the original profiles")
-    '''
-
-    
-def main(MITprof_ds, grid_dir, sigma_dir, respect_existing_zero_weights, new_S_floor, new_T_floor):
+def main(MITprof_ds, profile_var_key_set, grid_dir, sigma_file_dict, respect_existing_zero_weights, new_floor_dict):
     #print("step04: update_sigmaTS_on_prepared_profiles")
-    update_sigmaTS_on_prepared_profiles(MITprof_ds, grid_dir, sigma_dir, respect_existing_zero_weights, new_S_floor, new_T_floor)
+    update_sigmaTS_on_prepared_profiles(MITprof_ds, profile_var_key_set, grid_dir, sigma_file_dict, respect_existing_zero_weights, new_floor_dict)
 

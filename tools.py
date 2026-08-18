@@ -18,9 +18,9 @@ def count_total_survivors_TS(MITprof_ds):
     return MITprof_ds['prof_T'].notnull().sum().item() + MITprof_ds['prof_S'].notnull().sum().item() 
 
 
-def update_remove_extraneous_depth_levels(MITprof_ds, profile_var_key_list):
+def update_remove_extraneous_depth_levels(MITprof_ds, profile_var_key_set):
     depth_level_max_list = []
-    for prof_key in profile_var_key_list:
+    for prof_key in profile_var_key_set:
         total_num_valid_per_depth = (MITprof_ds[prof_key] > 0).sum(dim = "iPROF").data
         depth_level_max_list.append(np.nonzero(total_num_valid_per_depth)[0][-1] if np.size(np.nonzero(total_num_valid_per_depth)) > 0 else 0)
     max_depth_level = max(depth_level_max_list)
@@ -32,15 +32,15 @@ def update_remove_extraneous_depth_levels(MITprof_ds, profile_var_key_list):
         return MITprof_ds
 
 
-def update_remove_zero_T_S_weighted_profiles_from_MITprof(MITprof_ds, profile_var_key_list):
+def update_remove_zero_T_S_weighted_profiles_from_MITprof(MITprof_ds, profile_var_key_set):
     num_nan_weights = 0
-    for prof_key in profile_var_key_list:
+    for prof_key in profile_var_key_set:
         if prof_key in MITprof_ds.data_vars:
             num_nan_weights += MITprof_ds[f'{prof_key}weight'].isnull().sum().item()
     if num_nan_weights > 0:
         raise Exception('you have nans in your weights, this should never happen')
     MITprof_ds['global_1D_mask_iPROF_nonzero_weight'] = xr.full_like(MITprof_ds['prof_lon'], fill_value=False, dtype=bool)
-    for prof_key in profile_var_key_list:
+    for prof_key in profile_var_key_set:
         if prof_key in MITprof_ds.data_vars:
             try:
                 MITprof_ds['global_1D_mask_iPROF_nonzero_weight'] = (MITprof_ds['global_1D_mask_iPROF_nonzero_weight']) | (MITprof_ds[f'{prof_key}weight'].sum(dim="iDEPTH") > 0)

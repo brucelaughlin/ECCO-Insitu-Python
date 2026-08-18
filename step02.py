@@ -10,14 +10,6 @@ def update_spatial_bin_index_on_prepared_profiles(bin_dir, MITprof_ds, grid_dir)
     This script updates each profile with a bin index that is specified from
     some file.  To date this has been used for geodesic bins but any bin
     could be used in practice.
-
-    Input Parameters:
-        bin_dir: Path to llc090_sphere_point_n_10242_ids.bin and llc090_sphere_point_n_02562_ids.bin
-        MITprof: a single MITprof object
-        grid_dir: directory path of grid to be read in
-
-    Output:
-        Operates on MITprof_ds directly 
     """
 
     bin_file_1 = os.path.join(bin_dir, 'llc090_sphere_point_n_10242_ids.bin')
@@ -54,8 +46,6 @@ def update_spatial_bin_index_on_prepared_profiles(bin_dir, MITprof_ds, grid_dir)
         flattened_monotonic_grid_indices = np.arange(X_90.size)
     
     # verify that our little trick works in 4 parts of the earth
-
-    #interp_check(xyz_grid, flattened_monotonic_grid_indices, lat_llc, lon_llc, 2)
     interp_check(xyz_grid, flattened_monotonic_grid_indices, X, Y, Z, lat_llc, lon_llc, 2)
  
     deg2rad = np.pi/180.0

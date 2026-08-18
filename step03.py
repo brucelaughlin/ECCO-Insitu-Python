@@ -8,104 +8,70 @@ import netCDF4 as nc
 from scipy.interpolate import griddata
 from tools import MITprof_read, interp_check, sph2cart
 import pymatreader
-import pdb
 import xarray as xr
+from pathlib import Path
+import pdb
 
-def update_monthly_mean_TS_clim_WOA13v2_on_prepared_profiles(TS_clim_dir, MITprof_ds):
+def update_monthly_mean_clim_WOA13v2_on_prepared_profiles(MITprof_ds, profile_var_key_set, climatology_file):
     """
     Assigns the WOA13 T and S climatology values to MITprof objects. 
-
-    Input Parameters:
-        TS_clim_dir: Path to WOA13_v2_TS_clim_merged_with_potential_T.nc
-        MITprof: a single MITprof object
-
-    Output:
-        Operates on MITprof_ds directly 
-    
     """
 
-    fillVal=-9999
-
-    #TS_clim_fname = 'WOA13_v2_TS_clim_merged_with_potential_T.nc'
-    TS_clim_fname = 'WOA13_v2_TS_clim_merged_with_potential_T.mat'
-    TS_clim_filename = os.path.join(TS_clim_dir, TS_clim_fname)
-    #TS_data = nc.Dataset(TS_clim_filename)
-    TS_data_top_level = pymatreader.read_mat(TS_clim_filename)
-    TS_data = TS_data_top_level['WOA_2013_v2_clim']
-
-    T_clim = TS_data['potential_T_monthly']
-    S_clim = TS_data['S_monthly']
-
-    lon = TS_data['lon']['data']
-    lat = TS_data['lat']['data']
+    if Path(climatology_file).suffix == ".mat": 
+        clim_data_top_level = pymatreader.read_mat(climatology_file)
+        clim_data = clim_data_top_level['WOA_2013_v2_clim']
+        clim_grid_data_dict = {}
+        clim_grid_data_dict['prof_T'] = clim_data['potential_T_monthly']
+        clim_grid_data_dict['prof_S'] = clim_data['S_monthly']
+        clim_grid_data_dict['lon'] = clim_data['lon']['data']
+        clim_grid_data_dict['lat'] = clim_data['lat']['data']
+        clim_grid_data_dict['depths'] =  clim_data['depth']['data']
     
-    clim_depths =  TS_data['depth']['data']
-    num_clim_depths = len(clim_depths) # Assuming 1D, scary as an ex ROMS user
+    # This may contain bugs, I didn't have an nc file to test with
+    elif Path(climatology_file).suffix == ".nc":
+        clim_ds = xr.open_dataset(climatology_file)
+        clim_ds = clim_ds.assign_coords({dim: np.arange(clim_ds.sizes[dim]) for dim in clim_ds.dims if dim not in clim_ds.coords})
+        #clim_data = clim_ds['WOA_2013_v2_clim'] # this won't work with xarray; can't have nested datasets.  so i'm assuming we can just skip to the next step
+        clim_grid_data_dict = {}
+        clim_grid_data_dict['prof_T'] = clim_ds['potential_T_monthly']
+        clim_grid_data_dict['prof_S'] = clim_ds['S_monthly']
+        clim_grid_data_dict['lon'] = clim_ds['lon']
+        clim_grid_data_dict['lat'] = clim_ds['lat']
+        clim_grid_data_dict['depths'] =  clim_ds['depth']
 
-    # mesh the climatology lon and lats
-    #lon_woam, lat_woam = np.meshgrid(lon.data, lat.data)
-    lon_woam, lat_woam = np.meshgrid(lon, lat)
+    lon_woam, lat_woam = np.meshgrid(clim_grid_data_dict['lon'], clim_grid_data_dict['lat'])
     deg2rad = np.float64(np.pi/180.0)
  
-    # POINTS TO USE ARE THOSE POINTS WITH VALID DATA at the surface
-    bool_mask_valid_surface_climatology = (~np.isnan(S_clim[0,0])) & (~np.isnan(T_clim[0,0]))
+    bool_mask_clim_surf_t0 = ~np.isnan([clim_grid_data_dict[prof_key][0,0] for prof_key in profile_var_key_set]).any(axis=0) 
 
-    X_woa, Y_woa, Z_woa = sph2cart(lon_woam[bool_mask_valid_surface_climatology]*deg2rad, lat_woam[bool_mask_valid_surface_climatology]*deg2rad, 1)
+    X_woa, Y_woa, Z_woa = sph2cart(lon_woam[bool_mask_clim_surf_t0]*deg2rad, lat_woam[bool_mask_clim_surf_t0]*deg2rad, 1)
     flattened_monotonic_grid_indices = np.arange(0,X_woa.size)
     
-    # these are the x,y,z coordinates of all points in the climatology
     xyz_woa_masked = np.column_stack((X_woa, Y_woa, Z_woa))
 
     # verify that our little trick works in 4 parts of the earth
-    #interp_check(xyz_woa_masked, flattened_monotonic_grid_indices, lat_woam.ravel(), lon_woam.ravel(), 3, good_clim = np.nonzero(bool_mask_valid_surface_climatology.ravel())[0])
-    interp_check(xyz_woa_masked, flattened_monotonic_grid_indices, X_woa, Y_woa, Z_woa, lat_woam.ravel(), lon_woam.ravel(), 3, good_clim = np.nonzero(bool_mask_valid_surface_climatology.ravel())[0])
+    interp_check(xyz_woa_masked, flattened_monotonic_grid_indices, X_woa, Y_woa, Z_woa, lat_woam.ravel(), lon_woam.ravel(), 3, good_clim = np.nonzero(bool_mask_clim_surf_t0.ravel())[0])
 
     num_profs = len(MITprof_ds['prof_lat'])
     num_prof_depths = len(MITprof_ds['prof_depth'])
 
-    # determine the month for every profile
     prof_month = ((MITprof_ds['prof_YYYYMMDD'].data % 10000) // 100).astype(int)
 
-    # 'mapping profiles to x,y,z'
     profiles_xyz_threetuple = sph2cart(MITprof_ds["prof_lon"]*deg2rad, MITprof_ds["prof_lat"]*deg2rad, 1)
 
-    # map a climatology grid index to each profile.
     profile_flattened_monotonic_grid_indices = griddata(xyz_woa_masked, flattened_monotonic_grid_indices, profiles_xyz_threetuple, method='nearest').astype(int)
     
-    # go through each z level in the profile array
-    # set the default climatology value to be fillVal (-9999)
-    #prof_clim_T = np.ones((num_profs, num_prof_depths)) * fillVal
-    #prof_clim_S = np.ones((num_profs, num_prof_depths)) * fillVal
-
-    prof_clim_T = np.full((num_profs, num_prof_depths), np.nan)
-    prof_clim_S = np.full((num_profs, num_prof_depths), np.nan)
-
-
-    for k in range(min(num_prof_depths, num_clim_depths)):
-        T_clim_k = T_clim[:,k,:,:]
-        S_clim_k = S_clim[:,k,:,:]
-        
-        # get the T and S at each profile point at this depth level
-        for ii_month in range(12):
-            T_clim_mk = T_clim_k[ii_month, :, :]
-            S_clim_mk = S_clim_k[ii_month, :, :]
-    
-            T_clim_mk = T_clim_mk[bool_mask_valid_surface_climatology]
-            S_clim_mk = S_clim_mk[bool_mask_valid_surface_climatology]
-
-            bool_mask_current_month = prof_month == ii_month + 1
-
-            prof_clim_T[:,k][bool_mask_current_month] = T_clim_mk[profile_flattened_monotonic_grid_indices[bool_mask_current_month]]
-            prof_clim_S[:,k][bool_mask_current_month] = S_clim_mk[profile_flattened_monotonic_grid_indices[bool_mask_current_month]]
-    
-    #prof_clim_S[np.isnan(prof_clim_S)] = fillVal
-    #prof_clim_T[np.isnan(prof_clim_T)] = fillVal
-
-    MITprof_ds['prof_Tclim'] = xr.DataArray(prof_clim_T, dims=['iPROF', 'iDEPTH'])
-    MITprof_ds['prof_Sclim'] = xr.DataArray(prof_clim_S, dims=['iPROF', 'iDEPTH'])
+    for prof_key in profile_var_key_set:
+        if prof_key in MITprof_ds.data_vars:
+            prof_clim = np.full((num_profs, num_prof_depths), np.nan)
+            for ii_depth in range(min(num_prof_depths, len(clim_grid_data_dict['depths']))):
+                for ii_month in range(12):
+                    bool_mask_current_month = prof_month == ii_month + 1
+                    prof_clim[:,ii_depth][bool_mask_current_month] = clim_grid_data_dict[prof_key][ii_month, ii_depth, :, :][bool_mask_clim_surf_t0][profile_flattened_monotonic_grid_indices[bool_mask_current_month]]
+            MITprof_ds[f'{prof_key}clim'] = xr.DataArray(prof_clim, dims=['iPROF', 'iDEPTH'])
 
 
-def main(MITprof_ds, TS_clim_dir):
-    #print("step03: update_monthly_mean_TS_clim_WOA13v2_on_prepared_profiles")
-    update_monthly_mean_TS_clim_WOA13v2_on_prepared_profiles(TS_clim_dir, MITprof_ds)
+def main(MITprof_ds, profile_var_key_set, climatology_file):
+    #print("step03: update_monthly_mean_clim_WOA13v2_on_prepared_profiles")
+    update_monthly_mean_clim_WOA13v2_on_prepared_profiles(MITprof_ds, profile_var_key_set, climatology_file)
 
