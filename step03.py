@@ -6,7 +6,7 @@ import numpy as np
 import scipy.io as sio
 import netCDF4 as nc
 from scipy.interpolate import griddata
-from tools import MITprof_read, interp_check, sph2cart
+import tools 
 import pymatreader
 import xarray as xr
 from pathlib import Path
@@ -44,20 +44,25 @@ def update_monthly_mean_clim_WOA13v2_on_prepared_profiles(MITprof_ds, profile_va
  
     bool_mask_clim_surf_t0 = ~np.isnan([clim_grid_data_dict[prof_key][0,0] for prof_key in profile_var_key_set]).any(axis=0) 
 
-    X_woa, Y_woa, Z_woa = sph2cart(lon_woam[bool_mask_clim_surf_t0]*deg2rad, lat_woam[bool_mask_clim_surf_t0]*deg2rad, 1)
+    #X_woa, Y_woa, Z_woa = tools.sph2cart(lon_woam[bool_mask_clim_surf_t0]*deg2rad, lat_woam[bool_mask_clim_surf_t0]*deg2rad, 1)
+    valid_mask = tools.sph2cart_returnValidMaskOnly(lon_woam[bool_mask_clim_surf_t0]*deg2rad, lat_woam[bool_mask_clim_surf_t0]*deg2rad, 1)
+    X_woa, Y_woa, Z_woa = tools.sph2cart(lon_woam[bool_mask_clim_surf_t0][valid_mask] *deg2rad, lat_woam[bool_mask_clim_surf_t0][valid_mask] *deg2rad, 1)
+
     flattened_monotonic_grid_indices = np.arange(0,X_woa.size)
     
     xyz_woa_masked = np.column_stack((X_woa, Y_woa, Z_woa))
 
     # verify that our little trick works in 4 parts of the earth
-    interp_check(xyz_woa_masked, flattened_monotonic_grid_indices, X_woa, Y_woa, Z_woa, lat_woam.ravel(), lon_woam.ravel(), 3, good_clim = np.nonzero(bool_mask_clim_surf_t0.ravel())[0])
+    tools.interp_check(xyz_woa_masked, flattened_monotonic_grid_indices, X_woa, Y_woa, Z_woa, lat_woam.ravel(), lon_woam.ravel(), 3, good_clim = np.nonzero(bool_mask_clim_surf_t0.ravel())[0])
+
+    #profiles_xyz_threetuple = sph2cart(MITprof_ds["prof_lon"]*deg2rad, MITprof_ds["prof_lat"]*deg2rad, 1)
+    valid_mask = tools.sph2cart_returnValidMaskOnly(MITprof_ds["prof_lon"]*deg2rad, MITprof_ds["prof_lat"]*deg2rad, 1)
+    MITprof_ds = MITprof_ds.where(valid_mask, drop=True)
+    profiles_xyz_threetuple = tools.sph2cart(MITprof_ds["prof_lon"]*deg2rad, MITprof_ds["prof_lat"]*deg2rad, 1)
 
     num_profs = len(MITprof_ds['prof_lat'])
     num_prof_depths = len(MITprof_ds['prof_depth'])
-
     prof_month = ((MITprof_ds['prof_YYYYMMDD'].data % 10000) // 100).astype(int)
-
-    profiles_xyz_threetuple = sph2cart(MITprof_ds["prof_lon"]*deg2rad, MITprof_ds["prof_lat"]*deg2rad, 1)
 
     profile_flattened_monotonic_grid_indices = griddata(xyz_woa_masked, flattened_monotonic_grid_indices, profiles_xyz_threetuple, method='nearest').astype(int)
     

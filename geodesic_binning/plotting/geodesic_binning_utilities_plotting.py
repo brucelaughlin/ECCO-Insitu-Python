@@ -5,7 +5,6 @@ import textwrap
 import cartopy.crs as ccrs
 import matplotlib as mpl
 import matplotlib.pyplot as plt
-import matplotlib.patches as patches
 import matplotlib.cm as cm
 import matplotlib.colors as mcolors
 from matplotlib.collections import PatchCollection, PathCollection
@@ -14,11 +13,89 @@ import numpy as np
 from shapely.geometry import Polygon as ShapelyPolygon
 import time
 import copy
-import matplotlib.axes as maxes
-import pdb
 
 geodesic_dir = str(Path(__file__).parent.resolve())
 sys.path.append(geodesic_dir)
+
+
+def build_plot_state_dict_minimal(geodesic_bin_data_dict):
+    """
+    Build the subset of plot_state_dict needed by build_all_patch_collections.
+    Called by the binning controller — no figure or axes required.
+    """
+    plot_state_dict = generate_new_plot_state_dict()
+
+    variable_key_list = sorted(k for k, v in geodesic_bin_data_dict.items() if isinstance(v, dict) and 'profile_count_per_variable' in v)
+    plot_state_dict['variable_key_list'] = variable_key_list
+    plot_state_dict['variable_key_list_index'] = 0
+
+    depth_key_list_dict = {}
+    for variable_key in variable_key_list:
+        depth_key_list_dict[variable_key] = sorted(
+            k for k, v in geodesic_bin_data_dict[variable_key].items() if isinstance(v, dict) and 'macro' in v
+        )
+    plot_state_dict['depth_key_list_dict'] = depth_key_list_dict
+    plot_state_dict['depth_key_list_index'] = 0
+
+    return plot_state_dict
+
+
+def build_plot_state_dict(geodesic_bin_data_dict):
+    """
+    Reconstruct all derived plot state from the binning data dict.
+    Called by the plotting script; replaces loading a separate plot_state_dict pickle.
+    """
+    plot_state_dict = generate_new_plot_state_dict()
+
+    variable_key_list = sorted(k for k, v in geodesic_bin_data_dict.items() if isinstance(v, dict) and 'profile_count_per_variable' in v)
+    plot_state_dict['variable_key_list'] = variable_key_list
+    plot_state_dict['variable_key_list_index'] = 0
+
+    depth_key_list_dict = {}
+    for variable_key in variable_key_list:
+        depth_key_list_dict[variable_key] = sorted(
+            k for k, v in geodesic_bin_data_dict[variable_key].items() if isinstance(v, dict) and 'macro' in v
+        )
+    plot_state_dict['depth_key_list_dict'] = depth_key_list_dict
+    plot_state_dict['depth_key_list_index'] = 0
+
+    plot_state_dict['profile_count_per_variable'] = {
+        vk: geodesic_bin_data_dict[vk]['profile_count_per_variable']
+        for vk in variable_key_list
+    }
+    plot_state_dict['depth_count_per_variable'] = {
+        vk: len(depth_key_list_dict[vk])
+        for vk in variable_key_list
+    }
+
+    num_bins_populated_max = 0
+    num_profiles_max = 0
+    for variable_key in variable_key_list:
+        for depth_key in depth_key_list_dict[variable_key]:
+            depth_data = geodesic_bin_data_dict[variable_key][depth_key]
+            num_bins = len(depth_data['bin_indices'])
+            if num_bins > num_bins_populated_max:
+                num_bins_populated_max = num_bins
+            profile_count = depth_data['profile_count']
+            if profile_count > num_profiles_max:
+                num_profiles_max = profile_count
+
+    plot_state_dict['num_depth_levels_ncei_file'] = geodesic_bin_data_dict['num_depth_levels_ncei_file']
+    plot_state_dict['num_digits_print_depth_level'] = len(str(abs(geodesic_bin_data_dict['num_depth_levels_ncei_file'])))
+    plot_state_dict['num_digits_print_bins'] = len(str(abs(num_bins_populated_max)))
+    plot_state_dict['num_digits_print_profiles'] = len(str(abs(num_profiles_max)))
+    plot_state_dict['profile_file_stem'] = geodesic_bin_data_dict['profile_file_stem']
+    plot_state_dict['geodesic_bin_file_stem'] = geodesic_bin_data_dict['geodesic_bin_file_stem']
+    plot_state_dict['num_geodesic_bins'] = geodesic_bin_data_dict['num_geodesic_bins']
+    plot_state_dict['num_subpolygons_max'] = geodesic_bin_data_dict['num_subpolygons_max']
+
+    # Unpack colorbar dicts pre-built at binning time
+    for variable_key in variable_key_list:
+        plot_state_dict[f'polygon_two_cbar_dict_{variable_key}'] = geodesic_bin_data_dict[f'polygon_two_cbar_dict_{variable_key}']
+
+    set_patch_information(plot_state_dict, geodesic_bin_data_dict)
+
+    return plot_state_dict
 
 
 def generate_new_plot_state_dict():
@@ -27,7 +104,7 @@ def generate_new_plot_state_dict():
                                 'pos_and_neg': True,
                                   }
     polygon_edge_plotting_dict = {'statistic_string': 'anomaly std',
-                                'cbar_params': {'cmap_string': 'cividis_r', 'side_string': 'left'},
+                                'cbar_params': {'cmap_string': 'cividis', 'side_string': 'left'},
                                 'pos_and_neg': False,
                                   }
     plot_state_dict = {
@@ -43,6 +120,7 @@ def generate_new_plot_state_dict():
         'zoom_scale_print_decimal_places': 1,
         'legend_frame_alpha': 0.8,
         'legend_zorder': 20,
+        'micro_base_linewidth': 0.07,
     }
     return plot_state_dict
 
@@ -82,8 +160,8 @@ def get_visible_patch_mask(ax, polygon_list):
 
 def make_handles_and_titles(plot_state_dict):
 
-    if plt.gca().get_legend() is not None:
-        plt.gca().get_legend().remove()
+    if plot_state_dict['ax'].get_legend() is not None:
+        plot_state_dict['ax'].get_legend().remove()
 
     variable_key, depth_key = get_keys(plot_state_dict)
 
@@ -94,14 +172,6 @@ def make_handles_and_titles(plot_state_dict):
         count_array = plot_state_dict['patch_information_dict'][variable_key][depth_key]['count_array'] 
         count_min_zoom = np.min(count_array[visible_patch_mask])
         count_max_zoom = np.max(count_array[visible_patch_mask])
-        if count_min_zoom > 1:
-           legend_min_string = "profiles"
-        else:
-           legend_min_string = "profile"
-        if count_max_zoom > 1:
-           legend_max_string = "profiles"
-        else:
-           legend_max_string = "profile"
         if len(np.unique(count_array[visible_patch_mask])) == 1: 
             custom_handles = [
                 Line2D([0], [0], color='gray', label=f"{count_min_zoom}"),
@@ -115,10 +185,6 @@ def make_handles_and_titles(plot_state_dict):
             legend_title = "profiles per visible patch:"
         else:
             count_mid_zoom = int(np.median(np.sort(count_array[visible_patch_mask])))
-            if count_mid_zoom > 1:
-               legend_mid_string = "profiles"
-            else:
-               legend_mid_string = "profile"
             custom_handles = [
                 Line2D([0], [0], color='gray', label=f"min {count_min_zoom}"),
                 Line2D([0], [0], color='gray', label=f"med {count_mid_zoom}"),
@@ -126,21 +192,20 @@ def make_handles_and_titles(plot_state_dict):
             ]
             legend_title = "profiles per visible patch:"
 
-        if custom_handles != 0:
+        legend = plot_state_dict['ax'].legend(handlelength=0, handletextpad=0, fontsize="xx-small", title_fontsize="xx-small",
+              handles=custom_handles, title=f"{legend_title}", loc="upper right",
+              framealpha=plot_state_dict['legend_frame_alpha'])
+        legend.set_zorder(plot_state_dict['legend_zorder'])
 
-            legend = plot_state_dict['ax'].legend(plot_state_dict['legend_frame_alpha'], handlelength=0, handletextpad=0, fontsize="xx-small", title_fontsize="xx-small",
-                  handles=custom_handles, title=f"{legend_title}", loc="upper right")
-            legend.set_zorder(plot_state_dict['legend_zorder'])
+        # vibe me bb
+        extent = plot_state_dict['ax'].get_extent(crs=ccrs.PlateCarree())
+        visible_right = extent[1]
+        visible_top = extent[3]
 
-            # vibe me bb
-            extent = plot_state_dict['ax'].get_extent(crs=ccrs.PlateCarree())
-            visible_right = extent[1]
-            visible_top = extent[3]
+        mpl_transform = ccrs.PlateCarree()._as_mpl_transform(plot_state_dict['ax'])
 
-            mpl_transform = ccrs.PlateCarree()._as_mpl_transform(plot_state_dict['ax'])
-
-            # Update the existing legend's anchor point to the map's new right edge
-            legend.set_bbox_to_anchor((visible_right, visible_top), mpl_transform)
+        # Update the existing legend's anchor point to the map's new right edge
+        legend.set_bbox_to_anchor((visible_right, visible_top), mpl_transform)
 
 
 def set_plot_text(plot_state_dict):
@@ -198,90 +263,13 @@ def set_plot_text(plot_state_dict):
 
 
 def set_patch_information(plot_state_dict, geodesic_bin_data_dict):
-
-    set_colorbar_information_dictionary(plot_state_dict, geodesic_bin_data_dict)
-
+    """Unpack pre-built PatchCollection objects from the binning pickle into plot_state_dict."""
     plot_state_dict['patch_information_dict'] = {}
-    variable_counter = 0
-    num_variables = len(plot_state_dict['variable_key_list'])
     for variable_key in plot_state_dict['variable_key_list']:
         plot_state_dict['patch_information_dict'][variable_key] = {}
-        variable_counter += 1
-        depth_counter = 0
-        num_depths = len(plot_state_dict['depth_key_list_dict'][variable_key])
-        num_digits_depth_print = len(str(abs(num_depths)))
-
-        var_time = time.time()
-        for depth_key in plot_state_dict['depth_key_list_dict'][variable_key]:  
-            depth_time = time.time()
-            depth_counter += 1
-
-            patch_dict_single_var_depth = geodesic_bin_data_dict[variable_key][depth_key]
-            polygon_two_cbar_dict = plot_state_dict[f'polygon_two_cbar_dict_{variable_key}']
-
-            norm_face = polygon_two_cbar_dict['face']['norm']
-
-            if polygon_two_cbar_dict['face']['cmap_was_modified']:
-                cmap_face = polygon_two_cbar_dict['face']['modified_cmap']
-            else:
-                cmap_face = cm.get_cmap(polygon_two_cbar_dict['face']['cbar_params']['cmap_string'])
-
-            #rgba_face_colors_macro = cmap_face(norm_face(patch_dict_single_var_depth['macro']['face_value_list']))
-            #rgba_face_colors_micro = cmap_face(norm_face(patch_dict_single_var_depth['micro']['face_value_list']))
-
-            norm_edge = polygon_two_cbar_dict['edge']['norm']
-            cmap_edge = cm.get_cmap(polygon_two_cbar_dict['edge']['cbar_params']['cmap_string'])
-
-            edgecolors_list_macro = []
-            for edge_value in patch_dict_single_var_depth['macro']['edge_value_list']:
-                edgecolors_list_macro.append(cmap_edge(norm_edge(edge_value)))
-
-            polygon_list_macro = []
-            for patch_dex in range(len(patch_dict_single_var_depth['macro']['polygon_vertex_list_of_lists'])): 
-                polygon_list_macro.append(ShapelyPolygon(patch_dict_single_var_depth['macro']['polygon_vertex_list_of_lists'][patch_dex]))
-            patch_collection_macro = create_patch_collection(polygon_list_macro)
-
-            #patch_collection_macro.set_facecolors(rgba_face_colors_macro)
-            patch_collection_macro.set_array(np.array(patch_dict_single_var_depth['macro']['face_value_list']))
-            patch_collection_macro.set_edgecolors(edgecolors_list_macro)
-            patch_collection_macro.set_linewidths(patch_dict_single_var_depth['macro']['linewidths_list'])
-            patch_collection_macro.set_cmap(cmap_face)
-            patch_collection_macro.set_norm(norm_face)
-
-            edgecolors_list_micro = []
-            for edge_value in patch_dict_single_var_depth['micro']['edge_value_list']:
-                edgecolors_list_micro.append(cmap_edge(norm_edge(edge_value)))
-
-            polygon_list_micro = []
-            for patch_dex in range(len(patch_dict_single_var_depth['micro']['polygon_vertex_list_of_lists'])): 
-                polygon_list_micro.append(ShapelyPolygon(patch_dict_single_var_depth['micro']['polygon_vertex_list_of_lists'][patch_dex]))
-
-            patch_collection_micro = create_patch_collection(polygon_list_micro)
-            #patch_collection_macro.set_facecolors(rgba_face_colors_micro)
-            patch_collection_micro.set_array(np.array(patch_dict_single_var_depth['micro']['face_value_list']))
-            patch_collection_micro.set_edgecolors(edgecolors_list_micro)
-            patch_collection_micro.set_linewidths(patch_dict_single_var_depth['micro']['linewidths_list'])
-            patch_collection_micro.set_cmap(cmap_face)
-            patch_collection_micro.set_norm(norm_face)
-
-            plot_state_dict['patch_information_dict'][variable_key][depth_key] = {}
-            plot_state_dict['patch_information_dict'][variable_key][depth_key]['patch_collection_macro'] = patch_collection_macro 
-            plot_state_dict['patch_information_dict'][variable_key][depth_key]['patch_collection_micro'] = patch_collection_micro 
-            plot_state_dict['patch_information_dict'][variable_key][depth_key]['polygon_list_macro'] = polygon_list_macro 
-            plot_state_dict['patch_information_dict'][variable_key][depth_key]['polygon_list_micro'] = polygon_list_micro 
-            plot_state_dict['patch_information_dict'][variable_key][depth_key]['count_array'] = patch_dict_single_var_depth['count_array']
-            plot_state_dict['patch_information_dict'][variable_key][depth_key]['profiles_lons'] = patch_dict_single_var_depth['profiles_lons']
-            plot_state_dict['patch_information_dict'][variable_key][depth_key]['profiles_lats'] = patch_dict_single_var_depth['profiles_lats']
-            #plot_state_dict['patch_information_dict'][variable_key][depth_key]['original_linewidths_macro'] = patch_dict_single_var_depth['macro']['linewidths_list']
-            #plot_state_dict['patch_information_dict'][variable_key][depth_key]['original_linewidths_micro'] = patch_dict_single_var_depth['micro']['linewidths_list'] 
-            plot_state_dict['patch_information_dict'][variable_key][depth_key]['original_linewidths_macro'] = patch_dict_single_var_depth['macro']['linewidths_list'][:]
-            plot_state_dict['patch_information_dict'][variable_key][depth_key]['original_linewidths_micro'] = patch_dict_single_var_depth['micro']['linewidths_list'][:]
-
-            print(f"variable {variable_counter}/{num_variables}: {variable_key}; depth level {depth_counter:{num_digits_depth_print}}/{num_depths:{num_digits_depth_print}}; time (seconds): {time.time() - depth_time:.2f}")
-            depth_time = time.time()
-        
-        print(f"variable {variable_counter}/{num_variables}: {variable_key}; total time: {time.time() - var_time:.2f} seconds\n")
-        var_time = time.time()
+        for depth_key in plot_state_dict['depth_key_list_dict'][variable_key]:
+            plot_state_dict['patch_information_dict'][variable_key][depth_key] = \
+                geodesic_bin_data_dict[variable_key][depth_key]['collections']
 
 
 # Vibing
@@ -292,13 +280,13 @@ def create_patch_collection(polygon_list):
     for geom in polygon_list:
         if geom.is_empty:
             continue
-            
+
         # Handle standard single closed polygons
         if geom.geom_type == 'Polygon':
             # Extract the Nx2 numpy array of coordinates
             coords = np.array(geom.exterior.coords)
             patches.append(MatplotlibPolygon(coords, closed=True))
-            
+
         # Handle MultiPolygons (islands) safely
         elif geom.geom_type == 'MultiPolygon':
             for part in geom.geoms:
@@ -311,19 +299,135 @@ def create_patch_collection(polygon_list):
     return collection
 
 
+def create_patch_collection_from_vertices(vertex_arrays):
+    """Build a PatchCollection directly from raw vertex arrays — no Shapely needed."""
+    patches = [MatplotlibPolygon(verts, closed=True) for verts in vertex_arrays]
+    return PatchCollection(patches, match_original=False, transform=ccrs.PlateCarree())
+
+
+def build_all_patch_collections(geodesic_bin_data_dict, plot_state_dict):
+    """
+    Build all macro and micro PatchCollection objects and store them in
+    geodesic_bin_data_dict so they can be pickled and loaded instantly at plot time.
+    Called by the binning controller after binning is complete.
+    """
+    set_colorbar_information_dictionary(plot_state_dict, geodesic_bin_data_dict)
+
+    micro_base_linewidth = plot_state_dict['micro_base_linewidth']
+
+    variable_counter = 0
+    num_variables = len(plot_state_dict['variable_key_list'])
+    for variable_key in plot_state_dict['variable_key_list']:
+        variable_counter += 1
+        depth_counter = 0
+        num_depths = len(plot_state_dict['depth_key_list_dict'][variable_key])
+        num_digits_depth_print = len(str(abs(num_depths)))
+        var_time = time.time()
+
+        polygon_two_cbar_dict = plot_state_dict[f'polygon_two_cbar_dict_{variable_key}']
+        norm_face = polygon_two_cbar_dict['face']['norm']
+        cmap_face = polygon_two_cbar_dict['face']['modified_cmap'] if polygon_two_cbar_dict['face']['cmap_was_modified'] else cm.get_cmap(polygon_two_cbar_dict['face']['cbar_params']['cmap_string'])
+        norm_edge = polygon_two_cbar_dict['edge']['norm']
+        cmap_edge = cm.get_cmap(polygon_two_cbar_dict['edge']['cbar_params']['cmap_string'])
+
+        for depth_key in plot_state_dict['depth_key_list_dict'][variable_key]:
+            depth_time = time.time()
+            depth_counter += 1
+            patch_dict = geodesic_bin_data_dict[variable_key][depth_key]
+
+            # --- macro collection ---
+            macro_vertex_arrays = patch_dict['macro']['polygon_vertex_list_of_lists']
+            patch_collection_macro = create_patch_collection_from_vertices(macro_vertex_arrays)
+            edgecolors_macro = [cmap_edge(norm_edge(v)) for v in patch_dict['macro']['edge_value_list']]
+            patch_collection_macro.set_array(np.array(patch_dict['macro']['face_value_list']))
+            patch_collection_macro.set_edgecolors(edgecolors_macro)
+            patch_collection_macro.set_linewidths(patch_dict['macro']['linewidths_list'])
+            patch_collection_macro.set_cmap(cmap_face)
+            patch_collection_macro.set_norm(norm_face)
+
+            # polygon_list_macro needed by make_handles_and_titles (visible patch detection)
+            polygon_list_macro = [ShapelyPolygon(v) for v in macro_vertex_arrays]
+
+            # --- micro collection ---
+            micro_data = patch_dict['micro']
+            macro_linewidths_array = patch_dict['macro']['linewidths_list']
+
+            flat_vertices = []
+            flat_face_values = []
+            flat_edge_values = []
+            flat_tags = []
+            flat_macro_lws = []
+            for patch_dex, (bin_vertices, bin_faces, bin_edges, bin_tags) in enumerate(zip(
+                    micro_data['polygon_vertex_list_of_bin_lists'],
+                    micro_data['face_value_list_of_bin_lists'],
+                    micro_data['edge_value_list_of_bin_lists'],
+                    micro_data['linewidth_tag_list_of_bin_lists'])):
+                flat_vertices.extend(bin_vertices)
+                flat_face_values.extend(bin_faces)
+                flat_edge_values.extend(bin_edges)
+                flat_tags.extend(bin_tags)
+                for tag in bin_tags:
+                    flat_macro_lws.append(macro_linewidths_array[patch_dex] if tag == 'macro' else 0.0)
+
+            original_linewidths_micro = [
+                0.0 if t == 'zero' else
+                micro_base_linewidth if t == 'micro' else
+                flat_macro_lws[i]
+                for i, t in enumerate(flat_tags)
+            ]
+            is_over_limit_micro = np.array([t == 'macro' for t in flat_tags])
+
+            patch_collection_micro = create_patch_collection_from_vertices(flat_vertices)
+            edgecolors_micro = [cmap_edge(norm_edge(v)) for v in flat_edge_values]
+            patch_collection_micro.set_array(np.array(flat_face_values))
+            patch_collection_micro.set_edgecolors(edgecolors_micro)
+            patch_collection_micro.set_linewidths(original_linewidths_micro)
+            patch_collection_micro.set_cmap(cmap_face)
+            patch_collection_micro.set_norm(norm_face)
+
+            # --- macro border collection (drawn on top of micro when zoomed in) ---
+            patch_collection_macro_border = create_patch_collection_from_vertices(macro_vertex_arrays)
+            patch_collection_macro_border.set_facecolors([(0, 0, 0, 0)] * len(macro_vertex_arrays))
+            patch_collection_macro_border.set_edgecolors(edgecolors_macro)
+            patch_collection_macro_border.set_linewidths([1.2] * len(macro_vertex_arrays))
+
+            # Store everything back into the binning dict for pickling
+            patch_dict['collections'] = {
+                'patch_collection_macro': patch_collection_macro,
+                'patch_collection_macro_border': patch_collection_macro_border,
+                'polygon_list_macro': polygon_list_macro,
+                'patch_collection_micro': patch_collection_micro,
+                'original_linewidths_macro': patch_dict['macro']['linewidths_list'][:],
+                'original_linewidths_micro': original_linewidths_micro,
+                'is_over_limit_micro': is_over_limit_micro,
+                'count_array': patch_dict['count_array'],
+                'profiles_lons': patch_dict['profiles_lons'],
+                'profiles_lats': patch_dict['profiles_lats'],
+                'cmap_face': cmap_face,
+                'norm_face': norm_face,
+                'cmap_edge': cmap_edge,
+                'norm_edge': norm_edge,
+            }
+
+            print(f"variable {variable_counter}/{num_variables}: {variable_key}; depth level {depth_counter:{num_digits_depth_print}}/{num_depths:{num_digits_depth_print}}; time (seconds): {time.time() - depth_time:.2f}")
+
+        print(f"variable {variable_counter}/{num_variables}: {variable_key}; total time: {time.time() - var_time:.2f} seconds\n")
+
+    # Store colorbar dicts in the binning dict so they survive pickling
+    for variable_key in plot_state_dict['variable_key_list']:
+        geodesic_bin_data_dict[f'polygon_two_cbar_dict_{variable_key}'] = plot_state_dict[f'polygon_two_cbar_dict_{variable_key}']
+
+
 def set_colorbar_information_dictionary(plot_state_dict, geodesic_bin_data_dict):
 
     for variable_key in plot_state_dict['variable_key_list']:
         polygon_two_cbar_dict = copy.deepcopy(plot_state_dict['polygon_two_cbar_dict_template'])
         all_values_all_depths_list = geodesic_bin_data_dict[variable_key]["all_values_all_depths_list"]
         for polygon_component_string, cbar_dict in polygon_two_cbar_dict.items():
-            value_min_macro, value_max_macro = 1e36, -1e36
             value_list_macro_universal = []
             for depth_key in plot_state_dict['depth_key_list_dict'][variable_key]:
                 patch_dict_single_var_depth = geodesic_bin_data_dict[variable_key][depth_key]
                 value_list_macro = patch_dict_single_var_depth['macro'][f'{polygon_component_string}_value_list']
-                if value_min_macro > np.min(value_list_macro): value_min = np.min(value_list_macro)
-                if value_max_macro < np.max(value_list_macro): value_max = np.max(value_list_macro)
                 value_list_macro_universal += value_list_macro
 
             if cbar_dict['pos_and_neg']:
@@ -384,11 +488,6 @@ def establish_colorbars(plot_state_dict):
         else:
             cmap = cm.get_cmap(cbar_dict['cbar_params']['cmap_string'])
 
-        if cbar_dict['cmap_was_modified'] == True:
-            cmap = cbar_dict['modified_cmap']
-        else:
-            cmap = cm.get_cmap(cbar_dict['cbar_params']['cmap_string'])
-
         # 1. Fetch your target colorbar axis
         target_cax = plot_state_dict[f'cax_{cbar_side_string}']
 
@@ -440,7 +539,7 @@ def establish_colorbars(plot_state_dict):
                 # Default configuration for middle-of-the-bar labels
                 text_va = 'center'
                 text_y = norm_y
-                text_color = 'black'  # Default color for inside labels
+                text_color = 'black' if cbar_side_string == 'right' else 'white'
                 
                 # If the line sits exactly at the physical bottom (0.0)
                 if norm_y <= 0.001:
@@ -455,7 +554,7 @@ def establish_colorbars(plot_state_dict):
                         else:
                             text_color = 'white'
                     else:
-                        text_color = 'black'
+                        text_color = 'white'
                     
                 # If the line sits exactly at the physical top (1.0)
                 elif norm_y >= 0.999:
@@ -470,7 +569,7 @@ def establish_colorbars(plot_state_dict):
                         else:
                             text_color = 'black'
                     else:
-                        text_color = 'white'
+                        text_color = 'black'
 
                 cbar.ax.text(x=0.5, y=text_y, s=quantiles_strings[q_dex], color=text_color,
                              va=text_va, ha='center', fontsize='xx-small', 
@@ -533,8 +632,8 @@ def prepare_axes(fig):
 
 def clear_axes(plot_state_dict):
 
-    if plt.gca().get_legend() is not None:
-        plt.gca().get_legend().remove()
+    if plot_state_dict['ax'].get_legend() is not None:
+        plot_state_dict['ax'].get_legend().remove()
 
     if plot_state_dict['change_variable_bool']:
         plot_state_dict['cax_left'].clear()
@@ -577,7 +676,6 @@ def set_zoom_thresholds_crossed_booleans_return_scale_factor(plot_state_dict, is
         plot_state_dict['zoom_threshold_crossed_legend_bool'] = True
     else:
         plot_state_dict['zoom_threshold_crossed_legend_bool'] = False
-    #return None
     return scale_factor
 
 
@@ -597,9 +695,13 @@ def set_global_xylims(plot_state_dict):
     x_range = plot_state_dict['xmax_global'] - plot_state_dict['xmin_global']
     y_range = plot_state_dict['ymax_global'] - plot_state_dict['ymin_global']
     plot_state_dict['global_pseudo_area'] = x_range * y_range
-    #plot_state_dict['scale_factor'] = 1
     return None
 
+
+
+def ensure_micro_computed(plot_state_dict, variable_key, depth_key):
+    """All collections are pre-built at binning time — nothing to do here."""
+    pass
 
 
 def redraw_axes(plot_state_dict):
@@ -618,7 +720,6 @@ def redraw_axes(plot_state_dict):
 
     if not plot_state_dict['zoom_threshold_crossed_bool']:
         patch_collection = plot_state_dict['patch_information_dict'][variable_key][depth_key]['patch_collection_macro']
-        #plot_state_dict['ax'].add_collection(patch_collection)
         if 'base_max_linewidth_macro' not in plot_state_dict['patch_information_dict'][variable_key][depth_key]:
             plot_state_dict['patch_information_dict'][variable_key][depth_key]['base_max_linewidth_macro'] = calculate_collection_safe_lw(plot_state_dict['ax'], patch_collection)
         dynamic_max_linewidths = plot_state_dict['patch_information_dict'][variable_key][depth_key]['base_max_linewidth_macro'] * scale_factor
@@ -627,16 +728,27 @@ def redraw_axes(plot_state_dict):
         plot_state_dict['ax'].add_collection(patch_collection)
 
     else:
-        patch_collection = plot_state_dict['patch_information_dict'][variable_key][depth_key]['patch_collection_micro']
-        #plot_state_dict['ax'].add_collection(patch_collection)
-        if 'base_max_linewidth_micro' not in plot_state_dict['patch_information_dict'][variable_key][depth_key]:
-            plot_state_dict['patch_information_dict'][variable_key][depth_key]['base_max_linewidth_micro'] = calculate_collection_safe_lw(plot_state_dict['ax'], patch_collection)
-        dynamic_max_linewidths = plot_state_dict['patch_information_dict'][variable_key][depth_key]['base_max_linewidth_micro'] * scale_factor
-        capped_linewidths = np.minimum(plot_state_dict['patch_information_dict'][variable_key][depth_key]['original_linewidths_micro'], dynamic_max_linewidths)
+        ensure_micro_computed(plot_state_dict, variable_key, depth_key)
+        patch_info = plot_state_dict['patch_information_dict'][variable_key][depth_key]
+        patch_collection = patch_info['patch_collection_micro']
+        threshold = plot_state_dict['zoom_scale_threshold']
+        micro_lw = plot_state_dict['micro_base_linewidth'] * (scale_factor / threshold)
+        if 'base_max_linewidth_macro' not in patch_info:
+            patch_info['base_max_linewidth_macro'] = calculate_collection_safe_lw(plot_state_dict['ax'], patch_info['patch_collection_macro'])
+        dynamic_max = patch_info['base_max_linewidth_macro'] * scale_factor
+        original = np.array(patch_info['original_linewidths_micro'])
+        is_over_limit = patch_info['is_over_limit_micro']
+        capped_linewidths = np.where(
+            original == 0, 0,
+            np.where(is_over_limit,
+                     np.minimum(original, dynamic_max),
+                     micro_lw)
+        )
         patch_collection.set_linewidths(capped_linewidths)
         plot_state_dict['ax'].add_collection(patch_collection)
+        plot_state_dict['ax'].add_collection(patch_info['patch_collection_macro_border'])
 
-        plot_state_dict['ax'].scatter(plot_state_dict['patch_information_dict'][variable_key][depth_key]['profiles_lons'], plot_state_dict['patch_information_dict'][variable_key][depth_key]['profiles_lats'], c='red', s=1, zorder=10)
+        plot_state_dict['ax'].scatter(patch_info['profiles_lons'], patch_info['profiles_lats'], c='red', s=1, zorder=10)
 
 
     make_handles_and_titles(plot_state_dict)
@@ -657,8 +769,6 @@ def scale_with_zoom(plot_state_dict, event):
     if plot_state_dict['setup_bool'] or plot_state_dict['first_plot_bool']:
         return
 
-    #variable_key, depth_key = get_keys(plot_state_dict)
-
     previously_zoomed = plot_state_dict['zoom_threshold_crossed_bool']
     scale_factor = set_zoom_thresholds_crossed_booleans_return_scale_factor(plot_state_dict)
 
@@ -668,88 +778,55 @@ def scale_with_zoom(plot_state_dict, event):
 
     return None
 
-    """
-    #gemini-an-i
-    if isinstance(event, maxes.Axes):
-            # 'event' is actually the live axis object here
-            ax = event 
-            
-            # Update your dictionary limits directly from the axis state
-            plot_state_dict['xmin_zoom'] = ax.get_xlim()[0]
-            plot_state_dict['xmax_zoom'] = ax.get_xlim()[1]
-            plot_state_dict['ymin_zoom'] = ax.get_ylim()[0]
-            plot_state_dict['ymax_zoom'] = ax.get_ylim()[1]
-            isMaxes = True
-    """
-
-
-
-
 
 def zoomy_plots_yay(plot_state_dict, scale_factor, previously_zoomed):
 
     variable_key, depth_key = get_keys(plot_state_dict)
-
     ax = plot_state_dict['ax']
+    patch_info = plot_state_dict['patch_information_dict'][variable_key][depth_key]
 
-    # 1. Calculate how many pixels equal 1 data unit right now
-    # We transform a 1-unit step in data space to screen space
-    p0 = ax.transData.transform((0, 0))
-    p1 = ax.transData.transform((1, 0))
-    current_pixels_per_unit = np.linalg.norm(p1 - p0)
-
-    # 2. Derive a scale factor based entirely on the live canvas pixels
-    # (If this value is zero due to an unitialized canvas layout, default to 1.0)
-    if current_pixels_per_unit == 0:
-        return
-
-    # We want a ratio that grows as you zoom IN (pixels per unit increases)
-    # Replace '10.0' with a constant that sets your desired thickness at baseline
-    live_scale_factor = current_pixels_per_unit / 10.0
-
-
-
-
-
-
-
-
-
+    threshold_just_crossed = plot_state_dict['zoom_threshold_crossed_bool'] != previously_zoomed
     if plot_state_dict['zoom_threshold_crossed_bool']:
-        if not previously_zoomed:
-            clear_axes(plot_state_dict)
+        ensure_micro_computed(plot_state_dict, variable_key, depth_key)
+    suffix = 'micro' if plot_state_dict['zoom_threshold_crossed_bool'] else 'macro'
 
-            patch_collection = plot_state_dict['patch_information_dict'][variable_key][depth_key]['patch_collection_micro']
-            #plot_state_dict['ax'].add_collection(patch_collection)
-            if 'base_max_linewidth_micro' not in plot_state_dict['patch_information_dict'][variable_key][depth_key]:
-                plot_state_dict['patch_information_dict'][variable_key][depth_key]['base_max_linewidth_micro'] = calculate_collection_safe_lw(plot_state_dict['ax'], patch_collection)
+    patch_collection = patch_info[f'patch_collection_{suffix}']
 
-            #dynamic_max_linewidths = plot_state_dict['patch_information_dict'][variable_key][depth_key]['base_max_linewidth_micro'] * scale_factor
-            dynamic_max_linewidths = plot_state_dict['patch_information_dict'][variable_key][depth_key]['base_max_linewidth_micro'] * live_scale_factor
-            capped_linewidths = np.minimum(plot_state_dict['patch_information_dict'][variable_key][depth_key]['original_linewidths_micro'], dynamic_max_linewidths)
-            patch_collection.set_linewidths(capped_linewidths)
-
-            plot_state_dict['ax'].add_collection(patch_collection)
-
-            plot_state_dict['ax'].scatter(plot_state_dict['patch_information_dict'][variable_key][depth_key]['profiles_lons'], plot_state_dict['patch_information_dict'][variable_key][depth_key]['profiles_lats'], c='red', s=1, zorder=10)
-
-
+    if suffix == 'macro':
+        base_lw_key = 'base_max_linewidth_macro'
+        if base_lw_key not in patch_info:
+            patch_info[base_lw_key] = calculate_collection_safe_lw(ax, patch_collection)
+        dynamic_max_linewidths = patch_info[base_lw_key] * scale_factor
+        capped_linewidths = np.minimum(patch_info['original_linewidths_macro'], dynamic_max_linewidths)
     else:
-        if previously_zoomed:
-            clear_axes(plot_state_dict)
+        # Micro: normal sub-polygons get a micro formula lw (thin, grows with zoom).
+        # Over-limit bins kept as single macro polygons get the macro formula lw instead.
+        threshold = plot_state_dict['zoom_scale_threshold']
+        micro_lw = plot_state_dict['micro_base_linewidth'] * (scale_factor / threshold)
+        base_lw_key = 'base_max_linewidth_macro'
+        if base_lw_key not in patch_info:
+            patch_info[base_lw_key] = calculate_collection_safe_lw(ax, patch_info['patch_collection_macro'])
+        dynamic_max = patch_info[base_lw_key] * scale_factor
+        original = np.array(patch_info['original_linewidths_micro'])
+        is_over_limit = patch_info['is_over_limit_micro']
+        capped_linewidths = np.where(
+            original == 0, 0,
+            np.where(is_over_limit,
+                     np.minimum(original, dynamic_max),
+                     micro_lw)
+        )
 
-            patch_collection = plot_state_dict['patch_information_dict'][variable_key][depth_key]['patch_collection_macro']
-            #plot_state_dict['ax'].add_collection(patch_collection)
-            if 'base_max_linewidth_macro' not in plot_state_dict['patch_information_dict'][variable_key][depth_key]:
-                plot_state_dict['patch_information_dict'][variable_key][depth_key]['base_max_linewidth_macro'] = calculate_collection_safe_lw(plot_state_dict['ax'], patch_collection)
+    patch_collection.set_linewidths(capped_linewidths)
 
-            #dynamic_max_linewidths = plot_state_dict['patch_information_dict'][variable_key][depth_key]['base_max_linewidth_macro'] * scale_factor
-            dynamic_max_linewidths = plot_state_dict['patch_information_dict'][variable_key][depth_key]['base_max_linewidth_macro'] * live_scale_factor
-            capped_linewidths = np.minimum(plot_state_dict['patch_information_dict'][variable_key][depth_key]['original_linewidths_macro'], dynamic_max_linewidths)
-            patch_collection.set_linewidths(capped_linewidths)
-
-            plot_state_dict['ax'].add_collection(patch_collection)
-
+    if threshold_just_crossed:
+        clear_axes(plot_state_dict)
+        plot_state_dict['ax'].add_collection(patch_collection)
+        if plot_state_dict['zoom_threshold_crossed_bool']:
+            plot_state_dict['ax'].add_collection(patch_info['patch_collection_macro_border'])
+            plot_state_dict['ax'].scatter(
+                patch_info['profiles_lons'], patch_info['profiles_lats'],
+                c='red', s=1, zorder=10
+            )
 
     make_handles_and_titles(plot_state_dict)
     set_plot_text(plot_state_dict)
@@ -812,89 +889,6 @@ def handle_keyboard_input(plot_state_dict, event):
     redraw_axes(plot_state_dict)
 
     return None
-
-
-def sync_after_draw(plot_state_dict, event):
-    """
-    Runs after any major canvas redraw (like clicking the Home button).
-    Keeps the tracking dictionary synchronized with Matplotlib's backend.
-    """
-
-    #previously_zoomed = plot_state_dict['zoom_threshold_crossed_bool']
-    #scale_factor = set_zoom_thresholds_crossed_booleans_return_scale_factor(plot_state_dict)
-    #zoomy_plots_yay(plot_state_dict, scale_factor, previously_zoomed)
-
-
-    #"""
-    ax = plot_state_dict['ax']
-    
-    # 1. Pull the actual visual limits directly from the axis object
-    actual_xmin, actual_xmax = ax.get_xlim()
-    actual_ymin, actual_ymax = ax.get_ylim()
-    
-    # 2. Check if your dictionary tracking state has fallen out of sync 
-    # (This is exactly what happens when the Home button is clicked)
-    if (plot_state_dict['xmin_zoom'] != actual_xmin or 
-        plot_state_dict['ymin_zoom'] != actual_ymin):
-        
-        # Force overwrite the tracking states with the true visual bounds
-        plot_state_dict['xmin_zoom'] = actual_xmin
-        plot_state_dict['xmax_zoom'] = actual_xmax
-        plot_state_dict['ymin_zoom'] = actual_ymin
-        plot_state_dict['ymax_zoom'] = actual_ymax
-        
-        # 3. Re-run your area math and apply the line width limit
-        # (This uses the function you already wrote)
-        scale_factor = set_zoom_thresholds_crossed_booleans_return_scale_factor(plot_state_dict, isMaxes=True)
-        previously_zoomed = plot_state_dict['zoom_threshold_crossed_bool']
-        zoomy_plots_yay(plot_state_dict, scale_factor, previously_zoomed)
-    #"""
-        
-
-
-
-
-
-# vibrations
-def handle_toolbar_actions(event):
-    """Fires cleanly ONLY when toolbar actions (like Home) finish."""
-    # Check if the triggered tool was the Home reset button
-    if event.tool.name.lower() == 'home':
-        ax = plot_state_dict['ax']
-        
-        # Read the clean, fully restored final boundaries
-        plot_state_dict['xmin_zoom'] = ax.get_xlim()[0]
-        plot_state_dict['xmax_zoom'] = ax.get_xlim()[1]
-        plot_state_dict['ymin_zoom'] = ax.get_ylim()[0]
-        plot_state_dict['ymax_zoom'] = ax.get_ylim()[1]
-        
-        # Run your proven scale factor calculation directly
-        previously_zoomed = plot_state_dict['zoom_threshold_crossed_bool']
-        scale_factor = set_zoom_thresholds_crossed_booleans_return_scale_factor(plot_state_dict, isMaxes = True)
-        zoomy_plots_yay(plot_state_dict, scale_factor, previously_zoomed)
-
-
-
-def handle_toolbar_actions_fallback(event):
-    # If the user clicked a navigation tool button and let go, evaluate layout
-    if fig.canvas.toolbar and fig.canvas.toolbar.mode == '':
-        # Running a tiny delayed call ensures both X and Y updates have settled
-        fig.canvas.add_callback('draw_event', lambda e: execute_final_sync())
-
-def execute_final_sync():
-    # Force sync limits and recalculate once
-    ax = plot_state_dict['ax']
-    plot_state_dict['xmin_zoom'], plot_state_dict['xmax_zoom'] = ax.get_xlim()
-    plot_state_dict['ymin_zoom'], plot_state_dict['ymax_zoom'] = ax.get_ylim()
-
-    previously_zoomed = plot_state_dict['zoom_threshold_crossed_bool']
-    scale_factor = set_zoom_thresholds_crossed_booleans_return_scale_factor(plot_state_dict, isMaxes = True)
-    zoomy_plots_yay(plot_state_dict, scale_factor, previously_zoomed)
-
-
-    #coll.set_linewidths(np.minimum(original_widths, BASE_MAX_LW * scale_factor))
-    #fig.canvas.draw_idle()
-
 
 
 

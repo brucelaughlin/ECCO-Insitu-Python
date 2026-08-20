@@ -3,7 +3,7 @@ import xarray as xr
 import numpy as np
 from geopy import distance
 from scipy.interpolate import griddata
-from tools import load_llc270_grid, load_llc90_grid, patchface3D, sph2cart
+import tools 
 import pdb
 
 def get_profpoint_llc_ian(lon_llc, lat_llc, mask_llc, MITprof_ds):
@@ -13,30 +13,42 @@ def get_profpoint_llc_ian(lon_llc, lat_llc, mask_llc, MITprof_ds):
     lon_llc, lat_llc: the XC and YC of the llc grid in compact format llc x (13* llc)
     mask_llc: a mask with 1/0 denoting whether to use a point or not in the search
 
-    # Note: "ny" in the signature for "patchface3d" is never used...
+    # Note: "ny" in the signature for "patchface3D" is never used...
     """
 
     deg2rad = np.pi/180.0
     llc_horizontal_resolution = lon_llc.shape[0]
     
-    X_grid_tiled, Y_grid_tiled, Z_grid_tiled = sph2cart(lon_llc*deg2rad, lat_llc*deg2rad, 1)
+    X_grid_tiled, Y_grid_tiled, Z_grid_tiled = tools.sph2cart(lon_llc*deg2rad, lat_llc*deg2rad, 1)
 
     # convert X,Y,Z, mask_llc coords to global view
-    X_grid, faces = patchface3D(llc_horizontal_resolution, 13*llc_horizontal_resolution, 1, array_in = X_grid_tiled, direction = 2)
-    Y_grid, faces = patchface3D(llc_horizontal_resolution, 13*llc_horizontal_resolution, 1, array_in = Y_grid_tiled, direction = 2)
-    Z_grid, faces = patchface3D(llc_horizontal_resolution, 13*llc_horizontal_resolution, 1, array_in = Z_grid_tiled, direction = 2)
-    mask_untiled, faces = patchface3D(llc_horizontal_resolution, 13*llc_horizontal_resolution, 1, array_in = mask_llc, direction = 2)
+    X_grid, faces = tools.patchface3D(llc_horizontal_resolution, 13*llc_horizontal_resolution, 1, array_in = X_grid_tiled, direction = 2)
+    Y_grid, faces = tools.patchface3D(llc_horizontal_resolution, 13*llc_horizontal_resolution, 1, array_in = Y_grid_tiled, direction = 2)
+    Z_grid, faces = tools.patchface3D(llc_horizontal_resolution, 13*llc_horizontal_resolution, 1, array_in = Z_grid_tiled, direction = 2)
+    mask_untiled, faces = tools.patchface3D(llc_horizontal_resolution, 13*llc_horizontal_resolution, 1, array_in = mask_llc, direction = 2)
 
     bool_mask_untiled = mask_untiled== 1
 
-    model_xyz = np.column_stack((X_grid[bool_mask_untiled], Y_grid[bool_mask_untiled], Z_grid[bool_mask_untiled]))
-    profiles_xyz_threetuple = sph2cart(MITprof_ds["prof_lon"]*deg2rad, MITprof_ds["prof_lat"]*deg2rad, 1)
-
     flattened_monotonic_grid_indices_valid = np.arange(0, X_grid.size)[bool_mask_untiled.ravel()]
 
-    profile_flattened_monotonic_grid_indices = griddata(model_xyz, flattened_monotonic_grid_indices_valid, profiles_xyz_threetuple, method='nearest').astype(int)
+    model_xyz = np.column_stack((X_grid[bool_mask_untiled], Y_grid[bool_mask_untiled], Z_grid[bool_mask_untiled]))
 
-    MITprof_ds["profile_flattened_monotonic_grid_indices"] = xr.DataArray(profile_flattened_monotonic_grid_indices, dims=("iPROF"))
+    #profiles_xyz_threetuple = tools.sph2cart(MITprof_ds["prof_lon"]*deg2rad, MITprof_ds["prof_lat"]*deg2rad, 1)
+    valid_mask = tools.sph2cart_returnValidMaskOnly(MITprof_ds["prof_lon"]*deg2rad, MITprof_ds["prof_lat"]*deg2rad, 1)
+    MITprof_ds = MITprof_ds.where(valid_mask, drop=True) 
+    profiles_xyz_threetuple = tools.sph2cart(MITprof_ds["prof_lon"]*deg2rad, MITprof_ds["prof_lat"]*deg2rad, 1)
+
+
+    """
+    valid_mask = profiles_xyz_threetuple[0].notnull()
+    for ii_yz in range(1, len(profiles_xyz_threetuple)):
+        valid_mask = valid_mask & profiles_xyz_threetuple[ii_yz].notnull()
+    """
+
+    MITprof_ds['profile_flattened_monotonic_grid_indices'] = xr.DataArray(griddata(model_xyz, flattened_monotonic_grid_indices_valid, profiles_xyz_threetuple, method='nearest').astype(int), dims="iPROF")
+
+    return MITprof_ds
+
 
 
 def get_tile_point_llc_ian(lon_llc, lat_llc, ni, nj, MITprof_ds):
@@ -50,12 +62,12 @@ def get_tile_point_llc_ian(lon_llc, lat_llc, ni, nj, MITprof_ds):
     llc_horizontal_resolution = lon_llc.shape[0]
 
     # conver the XC YC coordinates to patchface.
-    xgrid, faces = patchface3D(llc_horizontal_resolution, llc_horizontal_resolution*13, 1, array_in = lon_llc, direction = 2)
-    ygrid, faces = patchface3D(llc_horizontal_resolution, llc_horizontal_resolution*13, 1, array_in = lat_llc, direction = 2)
+    xgrid, faces = tools.patchface3D(llc_horizontal_resolution, llc_horizontal_resolution*13, 1, array_in = lon_llc, direction = 2)
+    ygrid, faces = tools.patchface3D(llc_horizontal_resolution, llc_horizontal_resolution*13, 1, array_in = lat_llc, direction = 2)
 
     #get 5 faces
-    temp, tile_list_xgrid = patchface3D(4*llc_horizontal_resolution, 4*llc_horizontal_resolution, 1, array_in = xgrid, direction = 0.5)
-    temp, tile_list_ygrid = patchface3D(4*llc_horizontal_resolution, 4*llc_horizontal_resolution, 1, array_in = ygrid, direction = 0.5)
+    temp, tile_list_xgrid = tools.patchface3D(4*llc_horizontal_resolution, 4*llc_horizontal_resolution, 1, array_in = xgrid, direction = 0.5)
+    temp, tile_list_ygrid = tools.patchface3D(4*llc_horizontal_resolution, 4*llc_horizontal_resolution, 1, array_in = ygrid, direction = 0.5)
     
     XC11 = [np.empty_like(arr) for arr in tile_list_xgrid] 
     YC11 = [np.empty_like(arr) for arr in tile_list_xgrid] 
@@ -131,7 +143,7 @@ def get_tile_point_llc_ian(lon_llc, lat_llc, ni, nj, MITprof_ds):
     for target_key, source_field in interp_dict.items():
         # puts this in the original llc messed up face
         source_field_list_concat = np.concatenate((source_field[0], source_field[1], source_field[2], source_field[3].T, source_field[4].T), axis = 1)
-        patchface_field, faces = patchface3D(llc_horizontal_resolution, 13*llc_horizontal_resolution, 1, array_in = source_field_list_concat, direction = 3.5)
+        patchface_field, faces = tools.patchface3D(llc_horizontal_resolution, 13*llc_horizontal_resolution, 1, array_in = source_field_list_concat, direction = 3.5)
 
         # use the profile_flattened_monotonic_grid_indices to pull the right value from whatever interp_dict{k}
         # is.. interp_dict{k} is in patchface format, from above.    
@@ -139,6 +151,8 @@ def get_tile_point_llc_ian(lon_llc, lat_llc, ni, nj, MITprof_ds):
 
     # one last thing: "weights", which is 1 b/c we're using nearest neighbor:
     MITprof_ds['prof_interp_weights'] = xr.ones_like(MITprof_ds['profile_flattened_monotonic_grid_indices'])
+
+    return MITprof_ds
 
 
 def update_prof_and_tile_points_on_profiles(MITprof_ds, grid_dir, llc_horizontal_resolution, wet_or_all):
@@ -159,7 +173,7 @@ def update_prof_and_tile_points_on_profiles(MITprof_ds, grid_dir, llc_horizontal
     ##  Read in llc grid 
     if llc_horizontal_resolution == 90:
 
-        lon_90, lat_90, blank_90, wet_ins_90_k = load_llc90_grid(grid_dir, 1)
+        lon_90, lat_90, blank_90, wet_ins_90_k = tools.load_llc90_grid(grid_dir, 1)
         # tiles are 30x30
         ni = 30
         nj = 30
@@ -171,7 +185,7 @@ def update_prof_and_tile_points_on_profiles(MITprof_ds, grid_dir, llc_horizontal
         else:
             mask_llc=np.ones(blank_90.shape, order = 'F') 
     if llc_horizontal_resolution == 270:
-        lon_270, lat_270, blank_270, wet_ins_270_k = load_llc270_grid(grid_dir, 1)
+        lon_270, lat_270, blank_270, wet_ins_270_k = tools.load_llc270_grid(grid_dir, 1)
         ni = 30
         nj = 30  
         lon_llc = lon_270
@@ -182,9 +196,9 @@ def update_prof_and_tile_points_on_profiles(MITprof_ds, grid_dir, llc_horizontal
         else:
             mask_llc=np.ones(blank_270.shape, order = 'F')
    
-    get_profpoint_llc_ian(lon_llc, lat_llc, mask_llc, MITprof_ds)
+    MITprof_ds = get_profpoint_llc_ian(lon_llc, lat_llc, mask_llc, MITprof_ds)
 
-    get_tile_point_llc_ian(lon_llc, lat_llc, ni, nj, MITprof_ds)
+    MITprof_ds = get_tile_point_llc_ian(lon_llc, lat_llc, ni, nj, MITprof_ds)
         
     #  Sanity Check Interpolation 
     #  if the distance between the closest mitgcm grid point and the 

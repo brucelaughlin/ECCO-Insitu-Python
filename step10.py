@@ -35,7 +35,11 @@ def update_decimate_profiles_subdaily_to_once_daily(MITprof_ds, profile_var_key_
     # Just assuming method == 1, since that was the only completed algorithm in previous versions.
     # -----------------------------------------------------------------------------------------------------------------------------
 
-    X, Y, Z = tools.sph2cart(MITprof_ds['prof_lon']*deg2rad, MITprof_ds['prof_lat']*deg2rad, 6357000)
+    #X, Y, Z = tools.sph2cart(MITprof_ds['prof_lon']*deg2rad, MITprof_ds['prof_lat']*deg2rad, 6357000)
+    valid_mask = tools.sph2cart_returnValidMaskOnly(MITprof_ds["prof_lon"]*deg2rad, MITprof_ds["prof_lat"]*deg2rad, 1)
+    MITprof_ds = MITprof_ds.where(valid_mask, drop=True)
+    X, Y, Z = tools.sph2cart(MITprof_ds["prof_lon"]*deg2rad, MITprof_ds["prof_lat"]*deg2rad, 1)
+
 
     days_with_data_unique = np.unique(MITprof_ds['prof_YYYYMMDD'])
 

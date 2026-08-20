@@ -1297,13 +1297,27 @@ def load_llc270_grid(llc270_grid_dir, step):
     
     return lon_270, lat_270, blank_270, wet_ins_270_k, X_270, Y_270, Z_270, bathy_270, good_ins_270, RAC_270_pf
 
-def sph2cart(az, elev, r):
+def sph2cart_returnValidMaskOnly(az, elev, r):
+    xyz_threetuple = sph2cart(az, elev, r)
+    if isinstance(xyz_threetuple[0], xr.DataArray):
+        valid_mask = xyz_threetuple[0].notnull()
+        for ii_yz in range(1, len(xyz_threetuple)):
+            valid_mask = valid_mask & xyz_threetuple[ii_yz].notnull()
+    else:
+        valid_mask = ~np.isnan(xyz_threetuple[0])
+        for ii_yz in range(1, len(xyz_threetuple)):
+            valid_mask = (valid_mask) & (~np.isnan(xyz_threetuple[ii_yz]))
 
+    return valid_mask
+
+
+    return x, y, z
+
+def sph2cart(az, elev, r):
     rcoselev = r * np.cos(elev)
     x = rcoselev * np.cos(az)
     y = rcoselev* np.sin(az)
     z = r * np.sin(elev)
-
     return x, y, z
 
 #def sph2cart(az, elev, r):

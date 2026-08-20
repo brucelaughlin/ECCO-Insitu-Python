@@ -1,13 +1,12 @@
-import pdb
 import sys
 from pathlib import Path
 import xarray as xr
 import numpy as np
 import pandas as pd
-from scipy.spatial import KDTree
-from scipy.spatial import ConvexHull
+from scipy.spatial import KDTree, ConvexHull, Voronoi
 from shapely.geometry import Polygon as ShapelyPolygon
-from shapely.geometry import Point, box, MultiPolygon
+from shapely.geometry import MultiPolygon
+from matplotlib.path import Path as MplPath
 import time
 
 base_dir = str(Path(__file__).parent.parent.parent.resolve())
@@ -18,7 +17,7 @@ plotting_dir = str(Path(__file__).parent.parent.resolve() / "plotting")
 sys.path.append(plotting_dir)
 
 
-def bin_around_geodesic_vertices(geodesic_file: str, profile_file: str, variables_of_interest: dict, angular_precision: float, num_geodesic_bins: int, num_subpolygons_max: int, num_samples_for_clustering_per_profile: int) -> dict :
+def bin_around_geodesic_vertices(geodesic_file: str, profile_file: str, variables_of_interest: dict, angular_precision: float, num_geodesic_bins: int, num_subpolygons_max: int) -> dict:
 
     num_digits = len(str(num_geodesic_bins))
 
@@ -60,10 +59,7 @@ def bin_around_geodesic_vertices(geodesic_file: str, profile_file: str, variable
         for depth_index in range(unsorted_anomalies.shape[-1]):
             sort_indices = np.argsort(unsorted_anomalies[:,depth_index])
             sorted_anomaly_slices_list.append(unsorted_anomalies[:,depth_index][sort_indices])
-            try:
-                sorted_bin_indices_slices_list.append(nearest_bin_numbers_profiles[sort_indices])
-            except:
-                pdb.set_trace()
+            sorted_bin_indices_slices_list.append(nearest_bin_numbers_profiles[sort_indices])
             sorted_lons_list.append(profiles_lons[good_index_mask][sort_indices])
             sorted_lats_list.append(profiles_lats[good_index_mask][sort_indices])
 
@@ -85,15 +81,6 @@ def bin_around_geodesic_vertices(geodesic_file: str, profile_file: str, variable
     artificial_grid_geo_bins = artificial_grid_geo_bins.reshape(artificial_lon_meshgrid.shape)
 
     geodesic_bin_data_dict = {}
-
-    '''
-    # This was for a runtime test, varying input parameters
-    print()
-    print(f"                 angular_precision: {angular_precision}") 
-    print(f"                 num_geodesic_bins: {num_geodesic_bins}")
-    print(f"               num_subpolygons_max: {num_subpolygons_max}")
-    print(f"num_samples_for_clustering_per_profile: {num_samples_for_clustering_per_profile}\n")
-    '''
 
     # Assuming <num_depth_levels_ncei_file> is fixed for a given profile file....
     num_depth_levels_ncei_file = anomalies_global_dict[list(anomalies_global_dict.keys())[0]]["profiles_anomaly_values"].shape[-1] 
@@ -177,7 +164,7 @@ def bin_around_geodesic_vertices(geodesic_file: str, profile_file: str, variable
                     bounding_polygon = coords_within_geodesic_bin[ConvexHull(coords_within_geodesic_bin).vertices]
                     patch_dict_single_var_depth["bin_indices"][index]["artificial_grid_bounding_polygon_for_geodesic_bin"] = bounding_polygon
 
-                determine_patch_collections_pieces(patch_dict_single_var_depth, num_subpolygons_max, num_samples_for_clustering_per_profile)
+                determine_patch_collections_pieces(patch_dict_single_var_depth, num_subpolygons_max)
 
                 patch_dict_single_var_depth["profiles_lats"] = anomalies_global_dict[variable_key]["profiles_lats"][valid_indices][:,i_depth]
                 patch_dict_single_var_depth["profiles_lons"] = anomalies_global_dict[variable_key]["profiles_lons"][valid_indices][:,i_depth]
@@ -218,7 +205,7 @@ def filter_tuple_of_1D_arrays_for_nans(tuple_of_1D_arrays):
     return(tuple_of_1D_arrays, good_index_mask)
 
 
-def determine_patch_collections_pieces(patch_dict_single_var_depth: dict, num_subpolygons_max: int, num_samples_for_clustering_per_profile) -> None:
+def determine_patch_collections_pieces(patch_dict_single_var_depth: dict, num_subpolygons_max: int) -> None:
 
     # Some plotting parameters that have seemed to work
     linewidth_floor_initial = 0
@@ -302,7 +289,7 @@ def determine_patch_collections_pieces(patch_dict_single_var_depth: dict, num_su
     patch_dict_single_var_depth['value_max_face'] = value_max_face
 
     patch_dict_single_var_depth['macro'] = {}
-    patch_dict_single_var_depth['macro']['polygon_vertex_list_of_lists'] = patch_polygon_vertex_list_of_lists 
+    patch_dict_single_var_depth['macro']['polygon_vertex_list_of_lists'] = patch_polygon_vertex_list_of_lists
     patch_dict_single_var_depth['macro']['face_value_list'] = patch_face_value_list
     patch_dict_single_var_depth['macro']['edge_value_list'] = patch_edge_value_list
     patch_dict_single_var_depth['macro']['linewidths_list'] = linewidths_unclipped
@@ -310,133 +297,187 @@ def determine_patch_collections_pieces(patch_dict_single_var_depth: dict, num_su
     patch_dict_single_var_depth['macro']['linewidth_floor_initial'] = linewidth_floor_initial
     patch_dict_single_var_depth['macro']['linewidth_ceil_initial'] = linewidth_ceil_initial
 
-    determine_micro_patch_collections_pieces(patch_dict_single_var_depth, num_subpolygons_max, num_samples_for_clustering_per_profile)
+    # Pre-compute micro sub-polygon geometry so the plotter only has to build
+    # matplotlib objects at runtime (fast) rather than run Voronoi at first zoom (slow).
+    micro_polygon_vertex_list = []
+    micro_face_value_list = []
+    micro_edge_value_list = []
+    micro_linewidth_tag_list = []  # 'zero', 'micro', or 'macro'
 
+    for patch_dex, (parent_vertices, n_profiles, edge_val, macro_lw) in enumerate(zip(
+            patch_polygon_vertex_list_of_lists,
+            count_list,
+            patch_edge_value_list,
+            linewidths)):
 
-def determine_micro_patch_collections_pieces(patch_dict_single_var_depth : dict, num_subpolygons_max: int, num_samples_for_clustering_per_profile: int) -> None:
+        individual_vals = individual_profile_anomalies_list_of_bin_lists[patch_dex]
+        rng_seed = hash((patch_dex, num_subpolygons_max)) & 0xFFFFFFFF
 
-    num_patches = len(patch_dict_single_var_depth['count_array']) 
-
-    patch_polygon_vertex_list_of_lists = []
-    patch_face_value_list = []
-    patch_edge_value_list = []
-    linewidths_list = []
-
-    for patch_dex in range(num_patches):
-
-        num_profiles = patch_dict_single_var_depth['count_array'][patch_dex]
-
-        if num_profiles > num_subpolygons_max:
-            patch_polygon_vertex_list_of_lists.append(patch_dict_single_var_depth['macro']['polygon_vertex_list_of_lists'][patch_dex])
-            patch_face_value_list.append(patch_dict_single_var_depth['macro']['face_value_list'][patch_dex])
-            patch_edge_value_list.append(patch_dict_single_var_depth['macro']['edge_value_list'][patch_dex])
-            linewidths_list.append(patch_dict_single_var_depth['macro']['linewidths_list'][patch_dex])
-
+        if n_profiles > num_subpolygons_max:
+            # Over-limit bin: keep as single macro polygon; linewidth stays macro-scaled
+            micro_polygon_vertex_list.append([np.array(parent_vertices)])
+            micro_face_value_list.append([patch_face_value_list[patch_dex]])
+            micro_edge_value_list.append([edge_val])
+            micro_linewidth_tag_list.append(['macro'])
         else:
-            orig_poly = ShapelyPolygon(patch_dict_single_var_depth['macro']['polygon_vertex_list_of_lists'][patch_dex])
+            sub_polys = _fill_polygon_voronoi(ShapelyPolygon(parent_vertices), n_profiles, rng_seed)
+            n_sub = len(sub_polys)
 
-            # VIBING OUT
-            minx, miny, maxx, maxy = orig_poly.bounds
-            points = []
-        
-            num_samples_for_clustering = num_profiles * num_samples_for_clustering_per_profile
+            face_values_unordered = (individual_vals * ((n_sub // len(individual_vals)) + 1))[:n_sub]
 
-            while len(points) < num_samples_for_clustering:
-                p = Point(np.random.uniform(minx, maxx), np.random.uniform(miny, maxy))
-                if orig_poly.contains(p):
-                    points.append([p.x, p.y])
+            # South-to-north value assignment: most negative/lowest at south, most positive at north.
+            # individual_vals is already sorted ascending, so assign index 0 to the southernmost cell.
+            centroids_y = np.array([
+                p.centroid.y if p is not None and not p.is_empty else 0.0
+                for p in sub_polys
+            ])
+            # rank_of_cell[i] = how far south cell i is (0 = southernmost)
+            # face_values_unordered[0] = most negative → assign to southernmost cell
+            rank_of_cell = np.argsort(np.argsort(centroids_y))
+            face_values = [face_values_unordered[rank_of_cell[i]] for i in range(n_sub)]
 
-            random_points_array = np.array(points)
+            tag = 'zero' if n_profiles == 1 else 'micro'
+            bin_vertices = []
+            for p in sub_polys:
+                if p is not None and not p.is_empty:
+                    bin_vertices.append(np.array(p.exterior.coords))
+                else:
+                    bin_vertices.append(np.array(parent_vertices))
 
-            patch_polygon_vertex_list_of_lists += fill_polygon_subdivide_fixed(orig_poly, random_points_array, num_profiles)
+            micro_polygon_vertex_list.append(bin_vertices)
+            micro_face_value_list.append(list(face_values))
+            micro_edge_value_list.append([edge_val] * n_sub)
+            micro_linewidth_tag_list.append([tag] * n_sub)
 
-            patch_face_value_list += patch_dict_single_var_depth['individual_profile_anomalies_list_of_bin_lists'][patch_dex]
-            patch_edge_value_list += [patch_dict_single_var_depth['macro']['edge_value_list'][patch_dex]] * num_profiles
-
-            if num_profiles == 1:
-                linewidths_list.append(0)
-            else:
-                linewidths_list += [1] * num_profiles
-
-    patch_dict_single_var_depth['micro'] = {}
-    patch_dict_single_var_depth['micro']['polygon_vertex_list_of_lists'] = patch_polygon_vertex_list_of_lists 
-    patch_dict_single_var_depth['micro']['face_value_list'] = patch_face_value_list
-    patch_dict_single_var_depth['micro']['edge_value_list'] = patch_edge_value_list
-    patch_dict_single_var_depth['micro']['linewidths_list'] = linewidths_list
+    patch_dict_single_var_depth['micro'] = {
+        'polygon_vertex_list_of_bin_lists': micro_polygon_vertex_list,
+        'face_value_list_of_bin_lists': micro_face_value_list,
+        'edge_value_list_of_bin_lists': micro_edge_value_list,
+        'linewidth_tag_list_of_bin_lists': micro_linewidth_tag_list,
+    }
 
 
-# Praise be to the vibe gods
-def fill_polygon_subdivide_fixed(polygon, internal_points, n_pieces):
+
+def _fill_polygon_voronoi(polygon, n_pieces, rng_seed, lloyd_iters=2):
     """
-    Subdivides a parent polygon into exactly N compact pieces using proportional allocation.
-    Guarantees 100% boundary coverage with zero empty quadrants, gaps, or dropped pieces.
+    Subdivide polygon into n_pieces organically-shaped cells via Voronoi
+    tessellation with Lloyd relaxation.
+
+    Uses mirrored ghost points around the polygon boundary so outer cells are
+    naturally bounded (no infinite rays to clip).  The deterministic rng_seed
+    means identical inputs always produce identical outputs.
     """
-    # Convert internal points to a fast NumPy array
-    #pts_arr = np.array([[p.x, p.y] for p in internal_points])
-    pts_arr = internal_points
-    
-    # Safely extract bounding dimensions
+    if n_pieces == 1:
+        return [polygon]
+
     minx, miny, maxx, maxy = polygon.bounds
-    
-    # Establish a safe, slightly oversized initial bounding box to absorb rounding errors
-    oversized_box = (minx - 1.0, miny - 1.0, maxx + 1.0, maxy + 1.0)
-    
-    def split_bbox(points, current_box, pieces_needed, depth=0):
-        # Base case: if this branch only needs 1 piece, return the final bounded box
-        if pieces_needed <= 1 or len(points) == 0:
-            return [current_box]
-            
-        axis = depth % 2  # Alternate: 0 for X axis, 1 for Y axis
-        
-        # Determine how many pieces to allot to the left/bottom branch
-        left_pieces = pieces_needed // 2
-        right_pieces = pieces_needed - left_pieces
-        
-        # Sort along the active axis
-        sorted_indices = np.argsort(points[:, axis])
-        sorted_pts = points[sorted_indices]
-        
-        # Calculate the precise proportional split index instead of a hard median
-        split_idx = int(len(sorted_pts) * (left_pieces / pieces_needed))
-        split_idx = max(1, min(split_idx, len(sorted_pts) - 1)) # Safety clip
-        
-        split_val = sorted_pts[split_idx, axis]
-        bx_minx, bx_miny, bx_maxx, bx_maxy = current_box
-        
-        if axis == 0:  # Vertical Cut (Slicing X)
-            left_box = (bx_minx, bx_miny, split_val, bx_maxy)
-            right_box = (split_val, bx_miny, bx_maxx, bx_maxy)
-        else:          # Horizontal Cut (Slicing Y)
-            left_box = (bx_minx, bx_miny, bx_maxx, split_val)
-            right_box = (bx_minx, split_val, bx_maxx, bx_maxy)
-            
-        # Recurse down both branches with their precise sub-counts
-        left_results = split_bbox(sorted_pts[:split_idx], left_box, left_pieces, depth + 1)
-        right_results = split_bbox(sorted_pts[split_idx:], right_box, right_pieces, depth + 1)
-        
-        return left_results + right_results
+    poly_path = MplPath(np.array(polygon.exterior.coords))
 
-    # Generate the perfectly distributed bounding boxes
-    target_boxes = split_bbox(pts_arr, oversized_box, n_pieces)
-    
-    sub_polygons = []
-    for bbox in target_boxes:
-        clipping_zone = box(*bbox)
-        clipped_poly = polygon.intersection(clipping_zone)
-        
-        if clipped_poly.is_empty:
+    rng = np.random.default_rng(rng_seed)
+
+    # --- y-stratified seeds: one per horizontal band so cells stack south-to-north ---
+    seeds = _sample_points_in_polygon_y_stratified(poly_path, minx, miny, maxx, maxy, n_pieces, rng)
+
+    # --- Lloyd relaxation: move each seed to its Voronoi cell centroid ---
+    for _ in range(lloyd_iters):
+        seeds = _lloyd_step(seeds, poly_path, polygon, minx, miny, maxx, maxy, rng)
+
+    # --- build final Voronoi cells clipped to polygon ---
+    return _voronoi_cells(seeds, polygon)
+
+
+def _sample_points_in_polygon(poly_path, minx, miny, maxx, maxy, n, rng):
+    """Vectorised rejection sampling: draw batches until n interior points found."""
+    pts = []
+    while len(pts) < n:
+        batch = rng.uniform([minx, miny], [maxx, maxy], size=(max(n * 4, 64), 2))
+        inside = poly_path.contains_points(batch)
+        pts.extend(batch[inside].tolist())
+    return np.array(pts[:n])
+
+
+def _sample_points_in_polygon_y_stratified(poly_path, minx, miny, maxx, maxy, n, rng):
+    """
+    Place one seed per horizontal band, dividing the y range into n equal strips.
+    Within each strip, use rejection sampling to find a point inside the polygon.
+    Seeds come out ordered south-to-north, which biases Voronoi cells into horizontal
+    stacks regardless of polygon shape — critical for small n (2–3 profiles).
+    """
+    band_height = (maxy - miny) / n
+    seeds = []
+    for i in range(n):
+        band_miny = miny + i * band_height
+        band_maxy = band_miny + band_height
+        # rejection sample within this horizontal band
+        while True:
+            batch = rng.uniform([minx, band_miny], [maxx, band_maxy], size=(64, 2))
+            inside = poly_path.contains_points(batch)
+            if inside.any():
+                seeds.append(batch[inside][0].tolist())
+                break
+            # band may be entirely outside polygon (concave shape) — fall back to full polygon
+            batch = rng.uniform([minx, miny], [maxx, maxy], size=(64, 2))
+            inside = poly_path.contains_points(batch)
+            if inside.any():
+                seeds.append(batch[inside][0].tolist())
+                break
+    return np.array(seeds)
+
+
+def _lloyd_step(seeds, poly_path, polygon, minx, miny, maxx, maxy, rng):
+    """One Lloyd relaxation pass: replace each seed with its Voronoi cell centroid."""
+    cells = _voronoi_cells(seeds, polygon)
+    new_seeds = []
+    for cell in cells:
+        if cell is not None and not cell.is_empty:
+            cx, cy = cell.centroid.x, cell.centroid.y
+            # centroid may fall outside the polygon for concave shapes — clamp it
+            if not poly_path.contains_points([[cx, cy]])[0]:
+                # fall back to a random interior point near the centroid
+                fallback = _sample_points_in_polygon(poly_path, minx, miny, maxx, maxy, 1, rng)
+                cx, cy = fallback[0]
+            new_seeds.append([cx, cy])
+        else:
+            new_seeds.append(seeds[len(new_seeds)])
+    return np.array(new_seeds)
+
+
+def _voronoi_cells(seeds, polygon):
+    """
+    Build Voronoi cells clipped to polygon.
+
+    Ghost points mirrored across each polygon edge ensure the outer seeds
+    produce bounded cells without needing a large bounding-box hack.
+    """
+    # Add mirror ghost points so scipy Voronoi produces finite outer regions
+    minx, miny, maxx, maxy = polygon.bounds
+    margin = max(maxx - minx, maxy - miny)
+    ghosts = np.array([
+        [minx - margin, miny - margin],
+        [maxx + margin, miny - margin],
+        [minx - margin, maxy + margin],
+        [maxx + margin, maxy + margin],
+    ])
+    all_pts = np.vstack([seeds, ghosts])
+
+    vor = Voronoi(all_pts)
+
+    cells = []
+    for i in range(len(seeds)):
+        region_idx = vor.point_region[i]
+        region = vor.regions[region_idx]
+        if -1 in region or len(region) == 0:
+            cells.append(None)
             continue
-            
-        if clipped_poly.geom_type == 'Polygon':
-            sub_polygons.append(clipped_poly)
-        elif clipped_poly.geom_type == 'MultiPolygon':
-            for part in clipped_poly.geoms:
-                sub_polygons.append(part)
-                
-    return sub_polygons
+        cell_poly = ShapelyPolygon(vor.vertices[region])
+        clipped = polygon.intersection(cell_poly)
+        if clipped.is_empty:
+            cells.append(None)
+        elif clipped.geom_type == 'MultiPolygon':
+            # keep largest piece if clipping fragments the cell
+            cells.append(max(clipped.geoms, key=lambda g: g.area))
+        else:
+            cells.append(clipped)
 
-# Note: See older commits for zarr save/load utilites. 
-# These were abandoned in favor of computing patch collections immediately after binnning and then pickling everything, 
-# as all methods in which patch collections were computed at plot runtime were prohibitively slow at plot runtime, 
-# and patch collections can only be saved in pickle binary files (afaik).
+    return cells
 

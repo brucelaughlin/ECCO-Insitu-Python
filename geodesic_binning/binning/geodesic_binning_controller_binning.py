@@ -1,5 +1,4 @@
 
-import pdb
 import pickle
 import sys
 from pathlib import Path
@@ -19,15 +18,10 @@ output_dir = Path(binning_dir) / output_dir_stem
 output_dir.mkdir(parents=True, exist_ok=True)
 
 
-# This is for determining sub-polygons.  It shouldn't need to be higher than 100
-num_samples_for_clustering_per_profile = 5
-#num_samples_for_clustering_per_profile = 10
-#num_samples_for_clustering_per_profile = 50
-
-# This parameter, <num_subpolygons_max>, was originally to keep computing cost down (see previous comment), but,
-# now it's basically just to keep plots from getting too cluttered.
-num_subpolygons_max = 2000
-#num_subpolygons_max = 1000
+# Cap on sub-polygons per bin — beyond ~500 cells are sub-pixel and visually indistinguishable.
+# Bins above this limit are drawn as a single macro polygon instead.
+num_subpolygons_max = 1000
+#num_subpolygons_max = 500
 
 # in <variables_of_interest_dict>, keys should be variable names, values should be units (tex-friendly, for plotting)
 variables_of_interest_dict = {}
@@ -82,11 +76,12 @@ profile_file_list_test = [
 ############################################
 # Testing step
 ############################################
-#profile_file_list = profile_file_list_total
 #profile_file_list = profile_file_list_smallDemo
-#profile_file_list = profile_file_list_largeDemo
-#profile_file_list = profile_file_list_problematic
-profile_file_list = profile_file_list_test
+profile_file_list = profile_file_list_largeDemo
+
+###profile_file_list = profile_file_list_problematic
+###profile_file_list = profile_file_list_test
+###profile_file_list = profile_file_list_total
 ############################################
 
 
@@ -97,65 +92,23 @@ for profile_file_index in range(len(profile_file_list)):
     print(f"NCEI chain processed profile file: {profile_file}")
 
     print()
-    print("binning step 1/2: GEODESIC BIN BINNING!")
+    print("geodesic bin binning:")
 
-    save_dir = output_dir / f"{num_samples_for_clustering_per_profile}_clustering_samples_per_profile/{num_geodesic_bins_string}_geodesic_bins" / f"num_subpolygons_max_{num_subpolygons_max}" 
+    save_dir = output_dir / f"{num_geodesic_bins_string}_geodesic_bins" / f"num_subpolygons_max_{num_subpolygons_max}"
     Path(save_dir).mkdir(parents=True, exist_ok=True)
 
-    geodesic_bin_data_dict = utils_binning.bin_around_geodesic_vertices(geodesic_file, profile_file, variables_of_interest_dict, angular_precision, num_geodesic_bins, num_subpolygons_max, num_samples_for_clustering_per_profile)
+    geodesic_bin_data_dict = utils_binning.bin_around_geodesic_vertices(geodesic_file, profile_file, variables_of_interest_dict, angular_precision, num_geodesic_bins, num_subpolygons_max)
 
     print()
-    print("binning step 2/2: PATCH INFORMATION CALCULATION!")
-    plot_state_dict = utils_plotting.generate_new_plot_state_dict()
+    print("patch collection building:")
+    plot_state_dict_temp = utils_plotting.build_plot_state_dict_minimal(geodesic_bin_data_dict)
+    utils_plotting.build_all_patch_collections(geodesic_bin_data_dict, plot_state_dict_temp)
 
-    variable_key_list = [variable_key for variable_key in list(geodesic_bin_data_dict.keys()) if type(geodesic_bin_data_dict[variable_key]) == dict]
-    variable_key_list.sort()
-    variable_key_list_index = 0
-    plot_state_dict.update({'variable_key_list': variable_key_list, 'variable_key_list_index': variable_key_list_index})
-
-    plot_state_dict["profile_count_per_variable"] = {}
-    plot_state_dict["depth_count_per_variable"] = {}
-    num_bins_populated_max = 0
-    num_profiles_max = 0
-    for variable_key in variable_key_list:
-        plot_state_dict["profile_count_per_variable"][variable_key] = geodesic_bin_data_dict[variable_key]["profile_count_per_variable"]
-        depth_key_list = [depth_key for depth_key in list(geodesic_bin_data_dict[variable_key].keys()) if type(geodesic_bin_data_dict[variable_key][depth_key]) == dict]
-        plot_state_dict["depth_count_per_variable"][variable_key] = len(depth_key_list) 
-        for depth_key in depth_key_list:
-            num_bins_populated = len(list(geodesic_bin_data_dict[variable_key][depth_key]["bin_indices"].keys()))
-            if num_bins_populated_max < num_bins_populated: num_bins_populated_max = num_bins_populated
-            profile_count = geodesic_bin_data_dict[variable_key][depth_key]["profile_count"]
-            if num_profiles_max < profile_count: num_profiles_max = profile_count
-        
-
-    depth_key_list_dict = {}
-    for variable_key in variable_key_list: 
-        depth_key_list_dict[variable_key] = [depth_key for depth_key in list(geodesic_bin_data_dict[variable_key].keys()) if type(geodesic_bin_data_dict[variable_key][depth_key]) == dict]
-        depth_key_list_dict[variable_key].sort()
-
-    depth_key_list_index = 0
-    plot_state_dict.update({'depth_key_list_dict': depth_key_list_dict, 'depth_key_list_index': depth_key_list_index})
-
-    plot_state_dict["num_depth_levels_ncei_file"] = geodesic_bin_data_dict["num_depth_levels_ncei_file"]
-    plot_state_dict["num_digits_print_depth_level"] = len(str(abs(geodesic_bin_data_dict["num_depth_levels_ncei_file"])))
-    plot_state_dict["num_digits_print_bins"] = len(str(abs(num_bins_populated_max)))
-    plot_state_dict["num_digits_print_profiles"] = len(str(abs(num_profiles_max)))
-    plot_state_dict["profile_file_stem"] = geodesic_bin_data_dict["profile_file_stem"]
-    plot_state_dict["geodesic_bin_file_stem"] = geodesic_bin_data_dict["geodesic_bin_file_stem"]
-    plot_state_dict["num_geodesic_bins"] = geodesic_bin_data_dict["num_geodesic_bins"]
-    plot_state_dict["num_subpolygons_max"] = geodesic_bin_data_dict["num_subpolygons_max"]
-
-    # now set the patch information for the binning just completed.  Note that this uses colorbar information defined elsewhere.
-    utils_plotting.set_patch_information(plot_state_dict, geodesic_bin_data_dict)
+    geodesic_bin_data_dict['_schema_version'] = 3
 
     save_file_bin_data_pickle = save_dir / f"{geodesic_bin_data_dict['profile_file_stem']}_binning_data.pickle"
     with open(save_file_bin_data_pickle, 'wb') as handle:
         pickle.dump(geodesic_bin_data_dict, handle, protocol=pickle.HIGHEST_PROTOCOL)
     print(f"binning data output_file: {save_file_bin_data_pickle}\n")
-
-    save_file_plot_data_pickle = save_dir / f"{geodesic_bin_data_dict['profile_file_stem']}_plot_data.pickle"
-    with open(save_file_plot_data_pickle, 'wb') as handle:
-        pickle.dump(plot_state_dict, handle, protocol=pickle.HIGHEST_PROTOCOL)
-    print(f"plot data output_file: {save_file_plot_data_pickle}\n")
 
 

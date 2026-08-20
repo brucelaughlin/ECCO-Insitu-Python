@@ -1,7 +1,7 @@
 import xarray as xr
 import os
 import numpy as np
-from tools import interp_check, load_llc90_grid, sph2cart
+import tools
 from scipy.interpolate import griddata
 import pdb
 
@@ -33,7 +33,7 @@ def update_spatial_bin_index_on_prepared_profiles(bin_dir, MITprof_ds, grid_dir)
     ## Prepare the nearest neighbor mapping
     if bin_llcN  == 90:
 
-        lon_90, lat_90, bathy_90, X_90, Y_90, Z_90 = load_llc90_grid(grid_dir, 2)
+        lon_90, lat_90, bathy_90, X_90, Y_90, Z_90 = tools.load_llc90_grid(grid_dir, 2)
 
         X = X_90.ravel()
         Y = Y_90.ravel()
@@ -46,14 +46,19 @@ def update_spatial_bin_index_on_prepared_profiles(bin_dir, MITprof_ds, grid_dir)
         flattened_monotonic_grid_indices = np.arange(X_90.size)
     
     # verify that our little trick works in 4 parts of the earth
-    interp_check(xyz_grid, flattened_monotonic_grid_indices, X, Y, Z, lat_llc, lon_llc, 2)
+    tools.interp_check(xyz_grid, flattened_monotonic_grid_indices, X, Y, Z, lat_llc, lon_llc, 2)
  
     deg2rad = np.pi/180.0
 
     # Read and process the profile files
-    xyz_profiles_threetuple = sph2cart(MITprof_ds["prof_lon"]*deg2rad, MITprof_ds["prof_lat"]*deg2rad, 1)
+    #xyz_profiles_threetuple = tools.sph2cart(MITprof_ds["prof_lon"]*deg2rad, MITprof_ds["prof_lat"]*deg2rad, 1)
+    valid_mask = tools.sph2cart_returnValidMaskOnly(MITprof_ds["prof_lon"]*deg2rad, MITprof_ds["prof_lat"]*deg2rad, 1)
+    MITprof_ds = MITprof_ds.where(valid_mask, drop=True)
+    profiles_xyz_threetuple = tools.sph2cart(MITprof_ds["prof_lon"]*deg2rad, MITprof_ds["prof_lat"]*deg2rad, 1)
 
-    profile_flattened_monotonic_grid_indices = griddata(xyz_grid, flattened_monotonic_grid_indices, np.column_stack(xyz_profiles_threetuple), 'nearest').astype(int)
+
+
+    profile_flattened_monotonic_grid_indices = griddata(xyz_grid, flattened_monotonic_grid_indices, np.column_stack(profiles_xyz_threetuple), 'nearest').astype(int)
 
     # loop through the different geodesic bins
     MITprof_ds['prof_bin_id_a'] = xr.DataArray(bin_1.ravel()[profile_flattened_monotonic_grid_indices], dims=['iPROF'])

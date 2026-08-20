@@ -1,6 +1,6 @@
 import xarray as xr
 import numpy as np
-from tools import load_llc270_grid, load_llc90_grid
+import tools 
 import pdb
 
 def update_gamma_factor_on_prepared_profiles(MITprof_ds, profile_var_key_set, grid_dir, apply_gamma_factor, llcN):
@@ -13,9 +13,9 @@ def update_gamma_factor_on_prepared_profiles(MITprof_ds, profile_var_key_set, gr
     #  When we remove a gamma factor the gamma value is already stored in the profile file.
     if apply_gamma_factor:
         if llcN == 90:
-            RAC_mitgcm_patchface = load_llc90_grid(grid_dir, 5)
+            RAC_mitgcm_patchface = tools.load_llc90_grid(grid_dir, 5)
         if llcN == 270:
-            RAC_mitgcm_patchface = load_llc270_grid(grid_dir, 5)
+            RAC_mitgcm_patchface = tools.load_llc270_grid(grid_dir, 5)
 
     if apply_gamma_factor:
         alpha = np.squeeze(RAC_mitgcm_patchface / np.max(RAC_mitgcm_patchface))
