@@ -29,8 +29,10 @@ def update_gamma_factor_on_prepared_profiles(MITprof_ds, profile_var_key_set, gr
             MITprof_ds[f'{prof_key}weight'] *= MITprof_ds['prof_area_gamma']
             MITprof_ds[f'{prof_key}weight'].where(MITprof_ds[f'{prof_key}weight'] >= 0)
         
+    return MITprof_ds
 
 def main(MITprof_ds, profile_var_key_set, grid_dir, apply_gamma_factor, llcN):
-    #print("step05: update_gamma_factor_on_prepared_profiles")
-    update_gamma_factor_on_prepared_profiles(MITprof_ds, profile_var_key_set, grid_dir, apply_gamma_factor, llcN)
+    MITprof_ds = update_gamma_factor_on_prepared_profiles(MITprof_ds, profile_var_key_set, grid_dir, apply_gamma_factor, llcN)
+    return MITprof_ds
+    
 

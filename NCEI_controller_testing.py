@@ -3,8 +3,9 @@ import NCEI
 
 output_base_directory = "/Users/brucel/ecco/yip/sample_data/test_output_problematic_files"
 
-#input_directory = "/Users/brucel/ecco/yip/ECCO-Insitu-Python/input_files_should_be_easy"
-input_directory = "/Users/brucel/ecco/yip/ECCO-Insitu-Python/input_files_problematic_test"
+input_directory = "/Users/brucel/ecco/yip/ECCO-Insitu-Python/input_files_should_be_easy"
+#input_directory = "/Users/brucel/ecco/yip/ECCO-Insitu-Python/input_files_problematic_test"
+#input_directory = "/Users/brucel/ecco/yip/ECCO-Insitu-Python/input_files_biggun"
 
 #directories = [d for d in Path(base_directory).rglob('*') if d.is_dir()]
 #for input_directory in directories:

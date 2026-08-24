@@ -56,8 +56,12 @@ def update_monthly_mean_clim_WOA13v2_on_prepared_profiles(MITprof_ds, profile_va
     tools.interp_check(xyz_woa_masked, flattened_monotonic_grid_indices, X_woa, Y_woa, Z_woa, lat_woam.ravel(), lon_woam.ravel(), 3, good_clim = np.nonzero(bool_mask_clim_surf_t0.ravel())[0])
 
     #profiles_xyz_threetuple = sph2cart(MITprof_ds["prof_lon"]*deg2rad, MITprof_ds["prof_lat"]*deg2rad, 1)
-    valid_mask = tools.sph2cart_returnValidMaskOnly(MITprof_ds["prof_lon"]*deg2rad, MITprof_ds["prof_lat"]*deg2rad, 1)
-    MITprof_ds = MITprof_ds.where(valid_mask, drop=True)
+    valid_1D_mask = tools.sph2cart_returnValidMaskOnly(MITprof_ds["prof_lon"]*deg2rad, MITprof_ds["prof_lat"]*deg2rad, 1)
+    for var_name, var_data_array in MITprof_ds.data_vars.items():
+        if valid_1D_mask.dims[0] in var_data_array.dims:
+            MITprof_ds[var_name] = var_data_array.where(valid_1D_mask, drop=True)
+
+    #MITprof_ds = MITprof_ds.where(valid_mask, drop=True)
     profiles_xyz_threetuple = tools.sph2cart(MITprof_ds["prof_lon"]*deg2rad, MITprof_ds["prof_lat"]*deg2rad, 1)
 
     num_profs = len(MITprof_ds['prof_lat'])
@@ -74,9 +78,12 @@ def update_monthly_mean_clim_WOA13v2_on_prepared_profiles(MITprof_ds, profile_va
                     bool_mask_current_month = prof_month == ii_month + 1
                     prof_clim[:,ii_depth][bool_mask_current_month] = clim_grid_data_dict[prof_key][ii_month, ii_depth, :, :][bool_mask_clim_surf_t0][profile_flattened_monotonic_grid_indices[bool_mask_current_month]]
             MITprof_ds[f'{prof_key}clim'] = xr.DataArray(prof_clim, dims=['iPROF', 'iDEPTH'])
+    
+    return MITprof_ds
 
 
 def main(MITprof_ds, profile_var_key_set, climatology_file):
-    #print("step03: update_monthly_mean_clim_WOA13v2_on_prepared_profiles")
-    update_monthly_mean_clim_WOA13v2_on_prepared_profiles(MITprof_ds, profile_var_key_set, climatology_file)
+    MITprof_ds = update_monthly_mean_clim_WOA13v2_on_prepared_profiles(MITprof_ds, profile_var_key_set, climatology_file)
+    return MITprof_ds
+
 

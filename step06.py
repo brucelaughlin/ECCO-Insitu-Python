@@ -99,8 +99,11 @@ def update_prof_insitu_T_to_potential_T(MITprof_ds, replace_missing_S_with_clim_
     else:
         print("step06: There is not a single good T and S pair to use here")
     
+    return MITprof_ds
+
  
 def main(MITprof_ds, replace_missing_S_with_clim_S):
-    #print("step06: update_prof_insitu_T_to_potential_T")
-    update_prof_insitu_T_to_potential_T(MITprof_ds, replace_missing_S_with_clim_S)
+    MITprof_ds = update_prof_insitu_T_to_potential_T(MITprof_ds, replace_missing_S_with_clim_S)
+    return MITprof_ds
+    
 

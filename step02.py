@@ -5,15 +5,15 @@ import tools
 from scipy.interpolate import griddata
 import pdb
 
-def update_spatial_bin_index_on_prepared_profiles(bin_dir, MITprof_ds, grid_dir):
+def update_spatial_bin_index_on_prepared_profiles(MITprof_ds, sphere_bin_dir, grid_dir):
     """
     This script updates each profile with a bin index that is specified from
     some file.  To date this has been used for geodesic bins but any bin
     could be used in practice.
     """
 
-    bin_file_1 = os.path.join(bin_dir, 'llc090_sphere_point_n_10242_ids.bin')
-    bin_file_2 =  os.path.join(bin_dir, 'llc090_sphere_point_n_02562_ids.bin')
+    bin_file_1 = os.path.join(sphere_bin_dir, 'llc090_sphere_point_n_10242_ids.bin')
+    bin_file_2 =  os.path.join(sphere_bin_dir, 'llc090_sphere_point_n_02562_ids.bin')
     bin_llcN = 90
 
     # read binary files
@@ -51,9 +51,12 @@ def update_spatial_bin_index_on_prepared_profiles(bin_dir, MITprof_ds, grid_dir)
     deg2rad = np.pi/180.0
 
     # Read and process the profile files
-    #xyz_profiles_threetuple = tools.sph2cart(MITprof_ds["prof_lon"]*deg2rad, MITprof_ds["prof_lat"]*deg2rad, 1)
-    valid_mask = tools.sph2cart_returnValidMaskOnly(MITprof_ds["prof_lon"]*deg2rad, MITprof_ds["prof_lat"]*deg2rad, 1)
-    MITprof_ds = MITprof_ds.where(valid_mask, drop=True)
+    valid_1D_mask = tools.sph2cart_returnValidMaskOnly(MITprof_ds["prof_lon"]*deg2rad, MITprof_ds["prof_lat"]*deg2rad, 1)
+    for var_name, var_data_array in MITprof_ds.data_vars.items():
+        if valid_1D_mask.dims[0] in var_data_array.dims:
+            MITprof_ds[var_name] = var_data_array.where(valid_1D_mask, drop=True)
+
+    #MITprof_ds = MITprof_ds.where(valid_mask, drop=True)
     profiles_xyz_threetuple = tools.sph2cart(MITprof_ds["prof_lon"]*deg2rad, MITprof_ds["prof_lat"]*deg2rad, 1)
 
 
@@ -64,8 +67,10 @@ def update_spatial_bin_index_on_prepared_profiles(bin_dir, MITprof_ds, grid_dir)
     MITprof_ds['prof_bin_id_a'] = xr.DataArray(bin_1.ravel()[profile_flattened_monotonic_grid_indices], dims=['iPROF'])
     MITprof_ds['prof_bin_id_b'] = xr.DataArray(bin_2.ravel()[profile_flattened_monotonic_grid_indices], dims=['iPROF'])
 
+    return MITprof_ds
 
-def main(MITprof_ds, bin_dir, grid_dir):
-    #print("step02: update_spatial_bin_index_on_prepared_profiles")
-    update_spatial_bin_index_on_prepared_profiles(bin_dir, MITprof_ds, grid_dir)
+
+def main(MITprof_ds, sphere_bin_dir, grid_dir):
+    MITprof_ds = update_spatial_bin_index_on_prepared_profiles(MITprof_ds, sphere_bin_dir, grid_dir)
+    return MITprof_ds
 

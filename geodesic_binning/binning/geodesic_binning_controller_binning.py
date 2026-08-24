@@ -44,45 +44,11 @@ geodesic_file_dict = {
 num_geodesic_bins_string = f"{num_geodesic_bins:05}"
 geodesic_file = geodesic_file_dict[num_geodesic_bins_string]
 
-profile_file_list_total_old = [
-    "/Users/brucel/ecco/yip/ECCO-Insitu-Python/z_test_output/ITP_WO_2004_CTD__ncei_step_10.nc",
-    "/Users/brucel/ecco/yip/ECCO-Insitu-Python/z_test_output/WOD_WO_1992_CTD_OSD__ncei_step_10.nc",
-    "/Users/brucel/ecco/yip/ECCO-Insitu-Python/z_test_output/WOD_WO_2002_GLD__ncei_step_10.nc",
-    "/Users/brucel/ecco/yip/ECCO-Insitu-Python/z_test_output/ARGO_WO_2001_PFL_A__ncei_step_10.nc",
-    "/Users/brucel/ecco/yip/ECCO-Insitu-Python/z_test_output/ARGO_WO_2015_PFL_A__ncei_step_10.nc",
-    "/Users/brucel/ecco/yip/ECCO-Insitu-Python/z_test_output/ITP2_WO_2008_CTD__ncei_step_10.nc",
+
+profile_file_list = [
+        #"/Users/brucel/ecco/yip/sample_data/test_output_problematic_files/WOD_WO_1992_CTD_OSD__ncei_step_10.nc",
+        "/Users/brucel/ecco/yip/sample_data/test_output_problematic_files/WOD_WO_2002_GLD__ncei_step_10.nc"
 ]
-
-profile_file_list_problematic = [
-    "/Users/brucel/ecco/yip/ECCO-Insitu-Python/z_test_output/ITP2_WO_2008_CTD__ncei_step_10.nc", 
-]
-
-profile_file_list_largeDemo = [
-    "/Users/brucel/ecco/yip/ECCO-Insitu-Python/z_test_output/WOD_WO_1992_CTD_OSD__ncei_step_10.nc",
-]
-
-profile_file_list_smallDemo = [
-    "/Users/brucel/ecco/yip/ECCO-Insitu-Python/z_test_output/WOD_WO_2002_GLD__ncei_step_10.nc",
-]
-
-
-profile_file_list_test = [
-    #"/Users/brucel/ecco/yip/ECCO-Insitu-Python/processed_profile_files/ITP2_WO_2009_CTD__ncei_step_10.nc",
-    #"/Users/brucel/ecco/yip/ECCO-Insitu-Python/processed_profile_files/ITP2_WO_2012_CTD__ncei_step_10.nc",
-    #"/Users/brucel/ecco/yip/ECCO-Insitu-Python/processed_profile_files/WOD_WO_2021_GLD__ncei_step_10.nc",
-    "/Users/brucel/ecco/yip/sample_data/test_output_problematic_files/WOD_WO_2002_GLD__ncei_step_10.nc",
-]
-
-############################################
-# Testing step
-############################################
-#profile_file_list = profile_file_list_smallDemo
-profile_file_list = profile_file_list_largeDemo
-
-###profile_file_list = profile_file_list_problematic
-###profile_file_list = profile_file_list_test
-###profile_file_list = profile_file_list_total
-############################################
 
 
 for profile_file_index in range(len(profile_file_list)):

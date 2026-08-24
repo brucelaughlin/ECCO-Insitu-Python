@@ -197,8 +197,11 @@ def update_zero_weight_points_on_prepared_profiles(MITprof_ds, profile_var_key_s
             if MITprof_ds[f'{prof_key}weight_code'].isnull().any().item():
                 raise Exception(f'nans found in {prof_key} weight code')
             
+    return MITprof_ds
+
 
 def main(MITprof_ds, profile_var_key_set, exclude_high_latitude_profiles_from_clim_cost, dubious_clim_lat_threshold):
-    #print("step07: update_zero_weight_points_on_prepared_profiles")
-    update_zero_weight_points_on_prepared_profiles(MITprof_ds, profile_var_key_set, exclude_high_latitude_profiles_from_clim_cost, dubious_clim_lat_threshold)
+    MITprof_ds = update_zero_weight_points_on_prepared_profiles(MITprof_ds, profile_var_key_set, exclude_high_latitude_profiles_from_clim_cost, dubious_clim_lat_threshold)
+    return MITprof_ds
+    
 

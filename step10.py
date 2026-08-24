@@ -36,8 +36,12 @@ def update_decimate_profiles_subdaily_to_once_daily(MITprof_ds, profile_var_key_
     # -----------------------------------------------------------------------------------------------------------------------------
 
     #X, Y, Z = tools.sph2cart(MITprof_ds['prof_lon']*deg2rad, MITprof_ds['prof_lat']*deg2rad, 6357000)
-    valid_mask = tools.sph2cart_returnValidMaskOnly(MITprof_ds["prof_lon"]*deg2rad, MITprof_ds["prof_lat"]*deg2rad, 1)
-    MITprof_ds = MITprof_ds.where(valid_mask, drop=True)
+    valid_1D_mask = tools.sph2cart_returnValidMaskOnly(MITprof_ds["prof_lon"]*deg2rad, MITprof_ds["prof_lat"]*deg2rad, 1)
+    for var_name, var_data_array in MITprof_ds.data_vars.items():
+        if valid_1D_mask.dims[0] in var_data_array.dims:
+            MITprof_ds[var_name] = var_data_array.where(valid_1D_mask, drop=True)
+
+    #MITprof_ds = MITprof_ds.where(valid_mask, drop=True)
     X, Y, Z = tools.sph2cart(MITprof_ds["prof_lon"]*deg2rad, MITprof_ds["prof_lat"]*deg2rad, 1)
 
 
@@ -76,8 +80,11 @@ def update_decimate_profiles_subdaily_to_once_daily(MITprof_ds, profile_var_key_
    
     MITprof_ds = tools.update_remove_zero_T_S_weighted_profiles_from_MITprof(MITprof_ds, profile_var_key_set)
 
+    return MITprof_ds
+
 
 def main(MITprof_ds, profile_var_key_set, distance_tolerance, closest_time, method):
-    #print("step10: update_decimate_profiles_subdaily_to_once_daily")
-    update_decimate_profiles_subdaily_to_once_daily(MITprof_ds, profile_var_key_set, distance_tolerance, closest_time, method)
+    MITprof_ds = update_decimate_profiles_subdaily_to_once_daily(MITprof_ds, profile_var_key_set, distance_tolerance, closest_time, method)
+    return MITprof_ds
+    
 

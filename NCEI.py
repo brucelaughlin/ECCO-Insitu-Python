@@ -44,7 +44,7 @@ def NCEI_pipeline(dest_dir, input_dir):
     grid_dir = '/Users/brucel/ecco/yip/sample_data/ecco-insitu/sweet_gdrive/grid_llc90'
 
     # Path to dir containing llc090_sphere_point_n_10242_ids.bin and llc090_sphere_point_n_02562_ids.bin
-    sphere_dir = '/Users/brucel/ecco/yip/sample_data/ecco-insitu/sweet_gdrive/grid_llc90/sphere_point_distribution'
+    sphere_bin_dir = '/Users/brucel/ecco/yip/sample_data/ecco-insitu/sweet_gdrive/grid_llc90/sphere_point_distribution'
 
     climatology_file = "/Users/brucel/ecco/yip/sample_data/ecco-insitu/sweet_gdrive/TS_Climatology/WOA13_v2_TS_clim_merged_with_potential_T.mat"
 
@@ -85,6 +85,18 @@ def NCEI_pipeline(dest_dir, input_dir):
     method = 1                      # method 0 or 1
 
 
+    ncei_function_list = [
+        partial(step01.main, grid_dir=grid_dir, llcN=llcN, wet_or_all=wet_or_all), 
+        partial(step02.main, sphere_bin_dir=sphere_bin_dir, grid_dir=grid_dir), 
+        partial(step03.main, profile_var_key_set=profile_var_key_set, climatology_file=climatology_file), 
+        partial(step04.main, profile_var_key_set=profile_var_key_set, grid_dir=grid_dir, sigma_file_dict=sigma_file_dict, respect_existing_zero_weights=respect_existing_zero_weights, new_floor_dict=new_floor_dict), 
+        partial(step05.main, profile_var_key_set=profile_var_key_set, grid_dir=grid_dir, apply_gamma_factor=apply_gamma_factor, llcN=llcN), 
+        partial(step06.main, replace_missing_S_with_clim_S=replace_missing_S_with_clim_S), # it's funny to me that all other modules check for S, but this one requires it...
+        partial(step07.main, profile_var_key_set=profile_var_key_set, exclude_high_latitude_profiles_from_clim_cost=exclude_high_latitude_profiles_from_clim_cost, dubious_clim_lat_threshold=dubious_clim_lat_threshold),
+        partial(step08.main, profile_var_key_set=profile_var_key_set), 
+        partial(step09.main, profile_var_key_set=profile_var_key_set), 
+        partial(step10.main, profile_var_key_set=profile_var_key_set, distance_tolerance=distance_tolerance, closest_time=closest_time, method=method),
+    ]
 
     print()
 
@@ -98,33 +110,16 @@ def NCEI_pipeline(dest_dir, input_dir):
         MITprof_ds = xr.open_dataset(original_file)
         MITprof_ds = MITprof_ds.assign_coords({dim: np.arange(MITprof_ds.sizes[dim]) for dim in MITprof_ds.dims if dim not in MITprof_ds.coords})
 
-        ncei_function_list = [
-            partial(step01.main, MITprof_ds, grid_dir, llcN, wet_or_all), 
-            partial(step02.main, MITprof_ds, sphere_dir, grid_dir), 
-            partial(step03.main, MITprof_ds, profile_var_key_set, climatology_file), 
-            partial(step04.main, MITprof_ds, profile_var_key_set, grid_dir, sigma_file_dict, respect_existing_zero_weights, new_floor_dict), 
-            partial(step05.main, MITprof_ds, profile_var_key_set, grid_dir, apply_gamma_factor, llcN), 
-            partial(step06.main, MITprof_ds, replace_missing_S_with_clim_S), # it's funny to me that all other modules check for S, but this one requires it...
-            partial(step07.main, MITprof_ds, profile_var_key_set, exclude_high_latitude_profiles_from_clim_cost, dubious_clim_lat_threshold),
-            partial(step08.main, MITprof_ds, profile_var_key_set), 
-            partial(step09.main, MITprof_ds, profile_var_key_set), 
-            partial(step10.main, MITprof_ds, profile_var_key_set, distance_tolerance, closest_time, method),
-        ]
-
-
         step_counter = 0
         tools.print_survivors(MITprof_ds, step_counter)
 
         for ii in range(len(ncei_function_list)):
-
-            #try:
-            ncei_function_list[ii]()
-            #except Exception as xcept:
-            #    print(f"step{ii:02}, file {file_dex+1:0{len(str(len(input_profile_files)))}}/{len(input_profile_files)}: {original_file}\n\t\t{xcept}", file=sys.stderr)
-            #    continue
+            MITprof_ds = ncei_function_list[ii](MITprof_ds)
+            if not MITprof_ds:
+                print("Your profile file may have no valid data; exiting without finishing")
+                break
             step_counter += 1
             tools.print_survivors(MITprof_ds, step_counter)
-
 
     if tools.count_total_survivors_TS(MITprof_ds) > 0:
         tools.MITprof_write_to_nc(dest_dir, MITprof_ds, len(ncei_function_list), basename)

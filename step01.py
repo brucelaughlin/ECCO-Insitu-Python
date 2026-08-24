@@ -33,22 +33,17 @@ def get_profpoint_llc_ian(lon_llc, lat_llc, mask_llc, MITprof_ds):
 
     model_xyz = np.column_stack((X_grid[bool_mask_untiled], Y_grid[bool_mask_untiled], Z_grid[bool_mask_untiled]))
 
-    #profiles_xyz_threetuple = tools.sph2cart(MITprof_ds["prof_lon"]*deg2rad, MITprof_ds["prof_lat"]*deg2rad, 1)
-    valid_mask = tools.sph2cart_returnValidMaskOnly(MITprof_ds["prof_lon"]*deg2rad, MITprof_ds["prof_lat"]*deg2rad, 1)
-    MITprof_ds = MITprof_ds.where(valid_mask, drop=True) 
+    valid_1D_mask = tools.sph2cart_returnValidMaskOnly(MITprof_ds["prof_lon"]*deg2rad, MITprof_ds["prof_lat"]*deg2rad, 1)
+
+    for var_name, var_data_array in MITprof_ds.data_vars.items():
+        if valid_1D_mask.dims[0] in var_data_array.dims:
+            MITprof_ds[var_name] = var_data_array.where(valid_1D_mask, drop=True) 
+
     profiles_xyz_threetuple = tools.sph2cart(MITprof_ds["prof_lon"]*deg2rad, MITprof_ds["prof_lat"]*deg2rad, 1)
-
-
-    """
-    valid_mask = profiles_xyz_threetuple[0].notnull()
-    for ii_yz in range(1, len(profiles_xyz_threetuple)):
-        valid_mask = valid_mask & profiles_xyz_threetuple[ii_yz].notnull()
-    """
 
     MITprof_ds['profile_flattened_monotonic_grid_indices'] = xr.DataArray(griddata(model_xyz, flattened_monotonic_grid_indices_valid, profiles_xyz_threetuple, method='nearest').astype(int), dims="iPROF")
 
     return MITprof_ds
-
 
 
 def get_tile_point_llc_ian(lon_llc, lat_llc, ni, nj, MITprof_ds):
@@ -112,6 +107,27 @@ def get_tile_point_llc_ian(lon_llc, lat_llc, ni, nj, MITprof_ds):
                 tileCount += 1
                 tileNo[iF][ii*ni:(ii+1)*ni,jj*nj:(jj+1)*nj] = tileCount * np.ones((ni,nj))
 
+
+    interp_dict = {'prof_interp_lon': tile_list_xgrid, 'prof_interp_lat': tile_list_ygrid, 'prof_interp_XC11': XC11, 'prof_interp_YC11': YC11, 'prof_interp_XCNINJ': XCNINJ, 'prof_interp_YCNINJ': YCNINJ, 'prof_interp_i': iTile, 'prof_interp_j': jTile}
+
+
+    # now take these funky structures, cast them into patchface form, then use
+    # prof point to pull the value at the profile point that we need
+
+    for target_key, source_field in interp_dict.items():
+        # puts this in the original llc messed up face
+        source_field_list_concat = np.concatenate((source_field[0], source_field[1], source_field[2], source_field[3].T, source_field[4].T), axis = 1)
+        patchface_field, faces = tools.patchface3D(llc_horizontal_resolution, 13*llc_horizontal_resolution, 1, array_in = source_field_list_concat, direction = 3.5)
+
+        # use the profile_flattened_monotonic_grid_indices to pull the right value from whatever interp_dict{k}
+        # is.. interp_dict{k} is in patchface format, from above.    
+        MITprof_ds[target_key] = xr.DataArray(patchface_field.ravel()[MITprof_ds['profile_flattened_monotonic_grid_indices']], dims=['iPROF'])
+
+    # one last thing: "weights", which is 1 b/c we're using nearest neighbor:
+    MITprof_ds['prof_interp_weights'] = xr.ones_like(MITprof_ds['profile_flattened_monotonic_grid_indices'])
+
+    return MITprof_ds
+
     """
     # Out of interest, I plotted these strange tiling fields.  Not sure what to make of them, hopefully someone would think they look correct
     fig,ax = plt.subplots(len(iTile*3),2)
@@ -134,34 +150,14 @@ def get_tile_point_llc_ian(lon_llc, lat_llc, ni, nj, MITprof_ds):
     plt.show()
     """
 
-    interp_dict = {'prof_interp_lon': tile_list_xgrid, 'prof_interp_lat': tile_list_ygrid, 'prof_interp_XC11': XC11, 'prof_interp_YC11': YC11, 'prof_interp_XCNINJ': XCNINJ, 'prof_interp_YCNINJ': YCNINJ, 'prof_interp_i': iTile, 'prof_interp_j': jTile}
 
-
-    # now take these funky structures, cast them into patchface form, then use
-    # prof point to pull the value at the profile point that we need
-
-    for target_key, source_field in interp_dict.items():
-        # puts this in the original llc messed up face
-        source_field_list_concat = np.concatenate((source_field[0], source_field[1], source_field[2], source_field[3].T, source_field[4].T), axis = 1)
-        patchface_field, faces = tools.patchface3D(llc_horizontal_resolution, 13*llc_horizontal_resolution, 1, array_in = source_field_list_concat, direction = 3.5)
-
-        # use the profile_flattened_monotonic_grid_indices to pull the right value from whatever interp_dict{k}
-        # is.. interp_dict{k} is in patchface format, from above.    
-        MITprof_ds[target_key] = xr.DataArray(patchface_field.ravel()[MITprof_ds['profile_flattened_monotonic_grid_indices']], dims=['iPROF'])
-
-    # one last thing: "weights", which is 1 b/c we're using nearest neighbor:
-    MITprof_ds['prof_interp_weights'] = xr.ones_like(MITprof_ds['profile_flattened_monotonic_grid_indices'])
-
-    return MITprof_ds
-
-
-def update_prof_and_tile_points_on_profiles(MITprof_ds, grid_dir, llc_horizontal_resolution, wet_or_all):
+def update_prof_and_tile_points_on_profiles(MITprof_ds, grid_dir, llcN, wet_or_all):
     """
     This script updates the profile_flattened_monotonic_grid_indicess and tile interpolation points
     so that the MITgcm knows which grid points to use for the cost function
 
     Input Parameters:
-        llc_horizontal_resolution: which grid to use, 90 or 270
+        llcN: which grid to use, 90 or 270
         wet_or_all: 0 = interpolated to nearest wet point, 1 = interpolated all points, regardless of wet or dry
         MITprof_ds: a single MITprof_ds object
         grid_dir: directory path of grid to be read in
@@ -171,7 +167,7 @@ def update_prof_and_tile_points_on_profiles(MITprof_ds, grid_dir, llc_horizontal
     """
    
     ##  Read in llc grid 
-    if llc_horizontal_resolution == 90:
+    if llcN == 90:
 
         lon_90, lat_90, blank_90, wet_ins_90_k = tools.load_llc90_grid(grid_dir, 1)
         # tiles are 30x30
@@ -184,7 +180,7 @@ def update_prof_and_tile_points_on_profiles(MITprof_ds, grid_dir, llc_horizontal
             mask_llc[np.unravel_index(wet_ins_90_k[0], mask_llc.shape, order = 'F')] = 1
         else:
             mask_llc=np.ones(blank_90.shape, order = 'F') 
-    if llc_horizontal_resolution == 270:
+    if llcN == 270:
         lon_270, lat_270, blank_270, wet_ins_270_k = tools.load_llc270_grid(grid_dir, 1)
         ni = 30
         nj = 30  
@@ -196,9 +192,17 @@ def update_prof_and_tile_points_on_profiles(MITprof_ds, grid_dir, llc_horizontal
         else:
             mask_llc=np.ones(blank_270.shape, order = 'F')
    
-    MITprof_ds = get_profpoint_llc_ian(lon_llc, lat_llc, mask_llc, MITprof_ds)
+    try:
+        MITprof_ds = get_profpoint_llc_ian(lon_llc, lat_llc, mask_llc, MITprof_ds)
+    except Exception as E:
+        print(f"You may have no valid data in this profile file.  Exiting.")
+        return None
 
-    MITprof_ds = get_tile_point_llc_ian(lon_llc, lat_llc, ni, nj, MITprof_ds)
+    try:
+        MITprof_ds = get_tile_point_llc_ian(lon_llc, lat_llc, ni, nj, MITprof_ds)
+    except Exception as E:
+        print(f"You may have no valid data in this profile file.  Exiting.")
+        return None
         
     #  Sanity Check Interpolation 
     #  if the distance between the closest mitgcm grid point and the 
@@ -212,25 +216,34 @@ def update_prof_and_tile_points_on_profiles(MITprof_ds, grid_dir, llc_horizontal
     # Note that this assumes our lat/lon grids are 1D
     for profile_index in range(len(bool_mask_good_coords)):
         if bool_mask_good_coords[profile_index]:
-            distances[profile_index] = distance.distance((MITprof_ds['prof_lat'][profile_index], MITprof_ds['prof_lon'][profile_index]), (MITprof_ds['prof_interp_lat'][profile_index], MITprof_ds['prof_interp_lon'][profile_index])).m
+            distances[profile_index] = distance.distance((MITprof_ds['prof_lat'][profile_index], MITprof_ds['prof_lon'][profile_index]), (MITprof_ds['prof_interp_lat'][profile_index], MITprof_ds['prof_interp_lon'][profile_index])).km
+            #distances[profile_index] = distance.distance((MITprof_ds['prof_lat'][profile_index], MITprof_ds['prof_lon'][profile_index]), (MITprof_ds['prof_interp_lat'][profile_index], MITprof_ds['prof_interp_lon'][profile_index])).m
 
     if 'prof_flag' not in MITprof_ds:
         MITprof_ds['prof_flag'] = xr.zeros_like(MITprof_ds['prof_YYYYMMDD'])
 
     MITprof_ds['prof_flag'][~bool_mask_good_coords] = 100
 
-    # distance between grid cells referenced to llc_horizontal_resolution 90 (in m... or km...?)
-    grid_cell_distance_x_fixed = 112* 90/llc_horizontal_resolution
+    # distance between grid cells referenced to llcN 90 (in m... or km...?)
+    grid_cell_distance_x_fixed = 112* 90/llcN
 
     # find points where distance between the profile point and the 
     # closest grid point is further than twice the distance 
     # of the square root of the area.
     bool_mask_too_far = distances / grid_cell_distance_x_fixed > 2
 
+    # This is never used
     MITprof_ds['prof_flag'][bool_mask_too_far] = 101
 
+    pdb.set_trace()
 
-def main(MITprof_ds, grid_dir, llc_horizontal_resolution, wet_or_all):
-    #print("step01: update_prof_and_tile_points_on_profiles")
-    update_prof_and_tile_points_on_profiles(MITprof_ds, grid_dir, llc_horizontal_resolution, wet_or_all)
+    return MITprof_ds
+
+
+def main(MITprof_ds, grid_dir, llcN, wet_or_all):
+    MITprof_ds = update_prof_and_tile_points_on_profiles(MITprof_ds, grid_dir, llcN, wet_or_all)
+    return MITprof_ds
+
+
+ 
 

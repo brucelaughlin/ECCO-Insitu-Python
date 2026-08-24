@@ -33,8 +33,12 @@ def update_sigmaTS_on_prepared_profiles(MITprof_ds, profile_var_key_set, grid_di
     tools.interp_check(xyz_grid, flattened_monotonic_grid_indices, X_mitgcm, Y_mitgcm, Z_mitgcm, lat_mitgcm, lon_mitgcm, 4)
 
     #xyz_profiles = np.column_stack(tools.sph2cart(MITprof_ds['prof_lon']*deg2rad, MITprof_ds['prof_lat']*deg2rad, 1))
-    valid_mask = tools.sph2cart_returnValidMaskOnly(MITprof_ds["prof_lon"]*deg2rad, MITprof_ds["prof_lat"]*deg2rad, 1)
-    MITprof_ds = MITprof_ds.where(valid_mask, drop=True)
+    valid_1D_mask = tools.sph2cart_returnValidMaskOnly(MITprof_ds["prof_lon"]*deg2rad, MITprof_ds["prof_lat"]*deg2rad, 1)
+    for var_name, var_data_array in MITprof_ds.data_vars.items():
+        if valid_1D_mask.dims[0] in var_data_array.dims:
+            MITprof_ds[var_name] = var_data_array.where(valid_1D_mask, drop=True)
+
+    #MITprof_ds = MITprof_ds.where(valid_mask, drop=True)
     profiles_xyz_threetuple = tools.sph2cart(MITprof_ds["prof_lon"]*deg2rad, MITprof_ds["prof_lat"]*deg2rad, 1)
 
     xyz_grid = np.column_stack((X_mitgcm.ravel()[bools_masks_list_by_depth[0]], Y_mitgcm.ravel()[bools_masks_list_by_depth[0]], Z_mitgcm.ravel()[bools_masks_list_by_depth[0]]))
@@ -54,6 +58,8 @@ def update_sigmaTS_on_prepared_profiles(MITprof_ds, profile_var_key_set, grid_di
 
             with open(sigma_file_dict[prof_key], 'rb') as fid:
                 sigma_np_array = np.fromfile(fid, dtype=mform).reshape((tile_shape_list[0], tile_shape_list[1], tile_shape_list[2]))
+            
+            #pdb.set_trace()
 
             # Store original weights, since we reset modified weights to 0 if original weights were 0 (if <respect_existing_zero_weights> == True) 
             orig_profweight_np_array = MITprof_ds[prof_key].data.copy()
@@ -61,7 +67,11 @@ def update_sigmaTS_on_prepared_profiles(MITprof_ds, profile_var_key_set, grid_di
             # Warning: this assumes that depth is the last dimension in a 3D array
             sigma_np_array_MITprof = np.apply_along_axis(lambda y: np.interp(MITprof_ds['prof_depth'], z_cen_mitgcm, y, left=np.nan, right=np.nan), axis=2, arr=sigma_np_array)
 
+            #pdb.set_trace()
+
             sigma_np_array_MITprof_2D = np.reshape(sigma_np_array_MITprof, (sigma_np_array_MITprof.shape[0] * sigma_np_array_MITprof.shape[1], sigma_np_array_MITprof.shape[2]))
+
+            #pdb.set_trace()
 
             if new_floor_dict[prof_key] > 0:
                 bool_mask = sigma_np_array_MITprof_2D >= 0
@@ -80,8 +90,11 @@ def update_sigmaTS_on_prepared_profiles(MITprof_ds, profile_var_key_set, grid_di
             if respect_existing_zero_weights:
                 MITprof_ds[f'{prof_key}weight'][orig_profweight_np_array == 0] = 0
                 
+    return MITprof_ds
+
     
 def main(MITprof_ds, profile_var_key_set, grid_dir, sigma_file_dict, respect_existing_zero_weights, new_floor_dict):
-    #print("step04: update_sigmaTS_on_prepared_profiles")
-    update_sigmaTS_on_prepared_profiles(MITprof_ds, profile_var_key_set, grid_dir, sigma_file_dict, respect_existing_zero_weights, new_floor_dict)
+    MITprof_ds = update_sigmaTS_on_prepared_profiles(MITprof_ds, profile_var_key_set, grid_dir, sigma_file_dict, respect_existing_zero_weights, new_floor_dict)
+    return MITprof_ds
+    
 
