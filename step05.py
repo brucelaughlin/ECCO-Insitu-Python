@@ -23,7 +23,7 @@ def update_gamma_factor_on_prepared_profiles(MITprof_ds, profile_var_key_set, gr
         
     else:
         MITprof_ds['prof_area_gamma'] = xr.ones_like(MITprof_ds['profile_flattened_monotonic_grid_indices']) 
-    
+
     for prof_key in profile_var_key_set:
         if prof_key in MITprof_ds:
             MITprof_ds[f'{prof_key}weight'] *= MITprof_ds['prof_area_gamma']

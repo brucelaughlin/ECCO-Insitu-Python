@@ -235,8 +235,6 @@ def update_prof_and_tile_points_on_profiles(MITprof_ds, grid_dir, llcN, wet_or_a
     # This is never used
     MITprof_ds['prof_flag'][bool_mask_too_far] = 101
 
-    pdb.set_trace()
-
     return MITprof_ds
 
 

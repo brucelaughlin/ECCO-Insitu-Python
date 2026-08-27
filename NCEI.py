@@ -69,7 +69,7 @@ def NCEI_pipeline(dest_dir, input_dir):
                                     #   gamma factor is factor 1/sqrt(alpha), where alpha = area/max(area) of the grid cell area in which this profile is found.
 
     # Step 6: update_prof_insitu_T_to_potential_T parameters
-    replace_missing_S_with_clim_S = True   # 1 = replace, 0 = do not replace
+    replace_missing_S_with_clim_S = True
 
     # Step 7: update_zero_weight_points_on_prepared_profiles
     exclude_high_latitude_profiles_from_clim_cost = True

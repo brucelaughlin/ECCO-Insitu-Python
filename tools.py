@@ -42,10 +42,7 @@ def update_remove_zero_T_S_weighted_profiles_from_MITprof(MITprof_ds, profile_va
     MITprof_ds['global_1D_mask_iPROF_nonzero_weight'] = xr.full_like(MITprof_ds['prof_lon'], fill_value=False, dtype=bool)
     for prof_key in profile_var_key_set:
         if prof_key in MITprof_ds.data_vars:
-            try:
-                MITprof_ds['global_1D_mask_iPROF_nonzero_weight'] = (MITprof_ds['global_1D_mask_iPROF_nonzero_weight']) | (MITprof_ds[f'{prof_key}weight'].sum(dim="iDEPTH") > 0)
-            except:
-                pdb.set_trace()
+            MITprof_ds['global_1D_mask_iPROF_nonzero_weight'] = (MITprof_ds['global_1D_mask_iPROF_nonzero_weight']) | (MITprof_ds[f'{prof_key}weight'].sum(dim="iDEPTH") > 0)
     return extract_profile_subset_from_MITprof_iPROF_mask(MITprof_ds, bool_mask_name='global_1D_mask_iPROF_nonzero_weight')
 
 

@@ -58,8 +58,6 @@ def update_sigmaTS_on_prepared_profiles(MITprof_ds, profile_var_key_set, grid_di
 
             with open(sigma_file_dict[prof_key], 'rb') as fid:
                 sigma_np_array = np.fromfile(fid, dtype=mform).reshape((tile_shape_list[0], tile_shape_list[1], tile_shape_list[2]))
-            
-            #pdb.set_trace()
 
             # Store original weights, since we reset modified weights to 0 if original weights were 0 (if <respect_existing_zero_weights> == True) 
             orig_profweight_np_array = MITprof_ds[prof_key].data.copy()
@@ -67,13 +65,10 @@ def update_sigmaTS_on_prepared_profiles(MITprof_ds, profile_var_key_set, grid_di
             # Warning: this assumes that depth is the last dimension in a 3D array
             sigma_np_array_MITprof = np.apply_along_axis(lambda y: np.interp(MITprof_ds['prof_depth'], z_cen_mitgcm, y, left=np.nan, right=np.nan), axis=2, arr=sigma_np_array)
 
-            #pdb.set_trace()
-
             sigma_np_array_MITprof_2D = np.reshape(sigma_np_array_MITprof, (sigma_np_array_MITprof.shape[0] * sigma_np_array_MITprof.shape[1], sigma_np_array_MITprof.shape[2]))
 
-            #pdb.set_trace()
-
             if new_floor_dict[prof_key] > 0:
+                # Out of curiousity, when is sigma ever negative?
                 bool_mask = sigma_np_array_MITprof_2D >= 0
                 sigma_np_array_MITprof_2D[bool_mask] = np.maximum(new_floor_dict[prof_key], sigma_np_array_MITprof_2D[bool_mask])
 

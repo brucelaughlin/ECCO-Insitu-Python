@@ -73,14 +73,16 @@ def update_zero_weight_points_on_prepared_profiles(MITprof_ds, profile_var_key_s
 
                 if zero_criteria_code == 3: #  missing T or S
                     bool_mask_da = MITprof_ds[prof_key].isnull()
-                    MITprof_ds[prof_key] = xr.where(bool_mask_da, np.nan, MITprof_ds[prof_key])
+                    MITprof_ds[prof_key] = MITprof_ds[prof_key].where(~bool_mask_da) # perhaps not redundant if there are "missing" values, whatever that means
+                    ###MITprof_ds[prof_key] = MITprof_ds[prof_key].where(bool_mask_da) # perhaps not redundant if there are "missing" values, whatever that means
                     MITprof_ds[f'{prof_key}weight'] = xr.where(bool_mask_da, 0, MITprof_ds[f'{prof_key}weight'])
                     MITprof_ds[f'{prof_key}weight_code'] = xr.where(bool_mask_da, MITprof_ds[f'{prof_key}weight_code'] + 2**(zero_criteria_code - 1), MITprof_ds[f'{prof_key}weight_code'])
 
 
                 if zero_criteria_code == 4: # T or S identically zero
                     bool_mask_da = MITprof_ds[prof_key] == 0
-                    MITprof_ds[prof_key] = xr.where(bool_mask_da, np.nan, MITprof_ds[prof_key])
+                    MITprof_ds[prof_key] = MITprof_ds[prof_key].where(~bool_mask_da)
+                    ###MITprof_ds[prof_key] = MITprof_ds[prof_key].where(bool_mask_da)
                     MITprof_ds[f'{prof_key}weight'] = xr.where(bool_mask_da, 0, MITprof_ds[f'{prof_key}weight'])
                     MITprof_ds[f'{prof_key}weight_code'] = xr.where(bool_mask_da, MITprof_ds[f'{prof_key}weight_code'] + 2**(zero_criteria_code - 1), MITprof_ds[f'{prof_key}weight_code'])
 
@@ -131,13 +133,12 @@ def update_zero_weight_points_on_prepared_profiles(MITprof_ds, profile_var_key_s
                     MITprof_ds[f'{prof_key}weight_code'] = xr.where(bool_mask_da, MITprof_ds[f'{prof_key}weight_code'] + 2**(zero_criteria_code - 1), MITprof_ds[f'{prof_key}weight_code'])
 
 
-                # WHOA, this nuked a ton of them
                 if zero_criteria_code == 9 or zero_criteria_code == 10: # high cost vs. climatology
 
-                    # Out of curiousity, why are we waiting till here to nan-out 0's?
-                    MITprof_ds[prof_key] = xr.where(MITprof_ds[prof_key] == 0, np.nan, MITprof_ds[prof_key])
-                    MITprof_ds[f'{prof_key}clim'] = xr.where(MITprof_ds[f'{prof_key}clim'] == 0, np.nan, MITprof_ds[f'{prof_key}clim'])
-                    MITprof_ds[f'{prof_key}weight'] = xr.where(MITprof_ds[f'{prof_key}weight'] < 0, np.nan, MITprof_ds[f'{prof_key}weight'])
+                    # Note: we really don't allow 0?
+                    MITprof_ds[prof_key] = MITprof_ds[prof_key].where(MITprof_ds[prof_key] != 0)
+                    MITprof_ds[f'{prof_key}clim'] = MITprof_ds[f'{prof_key}clim'].where(MITprof_ds[f'{prof_key}clim'] != 0)
+                    MITprof_ds[f'{prof_key}weight'] = MITprof_ds[f'{prof_key}weight'].where(MITprof_ds[f'{prof_key}weight'] >= 0)
 
                     cost_vs_climatology = (MITprof_ds[prof_key] - MITprof_ds[f'{prof_key}clim'])**2 * MITprof_ds[f'{prof_key}weight']
 
@@ -152,6 +153,10 @@ def update_zero_weight_points_on_prepared_profiles(MITprof_ds, profile_var_key_s
                         bool_mask_da = MITprof_ds[prof_key].copy(deep=False, data=fill_data_bools)
                         MITprof_ds[f'{prof_key}weight'] = xr.where(bool_mask_da, 0, MITprof_ds[f'{prof_key}weight'])
                         MITprof_ds[f'{prof_key}weight_code'] = xr.where(bool_mask_da, MITprof_ds[f'{prof_key}weight_code'] + 2**(zero_criteria_code - 1), MITprof_ds[f'{prof_key}weight_code'])
+                        
+                        print('DEBUG')
+                        print(f"zero weight count: {(MITprof_ds[f'{prof_key}weight'] == 0).sum().item()}/{MITprof_ds[f'{prof_key}weight'].size} = {(MITprof_ds[f'{prof_key}weight'] == 0).sum().item()/MITprof_ds[f'{prof_key}weight'].size}")
+
                     if zero_criteria_code == 10:
                         fill_data_bools = (cost_vs_climatology >= single_datum_cost_threshold).data.copy()
                         if exclude_high_latitude_profiles_from_clim_cost:
@@ -170,15 +175,15 @@ def update_zero_weight_points_on_prepared_profiles(MITprof_ds, profile_var_key_s
                                 prof_S_sub_surface_threshold = var_dict[prof_key]['subsurface_min_val_thresholds'][ii]
                                 prof_S_sub_surface_threshold_depth = var_dict[prof_key]['subsurface_min_depth_thresholds'][ii]
                                 
-                                bool_mask_da_1D = np.abs(MITprof_ds['prof_depth']) <= np.abs(prof_S_sub_surface_threshold_depth)
-                                bool_mask_da_depth_ignore = MITprof_ds[prof_key].copy(deep=False, data=np.broadcast_to(bool_mask_da_1D.data[None, :], MITprof_ds[prof_key].shape))
+                                bool_mask_da_1D = np.abs(MITprof_ds['prof_depth']) < np.abs(prof_S_sub_surface_threshold_depth)
+                                bool_mask_da_shallow_depths = MITprof_ds[prof_key].copy(deep=False, data=np.broadcast_to(bool_mask_da_1D.data[None, :], MITprof_ds[prof_key].shape))
                                 
-                                bool_mask_da_S_below_threshold_val_bad = MITprof_ds[prof_key] <= prof_S_sub_surface_threshold
-                                bool_mask_da_S_above_threshold_val_good = MITprof_ds[prof_key] > prof_S_sub_surface_threshold
+                                bool_mask_da_S_below_threshold_val_bad = np.abs(MITprof_ds[prof_key]) < np.abs(prof_S_sub_surface_threshold)
+                                bool_mask_da_S_above_threshold_val_good = np.abs(MITprof_ds[prof_key]) >= np.abs(prof_S_sub_surface_threshold)
                                
                                 threshold_flag_array = xr.where(bool_mask_da_S_below_threshold_val_bad, 1, threshold_flag_array)
                                 threshold_flag_array = xr.where(bool_mask_da_S_above_threshold_val_good, 0, threshold_flag_array)
-                                threshold_flag_array = xr.where(bool_mask_da_depth_ignore, np.nan, threshold_flag_array)
+                                threshold_flag_array = threshold_flag_array.where(~bool_mask_da_shallow_depths)
                                 
                                 bool_mask_da_1D = threshold_flag_array.median(dim="iDEPTH") == 1
                                 bool_mask_da_threshold = MITprof_ds[prof_key].copy(deep=False, data=np.broadcast_to(bool_mask_da_1D.data[:, None], MITprof_ds[prof_key].shape))
@@ -187,13 +192,20 @@ def update_zero_weight_points_on_prepared_profiles(MITprof_ds, profile_var_key_s
 
                                 MITprof_ds['conductivity_mask'] = MITprof_ds[prof_key].copy(deep=False, data=bool_mask_da)
                                 zero_criteria_code_conductivity = zero_criteria_code
-                                
+
+
+                print()
+                print(f"code {zero_criteria_code}; masked/numprofs: {bool_mask_da.sum().item()}/{bool_mask_da.size} = {bool_mask_da.sum().item()/bool_mask_da.size}")
+                print(f"zero weight count: {(MITprof_ds[f'{prof_key}weight'] == 0).sum().item()}/{MITprof_ds[f'{prof_key}weight'].size} = {(MITprof_ds[f'{prof_key}weight'] == 0).sum().item()/MITprof_ds[f'{prof_key}weight'].size}")
+                print()
+                #pdb.set_trace()
+
 
     for prof_key in profile_var_key_set:
         if prof_key in MITprof_ds:
             if 'conductivity_mask' in MITprof_ds:
                 MITprof_ds[f'{prof_key}weight'] = xr.where(MITprof_ds['conductivity_mask'], 0, MITprof_ds[f'{prof_key}weight'])
-                MITprof_ds[f'{prof_key}weight_code'] = xr.where(bool_mask_da, MITprof_ds[f'{prof_key}weight_code'] + 2**(zero_criteria_code - 1), MITprof_ds[f'{prof_key}weight_code'])
+                MITprof_ds[f'{prof_key}weight_code'] = xr.where(MITprof_ds['conductivity_mask'], MITprof_ds[f'{prof_key}weight_code'] + 2**(zero_criteria_code - 1), MITprof_ds[f'{prof_key}weight_code'])
             if MITprof_ds[f'{prof_key}weight_code'].isnull().any().item():
                 raise Exception(f'nans found in {prof_key} weight code')
             
