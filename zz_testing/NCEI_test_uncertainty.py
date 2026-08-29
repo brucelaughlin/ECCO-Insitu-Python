@@ -14,6 +14,7 @@ from functools import partial
 
 # Add the directory containing the package to the search path
 sys.path.append(os.path.abspath("/Users/brucel/ecco/yip/ECCO-Insitu-Python"))
+sys.path.append(os.path.abspath("\../"))
 
 import tools
 import step01
@@ -90,12 +91,9 @@ def NCEI_pipeline(dest_dir, input_dir):
         partial(step02.main, sphere_bin_dir=sphere_bin_dir, grid_dir=grid_dir), 
         partial(step03.main, profile_var_key_set=profile_var_key_set, climatology_file=climatology_file), 
         partial(step04.main, profile_var_key_set=profile_var_key_set, grid_dir=grid_dir, sigma_file_dict=sigma_file_dict, respect_existing_zero_weights=respect_existing_zero_weights, new_floor_dict=new_floor_dict), 
-        partial(step05.main, profile_var_key_set=profile_var_key_set, grid_dir=grid_dir, apply_gamma_factor=apply_gamma_factor, llcN=llcN), 
+        partial(step05.main, profile_var_key_set=profile_var_key_set, grid_dir=grid_dir, apply_gamma_factor=apply_gamma_factor, llcN=llcN),
         partial(step06.main, replace_missing_S_with_clim_S=replace_missing_S_with_clim_S), # it's funny to me that all other modules check for S, but this one requires it...
-        partial(step07.main, profile_var_key_set=profile_var_key_set, exclude_high_latitude_profiles_from_clim_cost=exclude_high_latitude_profiles_from_clim_cost, dubious_clim_lat_threshold=dubious_clim_lat_threshold),
-        partial(step08.main, profile_var_key_set=profile_var_key_set), 
-        partial(step09.main, profile_var_key_set=profile_var_key_set), 
-        partial(step10.main, profile_var_key_set=profile_var_key_set, distance_tolerance=distance_tolerance, closest_time=closest_time, method=method),
+
     ]
 
     print()
@@ -121,15 +119,22 @@ def NCEI_pipeline(dest_dir, input_dir):
             step_counter += 1
             tools.print_survivors(MITprof_ds, step_counter)
 
+        # This obviously breaks the loop and is just for testing purposes
+        return MITprof_ds
+
+        """
         if tools.count_total_survivors_TS(MITprof_ds) > 0:
             tools.MITprof_write_to_nc(dest_dir, MITprof_ds, len(ncei_function_list), basename)
             print(f"                SUCCESS:    {tools.count_total_survivors_TS(MITprof_ds)} PROFILES SURVIVED THE NCEI PROCESSING ALGORITHM\n")
         else:
             print(f"                FAILURE:    {tools.count_total_survivors_TS(MITprof_ds)} PROFILES SURVIVED THE NCEI PROCESSING ALGORITHM\n")
+        """
 
 
 def main(dest_dir, input_dir):
-    NCEI_pipeline(dest_dir, input_dir)
+    MITprof_ds = NCEI_pipeline(dest_dir, input_dir)
+    return MITprof_ds
+
 
 
 if __name__ == '__main__':

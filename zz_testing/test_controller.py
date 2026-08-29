@@ -1,5 +1,5 @@
 from pathlib import Path
-import NCEI
+import NCEI_test_uncertainty
 
 output_base_directory = "/Users/brucel/ecco/yip/sample_data/test_output_problematic_files"
 
@@ -7,7 +7,6 @@ output_base_directory = "/Users/brucel/ecco/yip/sample_data/test_output_problema
 #input_directory = "/Users/brucel/ecco/yip/ECCO-Insitu-Python/input_files_problematic_test"
 input_directory = "/Users/brucel/ecco/yip/ECCO-Insitu-Python/input_files_biggun"
 
-if len([f for f in Path(input_directory).glob('*.nc') if f.is_file()]) > 0:
-    output_directory = Path(output_base_directory) 
-    output_directory.mkdir(parents=True, exist_ok=True)
-    NCEI.NCEI_pipeline(str(output_directory), str(input_directory))
+output_directory = Path(output_base_directory) 
+output_directory.mkdir(parents=True, exist_ok=True)
+MITprof_ds = NCEI_test_uncertainty.NCEI_pipeline(str(output_directory), str(input_directory))

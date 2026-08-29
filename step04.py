@@ -7,7 +7,8 @@ import os
 import numpy as np
 from scipy.interpolate import griddata
 import tools 
-from scipy import interpolate
+from scipy.interpolate import interp1d
+#from scipy import interpolate, interp1d
 
 
 def update_sigmaTS_on_prepared_profiles(MITprof_ds, profile_var_key_set, grid_dir, sigma_file_dict, respect_existing_zero_weights, new_floor_dict):
@@ -57,13 +58,28 @@ def update_sigmaTS_on_prepared_profiles(MITprof_ds, profile_var_key_set, grid_di
                 continue
 
             with open(sigma_file_dict[prof_key], 'rb') as fid:
-                sigma_np_array = np.fromfile(fid, dtype=mform).reshape((tile_shape_list[0], tile_shape_list[1], tile_shape_list[2]))
+                sigma_np_1D_raw_array = np.fromfile(fid, dtype=mform)
+            sigma_np_array = sigma_np_1D_raw_array.reshape((tile_shape_list[0], tile_shape_list[1], tile_shape_list[2]), order="F")
+            #sigma_np_array = sigma_np_1D_raw_array.reshape((tile_shape_list[0], tile_shape_list[1], tile_shape_list[2]))
 
-            # Store original weights, since we reset modified weights to 0 if original weights were 0 (if <respect_existing_zero_weights> == True) 
-            orig_profweight_np_array = MITprof_ds[prof_key].data.copy()
+            #For debugging and sanity check
+            MITprof_ds[f'{prof_key}raw_sigma'] = xr.DataArray(sigma_np_1D_raw_array)
+            #MITprof_ds[f'{prof_key}raw_sigma'] = xr.DataArray(sigma_np_array)
 
-            # Warning: this assumes that depth is the last dimension in a 3D array
-            sigma_np_array_MITprof = np.apply_along_axis(lambda y: np.interp(MITprof_ds['prof_depth'], z_cen_mitgcm, y, left=np.nan, right=np.nan), axis=2, arr=sigma_np_array)
+            shallowest_sigma_data = sigma_np_array[:, :, 0]
+            deepest_sigma_data = sigma_np_array[:, :, -1]
+
+            f_interp = interp1d(
+                z_cen_mitgcm,
+                sigma_np_array,
+                axis=2, # Warning: this assumes that depth is the last dimension in a 3D array
+                bounds_error=False,
+                fill_value=(shallowest_sigma_data, deepest_sigma_data)
+                #fill_value=np.nan
+            )
+
+            sigma_np_array_MITprof = f_interp(MITprof_ds['prof_depth'])
+            #sigma_np_array_MITprof = np.apply_along_axis(lambda y: np.interp(MITprof_ds['prof_depth'], z_cen_mitgcm, y, left=np.nan, right=np.nan), axis=2, arr=sigma_np_array)
 
             sigma_np_array_MITprof_2D = np.reshape(sigma_np_array_MITprof, (sigma_np_array_MITprof.shape[0] * sigma_np_array_MITprof.shape[1], sigma_np_array_MITprof.shape[2]))
 
@@ -72,7 +88,10 @@ def update_sigmaTS_on_prepared_profiles(MITprof_ds, profile_var_key_set, grid_di
                 bool_mask = sigma_np_array_MITprof_2D >= 0
                 sigma_np_array_MITprof_2D[bool_mask] = np.maximum(new_floor_dict[prof_key], sigma_np_array_MITprof_2D[bool_mask])
 
+            # Store original weights, since we reset modified weights to 0 if original weights were 0 (if <respect_existing_zero_weights> == True) 
+            orig_profweight_np_array = MITprof_ds[prof_key].data.copy()
             MITprof_ds[f'{prof_key}weight'] = xr.DataArray(1/sigma_np_array_MITprof_2D[prof_mitgcm_cell_indices,:]**2, dims=['iPROF', 'iDEPTH'])
+            MITprof_ds[f'{prof_key}uncertainty'] = xr.DataArray(sigma_np_array_MITprof_2D[prof_mitgcm_cell_indices,:], dims=['iPROF', 'iDEPTH'])
 
             ###############################################
             # these "prof_T/Serr" fields seem strange to me... why are "floor" and "err" used interchangeably here?
