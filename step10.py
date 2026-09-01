@@ -6,15 +6,6 @@ import numpy.ma as ma
 import tools
 import pdb
 
-def distmat(xy):
-
-    # process inputs
-    n, dims = xy.shape
-    a = np.reshape(xy,(1 ,n ,dims), order = 'F') # 1 9 3
-    b = np.reshape(xy,(n ,1 ,dims), order= 'F')
-    distances_array = np.sqrt(np.sum((a[np.zeros((n), dtype=int), :, :] - b[:, np.zeros((n), dtype= int),:])**2, axis = 2))
-    
-    return distances_array
 
 def update_decimate_profiles_subdaily_to_once_daily(MITprof_ds, profile_var_key_set, distance_tolerance, closest_time, method):
     """
@@ -35,15 +26,12 @@ def update_decimate_profiles_subdaily_to_once_daily(MITprof_ds, profile_var_key_
     # Just assuming method == 1, since that was the only completed algorithm in previous versions.
     # -----------------------------------------------------------------------------------------------------------------------------
 
-    #X, Y, Z = tools.sph2cart(MITprof_ds['prof_lon']*deg2rad, MITprof_ds['prof_lat']*deg2rad, 6357000)
     valid_1D_mask = tools.sph2cart_returnValidMaskOnly(MITprof_ds["prof_lon"]*deg2rad, MITprof_ds["prof_lat"]*deg2rad, 1)
     for var_name, var_data_array in MITprof_ds.data_vars.items():
         if valid_1D_mask.dims[0] in var_data_array.dims:
             MITprof_ds[var_name] = var_data_array.where(valid_1D_mask, drop=True)
 
-    #MITprof_ds = MITprof_ds.where(valid_mask, drop=True)
     X, Y, Z = tools.sph2cart(MITprof_ds["prof_lon"]*deg2rad, MITprof_ds["prof_lat"]*deg2rad, 1)
-
 
     days_with_data_unique = np.unique(MITprof_ds['prof_YYYYMMDD'])
 
@@ -54,16 +42,16 @@ def update_decimate_profiles_subdaily_to_once_daily(MITprof_ds, profile_var_key_
     
     for ii_unique_day in range(len(days_with_data_unique)):
 
-        indices_current_day = np.where(MITprof_ds['prof_YYYYMMDD'] == days_with_data_unique[ii_unique_day])[0]
-        number_at_current_day = len(indices_current_day)
+        indices_current_day = np.nonzero((MITprof_ds['prof_YYYYMMDD'] == days_with_data_unique[ii_unique_day]).data)[0]
         
-        distances_array = distmat(np.stack((X[indices_current_day], Y[indices_current_day], Z[indices_current_day]), axis = 1))
+        stacked_coords = np.stack((X[indices_current_day], Y[indices_current_day], Z[indices_current_day]), axis = 1)
+        distances_array = np.sqrt(np.sum((stacked_coords[:, None, :] - stacked_coords[None, :, :])**2, axis=2))
 
         toss_set  = []
 
         for ii_profile in range(len(indices_current_day)):
             if ii_profile not in toss_set: 
-                clustered_points_indices = np.where(distances_array[ii_profile,:] < distance_tolerance)[0] 
+                clustered_points_indices = np.nonzero((distances_array[ii_profile,:] < distance_tolerance).data)[0] 
                 clustered_points_indices_current_day = indices_current_day[clustered_points_indices]
 
                 if len(clustered_points_indices_current_day) > 1:

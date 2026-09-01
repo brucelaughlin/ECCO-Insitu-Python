@@ -9,9 +9,14 @@ from scipy.interpolate import griddata
 
 def print_survivors(MITprof_ds, step_counter):
     print(f"step: {step_counter}")
-    print(f"not nan T:    {MITprof_ds['prof_T'].notnull().sum().item()}")
-    print(f"not nan S:    {MITprof_ds['prof_S'].notnull().sum().item()}")
-    print(f"survivors: {MITprof_ds['prof_T'].notnull().sum().item() + MITprof_ds['prof_S'].notnull().sum().item()}")
+    print(f"not nan T:    {MITprof_ds['prof_T'].notnull().sum().item()}/{MITprof_ds['prof_T'].size} = {MITprof_ds['prof_T'].notnull().sum().item()/MITprof_ds['prof_T'].size * 100:.2f}%")
+    print(f"not nan S:    {MITprof_ds['prof_S'].notnull().sum().item()}/{MITprof_ds['prof_S'].size} = {MITprof_ds['prof_S'].notnull().sum().item()/MITprof_ds['prof_S'].size * 100:.2f}%")
+    #print(f"not nan S:    {MITprof_ds['prof_S'].notnull().sum().item()}/{MITprof_ds['prof_S'].size}")
+    #print(f"survivors: {MITprof_ds['prof_T'].notnull().sum().item() + MITprof_ds['prof_S'].notnull().sum().item()}")
+    print(f"survivors: {MITprof_ds['prof_T'].notnull().sum().item() + MITprof_ds['prof_S'].notnull().sum().item()}/{MITprof_ds['prof_T'].size + MITprof_ds['prof_S'].size} = {(MITprof_ds['prof_T'].notnull().sum().item() + MITprof_ds['prof_S'].notnull().sum().item()) / (MITprof_ds['prof_T'].size + MITprof_ds['prof_S'].size) * 100:.2f}%")
+    print(f"survivors relative to original counts: {MITprof_ds['prof_T'].notnull().sum().item() + MITprof_ds['prof_S'].notnull().sum().item()}/{MITprof_ds['prof_T_original_total_count'].item() +  MITprof_ds['prof_S_original_total_count'].item()} = {(MITprof_ds['prof_T'].notnull().sum().item() + MITprof_ds['prof_S'].notnull().sum().item()) / (MITprof_ds['prof_T_original_total_count'].item() +  MITprof_ds['prof_S_original_total_count'].item()) * 100:.2f}%")
+                
+
 
 
 def count_total_survivors_TS(MITprof_ds):
@@ -32,6 +37,27 @@ def update_remove_extraneous_depth_levels(MITprof_ds, profile_var_key_set):
         return MITprof_ds
 
 
+def extract_profile_subset_from_MITprof_iDEPTH_mask(MITprof_ds, bool_mask_name):
+    new_ds_dict = {}
+    for data_var in MITprof_ds.data_vars:
+        if "iDEPTH" not in MITprof_ds[data_var].dims:
+            new_ds_dict[data_var] = MITprof_ds[data_var].copy(deep=True)
+        else:
+            if len(MITprof_ds[data_var].dims) == 2:
+                new_data = MITprof_ds[data_var].data.copy()[:, MITprof_ds[bool_mask_name].data]
+                new_coords = {
+                    "iPROF": MITprof_ds[data_var].coords["iPROF"].data,
+                    "iDEPTH": MITprof_ds[data_var].coords["iDEPTH"].data[MITprof_ds[bool_mask_name].data], 
+                }
+            else:
+                new_data = MITprof_ds[data_var].data.copy()[MITprof_ds[bool_mask_name].data]
+                new_coords = {
+                    "iDEPTH": MITprof_ds[data_var].coords["iDEPTH"].data[MITprof_ds[bool_mask_name].data], 
+                }
+            new_ds_dict[data_var] = xr.DataArray(data=new_data, dims=MITprof_ds[data_var].dims, coords=new_coords)
+    return xr.Dataset(new_ds_dict)
+
+
 def update_remove_zero_T_S_weighted_profiles_from_MITprof(MITprof_ds, profile_var_key_set):
     num_nan_weights = 0
     for prof_key in profile_var_key_set:
@@ -46,31 +72,10 @@ def update_remove_zero_T_S_weighted_profiles_from_MITprof(MITprof_ds, profile_va
     return extract_profile_subset_from_MITprof_iPROF_mask(MITprof_ds, bool_mask_name='global_1D_mask_iPROF_nonzero_weight')
 
 
-def extract_profile_subset_from_MITprof_iDEPTH_mask(MITprof_ds, bool_mask_name):
-    new_ds_dict = {}
-    for data_var in MITprof_ds.data_vars:
-        if "iDEPTH" not in MITprof_ds[data_var].coords:
-            new_ds_dict[data_var] = MITprof_ds[data_var].copy(deep=True)
-        else:
-            if len(MITprof_ds[data_var].dims) == 2:
-                new_data = MITprof_ds[data_var].data.copy()[:, MITprof_ds[bool_mask_name].data]
-                new_coords = {
-                    "iDEPTH": MITprof_ds[data_var].coords["iDEPTH"].data[MITprof_ds[bool_mask_name].data], 
-                    "iPROF": MITprof_ds[data_var].coords["iPROF"].data,
-                }
-            else:
-                new_data = MITprof_ds[data_var].data.copy()[MITprof_ds[bool_mask_name].data]
-                new_coords = {
-                    "iDEPTH": MITprof_ds[data_var].coords["iDEPTH"].data[MITprof_ds[bool_mask_name].data], 
-                }
-            new_ds_dict[data_var] = xr.DataArray(data=new_data, dims=MITprof_ds[data_var].dims, coords=new_coords)
-    return xr.Dataset(new_ds_dict)
-
-
 def extract_profile_subset_from_MITprof_iPROF_mask(MITprof_ds, bool_mask_name):
     new_ds_dict = {}
     for data_var in MITprof_ds.data_vars:
-        if "iPROF" not in MITprof_ds[data_var].coords:
+        if "iPROF" not in MITprof_ds[data_var].dims:
             new_ds_dict[data_var] = MITprof_ds[data_var].copy(deep=True)
         else:
             if len(MITprof_ds[data_var].dims) == 2:

@@ -110,6 +110,10 @@ def NCEI_pipeline(dest_dir, input_dir):
         MITprof_ds = xr.open_dataset(original_file)
         MITprof_ds = MITprof_ds.assign_coords({dim: np.arange(MITprof_ds.sizes[dim]) for dim in MITprof_ds.dims if dim not in MITprof_ds.coords})
 
+        for prof_key in profile_var_key_set:
+            MITprof_ds[f'{prof_key}_original_valid_count'] = MITprof_ds[prof_key].notnull().sum().item()
+            MITprof_ds[f'{prof_key}_original_total_count'] = MITprof_ds[prof_key].size
+
         step_counter = 0
         tools.print_survivors(MITprof_ds, step_counter)
 
@@ -122,10 +126,14 @@ def NCEI_pipeline(dest_dir, input_dir):
             tools.print_survivors(MITprof_ds, step_counter)
 
         if tools.count_total_survivors_TS(MITprof_ds) > 0:
+            print()
             tools.MITprof_write_to_nc(dest_dir, MITprof_ds, len(ncei_function_list), basename)
+            print()
+        """
             print(f"                SUCCESS:    {tools.count_total_survivors_TS(MITprof_ds)} PROFILES SURVIVED THE NCEI PROCESSING ALGORITHM\n")
         else:
             print(f"                FAILURE:    {tools.count_total_survivors_TS(MITprof_ds)} PROFILES SURVIVED THE NCEI PROCESSING ALGORITHM\n")
+        """
 
 
 def main(dest_dir, input_dir):

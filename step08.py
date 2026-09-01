@@ -8,7 +8,6 @@ import tools
 import pdb
 
         
-#def main(MITprof_ds, profile_var_key_set=None):
 def main(MITprof_ds, profile_var_key_set):
     #print("step08: update_remove_zero_T_S_weighted_profiles_from_MITprof")
          
@@ -29,5 +28,4 @@ def main(MITprof_ds, profile_var_key_set):
         if np.abs(b1 - b2) > 1:
             raise Exception('profile T costs is big')
 
-    #MITprof_ds = MITprof_ds_new
     return MITprof_ds_new
