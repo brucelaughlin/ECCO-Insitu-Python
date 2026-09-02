@@ -20,6 +20,7 @@ def update_gamma_factor_on_prepared_profiles(MITprof_ds, profile_var_key_set, gr
     if apply_gamma_factor:
         alpha = np.squeeze(RAC_mitgcm_patchface / np.max(RAC_mitgcm_patchface))
         MITprof_ds['prof_area_gamma'] = xr.DataArray(alpha.ravel()[MITprof_ds['profile_flattened_monotonic_grid_indices'].astype(int)], dims=['iPROF'])
+        pdb.set_trace()
         
     else:
         MITprof_ds['prof_area_gamma'] = xr.ones_like(MITprof_ds['profile_flattened_monotonic_grid_indices']) 

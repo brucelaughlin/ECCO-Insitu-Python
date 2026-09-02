@@ -7,6 +7,10 @@ import tools
 import pdb
 
 
+earth_radius = 6371000
+#earth_radius = 6357000
+deg2rad = np.pi/180    
+
 def update_decimate_profiles_subdaily_to_once_daily(MITprof_ds, profile_var_key_set, distance_tolerance, closest_time, method):
     """
     This script decimates profiles with subdaily sampling at the same
@@ -20,8 +24,6 @@ def update_decimate_profiles_subdaily_to_once_daily(MITprof_ds, profile_var_key_
         method = 1                      # method 0 or 1
     """
 
-    deg2rad = np.pi/180    
-
     # -----------------------------------------------------------------------------------------------------------------------------
     # Just assuming method == 1, since that was the only completed algorithm in previous versions.
     # -----------------------------------------------------------------------------------------------------------------------------
@@ -31,14 +33,11 @@ def update_decimate_profiles_subdaily_to_once_daily(MITprof_ds, profile_var_key_
         if valid_1D_mask.dims[0] in var_data_array.dims:
             MITprof_ds[var_name] = var_data_array.where(valid_1D_mask, drop=True)
 
-    X, Y, Z = tools.sph2cart(MITprof_ds["prof_lon"]*deg2rad, MITprof_ds["prof_lat"]*deg2rad, 1)
+    X, Y, Z = tools.sph2cart(MITprof_ds["prof_lon"]*deg2rad, MITprof_ds["prof_lat"]*deg2rad, earth_radius)
 
     days_with_data_unique = np.unique(MITprof_ds['prof_YYYYMMDD'])
 
-    bool_mask_profiles_to_remove_global = np.zeros_like(MITprof_ds['prof_lon']).astype(bool)
-    
-    toss_set_all = []
-    total_toss = 0
+    toss_set_all_days = []
     
     for ii_unique_day in range(len(days_with_data_unique)):
 
@@ -47,24 +46,30 @@ def update_decimate_profiles_subdaily_to_once_daily(MITprof_ds, profile_var_key_
         stacked_coords = np.stack((X[indices_current_day], Y[indices_current_day], Z[indices_current_day]), axis = 1)
         distances_array = np.sqrt(np.sum((stacked_coords[:, None, :] - stacked_coords[None, :, :])**2, axis=2))
 
-        toss_set  = []
+        # Sort all profiles for this day by closeness to noon — best candidates first.
+        # Then greedily keep each profile only if no already-kept profile is within
+        # distance_tolerance. This guarantees no two survivors are within tolerance,
+        # and priority is determined by the scientific criterion (noon proximity), not
+        # by accident of data order.
+        noon_order = np.argsort(np.abs(MITprof_ds['prof_HHMMSS'][indices_current_day] - closest_time))
+        sorted_indices = indices_current_day[noon_order]
+        sorted_local = noon_order  # local indices into distances_array, in noon order
 
-        for ii_profile in range(len(indices_current_day)):
-            if ii_profile not in toss_set: 
-                clustered_points_indices = np.nonzero((distances_array[ii_profile,:] < distance_tolerance).data)[0] 
-                clustered_points_indices_current_day = indices_current_day[clustered_points_indices]
+        kept_local = []
+        toss_set_current_day = []
 
-                if len(clustered_points_indices_current_day) > 1:
-                    distances_from_noon = np.argsort(np.abs(MITprof_ds['prof_HHMMSS'][clustered_points_indices_current_day]-closest_time))
-                    toss_set = np.union1d(toss_set, clustered_points_indices_current_day[distances_from_noon[1:]])
+        for ii_local, global_idx in zip(sorted_local, sorted_indices):
+            if any(distances_array[ii_local, k] < distance_tolerance for k in kept_local):
+                toss_set_current_day.append(global_idx)
+            else:
+                kept_local.append(ii_local)
         
-                total_toss = total_toss + len(toss_set)
-                toss_set_all = np.union1d(toss_set_all, toss_set)
+        toss_set_all_days = np.union1d(toss_set_all_days, toss_set_current_day)
 
-    toss_set_all = toss_set_all.astype(int)
+    toss_set_all_days = toss_set_all_days.astype(int)
 
     for prof_key in profile_var_key_set:
-        MITprof_ds[f"{prof_key}weight"][toss_set_all,:] = 0
+        MITprof_ds[f"{prof_key}weight"][toss_set_all_days,:] = 0
    
     MITprof_ds = tools.update_remove_zero_T_S_weighted_profiles_from_MITprof(MITprof_ds, profile_var_key_set)
 
