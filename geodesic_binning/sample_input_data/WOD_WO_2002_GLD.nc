@@ -1,0 +1,1 @@
+/Users/brucel/ecco/yip/scripps_data/GLD_WOD/WOD_WO_2002_GLD.nc
