@@ -400,7 +400,7 @@ def build_all_patch_collections(geodesic_bin_data_dict, plot_state_dict):
             face_rgba_micro[:, 3] = log_alpha
 
             patch_collection_micro = create_patch_collection_from_vertices(flat_vertices)
-            edgecolors_micro = [(0.3, 0.3, 0.3, 0.6)] * len(flat_vertices)
+            edgecolors_micro = [(0.15, 0.15, 0.15, 0.85)] * len(flat_vertices)
             patch_collection_micro.set_facecolors(face_rgba_micro)
             patch_collection_micro.set_edgecolors(edgecolors_micro)
             patch_collection_micro.set_linewidths(original_linewidths_micro)
