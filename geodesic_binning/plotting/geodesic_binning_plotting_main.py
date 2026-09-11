@@ -37,11 +37,11 @@ def plot_spawner(pickle_file_binning):
 
     fig = plt.figure(figsize=(plot_state_dict['fig_width'], plot_state_dict['fig_height']), facecolor=plot_state_dict['figure_facecolor'])
     fig.subplots_adjust(left=0.2, right=0.8, bottom=0.2, top=0.75)
-    ax, cax_left, cax_right = utils.prepare_axes(fig)
+    ax, cax_left, cax_right, coastline_artist = utils.prepare_axes(fig)
 
     fig.add_axes(ax)
 
-    plot_state_dict.update({'fig': fig, 'ax': ax, 'cax_left': cax_left, 'cax_right': cax_right})
+    plot_state_dict.update({'fig': fig, 'ax': ax, 'cax_left': cax_left, 'cax_right': cax_right, 'coastline_artist': coastline_artist})
 
     plot_state_dict['fig'].canvas.draw()
     utils.set_global_xylims(plot_state_dict)

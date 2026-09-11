@@ -236,8 +236,8 @@ def set_plot_text(plot_state_dict):
     caption_string = (
             f"Polygon face colors represent {variable_key} anomalies (low zoom levels: geodesic bin means, higher zoom levels: individual profile values "
             f"(unless a geodesic bin contains more than {plot_state_dict['num_subpolygons_max']} profiles)).  "
-            f"Polygon edge colors represent a geodesic bin's overall {variable_key} anomaly standard deviation.  "
-            "At low zoom levels, polygon edge widths scale linearly with the number of profiles binned within.  "
+            f"Polygon edge colors represent a geodesic bin's overall {variable_key} anomaly standard deviation (low zoom levels) or mean bin anomaly (high zoom levels).  "
+            "At low zoom levels, polygon edge widths scale linearly with the number of profiles binned.  "
             "At higher zoom levels, true profile locations appear as red dots."
             )
 
@@ -337,13 +337,17 @@ def build_all_patch_collections(geodesic_bin_data_dict, plot_state_dict):
 
             # --- macro collection ---
             macro_vertex_arrays = patch_dict['macro']['polygon_vertex_list_of_lists']
+            macro_counts = patch_dict['count_array'].astype(float)
+            macro_max_count = macro_counts.max() if macro_counts.size > 0 else 1.0
+            macro_log_alpha = np.clip(np.sqrt(macro_counts / macro_max_count), 0.4, 1.0)
+            macro_face_rgba = np.array([cmap_face(norm_face(v)) for v in patch_dict['macro']['face_value_list']])
+            macro_face_rgba[:, 3] = macro_log_alpha
+
             patch_collection_macro = create_patch_collection_from_vertices(macro_vertex_arrays)
             edgecolors_macro = [cmap_edge(norm_edge(v)) for v in patch_dict['macro']['edge_value_list']]
-            patch_collection_macro.set_array(np.array(patch_dict['macro']['face_value_list']))
+            patch_collection_macro.set_facecolors(macro_face_rgba)
             patch_collection_macro.set_edgecolors(edgecolors_macro)
             patch_collection_macro.set_linewidths(patch_dict['macro']['linewidths_list'])
-            patch_collection_macro.set_cmap(cmap_face)
-            patch_collection_macro.set_norm(norm_face)
 
             # polygon_list_macro needed by make_handles_and_titles (visible patch detection)
             polygon_list_macro = [ShapelyPolygon(v) for v in macro_vertex_arrays]
@@ -357,15 +361,18 @@ def build_all_patch_collections(geodesic_bin_data_dict, plot_state_dict):
             flat_edge_values = []
             flat_tags = []
             flat_macro_lws = []
-            for patch_dex, (bin_vertices, bin_faces, bin_edges, bin_tags) in enumerate(zip(
+            flat_counts = []
+            for patch_dex, (bin_vertices, bin_faces, bin_edges, bin_tags, bin_counts) in enumerate(zip(
                     micro_data['polygon_vertex_list_of_bin_lists'],
                     micro_data['face_value_list_of_bin_lists'],
                     micro_data['edge_value_list_of_bin_lists'],
-                    micro_data['linewidth_tag_list_of_bin_lists'])):
+                    micro_data['linewidth_tag_list_of_bin_lists'],
+                    micro_data['count_list_of_bin_lists'])):
                 flat_vertices.extend(bin_vertices)
                 flat_face_values.extend(bin_faces)
                 flat_edge_values.extend(bin_edges)
                 flat_tags.extend(bin_tags)
+                flat_counts.extend(bin_counts)
                 for tag in bin_tags:
                     flat_macro_lws.append(macro_linewidths_array[patch_dex] if tag == 'macro' else 0.0)
 
@@ -377,19 +384,29 @@ def build_all_patch_collections(geodesic_bin_data_dict, plot_state_dict):
             ]
             is_over_limit_micro = np.array([t == 'macro' for t in flat_tags])
 
+            # Log-normalized alpha: bins with more profiles draw the eye more.
+            # alpha = sqrt(count / max_count), clamped to [0.4, 1.0]
+            counts_arr = np.array(flat_counts, dtype=float)
+            max_count = counts_arr.max() if counts_arr.size > 0 else 1.0
+            log_alpha = np.sqrt(counts_arr / max_count)
+            log_alpha = np.clip(log_alpha, 0.4, 1.0)
+
+            face_rgba_micro = np.array([cmap_face(norm_face(v)) for v in flat_face_values])
+            face_rgba_micro[:, 3] = log_alpha
+
             patch_collection_micro = create_patch_collection_from_vertices(flat_vertices)
-            edgecolors_micro = [cmap_edge(norm_edge(v)) for v in flat_edge_values]
-            patch_collection_micro.set_array(np.array(flat_face_values))
+            edgecolors_micro = [(0.3, 0.3, 0.3, 0.6)] * len(flat_vertices)
+            patch_collection_micro.set_facecolors(face_rgba_micro)
             patch_collection_micro.set_edgecolors(edgecolors_micro)
             patch_collection_micro.set_linewidths(original_linewidths_micro)
-            patch_collection_micro.set_cmap(cmap_face)
-            patch_collection_micro.set_norm(norm_face)
 
             # --- macro border collection (drawn on top of micro when zoomed in) ---
+            # Thin color ring keyed to bin mean — visible but narrow enough to avoid overlap.
+            edgecolors_macro_border = [(*cmap_face(norm_face(v))[:3], 1.0) for v in patch_dict['macro']['face_value_list']]
             patch_collection_macro_border = create_patch_collection_from_vertices(macro_vertex_arrays)
             patch_collection_macro_border.set_facecolors([(0, 0, 0, 0)] * len(macro_vertex_arrays))
-            patch_collection_macro_border.set_edgecolors(edgecolors_macro)
-            patch_collection_macro_border.set_linewidths([1.2] * len(macro_vertex_arrays))
+            patch_collection_macro_border.set_edgecolors(edgecolors_macro_border)
+            patch_collection_macro_border.set_linewidths([1.5] * len(macro_vertex_arrays))
 
             # Store everything back into the binning dict for pickling
             patch_dict['collections'] = {
@@ -529,7 +546,7 @@ def establish_colorbars(plot_state_dict):
         for q_dex in range(len(quantiles)):
             q_val = quantiles[q_dex]
             
-            if cbar_min <= q_val <= cbar_max:
+            if cbar_min < q_val < cbar_max:
                 norm_y = cbar.norm(q_val)
                 
                 # Draw the line exactly at the normalized height position spanning edge to edge
@@ -540,34 +557,24 @@ def establish_colorbars(plot_state_dict):
                 text_va = 'center'
                 text_y = norm_y
                 text_color = 'black' if cbar_side_string == 'right' else 'white'
-                
-                # If the line sits exactly at the physical bottom (0.0)
-                if norm_y <= 0.001:
+
+                # Near the physical bottom — anchor text above the line so it isn't clipped
+                if norm_y <= 0.05:
                     text_va = 'bottom'
-                    text_y = norm_y + 0.01  # Nudge it slightly upwards into the colorbar
-                    
+                    text_y = norm_y + 0.01
+
                     if cbar_side_string == 'right':
-                        if variable_key == "S":
-                            text_color = 'white'
-                        elif variable_key == "T":
-                            text_color = 'black'
-                        else:
-                            text_color = 'white'
+                        text_color = 'white' if variable_key != "T" else 'black'
                     else:
                         text_color = 'white'
-                    
-                # If the line sits exactly at the physical top (1.0)
-                elif norm_y >= 0.999:
+
+                # Near the physical top — anchor text below the line so it isn't clipped
+                elif norm_y >= 0.95:
                     text_va = 'top'
-                    text_y = norm_y - 0.01  # Nudge it slightly downwards into the colorbar
-                    
+                    text_y = norm_y - 0.01
+
                     if cbar_side_string == 'right':
-                        if variable_key == "S":
-                            text_color = 'black'
-                        elif variable_key == "T":
-                            text_color = 'white'
-                        else:
-                            text_color = 'black'
+                        text_color = 'black' if variable_key != "T" else 'white'
                     else:
                         text_color = 'black'
 
@@ -620,14 +627,14 @@ def establish_colorbars(plot_state_dict):
 
 def prepare_axes(fig):
     ax = plt.axes(projection=ccrs.PlateCarree())
-    ax.coastlines(color='black', linewidth=0.15)
-    ax.patch.set_facecolor('#D9D9D9')
+    coastline_artist = ax.coastlines(color='black', linewidth=0.5)
+    ax.set_facecolor('white')
     ax.gridlines(draw_labels=True)
     ax.set_aspect('equal', anchor='C')
     ax.set_adjustable("datalim")
     cax_left  = fig.add_axes([0.05, 0.15, 0.02, 0.7])
     cax_right = fig.add_axes([0.90, 0.15, 0.02, 0.7])
-    return ax, cax_left, cax_right
+    return ax, cax_left, cax_right, coastline_artist
 
 
 def clear_axes(plot_state_dict):
@@ -898,9 +905,6 @@ def calculate_collection_safe_lw(ax, collection):
     Finds the smallest shape inside a collection and calculates 
     the exact physical point width where it would blow out.
     """
-    # 1. Force a quick canvas calculation to populate pixel metrics
-    ax.figure.canvas.draw()
-    
     # 2. Loop through collection paths to find the smallest dimensions
     min_dimension = float('inf')
     for path in collection.get_paths():

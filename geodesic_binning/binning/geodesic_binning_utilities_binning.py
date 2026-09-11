@@ -6,7 +6,9 @@ import pandas as pd
 from scipy.spatial import KDTree, ConvexHull, Voronoi
 from shapely.geometry import Polygon as ShapelyPolygon
 from shapely.geometry import MultiPolygon
+from shapely.ops import unary_union
 from matplotlib.path import Path as MplPath
+import cartopy.io.shapereader as shpreader
 import time
 
 base_dir = str(Path(__file__).parent.parent.parent.resolve())
@@ -17,9 +19,13 @@ plotting_dir = str(Path(__file__).parent.parent.resolve() / "plotting")
 sys.path.append(plotting_dir)
 
 
-def bin_around_geodesic_vertices(geodesic_file: str, profile_file: str, variables_of_interest: dict, angular_precision: float, num_geodesic_bins: int, num_subpolygons_max: int) -> dict:
+def bin_around_geodesic_vertices(geodesic_file: str, profile_file: str, variables_of_interest: dict, angular_precision: float, num_geodesic_bins: int, num_subpolygons_max: int, land_mask_resolution: str = '10m', min_ocean_fraction: float = 0.1) -> dict:
 
     num_digits = len(str(num_geodesic_bins))
+
+    print(f"building land polygon ({land_mask_resolution})...")
+    land_polygon = _build_land_polygon(resolution=land_mask_resolution)
+    print("land polygon ready.")
 
     df_lonlat = pd.read_csv(geodesic_file, header=None)
     geodesic_vertex_lons = np.asarray(df_lonlat[0])
@@ -164,7 +170,7 @@ def bin_around_geodesic_vertices(geodesic_file: str, profile_file: str, variable
                     bounding_polygon = coords_within_geodesic_bin[ConvexHull(coords_within_geodesic_bin).vertices]
                     patch_dict_single_var_depth["bin_indices"][index]["artificial_grid_bounding_polygon_for_geodesic_bin"] = bounding_polygon
 
-                determine_patch_collections_pieces(patch_dict_single_var_depth, num_subpolygons_max)
+                determine_patch_collections_pieces(patch_dict_single_var_depth, num_subpolygons_max, land_polygon=land_polygon, min_ocean_fraction=min_ocean_fraction)
 
                 patch_dict_single_var_depth["profiles_lats"] = anomalies_global_dict[variable_key]["profiles_lats"][valid_indices][:,i_depth]
                 patch_dict_single_var_depth["profiles_lons"] = anomalies_global_dict[variable_key]["profiles_lons"][valid_indices][:,i_depth]
@@ -205,7 +211,14 @@ def filter_tuple_of_1D_arrays_for_nans(tuple_of_1D_arrays):
     return(tuple_of_1D_arrays, good_index_mask)
 
 
-def determine_patch_collections_pieces(patch_dict_single_var_depth: dict, num_subpolygons_max: int) -> None:
+def _build_land_polygon(resolution='10m'):
+    """Return a single Shapely (Multi)Polygon covering all land at the given resolution.
+    Valid resolutions: '10m', '50m', '110m'."""
+    reader = shpreader.natural_earth(resolution=resolution, category='physical', name='land')
+    return unary_union(list(shpreader.Reader(reader).geometries()))
+
+
+def determine_patch_collections_pieces(patch_dict_single_var_depth: dict, num_subpolygons_max: int, land_polygon=None, min_ocean_fraction: float = 0.1) -> None:
 
     # Some plotting parameters that have seemed to work
     linewidth_floor_initial = 0
@@ -246,6 +259,9 @@ def determine_patch_collections_pieces(patch_dict_single_var_depth: dict, num_su
         if patch_dict_single_var_depth["bin_indices"][index][key_for_patch_face] > value_max_face:
             value_max_face = patch_dict_single_var_depth["bin_indices"][index][key_for_patch_face]
 
+    if land_polygon is None:
+        land_polygon = _build_land_polygon()
+
     individual_profile_anomalies_list_of_bin_lists = []
     patch_face_value_list = []
     patch_edge_value_list= []
@@ -263,6 +279,24 @@ def determine_patch_collections_pieces(patch_dict_single_var_depth: dict, num_su
         # safety check in case a geodesic bin polygon is zero size
         gbd_polygon = patch_dict_single_var_depth["bin_indices"][index]["artificial_grid_bounding_polygon_for_geodesic_bin"]
         if gbd_polygon.size > 0:
+
+            # Clip bin polygon to ocean (subtract land).  Use the clipped shape for
+            # both the macro patch and the Voronoi subdivision so coastal bins are
+            # naturally "squeezed" into their visible ocean area.
+            bin_shapely = ShapelyPolygon(gbd_polygon)
+            bin_ocean = bin_shapely.difference(land_polygon)
+            if bin_ocean.is_empty:
+                continue
+            # Drop bins whose ocean remnant is too small relative to the original —
+            # these are typically thin coastal channels that our model resolution
+            # can't represent anyway.
+            if bin_ocean.area / bin_shapely.area < min_ocean_fraction:
+                continue
+            # Flatten MultiPolygon to the largest piece (avoids tiny island slivers
+            # becoming separate sub-regions).
+            if bin_ocean.geom_type == 'MultiPolygon':
+                bin_ocean = max(bin_ocean.geoms, key=lambda g: g.area)
+            gbd_polygon = np.array(bin_ocean.exterior.coords)
 
             individual_profile_anomalies_list_of_bin_lists.append(patch_dict_single_var_depth["bin_indices"][index]["individual_values"])
 
@@ -303,6 +337,7 @@ def determine_patch_collections_pieces(patch_dict_single_var_depth: dict, num_su
     micro_face_value_list = []
     micro_edge_value_list = []
     micro_linewidth_tag_list = []  # 'zero', 'micro', or 'macro'
+    micro_count_list = []  # per-bin count, repeated for each sub-polygon
 
     for patch_dex, (parent_vertices, n_profiles, edge_val, macro_lw) in enumerate(zip(
             patch_polygon_vertex_list_of_lists,
@@ -319,6 +354,7 @@ def determine_patch_collections_pieces(patch_dict_single_var_depth: dict, num_su
             micro_face_value_list.append([patch_face_value_list[patch_dex]])
             micro_edge_value_list.append([edge_val])
             micro_linewidth_tag_list.append(['macro'])
+            micro_count_list.append([n_profiles])
         else:
             sub_polys = _fill_polygon_voronoi(ShapelyPolygon(parent_vertices), n_profiles, rng_seed)
             n_sub = len(sub_polys)
@@ -344,16 +380,19 @@ def determine_patch_collections_pieces(patch_dict_single_var_depth: dict, num_su
                 else:
                     bin_vertices.append(np.array(parent_vertices))
 
+            bin_mean_face_value = float(np.mean(face_values))
             micro_polygon_vertex_list.append(bin_vertices)
             micro_face_value_list.append(list(face_values))
-            micro_edge_value_list.append([edge_val] * n_sub)
+            micro_edge_value_list.append([bin_mean_face_value] * n_sub)
             micro_linewidth_tag_list.append([tag] * n_sub)
+            micro_count_list.append([n_profiles] * n_sub)
 
     patch_dict_single_var_depth['micro'] = {
         'polygon_vertex_list_of_bin_lists': micro_polygon_vertex_list,
         'face_value_list_of_bin_lists': micro_face_value_list,
         'edge_value_list_of_bin_lists': micro_edge_value_list,
         'linewidth_tag_list_of_bin_lists': micro_linewidth_tag_list,
+        'count_list_of_bin_lists': micro_count_list,
     }
 
 

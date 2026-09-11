@@ -23,6 +23,15 @@ output_dir.mkdir(parents=True, exist_ok=True)
 num_subpolygons_max = 1000
 #num_subpolygons_max = 500
 
+# Land mask resolution for ocean clipping.  '10m' gives the most accurate coastlines
+# (slowest build), '50m' is medium, '110m' is fastest (too coarse for coastal detail).
+land_mask_resolution = '10m'
+
+# Bins whose ocean-only area is less than this fraction of the original bin area are
+# dropped entirely.  Prevents thin coastal channels that the model can't resolve from
+# showing up as plotted bins.
+min_ocean_fraction = 0.02
+
 # in <variables_of_interest_dict>, keys should be variable names, values should be units (tex-friendly, for plotting)
 variables_of_interest_dict = {}
 variables_of_interest_dict["T"] = "$^\circ$C"
@@ -46,8 +55,8 @@ geodesic_file = geodesic_file_dict[num_geodesic_bins_string]
 
 
 profile_file_list = [
-        "/Users/brucel/ecco/yip/sample_data/test_output_problematic_files/WOD_WO_1992_CTD_OSD__ncei_step_10.nc",
-        #"/Users/brucel/ecco/yip/sample_data/test_output_problematic_files/WOD_WO_2002_GLD__ncei_step_10.nc"
+        #"/Users/brucel/ecco/yip/sample_data/test_output_problematic_files/WOD_WO_1992_CTD_OSD__ncei_step_10.nc",
+        "/Users/brucel/ecco/yip/sample_data/test_output_problematic_files/WOD_WO_2002_GLD__ncei_step_10.nc"
 ]
 
 
@@ -63,7 +72,7 @@ for profile_file_index in range(len(profile_file_list)):
     save_dir = output_dir / f"{num_geodesic_bins_string}_geodesic_bins" / f"num_subpolygons_max_{num_subpolygons_max}"
     Path(save_dir).mkdir(parents=True, exist_ok=True)
 
-    geodesic_bin_data_dict = utils_binning.bin_around_geodesic_vertices(geodesic_file, profile_file, variables_of_interest_dict, angular_precision, num_geodesic_bins, num_subpolygons_max)
+    geodesic_bin_data_dict = utils_binning.bin_around_geodesic_vertices(geodesic_file, profile_file, variables_of_interest_dict, angular_precision, num_geodesic_bins, num_subpolygons_max, land_mask_resolution=land_mask_resolution, min_ocean_fraction=min_ocean_fraction)
 
     print()
     print("patch collection building:")
