@@ -1,10 +1,8 @@
-import matplotlib.pyplot as plt
 import xarray as xr
 import numpy as np
 from geopy import distance
 from scipy.interpolate import griddata
-import tools 
-import pdb
+import tools
 
 def get_profpoint_llc_ian(lon_llc, lat_llc, mask_llc, MITprof_ds):
     """
@@ -169,7 +167,7 @@ def update_prof_and_tile_points_on_profiles(MITprof_ds, grid_dir, llcN, wet_or_a
     ##  Read in llc grid 
     if llcN == 90:
 
-        lon_90, lat_90, blank_90, wet_ins_90_k = tools.load_llc90_grid(grid_dir, 1)
+        lon_90, lat_90, blank_90, wet_ins_90_k = tools.load_llc90_grid_step1(grid_dir)
         # tiles are 30x30
         ni = 30
         nj = 30
@@ -181,7 +179,7 @@ def update_prof_and_tile_points_on_profiles(MITprof_ds, grid_dir, llcN, wet_or_a
         else:
             mask_llc=np.ones(blank_90.shape, order = 'F') 
     if llcN == 270:
-        lon_270, lat_270, blank_270, wet_ins_270_k = tools.load_llc270_grid(grid_dir, 1)
+        lon_270, lat_270, blank_270, wet_ins_270_k = tools.load_llc270_grid_step1(grid_dir)
         ni = 30
         nj = 30  
         lon_llc = lon_270
@@ -218,22 +216,6 @@ def update_prof_and_tile_points_on_profiles(MITprof_ds, grid_dir, llcN, wet_or_a
         if bool_mask_good_coords[profile_index]:
             distances[profile_index] = distance.distance((MITprof_ds['prof_lat'][profile_index], MITprof_ds['prof_lon'][profile_index]), (MITprof_ds['prof_interp_lat'][profile_index], MITprof_ds['prof_interp_lon'][profile_index])).km
             #distances[profile_index] = distance.distance((MITprof_ds['prof_lat'][profile_index], MITprof_ds['prof_lon'][profile_index]), (MITprof_ds['prof_interp_lat'][profile_index], MITprof_ds['prof_interp_lon'][profile_index])).m
-
-    if 'prof_flag' not in MITprof_ds:
-        MITprof_ds['prof_flag'] = xr.zeros_like(MITprof_ds['prof_YYYYMMDD'])
-
-    MITprof_ds['prof_flag'][~bool_mask_good_coords] = 100
-
-    # distance between grid cells referenced to llcN 90 (in m... or km...?)
-    grid_cell_distance_x_fixed = 112* 90/llcN
-
-    # find points where distance between the profile point and the 
-    # closest grid point is further than twice the distance 
-    # of the square root of the area.
-    bool_mask_too_far = distances / grid_cell_distance_x_fixed > 2
-
-    # This is never used
-    MITprof_ds['prof_flag'][bool_mask_too_far] = 101
 
     return MITprof_ds
 

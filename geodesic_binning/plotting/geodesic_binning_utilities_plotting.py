@@ -3,6 +3,8 @@ from pathlib import Path
 from matplotlib.lines import Line2D
 import textwrap
 import cartopy.crs as ccrs
+import cartopy.feature as cfeature
+import matplotlib.patheffects as mpe
 import matplotlib as mpl
 import matplotlib.pyplot as plt
 import matplotlib.cm as cm
@@ -120,7 +122,7 @@ def generate_new_plot_state_dict():
         'zoom_scale_print_decimal_places': 1,
         'legend_frame_alpha': 0.8,
         'legend_zorder': 20,
-        'micro_base_linewidth': 0.07,
+        'micro_base_linewidth': 0.04,
     }
     return plot_state_dict
 
@@ -236,9 +238,9 @@ def set_plot_text(plot_state_dict):
     caption_string = (
             f"Polygon face colors represent {variable_key} anomalies (low zoom levels: geodesic bin means, higher zoom levels: individual profile values "
             f"(unless a geodesic bin contains more than {plot_state_dict['num_subpolygons_max']} profiles)).  "
-            f"Polygon edge colors represent a geodesic bin's overall {variable_key} anomaly standard deviation (low zoom levels) or mean bin anomaly (high zoom levels).  "
+            f"Edge colors of geodesic bin polygons represent the {variable_key} anomaly standard deviation of the profiles binned.  "
             "At low zoom levels, polygon edge widths scale linearly with the number of profiles binned.  "
-            "At higher zoom levels, true profile locations appear as red dots."
+            "At higher zoom levels, true profile locations appear as red dots, and geodesic bin anomaly means appear as text within the geodesic bin polygons."
             )
 
     wrap_width = 100
@@ -362,6 +364,7 @@ def build_all_patch_collections(geodesic_bin_data_dict, plot_state_dict):
             flat_tags = []
             flat_macro_lws = []
             flat_counts = []
+            flat_bin_mean_face_values = []
             for patch_dex, (bin_vertices, bin_faces, bin_edges, bin_tags, bin_counts) in enumerate(zip(
                     micro_data['polygon_vertex_list_of_bin_lists'],
                     micro_data['face_value_list_of_bin_lists'],
@@ -373,8 +376,10 @@ def build_all_patch_collections(geodesic_bin_data_dict, plot_state_dict):
                 flat_edge_values.extend(bin_edges)
                 flat_tags.extend(bin_tags)
                 flat_counts.extend(bin_counts)
+                bin_mean = patch_dict['macro']['face_value_list'][patch_dex]
                 for tag in bin_tags:
                     flat_macro_lws.append(macro_linewidths_array[patch_dex] if tag == 'macro' else 0.0)
+                    flat_bin_mean_face_values.append(bin_mean)
 
             original_linewidths_micro = [
                 0.0 if t == 'zero' else
@@ -401,12 +406,16 @@ def build_all_patch_collections(geodesic_bin_data_dict, plot_state_dict):
             patch_collection_micro.set_linewidths(original_linewidths_micro)
 
             # --- macro border collection (drawn on top of micro when zoomed in) ---
-            # Thin color ring keyed to bin mean — visible but narrow enough to avoid overlap.
-            edgecolors_macro_border = [(*cmap_face(norm_face(v))[:3], 1.0) for v in patch_dict['macro']['face_value_list']]
+            # Thin black outline keyed so geodesic bin boundaries stay visible without color clash.
+            edgecolors_macro_border = [(*cmap_edge(norm_edge(v))[:3], 1.0) for v in patch_dict['macro']['edge_value_list']]
             patch_collection_macro_border = create_patch_collection_from_vertices(macro_vertex_arrays)
             patch_collection_macro_border.set_facecolors([(0, 0, 0, 0)] * len(macro_vertex_arrays))
             patch_collection_macro_border.set_edgecolors(edgecolors_macro_border)
-            patch_collection_macro_border.set_linewidths([1.5] * len(macro_vertex_arrays))
+            patch_collection_macro_border.set_linewidths([1.0] * len(macro_vertex_arrays))
+
+            macro_representative_points = [
+                ShapelyPolygon(v).representative_point() for v in macro_vertex_arrays
+            ]
 
             # Store everything back into the binning dict for pickling
             patch_dict['collections'] = {
@@ -424,6 +433,8 @@ def build_all_patch_collections(geodesic_bin_data_dict, plot_state_dict):
                 'norm_face': norm_face,
                 'cmap_edge': cmap_edge,
                 'norm_edge': norm_edge,
+                'macro_face_value_list': patch_dict['macro']['face_value_list'][:],
+                'macro_representative_points': macro_representative_points,
             }
 
             print(f"variable {variable_counter}/{num_variables}: {variable_key}; depth level {depth_counter:{num_digits_depth_print}}/{num_depths:{num_digits_depth_print}}; time (seconds): {time.time() - depth_time:.2f}")
@@ -545,8 +556,8 @@ def establish_colorbars(plot_state_dict):
 
         for q_dex in range(len(quantiles)):
             q_val = quantiles[q_dex]
-            
-            if cbar_min < q_val < cbar_max:
+
+            if cbar_min <= q_val <= cbar_max:
                 norm_y = cbar.norm(q_val)
                 
                 # Draw the line exactly at the normalized height position spanning edge to edge
@@ -579,8 +590,8 @@ def establish_colorbars(plot_state_dict):
                         text_color = 'black'
 
                 cbar.ax.text(x=0.5, y=text_y, s=quantiles_strings[q_dex], color=text_color,
-                             va=text_va, ha='center', fontsize='xx-small', 
-                             transform=cbar.ax.transAxes, clip_on=True)
+                             va=text_va, ha='center', fontsize='xx-small',
+                             transform=cbar.ax.transAxes, clip_on=False)
 
         # --- FIXED: ACCURATELY CAPTURE & PIN AUTOMATED TICKS FOR "S" ---
         # Query the exact tick positions Matplotlib evaluated for this clamped range
@@ -627,8 +638,9 @@ def establish_colorbars(plot_state_dict):
 
 def prepare_axes(fig):
     ax = plt.axes(projection=ccrs.PlateCarree())
+    ax.set_facecolor('#8c7355')
+    ax.add_feature(cfeature.OCEAN.with_scale('10m'), facecolor='white', edgecolor='none', zorder=1)
     coastline_artist = ax.coastlines(color='black', linewidth=0.5)
-    ax.set_facecolor('white')
     ax.gridlines(draw_labels=True)
     ax.set_aspect('equal', anchor='C')
     ax.set_adjustable("datalim")
@@ -649,6 +661,9 @@ def clear_axes(plot_state_dict):
     for coll in list(plot_state_dict['ax'].collections):
         if isinstance(coll, (PathCollection, PatchCollection)):
             coll.remove()
+    for txt in list(plot_state_dict['ax'].texts):
+        if getattr(txt, '_is_bin_mean_label', False):
+            txt.remove()
 
     return None
 
@@ -752,10 +767,13 @@ def redraw_axes(plot_state_dict):
                      micro_lw)
         )
         patch_collection.set_linewidths(capped_linewidths)
+        threshold = plot_state_dict['zoom_scale_threshold']
+        border_lw = np.clip(0.6 * (scale_factor / threshold), 0.3, 1.5)
+        patch_info['patch_collection_macro_border'].set_linewidths([border_lw] * len(patch_info['original_linewidths_macro']))
         plot_state_dict['ax'].add_collection(patch_collection)
         plot_state_dict['ax'].add_collection(patch_info['patch_collection_macro_border'])
-
         plot_state_dict['ax'].scatter(patch_info['profiles_lons'], patch_info['profiles_lats'], c='red', s=1, zorder=10)
+        draw_bin_mean_labels(plot_state_dict['ax'], patch_info)
 
 
     make_handles_and_titles(plot_state_dict)
@@ -829,11 +847,21 @@ def zoomy_plots_yay(plot_state_dict, scale_factor, previously_zoomed):
         clear_axes(plot_state_dict)
         plot_state_dict['ax'].add_collection(patch_collection)
         if plot_state_dict['zoom_threshold_crossed_bool']:
+            border_lw = np.clip(0.6 * (scale_factor / threshold), 0.3, 1.5)
+            patch_info['patch_collection_macro_border'].set_linewidths([border_lw] * len(patch_info['original_linewidths_macro']))
             plot_state_dict['ax'].add_collection(patch_info['patch_collection_macro_border'])
             plot_state_dict['ax'].scatter(
                 patch_info['profiles_lons'], patch_info['profiles_lats'],
                 c='red', s=1, zorder=10
             )
+            draw_bin_mean_labels(plot_state_dict['ax'], patch_info)
+    elif plot_state_dict['zoom_threshold_crossed_bool']:
+        border_lw = np.clip(0.6 * (scale_factor / threshold), 0.3, 1.5)
+        patch_info['patch_collection_macro_border'].set_linewidths([border_lw] * len(patch_info['original_linewidths_macro']))
+        for txt in list(plot_state_dict['ax'].texts):
+            if getattr(txt, '_is_bin_mean_label', False):
+                txt.remove()
+        draw_bin_mean_labels(plot_state_dict['ax'], patch_info)
 
     make_handles_and_titles(plot_state_dict)
     set_plot_text(plot_state_dict)
@@ -897,6 +925,19 @@ def handle_keyboard_input(plot_state_dict, event):
 
     return None
 
+
+
+def draw_bin_mean_labels(ax, patch_info):
+    xlim = ax.get_xlim()
+    ylim = ax.get_ylim()
+    outline = [mpe.withStroke(linewidth=1.5, foreground='black')]
+    for pt, val in zip(patch_info['macro_representative_points'], patch_info['macro_face_value_list']):
+        x, y = pt.x, pt.y
+        if xlim[0] <= x <= xlim[1] and ylim[0] <= y <= ylim[1]:
+            t = ax.text(x, y, f'{val:.2f}', fontsize=8, ha='center', va='center',
+                        color='white', path_effects=outline, zorder=15,
+                        transform=ccrs.PlateCarree())
+            t._is_bin_mean_label = True
 
 
 # Vibing out baby

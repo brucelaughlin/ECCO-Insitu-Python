@@ -1,6 +1,5 @@
 import xarray as xr
 import numpy as np
-import pdb
 
 
 def calculate_adiabatic_T_gradient(S,T,P):

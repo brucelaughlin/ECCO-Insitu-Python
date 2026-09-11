@@ -1,5 +1,4 @@
 import numpy.ma as ma
-import pdb
 import xarray as xr
 import argparse
 import glob
@@ -20,7 +19,7 @@ def update_sigmaTS_on_prepared_profiles(MITprof_ds, profile_var_key_set, grid_di
     deg2rad = np.pi/180
     mform = '>f4'
 
-    bools_masks_list_by_depth, X_mitgcm, Y_mitgcm, Z_mitgcm, flattened_monotonic_grid_indices_mitgcm, z_cen_mitgcm, lat_mitgcm, lon_mitgcm = tools.load_llc90_grid(grid_dir, 4)
+    bools_masks_list_by_depth, X_mitgcm, Y_mitgcm, Z_mitgcm, flattened_monotonic_grid_indices_mitgcm, z_cen_mitgcm, lat_mitgcm, lon_mitgcm = tools.load_llc90_grid_step4(grid_dir)
 
     num_mitgcm_tiles = int(np.prod(X_mitgcm.shape)/llcN**2)
     num_mitgcm_depths = z_cen_mitgcm.size

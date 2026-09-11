@@ -2,7 +2,6 @@ import warnings
 import xarray as xr
 import numpy as np
 import datetime
-import pdb
 
 
 def update_zero_weight_points_on_prepared_profiles(MITprof_ds, profile_var_key_set, exclude_high_latitude_profiles_from_clim_cost, dubious_clim_lat_threshold):
@@ -72,7 +71,6 @@ def update_zero_weight_points_on_prepared_profiles(MITprof_ds, profile_var_key_s
                 
 
                 if zero_criteria_code == 3: #  missing T or S
-                    #pdb.set_trace()
                     bool_mask_da = MITprof_ds[prof_key].isnull()
                     MITprof_ds[prof_key] = MITprof_ds[prof_key].where(~bool_mask_da) # perhaps not redundant if there are "missing" values, whatever that means
                     ###MITprof_ds[prof_key] = MITprof_ds[prof_key].where(bool_mask_da) # perhaps not redundant if there are "missing" values, whatever that means

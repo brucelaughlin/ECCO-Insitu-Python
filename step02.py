@@ -3,7 +3,6 @@ import os
 import numpy as np
 import tools
 from scipy.interpolate import griddata
-import pdb
 
 def update_spatial_bin_index_on_prepared_profiles(MITprof_ds, sphere_bin_dir, grid_dir):
     """
@@ -33,7 +32,7 @@ def update_spatial_bin_index_on_prepared_profiles(MITprof_ds, sphere_bin_dir, gr
     ## Prepare the nearest neighbor mapping
     if bin_llcN  == 90:
 
-        lon_90, lat_90, bathy_90, X_90, Y_90, Z_90 = tools.load_llc90_grid(grid_dir, 2)
+        lon_90, lat_90, bathy_90, X_90, Y_90, Z_90 = tools.load_llc90_grid_step2(grid_dir)
 
         X = X_90.ravel()
         Y = Y_90.ravel()

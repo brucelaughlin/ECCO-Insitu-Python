@@ -1,10 +1,8 @@
-import argparse
 import glob
 import os
 import numpy as np
 import numpy.ma as ma
 import tools
-import pdb
 
 
 earth_radius = 6371000

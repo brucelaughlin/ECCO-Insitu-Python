@@ -1,4 +1,3 @@
-import pdb
 import xarray as xr
 import numpy as np
 import cartopy
