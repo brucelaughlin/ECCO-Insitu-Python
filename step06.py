@@ -102,7 +102,10 @@ def update_prof_insitu_T_to_potential_T(MITprof_ds, replace_missing_S_with_clim_
 
  
 def main(MITprof_ds, replace_missing_S_with_clim_S):
-    MITprof_ds = update_prof_insitu_T_to_potential_T(MITprof_ds, replace_missing_S_with_clim_S)
+    if 'prof_S' not in MITprof_ds:
+        print('WARNING: NO SALINITY DATA, SO T WILL NOT BE TRANSORMED TO POTENTIAL T...')
+    else:
+        MITprof_ds = update_prof_insitu_T_to_potential_T(MITprof_ds, replace_missing_S_with_clim_S)
     return MITprof_ds
     
 

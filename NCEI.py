@@ -1,3 +1,4 @@
+import pdb
 import xarray as xr
 import numpy as np
 import cartopy
@@ -110,23 +111,35 @@ def NCEI_pipeline(dest_dir, input_dir):
         MITprof_ds = MITprof_ds.assign_coords({dim: np.arange(MITprof_ds.sizes[dim]) for dim in MITprof_ds.dims if dim not in MITprof_ds.coords})
 
         for prof_key in profile_var_key_set:
-            MITprof_ds[f'{prof_key}_original_valid_count'] = MITprof_ds[prof_key].notnull().sum().item()
-            MITprof_ds[f'{prof_key}_original_total_count'] = MITprof_ds[prof_key].size
+            if prof_key in MITprof_ds:
+                MITprof_ds[f'{prof_key}_original_valid_count'] = MITprof_ds[prof_key].notnull().sum().item()
+                MITprof_ds[f'{prof_key}_original_total_count'] = MITprof_ds[prof_key].size
+
+        if not MITprof_ds or MITprof_ds.sizes['iPROF'] == 0:
+            print("Your profile file may have no valid data; exiting without finishing")
+            break
 
         step_counter = 0
-        tools.print_survivors(MITprof_ds, step_counter)
+        tools.print_survivors(MITprof_ds, profile_var_key_set, step_counter)
 
         for ii in range(len(ncei_function_list)):
             MITprof_ds = ncei_function_list[ii](MITprof_ds)
-            if not MITprof_ds:
+            if not MITprof_ds or MITprof_ds.sizes['iPROF'] == 0:
                 print("Your profile file may have no valid data; exiting without finishing")
                 break
-            step_counter += 1
-            tools.print_survivors(MITprof_ds, step_counter)
 
-        if tools.count_total_survivors_TS(MITprof_ds) > 0:
+            step_counter += 1
+            tools.print_survivors(MITprof_ds, profile_var_key_set, step_counter)
+
+        if not MITprof_ds or MITprof_ds.sizes['iPROF'] == 0:
+            print("Your profile file may have no valid data; exiting without finishing")
+            break
+
+        if tools.count_total_survivors_TS(MITprof_ds, profile_var_key_set) > 0:
             print()
-            tools.MITprof_write_to_nc(dest_dir, MITprof_ds, len(ncei_function_list), basename)
+            tools.MITprof_write_to_nc(dest_dir, MITprof_ds, len(ncei_function_list), original_file, input_dir)
+            #tools.MITprof_write_to_nc(dest_dir, MITprof_ds, len(ncei_function_list), basename, input_dir)
+            #tools.MITprof_write_to_nc(dest_dir, MITprof_ds, len(ncei_function_list), basename)
             print()
         """
             print(f"                SUCCESS:    {tools.count_total_survivors_TS(MITprof_ds)} PROFILES SURVIVED THE NCEI PROCESSING ALGORITHM\n")

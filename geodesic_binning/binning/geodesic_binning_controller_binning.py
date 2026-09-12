@@ -1,4 +1,5 @@
 
+import pdb
 import pickle
 import sys
 from pathlib import Path
@@ -53,12 +54,23 @@ geodesic_file_dict = {
 num_geodesic_bins_string = f"{num_geodesic_bins:05}"
 geodesic_file = geodesic_file_dict[num_geodesic_bins_string]
 
+profile_input_dir = Path("/Users/brucel/ecco/yip/profile_files_NCEI_processed")
+#profile_input_dir = Path("/Users/brucel/ecco/yip/sample_data/test_output_problematic_files/")
 
-profile_file_list = [
+#profile_file_list_prod = [
+#        file for file in profile_input_dir.rglob("*") if file.is_file() 
+#        #file.relative_to(profile_input_dir) for file in profile_input_dir.rglob("*") if file.is_file() 
+#]
+
+profile_file_list_dev = [
         #"/Users/brucel/ecco/yip/sample_data/test_output_problematic_files/WOD_WO_1992_CTD_OSD__ncei_step_10.nc",
-        "/Users/brucel/ecco/yip/sample_data/test_output_problematic_files/WOD_WO_2002_GLD__ncei_step_10.nc"
+        #"/Users/brucel/ecco/yip/sample_data/test_output_problematic_files/WOD_WO_2002_GLD__ncei_step_10.nc",
+        #profile_input_dir / "CTD_WOD/WOD_WO_1992_CTD_OSD__ncei_step_10.nc",
+        profile_input_dir / "GLD_WOD/WOD_WO_2017_GLD__ncei_step_10.nc",
 ]
 
+profile_file_list = profile_file_list_dev
+#profile_file_list = profile_file_list_prod
 
 for profile_file_index in range(len(profile_file_list)):
 
@@ -72,7 +84,7 @@ for profile_file_index in range(len(profile_file_list)):
     save_dir = output_dir / f"{num_geodesic_bins_string}_geodesic_bins" / f"num_subpolygons_max_{num_subpolygons_max}"
     Path(save_dir).mkdir(parents=True, exist_ok=True)
 
-    geodesic_bin_data_dict = utils_binning.bin_around_geodesic_vertices(geodesic_file, profile_file, variables_of_interest_dict, angular_precision, num_geodesic_bins, num_subpolygons_max, land_mask_resolution=land_mask_resolution, min_ocean_fraction=min_ocean_fraction)
+    geodesic_bin_data_dict = utils_binning.bin_around_geodesic_vertices(geodesic_file, str(profile_input_dir), str(profile_file), variables_of_interest_dict, angular_precision, num_geodesic_bins, num_subpolygons_max, land_mask_resolution=land_mask_resolution, min_ocean_fraction=min_ocean_fraction)
 
     print()
     print("patch collection building:")
@@ -81,9 +93,15 @@ for profile_file_index in range(len(profile_file_list)):
 
     geodesic_bin_data_dict['_schema_version'] = 3
 
-    save_file_bin_data_pickle = save_dir / f"{geodesic_bin_data_dict['profile_file_stem']}_binning_data.pickle"
-    with open(save_file_bin_data_pickle, 'wb') as handle:
+    output_filepath_relative = profile_file.relative_to(Path(profile_input_dir)).with_stem(profile_file.stem + f"__binned_data").with_suffix(".pickle")
+    output_filepath = Path(save_dir) / output_filepath_relative
+    output_filepath.parent.mkdir(parents=True, exist_ok=True)
+
+    #save_file_bin_data_pickle = save_dir / f"{geodesic_bin_data_dict['profile_file_stem']}_binning_data.pickle"
+    #with open(save_file_bin_data_pickle, 'wb') as handle:
+    with open(output_filepath, 'wb') as handle:
         pickle.dump(geodesic_bin_data_dict, handle, protocol=pickle.HIGHEST_PROTOCOL)
-    print(f"binning data output_file: {save_file_bin_data_pickle}\n")
+    print(f"binning data output_file: {output_filepath}\n")
+    #print(f"binning data output_file: {save_file_bin_data_pickle}\n")
 
 

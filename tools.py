@@ -1,3 +1,4 @@
+import pdb
 from pathlib import Path
 import os
 import numpy as np
@@ -6,25 +7,51 @@ import xarray as xr
 from scipy.interpolate import griddata
 
 
-def print_survivors(MITprof_ds, step_counter):
+def print_survivors(MITprof_ds, profile_var_key_set, step_counter):
     print(f"step: {step_counter}")
-    print(f"not nan T:    {MITprof_ds['prof_T'].notnull().sum().item()}/{MITprof_ds['prof_T'].size} = {MITprof_ds['prof_T'].notnull().sum().item()/MITprof_ds['prof_T'].size * 100:.2f}%")
-    print(f"not nan S:    {MITprof_ds['prof_S'].notnull().sum().item()}/{MITprof_ds['prof_S'].size} = {MITprof_ds['prof_S'].notnull().sum().item()/MITprof_ds['prof_S'].size * 100:.2f}%")
-    #print(f"not nan S:    {MITprof_ds['prof_S'].notnull().sum().item()}/{MITprof_ds['prof_S'].size}")
-    #print(f"survivors: {MITprof_ds['prof_T'].notnull().sum().item() + MITprof_ds['prof_S'].notnull().sum().item()}")
-    print(f"survivors: {MITprof_ds['prof_T'].notnull().sum().item() + MITprof_ds['prof_S'].notnull().sum().item()}/{MITprof_ds['prof_T'].size + MITprof_ds['prof_S'].size} = {(MITprof_ds['prof_T'].notnull().sum().item() + MITprof_ds['prof_S'].notnull().sum().item()) / (MITprof_ds['prof_T'].size + MITprof_ds['prof_S'].size) * 100:.2f}%")
-    print(f"survivors relative to original counts: {MITprof_ds['prof_T'].notnull().sum().item() + MITprof_ds['prof_S'].notnull().sum().item()}/{MITprof_ds['prof_T_original_total_count'].item() +  MITprof_ds['prof_S_original_total_count'].item()} = {(MITprof_ds['prof_T'].notnull().sum().item() + MITprof_ds['prof_S'].notnull().sum().item()) / (MITprof_ds['prof_T_original_total_count'].item() +  MITprof_ds['prof_S_original_total_count'].item()) * 100:.2f}%")
+    survivors = 0
+    total_final_count = 0
+    total_original_count = 0
+    for prof_key in profile_var_key_set:
+        if prof_key in MITprof_ds:
+            print(f"not nan {prof_key[-1]}:    {MITprof_ds[prof_key].notnull().sum().item()}/{MITprof_ds[prof_key].size} = {MITprof_ds[prof_key].notnull().sum().item()/MITprof_ds[prof_key].size * 100:.2f}%")
+            survivors += MITprof_ds[prof_key].notnull().sum().item()
+            total_final_count += MITprof_ds[prof_key].size
+            # WHICH TO USE???
+            #total_original_count = MITprof_ds[f'{prof_key}_original_valid_count'].item() 
+            total_original_count = MITprof_ds[f'{prof_key}_original_total_count'].item() 
+
+    if total_final_count == 0:
+        #print('nothing made it past the penultimate step...')
+        return
+    if total_original_count == 0:
+        #print('there was no data to begin with....')
+        return
+
+    print(f"survivors: {survivors}/{total_final_count} = {survivors / total_final_count * 100:.2f}%")
+    print(f"survivors relative to original counts: {survivors}/{total_original_count} = {survivors / total_original_count * 100:.2f}%")
+
+    #print(f"survivors: {MITprof_ds['prof_T'].notnull().sum().item() + MITprof_ds['prof_S'].notnull().sum().item()}/{MITprof_ds['prof_T'].size + MITprof_ds['prof_S'].size} = {(MITprof_ds['prof_T'].notnull().sum().item() + MITprof_ds['prof_S'].notnull().sum().item()) / (MITprof_ds['prof_T'].size + MITprof_ds['prof_S'].size) * 100:.2f}%")
+    #print(f"survivors relative to original counts: {MITprof_ds['prof_T'].notnull().sum().item() + MITprof_ds['prof_S'].notnull().sum().item()}/{MITprof_ds['prof_T_original_total_count'].item() +  MITprof_ds['prof_S_original_total_count'].item()} = {(MITprof_ds['prof_T'].notnull().sum().item() + MITprof_ds['prof_S'].notnull().sum().item()) / (MITprof_ds['prof_T_original_total_count'].item() +  MITprof_ds['prof_S_original_total_count'].item()) * 100:.2f}%")
 
 
-def count_total_survivors_TS(MITprof_ds):
-    return MITprof_ds['prof_T'].notnull().sum().item() + MITprof_ds['prof_S'].notnull().sum().item() 
+def count_total_survivors_TS(MITprof_ds, profile_var_key_set):
+    survivor_count = 0
+    for prof_key in profile_var_key_set:
+        if prof_key in MITprof_ds:
+            survivor_count += MITprof_ds[prof_key].notnull().sum().item()
+    return survivor_count
 
 
 def update_remove_extraneous_depth_levels(MITprof_ds, profile_var_key_set):
     depth_level_max_list = []
     for prof_key in profile_var_key_set:
-        total_num_valid_per_depth = (MITprof_ds[prof_key] > 0).sum(dim = "iPROF").data
-        depth_level_max_list.append(np.nonzero(total_num_valid_per_depth)[0][-1] if np.size(np.nonzero(total_num_valid_per_depth)) > 0 else 0)
+        if prof_key in MITprof_ds:
+            total_num_valid_per_depth = (MITprof_ds[prof_key] > 0).sum(dim = "iPROF").data
+            depth_level_max_list.append(np.nonzero(total_num_valid_per_depth)[0][-1] if np.size(np.nonzero(total_num_valid_per_depth)) > 0 else 0)
+
+    #if len(depth_level_max_list) == 0:
+    #    return MITprof_ds
     max_depth_level = max(depth_level_max_list)
     if max_depth_level < len(MITprof_ds['prof_depth']) - 1:
         MITprof_ds['global_1D_mask_iDEPTH_max_depth'] = xr.full_like(MITprof_ds['prof_depth'], fill_value=False, dtype=bool)
@@ -90,24 +117,24 @@ def extract_profile_subset_from_MITprof_iPROF_mask(MITprof_ds, bool_mask_name):
     return xr.Dataset(new_ds_dict)
 
 
-def MITprof_dataset_from_dict(MITprofs_dict: dict):
+def MITprof_dataset_from_dict(MITprof_dict: dict):
 
-    num_depth_levels = len(MITprofs_dict['prof_depth'])
-    num_profs = len(MITprofs_dict['prof_lat'])
+    num_depth_levels = len(MITprof_dict['prof_depth'])
+    num_profs = len(MITprof_dict['prof_lat'])
     dim_dict = {'iPROF': num_profs, 'iDEPTH': num_depth_levels}
 
     new_data_arrays = dict()
 
-    for data_var in MITprofs_dict.keys():
-        if len(MITprofs_dict[data_var].shape) == 1:
+    for data_var in MITprof_dict.keys():
+        if len(MITprof_dict[data_var].shape) == 1:
             for dim in dim_dict.keys():
-                if MITprofs_dict[data_var].shape[0] == dim_dict[dim]:
-                    new_data_arrays[data_var] = xr.DataArray(MITprofs_dict[data_var], dims=dim, name=data_var)
+                if MITprof_dict[data_var].shape[0] == dim_dict[dim]:
+                    new_data_arrays[data_var] = xr.DataArray(MITprof_dict[data_var], dims=dim, name=data_var)
                     break
 
-        elif len(MITprofs_dict[data_var].shape) == 2:
-            if MITprofs_dict[data_var].shape[0] == list(dim_dict.values())[0] and  MITprofs_dict[data_var].shape[1] == list(dim_dict.values())[1]:
-                new_data_arrays[data_var] = xr.DataArray(MITprofs_dict[data_var], dims=list(dim_dict.keys()), name=data_var)
+        elif len(MITprof_dict[data_var].shape) == 2:
+            if MITprof_dict[data_var].shape[0] == list(dim_dict.values())[0] and  MITprof_dict[data_var].shape[1] == list(dim_dict.values())[1]:
+                new_data_arrays[data_var] = xr.DataArray(MITprof_dict[data_var], dims=list(dim_dict.keys()), name=data_var)
             else:
                 print('something wacky is going on here (interal)')
 
@@ -119,313 +146,18 @@ def MITprof_dataset_from_dict(MITprofs_dict: dict):
     return new_dataset
 
 
-def MITprof_write_to_nc(dest_dir, MITprofs, step, basename):
+def MITprof_write_to_nc(dest_dir, MITprof_ds, step, original_file, input_dir):
 
     Path(dest_dir).mkdir(parents=True, exist_ok=True)
 
-    #print("Writing NETCDF files {}".format(basename))
-
-    df_HHMMSS = xr.DataArray(MITprofs['prof_HHMMSS'], dims = ['iPROF'],                                
-                            attrs=dict(
-                                description = "hour (2 digits), minute (2 digits), second (2 digits)"
-                            ))
-    df_HHMMSS.name = 'prof_HHMMSS'
-    df_HHMMSS.encoding
-
-    df_YYYYMMDD = xr.DataArray(MITprofs['prof_YYYYMMDD'], dims = ['iPROF'],
-                            attrs=dict(
-                                description = "year (4 digits), month (2 digits), day (2 digits)"
-                            ))
-    df_YYYYMMDD.name = 'prof_YYYYMMDD'
-    df_YYYYMMDD.encoding
-
-    df_lat = xr.DataArray(MITprofs['prof_lat'], dims = ['iPROF'],                                
-                            attrs=dict(
-                                description = "Decimal Degrees, Latitude (degree North)"
-                            ))
-    df_lat.name = 'prof_lat'
-    df_lat.encoding
-
-    df_lon = xr.DataArray(MITprofs['prof_lon'], dims = ['iPROF'],                                
-                            attrs=dict(
-                                description = "Decimal Degrees, Longitude (degree East)"
-                            ))
-    df_lon.name = 'prof_lon'
-    df_lon.encoding
-
-    df_date = xr.DataArray(MITprofs['prof_date'], dims = ['iPROF'],                                
-                            attrs=dict(
-                                description = "Julian day since Jan-1-2000"
-                            ))
-    df_date.name = 'prof_date'
-    df_date.encoding
-
-    df_depth = xr.DataArray(MITprofs['prof_depth'], dims = ['iDEPTH'],
-                            attrs=dict(
-                                units = "me"
-                            ))
-    df_depth.name = 'prof_depth'
-    df_depth.encoding
-
-    df_descr = xr.DataArray(MITprofs['prof_descr'], dims = ['iPROF'],
-                            attrs=dict(
-                                description = "Information regarding: cast, NODC Cruise ID, Country, Probe_type, Insitute, DB origin"
-                            ))
-    df_descr.name = 'prof_descr'
-
-    df_point = xr.DataArray(MITprofs['profile_flattened_monotonic_grid_indices'], dims = ['iPROF'],
-                            attrs=dict(
-                                description = "grid point index (ecco 4g)"
-                            ))
-    df_point.name = 'profile_flattened_monotonic_grid_indices'
-    df_point.encoding
-
-    df_S = xr.DataArray(MITprofs['prof_S'], dims = ['iPROF', 'iDEPTH'],
-                            attrs=dict(
-                                units = "psu"
-                            ))
-    df_S.name = 'prof_S'
-    df_S.encoding
-
-    try:
-        df_S_flag = xr.DataArray(MITprofs['prof_Sflag'], dims = ['iPROF', 'iDEPTH'],
-                             attrs=dict(
-                                description = "flag = i > 0 means test i rejected data."
-                            ))
-    except ValueError:
-        try:
-            df_S_flag = xr.DataArray(MITprofs['prof_Sflag'], dims = ['iPROF'],
-                                     attrs=dict(
-                                        description = "flag = i > 0 means test i rejected data."
-                                    ))
-        except ValueError as err:
-                print(f"ValueError: {err}")
-
-    df_S_flag.name = 'prof_Sflag'
-    df_S_flag.encoding
-
-    df_T = xr.DataArray(MITprofs['prof_T'], dims = ['iPROF', 'iDEPTH'],
-                            attrs=dict(
-                                description = "potential temperature",
-                                units = "degree C"
-                            ))
-    df_T.name = 'prof_T'
-    df_T.encoding
-
-    try:
-        df_T_flag = xr.DataArray(MITprofs['prof_Tflag'], dims = ['iPROF', 'iDEPTH'],
-                             attrs=dict(
-                                description = "flag = i > 0 means test i rejected data."
-                            ))
-    except ValueError:
-        try:
-            df_T_flag = xr.DataArray(MITprofs['prof_Tflag'], dims = ['iPROF'],
-                                     attrs=dict(
-                                        description = "flag = i > 0 means test i rejected data."
-                                    ))
-        except ValueError as err:
-                print(f"ValueError: {err}")
-
-    df_T_flag.name = 'prof_Tflag'
-    df_T_flag.encoding
-
-    # Output file with correct variables 
-    if step == 0:
-        output_DS = xr.merge([df_HHMMSS, df_YYYYMMDD, df_lat, df_lon, df_date, df_depth, df_descr, df_point, df_S, df_S_flag, df_T, df_T_flag])
-    if step >= 1:
-        df_interp_XC11 = xr.DataArray(MITprofs['prof_interp_XC11'], dims = ['iPROF'])
-        df_interp_XC11.name = 'prof_interp_XC11'
-        df_interp_XC11.encoding
-
-        df_interp_YC11 = xr.DataArray(MITprofs['prof_interp_YC11'], dims = ['iPROF'])
-        df_interp_YC11.name = 'prof_interp_YC11'
-        df_interp_YC11.encoding
-
-        df_interp_XCNINJ = xr.DataArray(MITprofs['prof_interp_XCNINJ'], dims = ['iPROF'])
-        df_interp_XCNINJ.name = 'prof_interp_XCNINJ'
-        df_interp_XCNINJ.encoding
-
-        df_interp_YCNINJ = xr.DataArray(MITprofs['prof_interp_YCNINJ'], dims = ['iPROF'])
-        df_interp_YCNINJ.name = 'prof_interp_YCNINJ'
-        df_interp_YCNINJ.encoding
-
-        df_interp_i = xr.DataArray(MITprofs['prof_interp_i'], dims = ['iPROF'])
-        df_interp_i.name = 'prof_interp_i'
-        df_interp_i.encoding
-
-        df_interp_j = xr.DataArray(MITprofs['prof_interp_j'], dims = ['iPROF'])
-        df_interp_j.name = 'prof_interp_j'
-        df_interp_j.encoding
-
-        df_interp_weights = xr.DataArray(MITprofs['prof_interp_weights'], dims = ['iPROF'])
-        df_interp_weights.name = 'prof_interp_weights'
-        df_interp_weights.encoding
-
-        df_interp_lon = xr.DataArray(MITprofs['prof_interp_lon'], dims = ['iPROF'])
-        df_interp_lon.name = 'prof_interp_lon'
-        df_interp_lon.encoding
-        
-        df_interp_lat = xr.DataArray(MITprofs['prof_interp_lat'], dims = ['iPROF'])
-        df_interp_lat.name = 'prof_interp_lat'
-        df_interp_lat.encoding
-
-        if step == 1:
-            output_DS = xr.merge([df_HHMMSS, df_YYYYMMDD, df_lat, df_lon, df_date, df_depth, df_descr, df_point, df_S, df_S_flag, df_T, df_T_flag, 
-                                  df_interp_XC11, df_interp_YC11, df_interp_XCNINJ, df_interp_YCNINJ, df_interp_i, df_interp_j, df_interp_weights, df_interp_lon, df_interp_lat])
-    if step >= 2:
-        df_bin_id_a = xr.DataArray(MITprofs['prof_bin_id_a'], dims = ['iPROF'],
-                                    attrs=dict(
-                                         description = "bin index (int) A"
-                                     ))
-        df_bin_id_a.name = 'prof_bin_id_a'
-        df_bin_id_a.encoding
-
-        df_bin_id_b = xr.DataArray(MITprofs['prof_bin_id_b'], dims = ['iPROF'],
-                                    attrs=dict(
-                                         description = "bin index (int) B"
-                                     ))
-        df_bin_id_b.name = 'prof_bin_id_b'
-        df_bin_id_b.encoding
-        if step == 2:
-            output_DS = xr.merge([df_HHMMSS, df_YYYYMMDD, df_lat, df_lon, df_date, df_depth, df_descr, df_point, df_S, df_S_flag, df_T, df_T_flag, 
-                                  df_interp_XC11, df_interp_YC11, df_interp_XCNINJ, df_interp_YCNINJ, df_interp_i, df_interp_j, df_interp_weights, df_interp_lon, df_interp_lat,
-                                  df_bin_id_a, df_bin_id_b])
-    if step >= 3:
-        df_Tclim = xr.DataArray(MITprofs['prof_Tclim'], dims = ['iPROF', 'iDEPTH'],
-                            attrs=dict(
-                                description = "potential temperature",
-                                units = "degree C"
-                            ))
-        df_Tclim.name = 'prof_Tclim'
-        df_Tclim.encoding
-
-        df_Sclim = xr.DataArray(MITprofs['prof_Sclim'], dims = ['iPROF', 'iDEPTH'],
-                            attrs=dict(
-                                description = "salt fool",
-                                units = "S"
-                            ))
-        df_Sclim.name = 'prof_Sclim'
-        df_Sclim.encoding
-        if step == 3:
-            output_DS = xr.merge([df_HHMMSS, df_YYYYMMDD, df_lat, df_lon, df_date, df_depth, df_descr, df_point, df_S, df_S_flag, df_T, df_T_flag, 
-                                  df_interp_XC11, df_interp_YC11, df_interp_XCNINJ, df_interp_YCNINJ, df_interp_i, df_interp_j, df_interp_weights, df_interp_lon, df_interp_lat,
-                                  df_bin_id_a, df_bin_id_b,
-                                  df_Tclim, df_Sclim])
-    if step >= 4:
-
-        # NoTE: not populated
-
-        try:
-            df_Terr = xr.DataArray(MITprofs['prof_Terr'], dims = ['iPROF', 'iDEPTH'],
-                                 attrs=dict(
-                                    description = "pot. temp. instrumental error",
-                                    units = "degree C"
-                                ))
-        except ValueError:
-            try:
-                df_Terr = xr.DataArray(MITprofs['prof_Terr'], dims = ['iPROF'],
-                                         attrs=dict(
-                                            description = "pot. temp. instrumental error",
-                                            units = "degree C"
-                                        ))
-            except ValueError as err:
-                print(f"ValueError: {err}")
-
-        df_Terr.name = 'prof_Terr'
-        df_Terr.encoding
-        
-        try:
-            df_Serr = xr.DataArray(MITprofs['prof_Serr'], dims = ['iPROF', 'iDEPTH'],
-                                 attrs=dict(
-                                    description = "salinity instrumental error",
-                                    units = "psu"
-                                ))
-        except ValueError:
-            try:
-                df_Serr = xr.DataArray(MITprofs['prof_Serr'], dims = ['iPROF'],
-                                         attrs=dict(
-                                            description = "salinity instrumental error",
-                                            units = "psu"
-                                        ))
-            except ValueError as err:
-                print(f"ValueError: {err}")
-
-        df_Serr.name = 'prof_Serr'
-        df_Serr.encoding
-
-        df_Tweight = xr.DataArray(MITprofs['prof_Tweight'], dims = ['iPROF', 'iDEPTH'],
-                            attrs=dict(
-                                description = "pot. temp. least-square weight",
-                                units = "(degree C)^-2"
-                            ))
-        df_Tweight.name = 'prof_Tweight'
-        df_Tweight.encoding
-
-        df_Sweight = xr.DataArray(MITprofs['prof_Sweight'], dims = ['iPROF', 'iDEPTH'],
-                                     attrs=dict(
-                                         description = "salinity least-square weight",
-                                         units = "(psu)^-2"
-                                     ))
-        df_Sweight.name = 'prof_Sweight'
-        df_Sweight.encoding
-        if step == 4:
-            output_DS = xr.merge([df_HHMMSS, df_YYYYMMDD, df_lat, df_lon, df_date, df_depth, df_descr, df_point, df_S, df_S_flag, df_T, df_T_flag, 
-                                  df_interp_XC11, df_interp_YC11, df_interp_XCNINJ, df_interp_YCNINJ, df_interp_i, df_interp_j, df_interp_weights, df_interp_lon, df_interp_lat,
-                                  df_bin_id_a, df_bin_id_b,
-                                  df_Tclim, df_Sclim,
-                                  df_Terr, df_Serr, df_Tweight, df_Sweight])
-    if step >= 5:
-        df_area_gamma = xr.DataArray(MITprofs['prof_area_gamma'], dims = ['iPROF'],
-                                     attrs=dict(
-                                         description = "scaling factor (real number) applied to the T and S weights"
-                                     ))
-        df_area_gamma.name = 'prof_area_gamma'
-        df_area_gamma.encoding
-        if step == 5 or step == 6:
-            output_DS = xr.merge([df_HHMMSS, df_YYYYMMDD, df_lat, df_lon, df_date, df_depth, df_descr, df_point, df_S, df_S_flag, df_T, df_T_flag, 
-                                  df_interp_XC11, df_interp_YC11, df_interp_XCNINJ, df_interp_YCNINJ, df_interp_i, df_interp_j, df_interp_weights, df_interp_lon, df_interp_lat,
-                                  df_bin_id_a, df_bin_id_b,
-                                  df_Tclim, df_Sclim,
-                                  df_Terr, df_Serr, df_Tweight, df_Sweight,
-                                  df_area_gamma])
-    
-    if step >= 7:
-        df_Tweight_code = xr.DataArray(MITprofs['prof_Tweight_code'], dims = ['iPROF', 'iDEPTH'],
-                            attrs=dict(
-                                description = "code describing why T weight is zero"
-                            ))
-        df_Tweight_code.name = 'prof_Tweight_code'
-        df_Tweight_code.encoding
-
-        df_Sweight_code = xr.DataArray(MITprofs['prof_Sweight_code'], dims = ['iPROF', 'iDEPTH'],
-                                     attrs=dict(
-                                         description = "Code describing why S weight is zero"
-                                     ))
-        df_Sweight_code.name = 'prof_Sweight_code'
-        df_Sweight_code.encoding
-        if step >=7 :
-            output_DS = xr.merge([df_HHMMSS, df_YYYYMMDD, df_lat, df_lon, df_date, df_depth, df_descr, df_point, df_S, df_S_flag, df_T, df_T_flag, 
-                                  df_interp_XC11, df_interp_YC11, df_interp_XCNINJ, df_interp_YCNINJ, df_interp_i, df_interp_j, df_interp_weights, df_interp_lon, df_interp_lat,
-                                  df_bin_id_a, df_bin_id_b,
-                                  df_Tclim, df_Sclim,
-                                  df_Terr, df_Serr, df_Tweight, df_Sweight,
-                                  df_area_gamma,
-                                  df_Tweight_code, df_Sweight_code])
- 
     # Make encoding
-    encoding = {**make_encoding(output_DS)}
+    encoding = {**make_encoding(MITprof_ds)}
 
-    # Add global attributes
-    output_DS.attrs['description'] = 'test file'
-
-    # Save to netCDF
-    ###parts = basename.split('.')
-    #parts = basename.split('_')
-    #name = "{}{}_step_{}_{}.nc".format(parts[0], parts[1], step, parts[2])
-    name = f"{str(Path(basename).stem)}__ncei_step_{step}.nc"
-    nc_path = os.path.join(dest_dir, name)
-    output_DS.to_netcdf(nc_path, encoding= encoding)
-    print(f"output file: {nc_path}")
+    output_filepath_relative = original_file.relative_to(Path(input_dir)).with_stem(original_file.stem + f"__ncei_step_{step}").with_suffix(".nc")
+    output_filepath = Path(dest_dir) / output_filepath_relative
+    output_filepath.parent.mkdir(parents=True, exist_ok=True)
+    MITprof_ds.to_netcdf(output_filepath, encoding = encoding)
+    print(f"output file: {output_filepath}")
 
     
 def make_encoding(DS, fill_value = -9999):

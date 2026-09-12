@@ -65,6 +65,9 @@ def update_zero_weight_points_on_prepared_profiles(MITprof_ds, profile_var_key_s
                 
                 
                 if zero_criteria_code == 2: # nonzero prof T or S flag
+                    if f'{prof_key}flag' not in MITprof_ds:
+                        continue
+                        #MITprof_ds[f'{prof_key}flag'] = xr.zeros_like(MITprof_ds[f'{prof_key}'])
                     bool_mask_da = MITprof_ds[f'{prof_key}flag'] > 0
                     MITprof_ds[f'{prof_key}weight'] = xr.where(bool_mask_da, 0, MITprof_ds[f'{prof_key}weight'])
                     MITprof_ds[f'{prof_key}weight_code'] = xr.where(bool_mask_da, MITprof_ds[f'{prof_key}weight_code'] + 2**(zero_criteria_code - 1), MITprof_ds[f'{prof_key}weight_code'])

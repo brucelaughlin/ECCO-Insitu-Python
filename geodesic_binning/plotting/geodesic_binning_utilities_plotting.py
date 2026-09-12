@@ -569,20 +569,20 @@ def establish_colorbars(plot_state_dict):
                 text_y = norm_y
                 text_color = 'black' if cbar_side_string == 'right' else 'white'
 
-                # Near the physical bottom — anchor text above the line so it isn't clipped
-                if norm_y <= 0.05:
+                # At the physical bottom boundary — anchor text above so it isn't clipped
+                if norm_y < 0.001:
                     text_va = 'bottom'
-                    text_y = norm_y + 0.01
+                    text_y = 0.01
 
                     if cbar_side_string == 'right':
                         text_color = 'white' if variable_key != "T" else 'black'
                     else:
                         text_color = 'white'
 
-                # Near the physical top — anchor text below the line so it isn't clipped
-                elif norm_y >= 0.95:
+                # At the physical top boundary — anchor text below so it isn't clipped
+                elif norm_y > 0.999:
                     text_va = 'top'
-                    text_y = norm_y - 0.01
+                    text_y = 0.99
 
                     if cbar_side_string == 'right':
                         text_color = 'black' if variable_key != "T" else 'white'

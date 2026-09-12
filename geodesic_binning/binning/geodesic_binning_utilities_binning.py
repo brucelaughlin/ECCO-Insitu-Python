@@ -19,7 +19,8 @@ plotting_dir = str(Path(__file__).parent.parent.resolve() / "plotting")
 sys.path.append(plotting_dir)
 
 
-def bin_around_geodesic_vertices(geodesic_file: str, profile_file: str, variables_of_interest: dict, angular_precision: float, num_geodesic_bins: int, num_subpolygons_max: int, land_mask_resolution: str = '10m', min_ocean_fraction: float = 0.1) -> dict:
+def bin_around_geodesic_vertices(geodesic_file: str, profile_input_dir: str, profile_file: str, variables_of_interest: dict, angular_precision: float, num_geodesic_bins: int, num_subpolygons_max: int, land_mask_resolution: str = '10m', min_ocean_fraction: float = 0.1) -> dict:
+#def bin_around_geodesic_vertices(geodesic_file: str, profile_file: str, variables_of_interest: dict, angular_precision: float, num_geodesic_bins: int, num_subpolygons_max: int, land_mask_resolution: str = '10m', min_ocean_fraction: float = 0.1) -> dict:
 
     num_digits = len(str(num_geodesic_bins))
 
@@ -193,6 +194,7 @@ def bin_around_geodesic_vertices(geodesic_file: str, profile_file: str, variable
 
     geodesic_bin_data_dict["num_depth_levels_ncei_file"] = num_depth_levels_ncei_file - 1
     geodesic_bin_data_dict["profile_file_stem"] = Path(profile_file).stem
+    geodesic_bin_data_dict["profile_file_relative_path"] = Path(profile_file).relative_to(Path(profile_input_dir))
     geodesic_bin_data_dict["geodesic_bin_file_stem"] = Path(geodesic_file).stem
     geodesic_bin_data_dict["num_geodesic_bins"] = num_geodesic_bins
     geodesic_bin_data_dict["num_subpolygons_max"] = num_subpolygons_max

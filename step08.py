@@ -12,18 +12,13 @@ def main(MITprof_ds, profile_var_key_set):
     MITprof_ds_new = tools.update_remove_zero_T_S_weighted_profiles_from_MITprof(MITprof_ds, profile_var_key_set)
 
     # make sure subsetting worked
-    a1 = ((MITprof_ds['prof_S'] - MITprof_ds['prof_Sclim'])**2 * MITprof_ds['prof_Sweight']).sum().item()
-    a2 = ((MITprof_ds_new['prof_S'] - MITprof_ds_new['prof_Sclim'])**2 * MITprof_ds_new['prof_Sweight']).sum().item()
+    for prof_key in profile_var_key_set:
+        if prof_key in MITprof_ds:
+            old = ((MITprof_ds[f'{prof_key}'] - MITprof_ds[f'{prof_key}clim'])**2 * MITprof_ds[f'{prof_key}weight']).sum().item()
+            new = ((MITprof_ds_new[f'{prof_key}'] - MITprof_ds_new[f'{prof_key}clim'])**2 * MITprof_ds_new[f'{prof_key}weight']).sum().item()
 
-    b1 = ((MITprof_ds['prof_T'] - MITprof_ds['prof_Tclim'])**2 * MITprof_ds['prof_Tweight']).sum().item()
-    b2 = ((MITprof_ds_new['prof_T'] - MITprof_ds_new['prof_Tclim'])**2 * MITprof_ds_new['prof_Tweight']).sum().item()
-
-    if a1 != a2:
-        if np.abs(a1 - a2) > 1:
-            raise Exception('profile S costs is big')
-
-    if b1 != b2:
-        if np.abs(b1 - b2) > 1:
-            raise Exception('profile T costs is big')
+            #if old != new:
+            if np.abs(old - new) > 1:
+                raise Exception(f'profile {prof_key[-1]} costs is big')
 
     return MITprof_ds_new
