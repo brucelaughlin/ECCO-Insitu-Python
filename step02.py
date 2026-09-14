@@ -21,13 +21,11 @@ def update_spatial_bin_index_on_prepared_profiles(MITprof_ds, sphere_bin_dir, gr
     # NoTE: if bin_llcN = 270 these files dont work lol
     with open(bin_file_1, 'rb') as fid:
         bin_1 = np.fromfile(fid, dtype=mform)
-        bin_1 = bin_1.reshape((tile_shape_list[0], np.prod(tile_shape_list[1:])))
-        bin_1 = bin_1.reshape((tile_shape_list[0], tile_shape_list[1], tile_shape_list[2]))
+        bin_1 = bin_1.reshape((tile_shape_list[0], tile_shape_list[1], tile_shape_list[2]), order='F')
 
     with open(bin_file_2, 'rb') as fid:
         bin_2 = np.fromfile(fid, dtype=mform)
-        bin_2 = bin_2.reshape((tile_shape_list[0], np.prod(tile_shape_list[1:])))
-        bin_2 = bin_2.reshape((tile_shape_list[0], tile_shape_list[1], tile_shape_list[2]))
+        bin_2 = bin_2.reshape((tile_shape_list[0], tile_shape_list[1], tile_shape_list[2]), order='F')
 
     ## Prepare the nearest neighbor mapping
     if bin_llcN  == 90:
@@ -51,7 +49,7 @@ def update_spatial_bin_index_on_prepared_profiles(MITprof_ds, sphere_bin_dir, gr
 
     # Read and process the profile files
     valid_1D_mask = tools.sph2cart_returnValidMaskOnly(MITprof_ds["prof_lon"]*deg2rad, MITprof_ds["prof_lat"]*deg2rad, 1)
-    for var_name, var_data_array in MITprof_ds.data_vars.items():
+    for var_name, var_data_array in list(MITprof_ds.data_vars.items()):
         if valid_1D_mask.dims[0] in var_data_array.dims:
             MITprof_ds[var_name] = var_data_array.where(valid_1D_mask, drop=True)
 

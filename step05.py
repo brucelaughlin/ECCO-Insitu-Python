@@ -26,7 +26,7 @@ def update_gamma_factor_on_prepared_profiles(MITprof_ds, profile_var_key_set, gr
     for prof_key in profile_var_key_set:
         if prof_key in MITprof_ds:
             MITprof_ds[f'{prof_key}weight'] *= MITprof_ds['prof_area_gamma']
-            MITprof_ds[f'{prof_key}weight'].where(MITprof_ds[f'{prof_key}weight'] >= 0)
+            MITprof_ds[f'{prof_key}weight'] = MITprof_ds[f'{prof_key}weight'].where(MITprof_ds[f'{prof_key}weight'] >= 0)
         
     return MITprof_ds
 

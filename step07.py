@@ -1,3 +1,4 @@
+import pdb
 import warnings
 import xarray as xr
 import numpy as np
@@ -54,7 +55,14 @@ def update_zero_weight_points_on_prepared_profiles(MITprof_ds, profile_var_key_s
     for prof_key in profile_var_key_set:
         if prof_key in MITprof_ds:
 
+            print()
+            print('------------')
+            print(f"step 07, variable: {prof_key[-1]}")
+            print('------------')
+
             MITprof_ds[f'{prof_key}weight_code'] = xr.full_like(MITprof_ds[f'{prof_key}weight'], fill_value=0)
+
+            original_weights = MITprof_ds[f'{prof_key}weight'].data.copy()
 
             for zero_criteria_code in zero_criteria_codes:
 
@@ -97,6 +105,7 @@ def update_zero_weight_points_on_prepared_profiles(MITprof_ds, profile_var_key_s
 
 
                 if zero_criteria_code == 6: # missing climatology value
+                    #bool_mask_da = MITprof_ds[f'{prof_key}clim'].isnull()
                     bool_mask_da = (MITprof_ds[f'{prof_key}clim'].isnull()) | (MITprof_ds[f'{prof_key}clim'] == 0)
                     MITprof_ds[f'{prof_key}weight'] = xr.where(bool_mask_da, 0, MITprof_ds[f'{prof_key}weight'])
                     MITprof_ds[f'{prof_key}weight_code'] = xr.where(bool_mask_da, MITprof_ds[f'{prof_key}weight_code'] + 2**(zero_criteria_code - 1), MITprof_ds[f'{prof_key}weight_code'])
@@ -137,14 +146,13 @@ def update_zero_weight_points_on_prepared_profiles(MITprof_ds, profile_var_key_s
 
                 if zero_criteria_code == 9 or zero_criteria_code == 10: # high cost vs. climatology
 
-                    # Note: we really don't allow 0?
-                    #MITprof_ds[prof_key] = MITprof_ds[prof_key].where(MITprof_ds[prof_key] != 0)
-                    #MITprof_ds[f'{prof_key}clim'] = MITprof_ds[f'{prof_key}clim'].where(MITprof_ds[f'{prof_key}clim'] != 0)
-                    MITprof_ds[prof_key] = MITprof_ds[prof_key].where(MITprof_ds[prof_key] >= 0)
-                    MITprof_ds[f'{prof_key}clim'] = MITprof_ds[f'{prof_key}clim'].where(MITprof_ds[f'{prof_key}clim'] >= 0)
-                    MITprof_ds[f'{prof_key}weight'] = MITprof_ds[f'{prof_key}weight'].where(MITprof_ds[f'{prof_key}weight'] >= 0)
+                    # Use local copies for cost computation so negative-but-valid T/S values
+                    # (e.g. near-freezing seawater) are not permanently destroyed in the dataset.
+                    prof_for_cost = MITprof_ds[prof_key]
+                    clim_for_cost = MITprof_ds[f'{prof_key}clim']
+                    weight_for_cost = MITprof_ds[f'{prof_key}weight']
 
-                    cost_vs_climatology = (MITprof_ds[prof_key] - MITprof_ds[f'{prof_key}clim'])**2 * MITprof_ds[f'{prof_key}weight']
+                    cost_vs_climatology = (prof_for_cost - clim_for_cost)**2 * weight_for_cost
 
                     if exclude_high_latitude_profiles_from_clim_cost:
                         bool_mask_da_1D_iPROF_lat =  np.abs(MITprof_ds['prof_lat']) > dubious_clim_lat_threshold
@@ -154,7 +162,7 @@ def update_zero_weight_points_on_prepared_profiles(MITprof_ds, profile_var_key_s
                         bool_mask_da_1D_iPROF_cost_thresh = cost_vs_climatology.mean(dim="iDEPTH") >= profile_avg_cost_threshold
                         bool_mask_da = MITprof_ds[prof_key].copy(deep=False, data=np.broadcast_to(bool_mask_da_1D_iPROF_cost_thresh.data[:, None], MITprof_ds[prof_key].shape))
                         if exclude_high_latitude_profiles_from_clim_cost:
-                            bool_mask_da = bool_mask_da.where(~bool_mask_da_lat, True)
+                            bool_mask_da = bool_mask_da.where(~bool_mask_da_lat, False)
                         MITprof_ds[f'{prof_key}weight'] = xr.where(bool_mask_da, 0, MITprof_ds[f'{prof_key}weight'])
                         MITprof_ds[f'{prof_key}weight_code'] = xr.where(bool_mask_da, MITprof_ds[f'{prof_key}weight_code'] + 2**(zero_criteria_code - 1), MITprof_ds[f'{prof_key}weight_code'])
                         
@@ -162,7 +170,7 @@ def update_zero_weight_points_on_prepared_profiles(MITprof_ds, profile_var_key_s
                     if zero_criteria_code == 10:
                         bool_mask_da = cost_vs_climatology >= single_datum_cost_threshold
                         if exclude_high_latitude_profiles_from_clim_cost:
-                            bool_mask_da = bool_mask_da.where(~bool_mask_da_lat, True)
+                            bool_mask_da = bool_mask_da.where(~bool_mask_da_lat, False)
                         MITprof_ds[f'{prof_key}weight'] = xr.where(bool_mask_da, 0, MITprof_ds[f'{prof_key}weight'])
                         MITprof_ds[f'{prof_key}weight_code'] = xr.where(bool_mask_da, MITprof_ds[f'{prof_key}weight_code'] + 2**(zero_criteria_code - 1), MITprof_ds[f'{prof_key}weight_code'])
 
@@ -192,23 +200,35 @@ def update_zero_weight_points_on_prepared_profiles(MITprof_ds, profile_var_key_s
                                 bool_mask_da = MITprof_ds[prof_key].copy(deep=False, data=np.broadcast_to(bool_mask_da_1D.data[:, None], MITprof_ds[prof_key].shape))
 
 
-                                MITprof_ds['conductivity_mask'] = MITprof_ds[prof_key].copy(deep=False, data=bool_mask_da)
+                                if 'conductivity_mask' not in MITprof_ds:
+                                    MITprof_ds['conductivity_mask'] = MITprof_ds[prof_key].copy(deep=False, data=bool_mask_da)
+                                else:
+                                    MITprof_ds['conductivity_mask'] = MITprof_ds['conductivity_mask'] | bool_mask_da
                                 zero_criteria_code_conductivity = zero_criteria_code
 
 
                 print()
-                print(f"code {zero_criteria_code}; masked/numprofs: {bool_mask_da.sum().item()}/{bool_mask_da.size} = {bool_mask_da.sum().item()/bool_mask_da.size * 100:.2f}%")
-                print(f"zero weight count: {(MITprof_ds[f'{prof_key}weight'] == 0).sum().item()}/{MITprof_ds[f'{prof_key}weight'].size} = {(MITprof_ds[f'{prof_key}weight'] == 0).sum().item()/MITprof_ds[f'{prof_key}weight'].size*100:.2f}%")
-                print()
+                print(f"internal to step: 7; code: {zero_criteria_code}, variable: {prof_key[-1]}")
+                if zero_criteria_code == 3:
+                    print(f'***code {zero_criteria_code} zeros-out the weights of null profile data***')
+                if not (zero_criteria_code == 11 and prof_key == 'prof_T'):
+                    print(f"weight mask passers/num valid: {np.sum(MITprof_ds[prof_key].notnull().data[~bool_mask_da])}/{MITprof_ds[prof_key].notnull().sum().item()} = {np.sum(MITprof_ds[prof_key].notnull().data[~bool_mask_da])/MITprof_ds[prof_key].notnull().sum().item() * 100:.2f}%")
 
+                print(f"nonzero weights at current step / nonzero original weights: {(MITprof_ds[f'{prof_key}weight']>0).sum().item()}/{np.sum(original_weights>0)} = {(MITprof_ds[f'{prof_key}weight']>0).sum().item() / np.sum(original_weights>0) * 100:.2f}%")
+                
+
+                print()
 
     for prof_key in profile_var_key_set:
         if prof_key in MITprof_ds:
             if 'conductivity_mask' in MITprof_ds:
                 MITprof_ds[f'{prof_key}weight'] = xr.where(MITprof_ds['conductivity_mask'], 0, MITprof_ds[f'{prof_key}weight'])
-                MITprof_ds[f'{prof_key}weight_code'] = xr.where(MITprof_ds['conductivity_mask'], MITprof_ds[f'{prof_key}weight_code'] + 2**(zero_criteria_code - 1), MITprof_ds[f'{prof_key}weight_code'])
+                MITprof_ds[f'{prof_key}weight_code'] = xr.where(MITprof_ds['conductivity_mask'], MITprof_ds[f'{prof_key}weight_code'] + 2**(zero_criteria_code_conductivity - 1), MITprof_ds[f'{prof_key}weight_code'])
             if MITprof_ds[f'{prof_key}weight_code'].isnull().any().item():
                 raise Exception(f'nans found in {prof_key} weight code')
+            print('---')
+            print(f"nonzero {prof_key[-1]} weights at conductivity step / nonzero original weights: {(MITprof_ds[f'{prof_key}weight']>0).sum().item()}/{np.sum(original_weights>0)} = {(MITprof_ds[f'{prof_key}weight']>0).sum().item() / np.sum(original_weights>0) * 100:.2f}%")
+
             
     return MITprof_ds
 

@@ -31,8 +31,16 @@ def print_survivors(MITprof_ds, profile_var_key_set, step_counter):
     print(f"survivors: {survivors}/{total_final_count} = {survivors / total_final_count * 100:.2f}%")
     print(f"survivors relative to original counts: {survivors}/{total_original_count} = {survivors / total_original_count * 100:.2f}%")
 
-    #print(f"survivors: {MITprof_ds['prof_T'].notnull().sum().item() + MITprof_ds['prof_S'].notnull().sum().item()}/{MITprof_ds['prof_T'].size + MITprof_ds['prof_S'].size} = {(MITprof_ds['prof_T'].notnull().sum().item() + MITprof_ds['prof_S'].notnull().sum().item()) / (MITprof_ds['prof_T'].size + MITprof_ds['prof_S'].size) * 100:.2f}%")
-    #print(f"survivors relative to original counts: {MITprof_ds['prof_T'].notnull().sum().item() + MITprof_ds['prof_S'].notnull().sum().item()}/{MITprof_ds['prof_T_original_total_count'].item() +  MITprof_ds['prof_S_original_total_count'].item()} = {(MITprof_ds['prof_T'].notnull().sum().item() + MITprof_ds['prof_S'].notnull().sum().item()) / (MITprof_ds['prof_T_original_total_count'].item() +  MITprof_ds['prof_S_original_total_count'].item()) * 100:.2f}%")
+
+def collect_valid_data_stats(MITprof_ds, profile_var_key_set):
+    valid_data_dict = {}
+    for prof_key in profile_var_key_set:
+        if prof_key in MITprof_ds:
+            valid_data_dict[prof_key] = {}
+            valid_data_dict[prof_key]['valid_data_count'] = MITprof_ds[prof_key].notnull().sum().item()
+            valid_data_dict[prof_key]['valid_profile_count'] = np.sum(MITprof_ds[prof_key].notnull().sum(dim="iDEPTH").data > 0)
+
+    return valid_data_dict
 
 
 def count_total_survivors_TS(MITprof_ds, profile_var_key_set):
@@ -47,7 +55,7 @@ def update_remove_extraneous_depth_levels(MITprof_ds, profile_var_key_set):
     depth_level_max_list = []
     for prof_key in profile_var_key_set:
         if prof_key in MITprof_ds:
-            total_num_valid_per_depth = (MITprof_ds[prof_key] > 0).sum(dim = "iPROF").data
+            total_num_valid_per_depth = MITprof_ds[prof_key].notnull().sum(dim="iPROF").data
             depth_level_max_list.append(np.nonzero(total_num_valid_per_depth)[0][-1] if np.size(np.nonzero(total_num_valid_per_depth)) > 0 else 0)
 
     #if len(depth_level_max_list) == 0:
@@ -90,9 +98,16 @@ def update_remove_zero_T_S_weighted_profiles_from_MITprof(MITprof_ds, profile_va
     if num_nan_weights > 0:
         raise Exception('you have nans in your weights, this should never happen')
     MITprof_ds['global_1D_mask_iPROF_nonzero_weight'] = xr.full_like(MITprof_ds['prof_lon'], fill_value=False, dtype=bool)
+    MITprof_ds['global_1D_mask_iPROF_notnull'] = xr.full_like(MITprof_ds['prof_lon'], fill_value=False, dtype=bool)
     for prof_key in profile_var_key_set:
         if prof_key in MITprof_ds.data_vars:
             MITprof_ds['global_1D_mask_iPROF_nonzero_weight'] = (MITprof_ds['global_1D_mask_iPROF_nonzero_weight']) | (MITprof_ds[f'{prof_key}weight'].sum(dim="iDEPTH") > 0)
+            MITprof_ds['global_1D_mask_iPROF_notnull'] = (MITprof_ds['global_1D_mask_iPROF_notnull']) | (MITprof_ds[prof_key].notnull().sum(dim="iDEPTH") > 0)
+    print()
+    if MITprof_ds['global_1D_mask_iPROF_notnull'].sum().item() > 0:
+        print("note for the following step:")
+        print(f"profiles not nuked/total number of profiles: {MITprof_ds['global_1D_mask_iPROF_nonzero_weight'].sum().item()}/{MITprof_ds['global_1D_mask_iPROF_notnull'].sum().item()} = {MITprof_ds['global_1D_mask_iPROF_nonzero_weight'].sum().item()/MITprof_ds['global_1D_mask_iPROF_notnull'].sum().item()*100:.2f}%")
+
     return extract_profile_subset_from_MITprof_iPROF_mask(MITprof_ds, bool_mask_name='global_1D_mask_iPROF_nonzero_weight')
 
 
@@ -436,19 +451,16 @@ def load_llc270_grid_step1(llc270_grid_dir):
     bathy_270_fname = os.path.join(llc270_grid_dir, 'bathy_llc270')
     with open(bathy_270_fname, 'rb') as fid:
         bathy_270 = np.fromfile(fid, dtype=mform)
-        bathy_270 = bathy_270.reshape((siz[0], np.prod(siz[1:])), order='F')
-        bathy_270 = bathy_270.reshape((siz[0], siz[1], siz[2]))
+        bathy_270 = bathy_270.reshape((siz[0], siz[1], siz[2]), order='F')
 
     lon_270_path = os.path.join(llc270_grid_dir, 'XC.data')
     lat_270_path = os.path.join(llc270_grid_dir, 'YC.data')
     with open(lon_270_path, 'rb') as fid:
         lon_270 = np.fromfile(fid, dtype=mform)
-        lon_270 = lon_270.reshape((siz[0], np.prod(siz[1:])), order='F')
-        lon_270 = lon_270.reshape((siz[0], siz[1], siz[2]))
+        lon_270 = lon_270.reshape((siz[0], siz[1], siz[2]), order='F')
     with open(lat_270_path, 'rb') as fid:
         lat_270 = np.fromfile(fid, dtype=mform)
-        lat_270 = lat_270.reshape((siz[0], np.prod(siz[1:])), order='F')
-        lat_270 = lat_270.reshape((siz[0], siz[1], siz[2]))
+        lat_270 = lat_270.reshape((siz[0], siz[1], siz[2]), order='F')
 
     blank_270 = np.full_like(bathy_270, np.nan)
 
@@ -456,17 +468,16 @@ def load_llc270_grid_step1(llc270_grid_dir):
     hFacC_270_path = os.path.join(llc270_grid_dir, 'hFacC.data')
     with open(hFacC_270_path, 'rb') as fid:
         hFacC_270 = np.fromfile(fid, dtype=mform)
-        hFacC_270 = hFacC_270.reshape((siz[0], np.prod(siz[1:])), order='F')
         hFacC_270 = hFacC_270.reshape((siz[0], siz[1], siz[2]), order='F')
 
     wet_ins_270_k = []
     for k in range(0, 50):
-        tmp = hFacC_270[:, :, k].flatten(order='F')
+        tmp = hFacC_270[:, :, k].flatten()
         wet_ins_270_k.append(np.where(tmp > 0)[0])
 
-    bad_ins_270 = np.where(np.logical_and(lat_270 == 0, lon_270 == 0, bathy_270 == 0).flatten(order='F'))[0]
-    lon_270[np.unravel_index(bad_ins_270, lon_270.shape, order='F')] = np.NaN
-    lat_270[np.unravel_index(bad_ins_270, lat_270.shape, order='F')] = np.NaN
+    bad_ins_270 = np.where(np.logical_and(lat_270 == 0, lon_270 == 0, bathy_270 == 0).flatten())[0]
+    lon_270[np.unravel_index(bad_ins_270, lon_270.shape)] = np.NaN
+    lat_270[np.unravel_index(bad_ins_270, lat_270.shape)] = np.NaN
 
     return lon_270, lat_270, blank_270, wet_ins_270_k
 
@@ -480,31 +491,28 @@ def load_llc270_grid_step2(llc270_grid_dir):
     bathy_270_fname = os.path.join(llc270_grid_dir, 'bathy_llc270')
     with open(bathy_270_fname, 'rb') as fid:
         bathy_270 = np.fromfile(fid, dtype=mform)
-        bathy_270 = bathy_270.reshape((siz[0], np.prod(siz[1:])), order='F')
-        bathy_270 = bathy_270.reshape((siz[0], siz[1], siz[2]))
+        bathy_270 = bathy_270.reshape((siz[0], siz[1], siz[2]), order='F')
 
     lon_270_path = os.path.join(llc270_grid_dir, 'XC.data')
     lat_270_path = os.path.join(llc270_grid_dir, 'YC.data')
     with open(lon_270_path, 'rb') as fid:
         lon_270 = np.fromfile(fid, dtype=mform)
-        lon_270 = lon_270.reshape((siz[0], np.prod(siz[1:])), order='F')
-        lon_270 = lon_270.reshape((siz[0], siz[1], siz[2]))
+        lon_270 = lon_270.reshape((siz[0], siz[1], siz[2]), order='F')
     with open(lat_270_path, 'rb') as fid:
         lat_270 = np.fromfile(fid, dtype=mform)
-        lat_270 = lat_270.reshape((siz[0], np.prod(siz[1:])), order='F')
-        lat_270 = lat_270.reshape((siz[0], siz[1], siz[2]))
+        lat_270 = lat_270.reshape((siz[0], siz[1], siz[2]), order='F')
 
     X_270, Y_270, Z_270 = sph2cart(lon_270 * deg2rad, lat_270 * deg2rad, 1)
-    bad_ins_270 = np.where(np.logical_and(lat_270 == 0, lon_270 == 0, bathy_270 == 0).flatten(order='F'))[0]
+    bad_ins_270 = np.where(np.logical_and(lat_270 == 0, lon_270 == 0, bathy_270 == 0).flatten())[0]
 
-    X_270[np.unravel_index(bad_ins_270, X_270.shape, order='F')] = np.NaN
-    Y_270[np.unravel_index(bad_ins_270, X_270.shape, order='F')] = np.NaN
-    Z_270[np.unravel_index(bad_ins_270, X_270.shape, order='F')] = np.NaN
-    lon_270[np.unravel_index(bad_ins_270, lon_270.shape, order='F')] = np.NaN
-    lat_270[np.unravel_index(bad_ins_270, lat_270.shape, order='F')] = np.NaN
+    X_270[np.unravel_index(bad_ins_270, X_270.shape)] = np.NaN
+    Y_270[np.unravel_index(bad_ins_270, X_270.shape)] = np.NaN
+    Z_270[np.unravel_index(bad_ins_270, X_270.shape)] = np.NaN
+    lon_270[np.unravel_index(bad_ins_270, lon_270.shape)] = np.NaN
+    lat_270[np.unravel_index(bad_ins_270, lat_270.shape)] = np.NaN
 
-    flattened_monotonic_grid_indices_270 = np.arange(lon_270.size, dtype=np.float64).reshape(lon_270.shape, order='F')
-    good_ins_270 = np.setdiff1d(flattened_monotonic_grid_indices_270.flatten(order='F').T, bad_ins_270.flatten(order='F'))
+    flattened_monotonic_grid_indices_270 = np.arange(lon_270.size, dtype=np.float64).reshape(lon_270.shape)
+    good_ins_270 = np.setdiff1d(flattened_monotonic_grid_indices_270.flatten().T, bad_ins_270.flatten())
     good_ins_270 = good_ins_270.astype(int)
 
     return lon_270, lat_270, X_270, Y_270, Z_270, bathy_270, good_ins_270
@@ -519,42 +527,38 @@ def load_llc270_grid_step4(llc270_grid_dir):
     bathy_270_fname = os.path.join(llc270_grid_dir, 'bathy_llc270')
     with open(bathy_270_fname, 'rb') as fid:
         bathy_270 = np.fromfile(fid, dtype=mform)
-        bathy_270 = bathy_270.reshape((siz[0], np.prod(siz[1:])), order='F')
-        bathy_270 = bathy_270.reshape((siz[0], siz[1], siz[2]))
+        bathy_270 = bathy_270.reshape((siz[0], siz[1], siz[2]), order='F')
 
     lon_270_path = os.path.join(llc270_grid_dir, 'XC.data')
     lat_270_path = os.path.join(llc270_grid_dir, 'YC.data')
     with open(lon_270_path, 'rb') as fid:
         lon_270 = np.fromfile(fid, dtype=mform)
-        lon_270 = lon_270.reshape((siz[0], np.prod(siz[1:])), order='F')
-        lon_270 = lon_270.reshape((siz[0], siz[1], siz[2]))
+        lon_270 = lon_270.reshape((siz[0], siz[1], siz[2]), order='F')
     with open(lat_270_path, 'rb') as fid:
         lat_270 = np.fromfile(fid, dtype=mform)
-        lat_270 = lat_270.reshape((siz[0], np.prod(siz[1:])), order='F')
-        lat_270 = lat_270.reshape((siz[0], siz[1], siz[2]))
+        lat_270 = lat_270.reshape((siz[0], siz[1], siz[2]), order='F')
 
     X_270, Y_270, Z_270 = sph2cart(lon_270 * deg2rad, lat_270 * deg2rad, 1)
-    bad_ins_270 = np.where(np.logical_and(lat_270 == 0, lon_270 == 0, bathy_270 == 0).flatten(order='F'))[0]
+    bad_ins_270 = np.where(np.logical_and(lat_270 == 0, lon_270 == 0, bathy_270 == 0).flatten())[0]
 
-    X_270[np.unravel_index(bad_ins_270, X_270.shape, order='F')] = np.NaN
-    Y_270[np.unravel_index(bad_ins_270, X_270.shape, order='F')] = np.NaN
-    Z_270[np.unravel_index(bad_ins_270, X_270.shape, order='F')] = np.NaN
-    lon_270[np.unravel_index(bad_ins_270, lon_270.shape, order='F')] = np.NaN
-    lat_270[np.unravel_index(bad_ins_270, lat_270.shape, order='F')] = np.NaN
+    X_270[np.unravel_index(bad_ins_270, X_270.shape)] = np.NaN
+    Y_270[np.unravel_index(bad_ins_270, X_270.shape)] = np.NaN
+    Z_270[np.unravel_index(bad_ins_270, X_270.shape)] = np.NaN
+    lon_270[np.unravel_index(bad_ins_270, lon_270.shape)] = np.NaN
+    lat_270[np.unravel_index(bad_ins_270, lat_270.shape)] = np.NaN
 
-    flattened_monotonic_grid_indices_270 = np.arange(lon_270.size, dtype=np.float64).reshape(lon_270.shape, order='F')
-    flattened_monotonic_grid_indices_270[np.unravel_index(bad_ins_270, flattened_monotonic_grid_indices_270.shape, order='F')] = np.NaN
+    flattened_monotonic_grid_indices_270 = np.arange(lon_270.size, dtype=np.float64).reshape(lon_270.shape)
+    flattened_monotonic_grid_indices_270[np.unravel_index(bad_ins_270, flattened_monotonic_grid_indices_270.shape)] = np.NaN
 
     siz = [llcN, 13*llcN, 50]
     hFacC_270_path = os.path.join(llc270_grid_dir, 'hFacC.data')
     with open(hFacC_270_path, 'rb') as fid:
         hFacC_270 = np.fromfile(fid, dtype=mform)
-        hFacC_270 = hFacC_270.reshape((siz[0], np.prod(siz[1:])), order='F')
         hFacC_270 = hFacC_270.reshape((siz[0], siz[1], siz[2]), order='F')
 
     wet_ins_270_k = []
     for k in range(0, 50):
-        tmp = hFacC_270[:, :, k].flatten(order='F')
+        tmp = hFacC_270[:, :, k].flatten()
         wet_ins_270_k.append(np.where(tmp > 0)[0])
 
     _, _, _, z_cen_270 = make_llc270_cell_centers()
@@ -570,8 +574,7 @@ def load_llc270_grid_step5(llc270_grid_dir):
     RAC_270_path = os.path.join(llc270_grid_dir, 'RAC.data')
     with open(RAC_270_path, 'rb') as fid:
         RAC_270 = np.fromfile(fid, dtype=mform)
-        RAC_270 = RAC_270.reshape((siz[0], np.prod(siz[1:])), order='F')
-        RAC_270 = RAC_270.reshape((siz[0], siz[1], siz[2]))
+        RAC_270 = RAC_270.reshape((siz[0], siz[1], siz[2]), order='F')
 
     RAC_270_pf, faces = patchface3D(llcN, llcN*13, 1, array_in=RAC_270, direction=2)
     return RAC_270_pf
@@ -606,8 +609,7 @@ def load_llc90_grid_step1(grootdir):
     bathy_90_fname = os.path.join(grootdir, 'bathy_eccollc_90x50_min2pts.bin')
     with open(bathy_90_fname, 'rb') as fid:
         bathy_90 = np.fromfile(fid, dtype=mform)
-    bathy_90 = bathy_90.reshape((siz[0], np.prod(siz[1:])), order='F')
-    bathy_90 = bathy_90.reshape((siz[0], siz[1], siz[2]))
+    bathy_90 = bathy_90.reshape((siz[0], siz[1], siz[2]), order='F')
 
     blank_90 = np.full_like(bathy_90, np.nan)
 
@@ -615,23 +617,20 @@ def load_llc90_grid_step1(grootdir):
     YC_path = os.path.join(grootdir, 'no_blank', 'YC.data')
     with open(XC_path, 'rb') as fid:
         lon_90 = np.fromfile(fid, dtype=mform)
-    lon_90 = lon_90.reshape((siz[0], np.prod(siz[1:])), order='F')
-    lon_90 = lon_90.reshape((siz[0], siz[1], siz[2]))
+    lon_90 = lon_90.reshape((siz[0], siz[1], siz[2]), order='F')
     with open(YC_path, 'rb') as fid:
         lat_90 = np.fromfile(fid, dtype=mform)
-    lat_90 = lat_90.reshape((siz[0], np.prod(siz[1:])), order='F')
-    lat_90 = lat_90.reshape((siz[0], siz[1], siz[2]))
+    lat_90 = lat_90.reshape((siz[0], siz[1], siz[2]), order='F')
 
     hFacC_90_path = os.path.join(grootdir, 'hFacC.data')
     siz = [llcN, 13*llcN, 50]
     with open(hFacC_90_path, 'rb') as fid:
         hFacC_90 = np.fromfile(fid, dtype=mform)
-    hFacC_90 = hFacC_90.reshape((siz[0], np.prod(siz[1:])), order='F')
     hFacC_90 = hFacC_90.reshape((siz[0], siz[1], siz[2]), order='F')
 
     wet_ins_90_k = []
     for k in range(0, 50):
-        tmp = hFacC_90[:, :, k].flatten(order='F')
+        tmp = hFacC_90[:, :, k].flatten()
         wet_ins_90_k.append(np.where(tmp > 0)[0])
 
     return lon_90, lat_90, blank_90, wet_ins_90_k
@@ -646,19 +645,16 @@ def load_llc90_grid_step2(grootdir):
     bathy_90_fname = os.path.join(grootdir, 'bathy_eccollc_90x50_min2pts.bin')
     with open(bathy_90_fname, 'rb') as fid:
         bathy_90 = np.fromfile(fid, dtype=mform)
-    bathy_90 = bathy_90.reshape((siz[0], np.prod(siz[1:])), order='F')
-    bathy_90 = bathy_90.reshape((siz[0], siz[1], siz[2]))
+    bathy_90 = bathy_90.reshape((siz[0], siz[1], siz[2]), order='F')
 
     XC_path = os.path.join(grootdir, 'no_blank', 'XC.data')
     YC_path = os.path.join(grootdir, 'no_blank', 'YC.data')
     with open(XC_path, 'rb') as fid:
         lon_90 = np.fromfile(fid, dtype=mform)
-    lon_90 = lon_90.reshape((siz[0], np.prod(siz[1:])), order='F')
-    lon_90 = lon_90.reshape((siz[0], siz[1], siz[2]))
+    lon_90 = lon_90.reshape((siz[0], siz[1], siz[2]), order='F')
     with open(YC_path, 'rb') as fid:
         lat_90 = np.fromfile(fid, dtype=mform)
-    lat_90 = lat_90.reshape((siz[0], np.prod(siz[1:])), order='F')
-    lat_90 = lat_90.reshape((siz[0], siz[1], siz[2]))
+    lat_90 = lat_90.reshape((siz[0], siz[1], siz[2]), order='F')
 
     lon_90_64 = lon_90.astype(np.float64)
     lat_90_64 = lat_90.astype(np.float64)
@@ -677,29 +673,26 @@ def load_llc90_grid_step4(grootdir):
     YC_path = os.path.join(grootdir, 'no_blank', 'YC.data')
     with open(XC_path, 'rb') as fid:
         lon_90 = np.fromfile(fid, dtype=mform)
-        lon_90 = lon_90.reshape((siz[0], np.prod(siz[1:])), order='F')
-        lon_90 = lon_90.reshape((siz[0], siz[1], siz[2]))
+        lon_90 = lon_90.reshape((siz[0], siz[1], siz[2]), order='F')
     with open(YC_path, 'rb') as fid:
         lat_90 = np.fromfile(fid, dtype=mform)
-        lat_90 = lat_90.reshape((siz[0], np.prod(siz[1:])), order='F')
-        lat_90 = lat_90.reshape((siz[0], siz[1], siz[2]))
+        lat_90 = lat_90.reshape((siz[0], siz[1], siz[2]), order='F')
 
     lon_90_64 = lon_90.astype(np.float64)
     lat_90_64 = lat_90.astype(np.float64)
     X_90, Y_90, Z_90 = sph2cart(lon_90_64 * deg2rad, lat_90_64 * deg2rad, 1.0)
 
-    flattened_monotonic_grid_indices_90 = np.arange(0, lon_90.size).reshape(lon_90.shape, order='F')
+    flattened_monotonic_grid_indices_90 = np.arange(0, lon_90.size).reshape(lon_90.shape)
 
     siz = [llcN, 13*llcN, 50]
     hFacC_90_path = os.path.join(grootdir, 'hFacC.data')
     with open(hFacC_90_path, 'rb') as fid:
         hFacC_90 = np.fromfile(fid, dtype=mform)
-        hFacC_90 = hFacC_90.reshape((siz[0], np.prod(siz[1:])), order='F')
         hFacC_90 = hFacC_90.reshape((siz[0], siz[1], siz[2]), order='F')
 
     wet_ins_90_k = []
     for k in range(0, 50):
-        tmp = hFacC_90[:, :, k].flatten(order='F')
+        tmp = hFacC_90[:, :, k].flatten()
         wet_ins_90_k.append(np.where(tmp > 0)[0])
 
     _, _, _, z_cen_90 = make_llc90_cell_centers()
@@ -715,8 +708,7 @@ def load_llc90_grid_step5(grootdir):
     RAC90_path = os.path.join(grootdir, 'no_blank', 'RAC.data')
     with open(RAC90_path, 'rb') as fid:
         RAC_90 = np.fromfile(fid, dtype=mform)
-        RAC_90 = RAC_90.reshape((siz[0], np.prod(siz[1:])), order='F')
-        RAC_90 = RAC_90.reshape((siz[0], siz[1], siz[2]))
+        RAC_90 = RAC_90.reshape((siz[0], siz[1], siz[2]), order='F')
 
     RAC_90_pf, faces = patchface3D(llcN, llcN*13, 1, array_in=RAC_90, direction=2)
     return RAC_90_pf
@@ -802,17 +794,17 @@ def interp_check(xyz, flattened_monotonic_grid_indices, X, Y, Z, lat_vals, lon_v
 
             '''
             print('original (line 1) vs closest (line 2) x,y,z')
-            print("{} {} {}".format(X.flatten(order = 'F')[test_ind], Y.flatten(order = 'F')[test_ind], Z.flatten(order = 'F')[test_ind]))
+            print("{} {} {}".format(X.flatten()[test_ind], Y.flatten()[test_ind], Z.flatten()[test_ind]))
             print("{} {} {}".format(test_x, test_y, test_z))
-            
+
             print('original (line 1) vs closest (line 2) lat lon')
             print("{} {}".format(test_lat, test_lon))
-            print("{} {}".format(lat_vals.flatten(order = 'F')[test_ind], lon_vals.flatten(order = 'F')[test_ind]))
+            print("{} {}".format(lat_vals.flatten()[test_ind], lon_vals.flatten()[test_ind]))
             '''
 
-            if abs(X.flatten(order = 'F')[test_ind] - test_x) > 5 or abs(Y.flatten(order = 'F')[test_ind] - test_y) > 5 or abs(Z.flatten(order = 'F')[test_ind] - test_z) > 5:
+            if abs(X.flatten()[test_ind] - test_x) > 5 or abs(Y.flatten()[test_ind] - test_y) > 5 or abs(Z.flatten()[test_ind] - test_z) > 5:
                 raise Exception("Step {} failed check, interp XYZ coordinate difference too big".format(step))
-            if abs(lat_vals.flatten(order = 'F')[test_ind] - test_lat) > 5 or abs(lon_vals.flatten(order = 'F')[test_ind] - test_lon) > 5:
+            if abs(lat_vals.flatten()[test_ind] - test_lat) > 5 or abs(lon_vals.flatten()[test_ind] - test_lon) > 5:
                 raise Exception("Step {} failed check, interp lon/lat coordinate difference too big".format(step))
         
         #print("=================")    

@@ -42,9 +42,8 @@ def update_monthly_mean_clim_WOA13v2_on_prepared_profiles(MITprof_ds, profile_va
  
     bool_mask_clim_surf_t0 = ~np.isnan([clim_grid_data_dict[prof_key][0,0] for prof_key in profile_var_key_set]).any(axis=0) 
 
-    #X_woa, Y_woa, Z_woa = tools.sph2cart(lon_woam[bool_mask_clim_surf_t0]*deg2rad, lat_woam[bool_mask_clim_surf_t0]*deg2rad, 1)
     valid_mask = tools.sph2cart_returnValidMaskOnly(lon_woam[bool_mask_clim_surf_t0]*deg2rad, lat_woam[bool_mask_clim_surf_t0]*deg2rad, 1)
-    X_woa, Y_woa, Z_woa = tools.sph2cart(lon_woam[bool_mask_clim_surf_t0][valid_mask] *deg2rad, lat_woam[bool_mask_clim_surf_t0][valid_mask] *deg2rad, 1)
+    X_woa, Y_woa, Z_woa = tools.sph2cart(lon_woam[bool_mask_clim_surf_t0][valid_mask]*deg2rad, lat_woam[bool_mask_clim_surf_t0][valid_mask]*deg2rad, 1)
 
     flattened_monotonic_grid_indices = np.arange(0,X_woa.size)
     
@@ -55,7 +54,7 @@ def update_monthly_mean_clim_WOA13v2_on_prepared_profiles(MITprof_ds, profile_va
 
     #profiles_xyz_threetuple = sph2cart(MITprof_ds["prof_lon"]*deg2rad, MITprof_ds["prof_lat"]*deg2rad, 1)
     valid_1D_mask = tools.sph2cart_returnValidMaskOnly(MITprof_ds["prof_lon"]*deg2rad, MITprof_ds["prof_lat"]*deg2rad, 1)
-    for var_name, var_data_array in MITprof_ds.data_vars.items():
+    for var_name, var_data_array in list(MITprof_ds.data_vars.items()):
         if valid_1D_mask.dims[0] in var_data_array.dims:
             MITprof_ds[var_name] = var_data_array.where(valid_1D_mask, drop=True)
 
@@ -66,7 +65,7 @@ def update_monthly_mean_clim_WOA13v2_on_prepared_profiles(MITprof_ds, profile_va
     num_prof_depths = len(MITprof_ds['prof_depth'])
     prof_month = ((MITprof_ds['prof_YYYYMMDD'].data % 10000) // 100).astype(int)
 
-    profile_flattened_monotonic_grid_indices = griddata(xyz_woa_masked, flattened_monotonic_grid_indices, profiles_xyz_threetuple, method='nearest').astype(int)
+    profile_flattened_monotonic_grid_indices = griddata(xyz_woa_masked, flattened_monotonic_grid_indices, np.column_stack(profiles_xyz_threetuple), method='nearest').astype(int)
     
     for prof_key in profile_var_key_set:
         if prof_key in MITprof_ds.data_vars:
@@ -74,7 +73,7 @@ def update_monthly_mean_clim_WOA13v2_on_prepared_profiles(MITprof_ds, profile_va
             for ii_depth in range(min(num_prof_depths, len(clim_grid_data_dict['depths']))):
                 for ii_month in range(12):
                     bool_mask_current_month = prof_month == ii_month + 1
-                    prof_clim[:,ii_depth][bool_mask_current_month] = clim_grid_data_dict[prof_key][ii_month, ii_depth, :, :][bool_mask_clim_surf_t0][profile_flattened_monotonic_grid_indices[bool_mask_current_month]]
+                    prof_clim[:,ii_depth][bool_mask_current_month] = clim_grid_data_dict[prof_key][ii_month, ii_depth, :, :][bool_mask_clim_surf_t0][valid_mask][profile_flattened_monotonic_grid_indices[bool_mask_current_month]]
             MITprof_ds[f'{prof_key}clim'] = xr.DataArray(prof_clim, dims=['iPROF', 'iDEPTH'])
     
     return MITprof_ds

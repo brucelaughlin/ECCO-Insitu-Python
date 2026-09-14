@@ -33,13 +33,13 @@ def get_profpoint_llc_ian(lon_llc, lat_llc, mask_llc, MITprof_ds):
 
     valid_1D_mask = tools.sph2cart_returnValidMaskOnly(MITprof_ds["prof_lon"]*deg2rad, MITprof_ds["prof_lat"]*deg2rad, 1)
 
-    for var_name, var_data_array in MITprof_ds.data_vars.items():
+    for var_name, var_data_array in list(MITprof_ds.data_vars.items()):
         if valid_1D_mask.dims[0] in var_data_array.dims:
             MITprof_ds[var_name] = var_data_array.where(valid_1D_mask, drop=True) 
 
     profiles_xyz_threetuple = tools.sph2cart(MITprof_ds["prof_lon"]*deg2rad, MITprof_ds["prof_lat"]*deg2rad, 1)
 
-    MITprof_ds['profile_flattened_monotonic_grid_indices'] = xr.DataArray(griddata(model_xyz, flattened_monotonic_grid_indices_valid, profiles_xyz_threetuple, method='nearest').astype(int), dims="iPROF")
+    MITprof_ds['profile_flattened_monotonic_grid_indices'] = xr.DataArray(griddata(model_xyz, flattened_monotonic_grid_indices_valid, np.column_stack(profiles_xyz_threetuple), method='nearest').astype(int), dims="iPROF")
 
     return MITprof_ds
 
@@ -175,9 +175,9 @@ def update_prof_and_tile_points_on_profiles(MITprof_ds, grid_dir, llcN, wet_or_a
         lat_llc = lat_90
         mask_llc = blank_90
         if wet_or_all == 0:
-            mask_llc[np.unravel_index(wet_ins_90_k[0], mask_llc.shape, order = 'F')] = 1
+            mask_llc[np.unravel_index(wet_ins_90_k[0], mask_llc.shape)] = 1
         else:
-            mask_llc=np.ones(blank_90.shape, order = 'F') 
+            mask_llc=np.ones(blank_90.shape)
     if llcN == 270:
         lon_270, lat_270, blank_270, wet_ins_270_k = tools.load_llc270_grid_step1(grid_dir)
         ni = 30
@@ -186,9 +186,10 @@ def update_prof_and_tile_points_on_profiles(MITprof_ds, grid_dir, llcN, wet_or_a
         lat_llc = lat_270
         mask_llc = blank_270
         if wet_or_all ==0:
-            mask_llc[wet_ins_270_k[1]] = 1
+            # Previously used k=1 here — changed to k=0 to match LLC90. Intentionality of k=1 unknown.
+            mask_llc[np.unravel_index(wet_ins_270_k[0], mask_llc.shape)] = 1
         else:
-            mask_llc=np.ones(blank_270.shape, order = 'F')
+            mask_llc=np.ones(blank_270.shape)
    
     try:
         MITprof_ds = get_profpoint_llc_ian(lon_llc, lat_llc, mask_llc, MITprof_ds)
@@ -208,14 +209,33 @@ def update_prof_and_tile_points_on_profiles(MITprof_ds, grid_dir, llcN, wet_or_a
     #  also check to see if |lat| > 90, if so then assign flag 100.
     #  these flag values can be used later when assigning weights.
 
-    bool_mask_good_coords = ((abs(MITprof_ds['prof_lat']) <= 90) & (MITprof_ds['prof_lat'].notnull()) | (MITprof_ds['prof_lon'].notnull())).data
+    bool_mask_good_coords = ((abs(MITprof_ds['prof_lat']) <= 90) & MITprof_ds['prof_lat'].notnull() & MITprof_ds['prof_lon'].notnull()).data
 
     distances = np.full_like(MITprof_ds['prof_lat'].data, np.nan)
     # Note that this assumes our lat/lon grids are 1D
     for profile_index in range(len(bool_mask_good_coords)):
         if bool_mask_good_coords[profile_index]:
             distances[profile_index] = distance.distance((MITprof_ds['prof_lat'][profile_index], MITprof_ds['prof_lon'][profile_index]), (MITprof_ds['prof_interp_lat'][profile_index], MITprof_ds['prof_interp_lon'][profile_index])).km
-            #distances[profile_index] = distance.distance((MITprof_ds['prof_lat'][profile_index], MITprof_ds['prof_lon'][profile_index]), (MITprof_ds['prof_interp_lat'][profile_index], MITprof_ds['prof_interp_lon'][profile_index])).m
+
+
+    # Hardcoded goodness
+    # distance between grid cells referenced to llcN 90
+    dx = 112 * 90/llcN
+
+    # find points where distance between the profile point and the
+    # closest grid point is further than twice the distance
+    # of the square root of the area.
+    ins_too_far = np.nonzero(distances / dx > 2)[0]
+
+    # if the profile lat is > |90| call it a bad lat
+    # if the distance between the profile and the nearest grid cell
+    # is greater than one grid cell distance then call it a bad point
+    # -- you may have to create the field prof_flag.
+    if 'prof_flag' not in MITprof_ds:
+        MITprof_ds['prof_flag'] = xr.zeros_like(MITprof_ds['prof_YYYYMMDD'])
+
+    MITprof_ds['prof_flag'][ins_too_far] = 101
+
 
     return MITprof_ds
 

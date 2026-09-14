@@ -34,7 +34,7 @@ def update_sigmaTS_on_prepared_profiles(MITprof_ds, profile_var_key_set, grid_di
 
     #xyz_profiles = np.column_stack(tools.sph2cart(MITprof_ds['prof_lon']*deg2rad, MITprof_ds['prof_lat']*deg2rad, 1))
     valid_1D_mask = tools.sph2cart_returnValidMaskOnly(MITprof_ds["prof_lon"]*deg2rad, MITprof_ds["prof_lat"]*deg2rad, 1)
-    for var_name, var_data_array in MITprof_ds.data_vars.items():
+    for var_name, var_data_array in list(MITprof_ds.data_vars.items()):
         if valid_1D_mask.dims[0] in var_data_array.dims:
             MITprof_ds[var_name] = var_data_array.where(valid_1D_mask, drop=True)
 
@@ -43,7 +43,7 @@ def update_sigmaTS_on_prepared_profiles(MITprof_ds, profile_var_key_set, grid_di
 
     xyz_grid = np.column_stack((X_mitgcm.ravel()[bools_masks_list_by_depth[0]], Y_mitgcm.ravel()[bools_masks_list_by_depth[0]], Z_mitgcm.ravel()[bools_masks_list_by_depth[0]]))
     flattened_monotonic_grid_indices = flattened_monotonic_grid_indices_mitgcm.ravel()[bools_masks_list_by_depth[0]] 
-    prof_mitgcm_cell_indices = griddata(xyz_grid, flattened_monotonic_grid_indices, profiles_xyz_threetuple, 'nearest').astype(int)
+    prof_mitgcm_cell_indices = griddata(xyz_grid, flattened_monotonic_grid_indices, np.column_stack(profiles_xyz_threetuple), 'nearest').astype(int)
 
     # ok i am hackily adding this here bc step05 wants it.  But the array itself is calcualted in all prevoius steps... when should i actually save in in the ds??
     #MITprof_ds['profile_flattened_monotonic_grid_indices'] = xr.DataArray(flattened_monotonic_grid_indices, dims="iPROF")
@@ -62,8 +62,8 @@ def update_sigmaTS_on_prepared_profiles(MITprof_ds, profile_var_key_set, grid_di
             #sigma_np_array = sigma_np_1D_raw_array.reshape((tile_shape_list[0], tile_shape_list[1], tile_shape_list[2]))
 
             #For debugging and sanity check
-            MITprof_ds[f'{prof_key}raw_sigma'] = xr.DataArray(sigma_np_1D_raw_array)
-            #MITprof_ds[f'{prof_key}raw_sigma'] = xr.DataArray(sigma_np_array)
+            #MITprof_ds[f'{prof_key}raw_sigma'] = xr.DataArray(sigma_np_1D_raw_array)
+            ###MITprof_ds[f'{prof_key}raw_sigma'] = xr.DataArray(sigma_np_array)
 
             shallowest_sigma_data = sigma_np_array[:, :, 0]
             deepest_sigma_data = sigma_np_array[:, :, -1]
@@ -84,11 +84,12 @@ def update_sigmaTS_on_prepared_profiles(MITprof_ds, profile_var_key_set, grid_di
 
             if new_floor_dict[prof_key] > 0:
                 # Out of curiousity, when is sigma ever negative?
-                bool_mask = sigma_np_array_MITprof_2D >= 0
-                sigma_np_array_MITprof_2D[bool_mask] = np.maximum(new_floor_dict[prof_key], sigma_np_array_MITprof_2D[bool_mask])
+                #bool_mask = sigma_np_array_MITprof_2D >= 0
+                #sigma_np_array_MITprof_2D[bool_mask] = np.maximum(new_floor_dict[prof_key], sigma_np_array_MITprof_2D[bool_mask])
+                sigma_np_array_MITprof_2D = np.maximum(new_floor_dict[prof_key], sigma_np_array_MITprof_2D)
 
             # Store original weights, since we reset modified weights to 0 if original weights were 0 (if <respect_existing_zero_weights> == True) 
-            orig_profweight_np_array = MITprof_ds[prof_key].data.copy()
+            orig_profweight_np_array = MITprof_ds[f'{prof_key}weight'].data.copy()
             MITprof_ds[f'{prof_key}weight'] = xr.DataArray(1/sigma_np_array_MITprof_2D[prof_mitgcm_cell_indices,:]**2, dims=['iPROF', 'iDEPTH'])
             MITprof_ds[f'{prof_key}uncertainty'] = xr.DataArray(sigma_np_array_MITprof_2D[prof_mitgcm_cell_indices,:], dims=['iPROF', 'iDEPTH'])
 
@@ -101,7 +102,8 @@ def update_sigmaTS_on_prepared_profiles(MITprof_ds, profile_var_key_set, grid_di
 
             # If original weights were 0, set the updated weights to 0.
             if respect_existing_zero_weights:
-                MITprof_ds[f'{prof_key}weight'][orig_profweight_np_array == 0] = 0
+                orig_zero_mask = xr.DataArray(orig_profweight_np_array == 0, dims=['iPROF', 'iDEPTH'])
+                MITprof_ds[f'{prof_key}weight'] = xr.where(orig_zero_mask, 0, MITprof_ds[f'{prof_key}weight'])
                 
     return MITprof_ds
 

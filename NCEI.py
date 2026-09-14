@@ -102,6 +102,8 @@ def NCEI_pipeline(dest_dir, input_dir):
 
     for file_dex in range(len(input_profile_files)):
 
+        bad_flag = False
+
         original_file = input_profile_files[file_dex]
         basename = os.path.basename(original_file)
 
@@ -110,42 +112,51 @@ def NCEI_pipeline(dest_dir, input_dir):
         MITprof_ds = xr.open_dataset(original_file)
         MITprof_ds = MITprof_ds.assign_coords({dim: np.arange(MITprof_ds.sizes[dim]) for dim in MITprof_ds.dims if dim not in MITprof_ds.coords})
 
-        for prof_key in profile_var_key_set:
-            if prof_key in MITprof_ds:
-                MITprof_ds[f'{prof_key}_original_valid_count'] = MITprof_ds[prof_key].notnull().sum().item()
-                MITprof_ds[f'{prof_key}_original_total_count'] = MITprof_ds[prof_key].size
+        
+        valid_data_dict_list = [tools.collect_valid_data_stats(MITprof_ds, profile_var_key_set)]
 
         if not MITprof_ds or MITprof_ds.sizes['iPROF'] == 0:
             print("Your profile file may have no valid data; exiting without finishing")
-            break
+            print()
+            continue
 
         step_counter = 0
-        tools.print_survivors(MITprof_ds, profile_var_key_set, step_counter)
+        #tools.print_survivors(MITprof_ds, profile_var_key_set, step_counter)
 
         for ii in range(len(ncei_function_list)):
             MITprof_ds = ncei_function_list[ii](MITprof_ds)
+
             if not MITprof_ds or MITprof_ds.sizes['iPROF'] == 0:
                 print("Your profile file may have no valid data; exiting without finishing")
+                print()
+                bad_flag = True
                 break
 
+            valid_data_dict_list.append(tools.collect_valid_data_stats(MITprof_ds, profile_var_key_set))
+
             step_counter += 1
-            tools.print_survivors(MITprof_ds, profile_var_key_set, step_counter)
+            
+            print(f"\nstep: {step_counter}")
+
+            for prof_key in profile_var_key_set:
+                if prof_key in MITprof_ds: 
+                    if valid_data_dict_list[0][prof_key]['valid_profile_count'] > 0:
+                        print(f"valid {prof_key} profile count / original valid {prof_key} profile count: {valid_data_dict_list[step_counter][prof_key]['valid_profile_count']}/{valid_data_dict_list[0][prof_key]['valid_profile_count']} = {valid_data_dict_list[step_counter][prof_key]['valid_profile_count'] / valid_data_dict_list[0][prof_key]['valid_profile_count']*100:.2f}%")
+            for prof_key in profile_var_key_set:
+                if prof_key in MITprof_ds:
+                    if valid_data_dict_list[0][prof_key]['valid_data_count'] > 0:
+                        print(f"valid {prof_key} data count / original valid {prof_key} data count: {valid_data_dict_list[step_counter][prof_key]['valid_data_count']}/{valid_data_dict_list[0][prof_key]['valid_data_count']} = {valid_data_dict_list[step_counter][prof_key]['valid_data_count'] / valid_data_dict_list[0][prof_key]['valid_data_count']*100:.2f}%")
 
         if not MITprof_ds or MITprof_ds.sizes['iPROF'] == 0:
-            print("Your profile file may have no valid data; exiting without finishing")
-            break
+            if not bad_flag:
+                print("Your profile file may have no valid data; exiting without finishing")
+                print()
+            continue
 
         if tools.count_total_survivors_TS(MITprof_ds, profile_var_key_set) > 0:
             print()
             tools.MITprof_write_to_nc(dest_dir, MITprof_ds, len(ncei_function_list), original_file, input_dir)
-            #tools.MITprof_write_to_nc(dest_dir, MITprof_ds, len(ncei_function_list), basename, input_dir)
-            #tools.MITprof_write_to_nc(dest_dir, MITprof_ds, len(ncei_function_list), basename)
             print()
-        """
-            print(f"                SUCCESS:    {tools.count_total_survivors_TS(MITprof_ds)} PROFILES SURVIVED THE NCEI PROCESSING ALGORITHM\n")
-        else:
-            print(f"                FAILURE:    {tools.count_total_survivors_TS(MITprof_ds)} PROFILES SURVIVED THE NCEI PROCESSING ALGORITHM\n")
-        """
 
 
 def main(dest_dir, input_dir):

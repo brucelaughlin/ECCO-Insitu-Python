@@ -8,7 +8,9 @@ output_base_directory = "/Users/brucel/ecco/yip/profile_files_NCEI_processed"
 ###input_directory = "/Users/brucel/ecco/yip/ECCO-Insitu-Python/input_files_problematic_test"
 ###input_directory = "/Users/brucel/ecco/yip/ECCO-Insitu-Python/input_files_biggun"
 
-input_directory = "/Users/brucel/ecco/yip/profile_data/Interp_Profiles"
+#input_directory = "/Users/brucel/ecco/yip/profile_data/Interp_Profiles/MRB_WOD"
+input_directory = "/Users/brucel/ecco/yip/profile_data/Interp_Profiles/PFL"
+#input_directory = "/Users/brucel/ecco/yip/profile_data/Interp_Profiles"
 
 if len([f for f in Path(input_directory).rglob('*.nc') if f.is_file()]) > 0:
 #if len([f for f in Path(input_directory).glob('*.nc') if f.is_file()]) > 0:

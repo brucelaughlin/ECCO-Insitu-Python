@@ -28,7 +28,7 @@ def update_decimate_profiles_subdaily_to_once_daily(MITprof_ds, profile_var_key_
     # -----------------------------------------------------------------------------------------------------------------------------
 
     valid_1D_mask = tools.sph2cart_returnValidMaskOnly(MITprof_ds["prof_lon"]*deg2rad, MITprof_ds["prof_lat"]*deg2rad, 1)
-    for var_name, var_data_array in MITprof_ds.data_vars.items():
+    for var_name, var_data_array in list(MITprof_ds.data_vars.items()):
         if valid_1D_mask.dims[0] in var_data_array.dims:
             MITprof_ds[var_name] = var_data_array.where(valid_1D_mask, drop=True)
 
@@ -36,7 +36,7 @@ def update_decimate_profiles_subdaily_to_once_daily(MITprof_ds, profile_var_key_
 
     days_with_data_unique = np.unique(MITprof_ds['prof_YYYYMMDD'])
 
-    toss_set_all_days = []
+    toss_set_all_days = np.array([], dtype=int)
     
     for ii_unique_day in range(len(days_with_data_unique)):
 
@@ -67,8 +67,9 @@ def update_decimate_profiles_subdaily_to_once_daily(MITprof_ds, profile_var_key_
 
     toss_set_all_days = toss_set_all_days.astype(int)
 
+    keep_mask = ~np.isin(np.arange(len(MITprof_ds['prof_lon'])), toss_set_all_days)
     for prof_key in profile_var_key_set:
-        MITprof_ds[f"{prof_key}weight"][toss_set_all_days,:] = 0
+        MITprof_ds[f"{prof_key}weight"] = MITprof_ds[f"{prof_key}weight"].where(keep_mask, 0)
    
     MITprof_ds = tools.update_remove_zero_T_S_weighted_profiles_from_MITprof(MITprof_ds, profile_var_key_set)
 
