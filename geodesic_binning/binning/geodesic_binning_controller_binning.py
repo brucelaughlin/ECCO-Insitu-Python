@@ -33,10 +33,15 @@ land_mask_resolution = '10m'
 # showing up as plotted bins.
 min_ocean_fraction = 0.02
 
-# in <variables_of_interest_dict>, keys should be variable names, values should be units (tex-friendly, for plotting)
+# in <variables_of_interest_dict>, keys are variable names (matched to prof_<key> in the netCDF),
+# values are dicts with 'units' (tex-friendly) and 'mode':
+#   'anomaly' -> plots prof_T - prof_Tclim  (symmetric diverging colormap)
+#   'direct'  -> plots prof_<key> as-is     (one-sided colormap, e.g. cost)
 variables_of_interest_dict = {}
-variables_of_interest_dict["T"] = "$^\circ$C"
-variables_of_interest_dict["S"] = "psu"
+variables_of_interest_dict["T"]     = {"units": "$^\circ$C",          "mode": "anomaly"}
+variables_of_interest_dict["S"]     = {"units": "psu",                "mode": "anomaly"}
+variables_of_interest_dict["Tcost"] = {"units": "$(^\circ C)^2$",     "mode": "direct"}
+variables_of_interest_dict["Scost"] = {"units": "psu$^2$",            "mode": "direct"}
 
 # This parameter, <angular_precision>, determines the resolution of our bins.  Testing revealed it doesn't
 # have much effect on speed, so it's fine to make it pretty small (units are degrees lat/lon).

@@ -58,7 +58,12 @@ def bin_around_geodesic_vertices(geodesic_file: str, profile_input_dir: str, pro
         sorted_lons_list = []
         sorted_lats_list = []
 
-        unsorted_anomalies = (profiles_ds[f'prof_{variable}'].data - profiles_ds[f'prof_{variable}clim'].data)[good_index_mask]
+        var_meta = variables_of_interest[variable]
+        mode = var_meta['mode'] if isinstance(var_meta, dict) else 'anomaly'
+        if mode == 'direct':
+            unsorted_anomalies = profiles_ds[f'prof_{variable}'].data[good_index_mask]
+        else:
+            unsorted_anomalies = (profiles_ds[f'prof_{variable}'].data - profiles_ds[f'prof_{variable}clim'].data)[good_index_mask]
 
         value_min_individual = np.nanmin(unsorted_anomalies)
         value_max_individual = np.nanmax(unsorted_anomalies)
@@ -175,7 +180,9 @@ def bin_around_geodesic_vertices(geodesic_file: str, profile_input_dir: str, pro
 
                 patch_dict_single_var_depth["profiles_lats"] = anomalies_global_dict[variable_key]["profiles_lats"][valid_indices][:,i_depth]
                 patch_dict_single_var_depth["profiles_lons"] = anomalies_global_dict[variable_key]["profiles_lons"][valid_indices][:,i_depth]
-                patch_dict_single_var_depth["units_string"] = variables_of_interest[variable_key]
+                var_meta = variables_of_interest[variable_key]
+                patch_dict_single_var_depth["units_string"] = var_meta['units'] if isinstance(var_meta, dict) else var_meta
+                patch_dict_single_var_depth["pos_and_neg_face"] = (var_meta.get('mode', 'anomaly') == 'anomaly') if isinstance(var_meta, dict) else True
                 patch_dict_single_var_depth["profile_count"] = prof_count
 
                 geodesic_bin_data_dict[variable_key][depth_key] = patch_dict_single_var_depth

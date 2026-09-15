@@ -451,6 +451,12 @@ def set_colorbar_information_dictionary(plot_state_dict, geodesic_bin_data_dict)
     for variable_key in plot_state_dict['variable_key_list']:
         polygon_two_cbar_dict = copy.deepcopy(plot_state_dict['polygon_two_cbar_dict_template'])
         all_values_all_depths_list = geodesic_bin_data_dict[variable_key]["all_values_all_depths_list"]
+
+        # Override face colorbar symmetry per variable: anomaly → diverging, direct (cost) → one-sided.
+        depth_dicts = [v for v in geodesic_bin_data_dict[variable_key].values() if isinstance(v, dict) and 'pos_and_neg_face' in v]
+        if depth_dicts:
+            polygon_two_cbar_dict['face']['pos_and_neg'] = depth_dicts[0]['pos_and_neg_face']
+
         for polygon_component_string, cbar_dict in polygon_two_cbar_dict.items():
             value_list_macro_universal = []
             for depth_key in plot_state_dict['depth_key_list_dict'][variable_key]:

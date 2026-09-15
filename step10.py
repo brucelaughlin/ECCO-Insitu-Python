@@ -3,6 +3,7 @@ import glob
 import os
 import numpy as np
 import numpy.ma as ma
+import xarray as xr
 import tools
 
 
@@ -67,7 +68,7 @@ def update_decimate_profiles_subdaily_to_once_daily(MITprof_ds, profile_var_key_
 
     toss_set_all_days = toss_set_all_days.astype(int)
 
-    keep_mask = ~np.isin(np.arange(len(MITprof_ds['prof_lon'])), toss_set_all_days)
+    keep_mask = xr.DataArray(~np.isin(np.arange(len(MITprof_ds['prof_lon'])), toss_set_all_days), dims=['iPROF'])
     for prof_key in profile_var_key_set:
         MITprof_ds[f"{prof_key}weight"] = MITprof_ds[f"{prof_key}weight"].where(keep_mask, 0)
    

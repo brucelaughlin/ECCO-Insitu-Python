@@ -154,6 +154,9 @@ def NCEI_pipeline(dest_dir, input_dir):
             continue
 
         if tools.count_total_survivors_TS(MITprof_ds, profile_var_key_set) > 0:
+            for prof_key in profile_var_key_set:
+                if prof_key in MITprof_ds and f'{prof_key}clim' in MITprof_ds and f'{prof_key}weight' in MITprof_ds:
+                    MITprof_ds[f'{prof_key}cost'] = (MITprof_ds[prof_key] - MITprof_ds[f'{prof_key}clim'])**2 * MITprof_ds[f'{prof_key}weight']
             print()
             tools.MITprof_write_to_nc(dest_dir, MITprof_ds, len(ncei_function_list), original_file, input_dir)
             print()
