@@ -66,6 +66,10 @@ def update_zero_weight_points_on_prepared_profiles(MITprof_ds, profile_var_key_s
 
             for zero_criteria_code in zero_criteria_codes:
 
+                # Marker printed BEFORE the code's work, so if it raises, this is
+                # the last code line in the log and pinpoints the failing sub-case.
+                print(f"attempting step 07 code: {zero_criteria_code:02d}, variable: {prof_key[-1]}")
+
                 if zero_criteria_code == 1: #  profiles already have zero or missing weights
                     bool_mask_da = (MITprof_ds[f'{prof_key}weight'].isnull()) | (MITprof_ds[f'{prof_key}weight'] <= 0)
                     MITprof_ds[f'{prof_key}weight'] = xr.where(bool_mask_da, 0, MITprof_ds[f'{prof_key}weight'])
@@ -130,12 +134,17 @@ def update_zero_weight_points_on_prepared_profiles(MITprof_ds, profile_var_key_s
                     lats = MITprof_ds['prof_lat']
                     lons = MITprof_ds['prof_lon']
 
-                    if (lons > 360).sum().item() > 0:
-                        raise Exception("There are some bogus longitudes in this dataset")
+                    n_sentinel = int((lons > 360).sum().item())
+                    if n_sentinel > 0:
+                        # 99999 is a MITprof fill value for missing position — these profiles
+                        # have real T/S data but no recoverable location. Log them and let the
+                        # bounds mask below zero their weights (lon 99999 > 180 → rejected).
+                        print(f"  NOTE: {n_sentinel} profile(s) have sentinel lon=99999 (missing position); weights will be zeroed by bounds check")
 
-                    # Not sure if I'm letting problematic values slip through here, but we need to do something...
+                    # Wrap 0–360 longitudes to -180–180 for the bounds check below.
+                    # Profiles with lon=99999 are untouched here — they'll be caught by lons > 180.
                     if (lons > 180).sum().item() > 0:
-                        lons[lons > 180] -= 360
+                        lons = lons.where(lons <= 180, lons - 360)
 
                     # Do we really want to mask (0,0) in lon, lat space?
                     bool_mask_da_1D = (lats < -90) | (lats > 90) | (lons < -180) | (lons > 180) | ((lats == 0) & (lons == 0))
@@ -212,9 +221,15 @@ def update_zero_weight_points_on_prepared_profiles(MITprof_ds, profile_var_key_s
                 if zero_criteria_code == 3:
                     print(f'***code {zero_criteria_code} zeros-out the weights of null profile data***')
                 if not (zero_criteria_code == 11 and prof_key == 'prof_T'):
-                    print(f"weight mask passers/num valid: {np.sum(MITprof_ds[prof_key].notnull().data[~bool_mask_da])}/{MITprof_ds[prof_key].notnull().sum().item()} = {np.sum(MITprof_ds[prof_key].notnull().data[~bool_mask_da])/MITprof_ds[prof_key].notnull().sum().item() * 100:.2f}%")
+                    passers = np.sum(MITprof_ds[prof_key].notnull().data[~bool_mask_da])
+                    num_valid = MITprof_ds[prof_key].notnull().sum().item()
+                    pct = f"{passers / num_valid * 100:.2f}%" if num_valid > 0 else "n/a (0 valid)"
+                    print(f"weight mask passers/num valid: {passers}/{num_valid} = {pct}")
 
-                print(f"nonzero weights at current step / nonzero original weights: {(MITprof_ds[f'{prof_key}weight']>0).sum().item()}/{np.sum(original_weights>0)} = {(MITprof_ds[f'{prof_key}weight']>0).sum().item() / np.sum(original_weights>0) * 100:.2f}%")
+                nonzero_now = (MITprof_ds[f'{prof_key}weight'] > 0).sum().item()
+                nonzero_orig = np.sum(original_weights > 0)
+                pct = f"{nonzero_now / nonzero_orig * 100:.2f}%" if nonzero_orig > 0 else "n/a (0 original weights)"
+                print(f"nonzero weights at current step / nonzero original weights: {nonzero_now}/{nonzero_orig} = {pct}")
                 
 
                 print()
@@ -227,7 +242,10 @@ def update_zero_weight_points_on_prepared_profiles(MITprof_ds, profile_var_key_s
             if MITprof_ds[f'{prof_key}weight_code'].isnull().any().item():
                 raise Exception(f'nans found in {prof_key} weight code')
             print('---')
-            print(f"nonzero {prof_key[-1]} weights at conductivity step / nonzero original weights: {(MITprof_ds[f'{prof_key}weight']>0).sum().item()}/{np.sum(original_weights>0)} = {(MITprof_ds[f'{prof_key}weight']>0).sum().item() / np.sum(original_weights>0) * 100:.2f}%")
+            nonzero_now = (MITprof_ds[f'{prof_key}weight'] > 0).sum().item()
+            nonzero_orig = np.sum(original_weights > 0)
+            pct = f"{nonzero_now / nonzero_orig * 100:.2f}%" if nonzero_orig > 0 else "n/a (0 original weights)"
+            print(f"nonzero {prof_key[-1]} weights at conductivity step / nonzero original weights: {nonzero_now}/{nonzero_orig} = {pct}")
 
             
     return MITprof_ds

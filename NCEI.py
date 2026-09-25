@@ -105,7 +105,6 @@ def NCEI_pipeline(dest_dir, input_dir):
         bad_flag = False
 
         original_file = input_profile_files[file_dex]
-        basename = os.path.basename(original_file)
 
         print(f"ncei processing for file {file_dex+1:0{len(str(len(input_profile_files)))}}/{len(input_profile_files)}: {original_file}")
 
@@ -121,13 +120,33 @@ def NCEI_pipeline(dest_dir, input_dir):
             continue
 
         step_counter = 0
-        #tools.print_survivors(MITprof_ds, profile_var_key_set, step_counter)
 
         for ii in range(len(ncei_function_list)):
-            MITprof_ds = ncei_function_list[ii](MITprof_ds)
+            try:
+                MITprof_ds = ncei_function_list[ii](MITprof_ds)
+            except Exception as E:
+                print()
+                print("-------- FILE FAILURE --------")
+                print(f"NCEI chain CRASHED at step: {ii+1:02d} (of {len(ncei_function_list)})")
+                print(f"File: {Path(original_file).name}")
+                print(f"Exception:")
+                print(E)
+                print()
+                print(f"NO OUTPUT FILE WRITTEN for: {Path(original_file).name}")
+                print("continuing to next file")
+                print("-----------------------------")
+                print()
+                bad_flag = True
+                break
 
             if not MITprof_ds or MITprof_ds.sizes['iPROF'] == 0:
-                print("Your profile file may have no valid data; exiting without finishing")
+                print("-------- FILE FAILURE --------")
+                print(f"NCEI chain emptied all valid data at step: {ii+1:02d} (of {len(ncei_function_list)})")
+                print(f"File: {Path(original_file).name}")
+                print()
+                print(f"NO OUTPUT FILE WRITTEN for: {Path(original_file).name}")
+                print("continuing to next file")
+                print("-----------------------------")
                 print()
                 bad_flag = True
                 break
@@ -147,9 +166,10 @@ def NCEI_pipeline(dest_dir, input_dir):
                     if valid_data_dict_list[0][prof_key]['valid_data_count'] > 0:
                         print(f"valid {prof_key} data count / original valid {prof_key} data count: {valid_data_dict_list[step_counter][prof_key]['valid_data_count']}/{valid_data_dict_list[0][prof_key]['valid_data_count']} = {valid_data_dict_list[step_counter][prof_key]['valid_data_count'] / valid_data_dict_list[0][prof_key]['valid_data_count']*100:.2f}%")
 
-        if not MITprof_ds or MITprof_ds.sizes['iPROF'] == 0:
+        if bad_flag or not MITprof_ds or MITprof_ds.sizes['iPROF'] == 0:
             if not bad_flag:
-                print("Your profile file may have no valid data; exiting without finishing")
+                # completed all steps but nothing valid remains
+                print(f"NO OUTPUT FILE WRITTEN for: {Path(original_file).name} (no valid data after all steps)")
                 print()
             continue
 
@@ -159,6 +179,10 @@ def NCEI_pipeline(dest_dir, input_dir):
                     MITprof_ds[f'{prof_key}cost'] = (MITprof_ds[prof_key] - MITprof_ds[f'{prof_key}clim'])**2 * MITprof_ds[f'{prof_key}weight']
             print()
             tools.MITprof_write_to_nc(dest_dir, MITprof_ds, len(ncei_function_list), original_file, input_dir)
+        else:
+            # survived to the end with profiles present, but zero T/S survivors
+            print(f"NO OUTPUT FILE WRITTEN for: {Path(original_file).name} (0 surviving T/S profiles after all steps)")
+            print()
             print()
 
 
