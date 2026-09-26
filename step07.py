@@ -87,8 +87,6 @@ def update_zero_weight_points_on_prepared_profiles(MITprof_ds, profile_var_key_s
 
                 if zero_criteria_code == 3: #  missing T or S
                     bool_mask_da = MITprof_ds[prof_key].isnull()
-                    MITprof_ds[prof_key] = MITprof_ds[prof_key].where(~bool_mask_da) # perhaps not redundant if there are "missing" values, whatever that means
-                    ###MITprof_ds[prof_key] = MITprof_ds[prof_key].where(bool_mask_da) # perhaps not redundant if there are "missing" values, whatever that means
                     MITprof_ds[f'{prof_key}weight'] = xr.where(bool_mask_da, 0, MITprof_ds[f'{prof_key}weight'])
                     MITprof_ds[f'{prof_key}weight_code'] = xr.where(bool_mask_da, MITprof_ds[f'{prof_key}weight_code'] + 2**(zero_criteria_code - 1), MITprof_ds[f'{prof_key}weight_code'])
 
@@ -101,7 +99,6 @@ def update_zero_weight_points_on_prepared_profiles(MITprof_ds, profile_var_key_s
                     MITprof_ds[f'{prof_key}weight_code'] = xr.where(bool_mask_da, MITprof_ds[f'{prof_key}weight_code'] + 2**(zero_criteria_code - 1), MITprof_ds[f'{prof_key}weight_code'])
 
 
-                # Are we not also supposed to set these data values to fillVal?
                 if zero_criteria_code == 5: # T or S outside some legal range
                     bool_mask_da = (MITprof_ds[prof_key] < var_dict[prof_key]['val_min']) | (MITprof_ds[prof_key] > var_dict[prof_key]['val_max']) 
                     MITprof_ds[f'{prof_key}weight'] = xr.where(bool_mask_da, 0, MITprof_ds[f'{prof_key}weight'])
@@ -110,21 +107,20 @@ def update_zero_weight_points_on_prepared_profiles(MITprof_ds, profile_var_key_s
 
                 if zero_criteria_code == 6: # missing climatology value
                     #bool_mask_da = MITprof_ds[f'{prof_key}clim'].isnull()
-                    bool_mask_da = (MITprof_ds[f'{prof_key}clim'].isnull()) | (MITprof_ds[f'{prof_key}clim'] == 0)
+                    bool_mask_da = (MITprof_ds[f'{prof_key}clim'].isnull()) | (MITprof_ds[f'{prof_key}clim'] == 0) | (MITprof_ds[f'{prof_key}clim'] < -9000)
                     MITprof_ds[f'{prof_key}weight'] = xr.where(bool_mask_da, 0, MITprof_ds[f'{prof_key}weight'])
                     MITprof_ds[f'{prof_key}weight_code'] = xr.where(bool_mask_da, MITprof_ds[f'{prof_key}weight_code'] + 2**(zero_criteria_code - 1), MITprof_ds[f'{prof_key}weight_code'])
 
 
                 if zero_criteria_code == 7: # illegal dates/times
-                    y, m, d = np.zeros((3,num_profs), dtype=int)
-                    for ii in np.arange(num_profs):
-                        tmp = str(MITprof_ds['prof_YYYYMMDD'][ii].data)
-                        y[ii]  = int(tmp[0:4])
-                        m[ii]  = int(tmp[4:6])
-                        d[ii]  = int(tmp[6:8])
+                    yyyymmdd = MITprof_ds['prof_YYYYMMDD'].data.astype(int)
+                    y = yyyymmdd // 10000
+                    m = (yyyymmdd % 10000) // 100
+                    d = yyyymmdd % 100
                     # bad years are pre 1950 and after today's year
-                    bool_mask_da_1D = (y < 1950) | (y > datetime.datetime.now().year) | (m < 1) | (m > 12) | (d < 1) | (d > 31) 
-                    bool_mask_da_1D = bool_mask_da_1D | (MITprof_ds['prof_HHMMSS'] < 0) | (MITprof_ds['prof_HHMMSS'] > 240000)
+                    bool_mask_1D_np = (y < 1950) | (y > datetime.datetime.now().year) | (m < 1) | (m > 12) | (d < 1) | (d > 31)
+                    bool_mask_1D_np = bool_mask_1D_np | (MITprof_ds['prof_HHMMSS'].data < 0) | (MITprof_ds['prof_HHMMSS'].data > 240000)
+                    bool_mask_da_1D = xr.DataArray(bool_mask_1D_np, dims=['iPROF'])
                     bool_mask_da = MITprof_ds[prof_key].copy(deep=False, data=np.broadcast_to(bool_mask_da_1D.data[:, None], MITprof_ds[prof_key].shape))
                     MITprof_ds[f'{prof_key}weight'] = xr.where(bool_mask_da, 0, MITprof_ds[f'{prof_key}weight'])
                     MITprof_ds[f'{prof_key}weight_code'] = xr.where(bool_mask_da, MITprof_ds[f'{prof_key}weight_code'] + 2**(zero_criteria_code - 1), MITprof_ds[f'{prof_key}weight_code'])
@@ -221,7 +217,7 @@ def update_zero_weight_points_on_prepared_profiles(MITprof_ds, profile_var_key_s
                 if zero_criteria_code == 3:
                     print(f'***code {zero_criteria_code} zeros-out the weights of null profile data***')
                 if not (zero_criteria_code == 11 and prof_key == 'prof_T'):
-                    passers = np.sum(MITprof_ds[prof_key].notnull().data[~bool_mask_da])
+                    passers = np.sum(MITprof_ds[prof_key].notnull().data[~bool_mask_da.data])
                     num_valid = MITprof_ds[prof_key].notnull().sum().item()
                     pct = f"{passers / num_valid * 100:.2f}%" if num_valid > 0 else "n/a (0 valid)"
                     print(f"weight mask passers/num valid: {passers}/{num_valid} = {pct}")

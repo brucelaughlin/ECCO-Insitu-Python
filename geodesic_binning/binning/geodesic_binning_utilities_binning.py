@@ -183,6 +183,7 @@ def bin_around_geodesic_vertices(geodesic_file: str, profile_input_dir: str, pro
                 var_meta = variables_of_interest[variable_key]
                 patch_dict_single_var_depth["units_string"] = var_meta['units'] if isinstance(var_meta, dict) else var_meta
                 patch_dict_single_var_depth["pos_and_neg_face"] = (var_meta.get('mode', 'anomaly') == 'anomaly') if isinstance(var_meta, dict) else True
+                patch_dict_single_var_depth["depth_m"] = float(profiles_ds['prof_depth'].data[i_depth])
                 patch_dict_single_var_depth["profile_count"] = prof_count
 
                 geodesic_bin_data_dict[variable_key][depth_key] = patch_dict_single_var_depth

@@ -18,7 +18,7 @@ sys.path.append(plotting_dir)
 import geodesic_binning_utilities_plotting as utils
 
 
-def plot_spawner(pickle_file_binning):
+def plot_spawner(pickle_file_binning, exclude_keys=None):
 
     EXPECTED_SCHEMA_VERSION = 3
 
@@ -31,6 +31,10 @@ def plot_spawner(pickle_file_binning):
             f"Binning pickle has _schema_version={v!r}, expected {EXPECTED_SCHEMA_VERSION}. "
             f"Re-run the binning controller to regenerate the pickle file."
         )
+
+    if exclude_keys:
+        for k in exclude_keys:
+            geodesic_bin_data_dict.pop(k, None)
 
     print("Building plot state from binning data...")
     plot_state_dict = utils.build_plot_state_dict(geodesic_bin_data_dict)

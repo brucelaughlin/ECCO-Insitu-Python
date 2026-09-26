@@ -210,8 +210,8 @@ def createNETCDF(file, dest_dir, prof_desc, prof_HHMMSS, prof_lat, prof_lon, pro
     prof_Terr[:] = arr_zeros_2d
 
     prof_Testim = nc.createVariable('prof_Testim', np.float64, ('iPROF', 'iDEPTH'))
-    prof_Testim = "pot. temp. estimate (e.g. from atlas)"
-    prof_Testim = "degree C"
+    prof_Testim.long_name = "pot. temp. estimate (e.g. from atlas)"
+    prof_Testim.units = 'degree C'
     prof_Testim[:] = arr_zeros_2d
 
     prof_Tflag = nc.createVariable('prof_Tflag', np.float64, ('iPROF', 'iDEPTH'))

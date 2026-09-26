@@ -234,7 +234,8 @@ def update_prof_and_tile_points_on_profiles(MITprof_ds, grid_dir, llcN, wet_or_a
     if 'prof_flag' not in MITprof_ds:
         MITprof_ds['prof_flag'] = xr.zeros_like(MITprof_ds['prof_YYYYMMDD'])
 
-    MITprof_ds['prof_flag'][ins_too_far] = 101
+    too_far_mask = xr.DataArray(np.isin(np.arange(len(MITprof_ds['prof_flag'])), ins_too_far), dims=['iPROF'])
+    MITprof_ds['prof_flag'] = xr.where(too_far_mask, 101, MITprof_ds['prof_flag'])
 
 
     return MITprof_ds

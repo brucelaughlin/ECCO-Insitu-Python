@@ -71,7 +71,8 @@ profile_file_list_dev = [
         #"/Users/brucel/ecco/yip/sample_data/test_output_problematic_files/WOD_WO_1992_CTD_OSD__ncei_step_10.nc",
         #"/Users/brucel/ecco/yip/sample_data/test_output_problematic_files/WOD_WO_2002_GLD__ncei_step_10.nc",
         #profile_input_dir / "CTD_WOD/WOD_WO_1992_CTD_OSD__ncei_step_10.nc",
-        profile_input_dir / "GLD_WOD/WOD_WO_2017_GLD__ncei_step_10.nc",
+        #profile_input_dir / "GLD_WOD/WOD_WO_2017_GLD__ncei_step_10.nc",
+        profile_input_dir / "CTD_WOD/WOD_WO_1997_CTD_OSD__ncei_step_10.nc"
 ]
 
 profile_file_list = profile_file_list_dev

@@ -221,10 +221,14 @@ def set_plot_text(plot_state_dict):
     profile_count_per_variable = plot_state_dict["profile_count_per_variable"][variable_key]
     depth_count_per_variable = plot_state_dict["depth_count_per_variable"][variable_key]
 
+    depth_m = plot_state_dict['patch_information_dict'][variable_key][depth_key].get('depth_m', None)
+    depth_m_string = f" ({depth_m:.0f}m)" if depth_m is not None else ""
+    num_depth_levels_total = int(plot_state_dict['num_depth_levels_ncei_file']) + 1
+
     title_string = (
             f"\nvariable: {variable_key}\n"
-            f"current depth level: {(int(depth_key) + 1):{num_digits_print_depth_level}}/{(int(plot_state_dict['num_depth_levels_ncei_file']) + 1):{num_digits_print_depth_level}}\n"
-            f"{depth_count_per_variable}/{(int(plot_state_dict['num_depth_levels_ncei_file']) + 1):{num_digits_print_depth_level}} total depth levels populated; "
+            f"{num_depth_levels_total} total depth levels in file; displaying level {(int(depth_key) + 1):{num_digits_print_depth_level}}/{num_depth_levels_total:{num_digits_print_depth_level}}{depth_m_string}\n"
+            f"{depth_count_per_variable}/{num_depth_levels_total:{num_digits_print_depth_level}} total depth levels populated; "
             f"geodesic bins populated at current depth level: {len(plot_state_dict['patch_information_dict'][variable_key][depth_key]['count_array']):{num_digits_print_bins}}/{plot_state_dict['num_geodesic_bins']}\n"
             f"{profile_count_per_variable:,} total profiles binned; profiles binned at current depth level: {np.sum(plot_state_dict['patch_information_dict'][variable_key][depth_key]['count_array']):{num_digits_print_profiles},}/{profile_count_per_variable:,}\n"
             f"profile_file: {plot_state_dict['profile_file_stem']}\n"
@@ -435,6 +439,7 @@ def build_all_patch_collections(geodesic_bin_data_dict, plot_state_dict):
                 'norm_edge': norm_edge,
                 'macro_face_value_list': patch_dict['macro']['face_value_list'][:],
                 'macro_representative_points': macro_representative_points,
+                'depth_m': patch_dict.get('depth_m', None),
             }
 
             print(f"variable {variable_counter}/{num_variables}: {variable_key}; depth level {depth_counter:{num_digits_depth_print}}/{num_depths:{num_digits_depth_print}}; time (seconds): {time.time() - depth_time:.2f}")
