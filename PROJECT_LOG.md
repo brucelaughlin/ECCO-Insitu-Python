@@ -6,6 +6,68 @@ git history with human-readable rationale.)
 
 ---
 
+## 2026-09-26 — Production run + reference comparison
+
+### Production run
+Full 509-file multi-source run completed (~3 hours). 422 files produced output;
+87 produced no output, all for legitimate reasons:
+
+| Group | Files | Reason |
+|-------|-------|--------|
+| CTD_BGC | 34 | BGC-only variables (O2, NO3, CHL, pH, ALK, DIC) — no T/S |
+| SOCAT | 33 | Surface CO2 only (prof_PCO) — no T/S |
+| PFL_BGC_A | 13 | Has prof_T/S fields but all zero/NaN; only O2 has data |
+| ITP2 | 5 | No valid profile coordinates at step01 |
+| Samoa | 2 | **Bug** (now fixed): step10 missing `if prof_key in MITprof_ds` guard, crashed on absent prof_Sweight |
+
+### Bug fixed: step10 missing guard
+Steps 03–09 all guard each `profile_var_key_set` loop with
+`if prof_key in MITprof_ds`. Step10 was missing this, causing a KeyError
+for Samoa mooring files which have `prof_T`/`prof_Tweight` but no `prof_S`.
+Fix: one-line guard added to step10's weight-zeroing loop. NCEI.py's global
+`profile_var_key_set` design is unchanged — each step is responsible for
+checking variable existence, consistent with the existing pattern.
+
+Samoa files verified after fix: both complete all 10 steps; ~4.2% of profiles
+survive step10 subdaily decimation (expected — dense hourly mooring time series
+decimated to once-daily nearest-noon, per PI design intent).
+
+### Reference comparison: CTD 1992 and 1993
+Compared new output against Ian's 2019 reference files
+(`CTD_data_at_end_of_processing_chain/CTD_20190131_199[23].nc`).
+
+**Profile counts:** new has ~1.9× more profiles (e.g. 1992: 46,135 vs 24,114).
+Expected — new run uses a more recent WOD extraction; the reference was built
+in 2019 from an older/smaller vintage. Not reproducible profile-for-profile.
+
+**T distribution and mean profile:** nearly identical shape, range, and vertical
+structure. New mean profile tracks reference through the full water column.
+
+**S distribution:** reference contains values down to 0.08 PSU (likely data
+errors in the older WOD vintage); new run minimum is ~30 PSU — step07 code 5
+range QC working correctly on the cleaner input.
+
+**S mean profile:** very close, slight divergence below ~1500 m — consistent
+with WOA23 vs WOA13 climatology difference at depth (expected and correct).
+
+**Weight distributions:** same shape and scale for both T and S weights.
+
+**Deep coverage:** new run has better survival at depth (WOA23 full-depth clim
+provides values to 5500 m; WOA13 stopped at 1500 m, so deep profiles previously
+had no climatology reference and were dropped by step07 code 6).
+
+**Geographic coverage:** same global distribution; new run fills in more of the
+ocean consistent with the larger input vintage.
+
+**Conclusion:** all differences are explained by (1) newer WOD vintage,
+(2) WOA23 vs WOA13 climatology, (3) tighter S range QC. No unexplained
+discrepancies. Chain is producing physically correct output.
+
+### Files
+- Changed: `step10.py` (missing guard), `NCEI.py` (reverted; step10 fix is the right approach)
+
+---
+
 ## 2026-09-26 — Performance audit: step01 and step10 (~36–60× speedups)
 
 ### Summary
