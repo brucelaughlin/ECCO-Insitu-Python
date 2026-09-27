@@ -10,12 +10,10 @@ from scipy.interpolate import interp1d
 #from scipy import interpolate, interp1d
 
 
-def update_sigmaTS_on_prepared_profiles(MITprof_ds, profile_var_key_set, grid_dir, sigma_file_dict, respect_existing_zero_weights, new_floor_dict):
+def update_sigmaTS_on_prepared_profiles(MITprof_ds, profile_var_key_set, grid_dir, sigma_file_dict, respect_existing_zero_weights, new_floor_dict, llcN=90):
     """
-    Update MITprof objects with new T and S uncertainty fields 
+    Update MITprof objects with new T and S uncertainty fields
     """
-
-    llcN = 90
     deg2rad = np.pi/180
     mform = '>f4'
 
@@ -108,8 +106,8 @@ def update_sigmaTS_on_prepared_profiles(MITprof_ds, profile_var_key_set, grid_di
     return MITprof_ds
 
     
-def main(MITprof_ds, profile_var_key_set, grid_dir, sigma_file_dict, respect_existing_zero_weights, new_floor_dict):
-    MITprof_ds = update_sigmaTS_on_prepared_profiles(MITprof_ds, profile_var_key_set, grid_dir, sigma_file_dict, respect_existing_zero_weights, new_floor_dict)
+def main(MITprof_ds, profile_var_key_set, grid_dir, sigma_file_dict, respect_existing_zero_weights, new_floor_dict, llcN=90):
+    MITprof_ds = update_sigmaTS_on_prepared_profiles(MITprof_ds, profile_var_key_set, grid_dir, sigma_file_dict, respect_existing_zero_weights, new_floor_dict, llcN=llcN)
     return MITprof_ds
     
 
