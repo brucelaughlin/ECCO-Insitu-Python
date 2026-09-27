@@ -60,6 +60,35 @@ def _time_bracket(doy):
     return b - 1, b, (doy - a[b - 1]) / (a[b] - a[b - 1])
 
 
+def _time_brackets_vec(pdoy):
+    """Vectorized version of _time_bracket over an array of day-of-year values.
+    Returns (m0, m1, w1) arrays: bracketing month indices and weight on m1."""
+    a = _MID_MONTH_DOY
+    pdoy = np.asarray(pdoy, float)
+    m0 = np.empty(pdoy.shape, dtype=int)
+    m1 = np.empty(pdoy.shape, dtype=int)
+    w1 = np.empty(pdoy.shape, dtype=float)
+
+    wrap_span = (_YEAR_LEN - a[11]) + a[0]
+    # wrap region: before mid-Jan or on/after mid-Dec -> bracket (Dec, Jan)
+    before = pdoy < a[0]
+    after = pdoy >= a[11]
+    wrap = before | after
+    m0[wrap] = 11
+    m1[wrap] = 0
+    w1[before] = (pdoy[before] + (_YEAR_LEN - a[11])) / wrap_span
+    w1[after] = (pdoy[after] - a[11]) / wrap_span
+
+    # interior: searchsorted gives the upper bracket month
+    mid = ~wrap
+    b = np.searchsorted(a, pdoy[mid], side='right')     # 1..11
+    aidx = b - 1
+    m0[mid] = aidx
+    m1[mid] = b
+    w1[mid] = (pdoy[mid] - a[aidx]) / (a[b] - a[aidx])
+    return m0, m1, w1
+
+
 def _blended_field(field_months, doy):
     """Return a single (depth, nlat, nlon) field for a given day-of-year, blending
     the two bracketing monthly fields (NaN-aware). 'nearest' picks one month."""
@@ -123,20 +152,34 @@ def _space_interp(field3d, lon_grid, lat_grid, plon, plat):
 # ==============================================================================
 
 def _depth_interp(clim_cols, clim_depths, prof_depths):
-    nprof = clim_cols.shape[0]
-    out = np.full((nprof, prof_depths.size), np.nan)
-    for i in range(nprof):
-        col = clim_cols[i]
-        v = np.isfinite(col)
-        if not v.any():
-            continue
-        cd, cv = clim_depths[v], col[v]
-        if DEPTH_METHOD == 'nearest':
-            in_range = (prof_depths >= cd.min()) & (prof_depths <= cd.max())
-            idx = np.abs(prof_depths[:, None] - cd[None, :]).argmin(axis=1)
-            out[i, in_range] = cv[idx][in_range]
-        else:
-            out[i] = np.interp(prof_depths, cd, cv, left=np.nan, right=np.nan)
+    """Interpolate (nprof, ndepth_clim) -> (nprof, ndepth_prof) along depth.
+
+    Vectorized: prof_depths and clim_depths are shared 1-D axes, so the bracket
+    indices and weights are the same for every profile and are computed once,
+    then applied to all profiles via fancy indexing. Interior NaNs in a clim
+    column propagate to NaN here and are handled by the nearest-valid fallback
+    downstream (the deepest/shallowest valid value), matching the previous
+    per-profile behavior after fallback.
+    """
+    clim_depths = np.asarray(clim_depths, float)
+    prof_depths = np.asarray(prof_depths, float)
+    dmin, dmax = clim_depths.min(), clim_depths.max()
+
+    if DEPTH_METHOD == 'nearest':
+        idx = np.abs(prof_depths[:, None] - clim_depths[None, :]).argmin(axis=1)  # (ndepth_prof,)
+        out = clim_cols[:, idx]                                                    # (nprof, ndepth_prof)
+    else:
+        hi = np.clip(np.searchsorted(clim_depths, prof_depths), 1, clim_depths.size - 1)
+        lo = hi - 1
+        w = (prof_depths - clim_depths[lo]) / (clim_depths[hi] - clim_depths[lo])   # (ndepth_prof,)
+        lo_v = clim_cols[:, lo]                                                     # (nprof, ndepth_prof)
+        hi_v = clim_cols[:, hi]
+        out = (1.0 - w)[None, :] * lo_v + w[None, :] * hi_v
+
+    # out-of-range prof depths -> NaN (no extrapolation; fallback handles them)
+    oor = (prof_depths < dmin) | (prof_depths > dmax)
+    out = out.copy()
+    out[:, oor] = np.nan
     return out
 
 
@@ -152,33 +195,39 @@ def _fallback_fill(prof_clim, blended_cols_all_depths, clim_depths, prof_depths)
     (all-land neighborhood) are handled by _fallback_nearest_cell upstream."""
     if FALLBACK == 'none':
         return prof_clim
-    nprof = prof_clim.shape[0]
-    for i in range(nprof):
-        need = np.isnan(prof_clim[i])
-        if not need.any():
+    clim_depths = np.asarray(clim_depths, float)
+    prof_depths = np.asarray(prof_depths, float)
+    cols = blended_cols_all_depths                      # (nprof, ndepth_clim)
+
+    # Distance from every prof depth to every clim depth (shared axes, computed
+    # once): (ndepth_prof, ndepth_clim).
+    dist = np.abs(prof_depths[:, None] - clim_depths[None, :])
+
+    valid = np.isfinite(cols)                           # (nprof, ndepth_clim)
+    # For each (profile, prof_depth), pick the nearest clim depth that is VALID
+    # for that profile: mask invalid clim depths to +inf distance, argmin.
+    # dist broadcast to (nprof, ndepth_prof, ndepth_clim) would be large, so loop
+    # over the (few) prof depths that actually need filling instead of profiles.
+    need_any = np.isnan(prof_clim)                      # (nprof, ndepth_prof)
+    cols_safe = np.where(valid, cols, np.nan)
+    for k in np.where(need_any.any(axis=0))[0]:         # loop over prof-depth cols (<=102), not profiles
+        rows = np.isnan(prof_clim[:, k])                # profiles needing fill at this depth
+        if not rows.any():
             continue
-        col = blended_cols_all_depths[i]
-        v = np.isfinite(col)
-        if not v.any():
-            continue
-        cd, cv = clim_depths[v], col[v]
-        idx = np.abs(prof_depths[need][:, None] - cd[None, :]).argmin(axis=1)
-        prof_clim[i, need] = cv[idx]
+        # masked distance for these profiles: invalid clim depths -> inf
+        md = np.where(valid[rows], dist[k][None, :], np.inf)   # (nrows, ndepth_clim)
+        nn = md.argmin(axis=1)                                 # nearest valid clim depth idx
+        picked = cols_safe[rows, nn]
+        # rows whose entire column is invalid stay NaN (argmin over all-inf -> 0,
+        # but cols_safe there is nan, so picked is nan -> correct)
+        prof_clim[rows, k] = picked
     return prof_clim
 
 
-def _fallback_nearest_cell(blended_cols, field3d, lon_grid, lat_grid, plon, plat):
-    """For profiles whose space interpolation returned an all-NaN column (their
-    grid neighborhood is entirely land/NaN), replace with the nearest grid cell
-    that has any valid data, searched on the unit sphere. Modifies/returns
-    blended_cols (nprof, ndepth_clim)."""
-    if FALLBACK == 'none':
-        return blended_cols
-    bad = np.where(~np.isfinite(blended_cols).any(axis=1))[0]
-    if bad.size == 0:
-        return blended_cols
-
-    # valid surface cells (any depth finite) -> unit-sphere coords for KD-tree
+def _build_valid_cell_tree(field3d, lon_grid, lat_grid):
+    """Build (once) a KD-tree over valid surface cells of a field, on the unit
+    sphere, plus the (iy, ix) index of each. Returns (tree, flat_idx)."""
+    from scipy.spatial import cKDTree
     valid_surf = np.isfinite(field3d).any(axis=0)          # (nlat, nlon)
     la = np.deg2rad(lat_grid); lo = np.deg2rad(lon_grid)
     LO, LA = np.meshgrid(lo, la)
@@ -186,17 +235,36 @@ def _fallback_nearest_cell(blended_cols, field3d, lon_grid, lat_grid, plon, plat
     ys = (np.cos(LA) * np.sin(LO))[valid_surf]
     zs = (np.sin(LA))[valid_surf]
     flat_idx = np.argwhere(valid_surf)                     # (k, 2) -> (iy, ix)
-    from scipy.spatial import cKDTree
-    tree = cKDTree(np.column_stack([xs, ys, zs]))
+    return cKDTree(np.column_stack([xs, ys, zs])), flat_idx
+
+
+def _fallback_nearest_cell(blended_cols, field3d, lon_grid, lat_grid, plon, plat,
+                           cache=None, key=None):
+    """For profiles whose space interpolation returned an all-NaN column (their
+    grid neighborhood is entirely land/NaN), replace with the nearest grid cell
+    that has any valid data, searched on the unit sphere. Modifies/returns
+    blended_cols. The KD-tree is expensive to build, so it is cached per field
+    (keyed by month index) when `cache`/`key` are supplied."""
+    if FALLBACK == 'none':
+        return blended_cols
+    bad = np.where(~np.isfinite(blended_cols).any(axis=1))[0]
+    if bad.size == 0:
+        return blended_cols
+
+    if cache is not None and key in cache:
+        tree, flat_idx = cache[key]
+    else:
+        tree, flat_idx = _build_valid_cell_tree(field3d, lon_grid, lat_grid)
+        if cache is not None:
+            cache[key] = (tree, flat_idx)
 
     pla, plo = np.deg2rad(plat[bad]), np.deg2rad(plon[bad])
     q = np.column_stack([np.cos(pla) * np.cos(plo),
                          np.cos(pla) * np.sin(plo),
                          np.sin(pla)])
     _, nn = tree.query(q, k=1)
-    for j, i in enumerate(bad):
-        iy, ix = flat_idx[nn[j]]
-        blended_cols[i] = field3d[:, iy, ix]
+    iy = flat_idx[nn, 0]; ix = flat_idx[nn, 1]
+    blended_cols[bad] = np.moveaxis(field3d[:, iy, ix], 0, -1)   # vectorized assign
     return blended_cols
 
 
@@ -218,33 +286,40 @@ def interpolate_climatology(field_months, lon_grid, lat_grid, clim_depths,
     pdoy = np.asarray(pdoy, float); prof_depths = np.asarray(prof_depths, float)
     nprof = plon.size
 
-    # Group profiles by their (m0, m1, rounded-w1) time bracket so we build each
-    # blended field once instead of per profile. Round w1 to 0.01 for grouping.
-    keys = np.empty(nprof, dtype=object)
-    brackets = {}
-    for i in range(nprof):
-        m0, m1, w1 = _time_bracket(pdoy[i])
-        if TIME_METHOD == 'nearest':
-            w1 = 1.0 if w1 >= 0.5 else 0.0
-        key = (m0, m1, round(float(w1), 2))
-        keys[i] = key
-        brackets.setdefault(key, []).append(i)
+    # Per-profile time brackets, vectorized (no Python loop over profiles).
+    m0, m1, w1 = _time_brackets_vec(pdoy)
+    if TIME_METHOD == 'nearest':
+        w1 = (w1 >= 0.5).astype(float)
 
+    # Group by the (m0, m1) MONTH PAIR only — at most 12 distinct pairs, not one
+    # per rounded weight. For each pair, space-interpolate the profiles against
+    # BOTH monthly fields once, then blend the two interpolated columns using
+    # each profile's own w1 (exact time interp, no rounding). Space-level
+    # nearest-cell fallback is applied per field (KD-tree built once per field,
+    # cached), not per group.
     clim_cols = np.full((nprof, clim_depths.size), np.nan)
-    for key, idxs in brackets.items():
-        m0, m1, w1 = key
-        if TIME_METHOD == 'nearest':
-            field = field_months[m1 if w1 >= 0.5 else m0]
-        else:
-            f0, f1 = field_months[m0], field_months[m1]
-            both = np.isfinite(f0) & np.isfinite(f1)
-            field = np.where(np.isfinite(f0), f0, f1).astype(float)
-            field[both] = (1 - w1) * f0[both] + w1 * f1[both]
+    pairs = {}
+    for i in range(nprof):
+        pairs.setdefault((int(m0[i]), int(m1[i])), []).append(i)
+
+    field_cache = {}   # month index -> (space-interp fn is cheap; cache fallback tree)
+    for (a, b), idxs in pairs.items():
         idxs = np.array(idxs)
-        clim_cols[idxs] = _space_interp(field, lon_grid, lat_grid, plon[idxs], plat[idxs])
-        # space-level fallback for all-land neighborhoods within this group
-        clim_cols[idxs] = _fallback_nearest_cell(
-            clim_cols[idxs], field, lon_grid, lat_grid, plon[idxs], plat[idxs])
+        pl, pa = plon[idxs], plat[idxs]
+        # interpolate against each of the two bracketing monthly fields
+        c0 = _space_interp(field_months[a], lon_grid, lat_grid, pl, pa)
+        c0 = _fallback_nearest_cell(c0, field_months[a], lon_grid, lat_grid, pl, pa, cache=field_cache, key=a)
+        if b == a:
+            blended = c0
+        else:
+            c1 = _space_interp(field_months[b], lon_grid, lat_grid, pl, pa)
+            c1 = _fallback_nearest_cell(c1, field_months[b], lon_grid, lat_grid, pl, pa, cache=field_cache, key=b)
+            wcol = w1[idxs][:, None]                      # (ngroup, 1), broadcasts over depth
+            both = np.isfinite(c0) & np.isfinite(c1)
+            # blend where both valid; else take whichever exists
+            blended = np.where(np.isfinite(c0), c0, c1)
+            blended = np.where(both, (1 - wcol) * c0 + wcol * c1, blended)
+        clim_cols[idxs] = blended
 
     prof_clim = _depth_interp(clim_cols, clim_depths, prof_depths)
     prof_clim = _fallback_fill(prof_clim, clim_cols, clim_depths, prof_depths)

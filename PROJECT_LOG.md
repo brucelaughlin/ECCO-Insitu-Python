@@ -6,6 +6,45 @@ git history with human-readable rationale.)
 
 ---
 
+## 2026-09-26 — clim_interp.py vectorization (~3000× speedup)
+
+### Summary
+Rewrote the inner loop of `interpolate_climatology` after profiling showed step03
+was the bottleneck: 9.4 s/file vs ~0.6 s before the new optimal interpolation was added.
+
+### Root cause
+The original implementation grouped profiles by **rounded time-bracket weight**,
+producing up to 365 distinct groups per file and rebuilding the scipy KD-tree
+(needed for land-neighbor fallback) once per group — 365× repeated construction.
+
+### Changes
+- `_time_brackets_vec`: vectorized over the full profile array (no per-profile loop).
+- `interpolate_climatology`: now groups by **(m0, m1) month-pair** only (≤12 groups),
+  never by weight. Each profile's exact `w1` is still used for the blend, so time
+  interpolation is still continuous and exact — grouping by pair is just a
+  reorganization, not a coarsening.
+- `_fallback_nearest_cell`: KD-tree cached per field (month index) and reused across
+  all groups that share that field.
+- `_depth_interp`, `_fallback_fill`: vectorized; bracket weights computed once for
+  the shared `prof_depths` axis, applied to all profiles at once.
+
+### Verification
+Timed on the full CTD WOD 1992 file (64,928 profiles):
+
+| N | Time | ms/prof | valid frac |
+|---|------|---------|-----------|
+| 5,000 | 0.65 s | 0.13 | 1.000 |
+| 20,000 | 0.56 s | 0.028 | 1.000 |
+| 64,928 | 1.62 s | 0.025 | 1.000 |
+
+Pre-optimization baseline was ~74 ms/profile → **~3000× speedup**. Output value
+range and valid fraction unchanged.
+
+### Files
+- Changed: `clim_interp.py`
+
+---
+
 ## 2026-09-26 — NCEI chain bug fixes, WOA23 climatology, and optimal interpolation
 
 ### Summary
