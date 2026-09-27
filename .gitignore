@@ -4,3 +4,16 @@ __pycache__/
 z_*
 processed_profile_files/
 *.zarr
+
+# --- editor / OS / tooling noise ---
+.DS_Store
+.claude/
+*.part
+
+# --- scratch, drafts, and archived work (kept locally, not tracked) ---
+# dot-prefixed python files are used here as "hide this draft" markers
+.*.py
+**/.drafts/
+x_old/
+binned_output/
+**/binned_output/
