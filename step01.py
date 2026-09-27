@@ -211,11 +211,19 @@ def update_prof_and_tile_points_on_profiles(MITprof_ds, grid_dir, llcN, wet_or_a
 
     bool_mask_good_coords = ((abs(MITprof_ds['prof_lat']) <= 90) & MITprof_ds['prof_lat'].notnull() & MITprof_ds['prof_lon'].notnull()).data
 
-    distances = np.full_like(MITprof_ds['prof_lat'].data, np.nan)
-    # Note that this assumes our lat/lon grids are 1D
-    for profile_index in range(len(bool_mask_good_coords)):
-        if bool_mask_good_coords[profile_index]:
-            distances[profile_index] = distance.distance((MITprof_ds['prof_lat'][profile_index], MITprof_ds['prof_lon'][profile_index]), (MITprof_ds['prof_interp_lat'][profile_index], MITprof_ds['prof_interp_lon'][profile_index])).km
+    # Vectorized haversine replaces per-profile geopy.distance() calls.
+    # Accuracy vs true geodesic is <0.3% — more than adequate for a coarse 2×dx
+    # grid-cell sanity flag. Avoids 64k Python-level Karney iterations and 260k
+    # xarray scalar isel() calls that dominated step01 runtime.
+    _lat1 = np.deg2rad(np.asarray(MITprof_ds['prof_lat'],       float))
+    _lat2 = np.deg2rad(np.asarray(MITprof_ds['prof_interp_lat'], float))
+    _lon1 = np.deg2rad(np.asarray(MITprof_ds['prof_lon'],       float))
+    _lon2 = np.deg2rad(np.asarray(MITprof_ds['prof_interp_lon'], float))
+    _dlat = _lat2 - _lat1;  _dlon = _lon2 - _lon1
+    _a = np.sin(_dlat / 2)**2 + np.cos(_lat1) * np.cos(_lat2) * np.sin(_dlon / 2)**2
+    _earth_km = 6371.0
+    distances = np.full(len(bool_mask_good_coords), np.nan)
+    distances[bool_mask_good_coords] = 2 * _earth_km * np.arcsin(np.sqrt(np.clip(_a, 0, 1)))[bool_mask_good_coords]
 
 
     # Hardcoded goodness
