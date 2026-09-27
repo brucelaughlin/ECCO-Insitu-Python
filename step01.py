@@ -211,19 +211,21 @@ def update_prof_and_tile_points_on_profiles(MITprof_ds, grid_dir, llcN, wet_or_a
 
     bool_mask_good_coords = ((abs(MITprof_ds['prof_lat']) <= 90) & MITprof_ds['prof_lat'].notnull() & MITprof_ds['prof_lon'].notnull()).data
 
-    # Vectorized haversine replaces per-profile geopy.distance() calls.
-    # Accuracy vs true geodesic is <0.3% — more than adequate for a coarse 2×dx
-    # grid-cell sanity flag. Avoids 64k Python-level Karney iterations and 260k
-    # xarray scalar isel() calls that dominated step01 runtime.
-    _lat1 = np.deg2rad(np.asarray(MITprof_ds['prof_lat'],       float))
-    _lat2 = np.deg2rad(np.asarray(MITprof_ds['prof_interp_lat'], float))
-    _lon1 = np.deg2rad(np.asarray(MITprof_ds['prof_lon'],       float))
-    _lon2 = np.deg2rad(np.asarray(MITprof_ds['prof_interp_lon'], float))
-    _dlat = _lat2 - _lat1;  _dlon = _lon2 - _lon1
-    _a = np.sin(_dlat / 2)**2 + np.cos(_lat1) * np.cos(_lat2) * np.sin(_dlon / 2)**2
-    _earth_km = 6371.0
+    # Vectorized geodesic distance via pyproj.Geod (WGS84 ellipsoid, same model
+    # as geopy). Replaces a per-profile Python loop that called geopy.distance()
+    # with xarray scalar indexing, which accounted for ~70% of step01 runtime.
+    # pyproj.Geod.inv() accepts arrays and returns exact geodesic distances in
+    # a single call — identical accuracy, no loop overhead.
+    from pyproj import Geod as _Geod
+    _geod = _Geod(ellps='WGS84')
+    _lon1 = np.asarray(MITprof_ds['prof_lon'],        float)
+    _lat1 = np.asarray(MITprof_ds['prof_lat'],        float)
+    _lon2 = np.asarray(MITprof_ds['prof_interp_lon'], float)
+    _lat2 = np.asarray(MITprof_ds['prof_interp_lat'], float)
     distances = np.full(len(bool_mask_good_coords), np.nan)
-    distances[bool_mask_good_coords] = 2 * _earth_km * np.arcsin(np.sqrt(np.clip(_a, 0, 1)))[bool_mask_good_coords]
+    good = bool_mask_good_coords
+    _, _, _dist_m = _geod.inv(_lon1[good], _lat1[good], _lon2[good], _lat2[good])
+    distances[good] = _dist_m / 1000.0   # metres -> km
 
 
     # Hardcoded goodness
