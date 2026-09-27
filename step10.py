@@ -33,25 +33,31 @@ def update_decimate_profiles_subdaily_to_once_daily(MITprof_ds, profile_var_key_
         if valid_1D_mask.dims[0] in var_data_array.dims:
             MITprof_ds[var_name] = var_data_array.where(valid_1D_mask, drop=True)
 
+    # Extract to numpy once; avoids xarray attribute overhead inside the per-day loop.
     X, Y, Z = tools.sph2cart(MITprof_ds["prof_lon"]*deg2rad, MITprof_ds["prof_lat"]*deg2rad, earth_radius)
+    X_np = np.asarray(X); Y_np = np.asarray(Y); Z_np = np.asarray(Z)
+    hhmmss_np = np.asarray(MITprof_ds['prof_HHMMSS'])
+    yyyymmdd_np = np.asarray(MITprof_ds['prof_YYYYMMDD'])
 
-    days_with_data_unique = np.unique(MITprof_ds['prof_YYYYMMDD'])
+    days_with_data_unique = np.unique(yyyymmdd_np)
 
     toss_set_all_days = np.array([], dtype=int)
-    
-    for ii_unique_day in range(len(days_with_data_unique)):
 
-        indices_current_day = np.nonzero((MITprof_ds['prof_YYYYMMDD'] == days_with_data_unique[ii_unique_day]).data)[0]
-        
-        stacked_coords = np.stack((X[indices_current_day], Y[indices_current_day], Z[indices_current_day]), axis = 1)
-        distances_array = np.sqrt(np.sum((stacked_coords[:, None, :] - stacked_coords[None, :, :])**2, axis=2))
+    for day in days_with_data_unique:
+
+        indices_current_day = np.nonzero(yyyymmdd_np == day)[0]
+
+        coords = np.stack((X_np[indices_current_day],
+                           Y_np[indices_current_day],
+                           Z_np[indices_current_day]), axis=1)   # (n, 3) numpy
+        distances_array = np.sqrt(np.sum((coords[:, None, :] - coords[None, :, :])**2, axis=2))
 
         # Sort all profiles for this day by closeness to noon — best candidates first.
         # Then greedily keep each profile only if no already-kept profile is within
         # distance_tolerance. This guarantees no two survivors are within tolerance,
         # and priority is determined by the scientific criterion (noon proximity), not
         # by accident of data order.
-        noon_order = np.argsort(np.abs(MITprof_ds['prof_HHMMSS'][indices_current_day] - closest_time))
+        noon_order = np.argsort(np.abs(hhmmss_np[indices_current_day] - closest_time))
         sorted_indices = indices_current_day[noon_order]
         sorted_local = noon_order  # local indices into distances_array, in noon order
 
@@ -59,11 +65,12 @@ def update_decimate_profiles_subdaily_to_once_daily(MITprof_ds, profile_var_key_
         toss_set_current_day = []
 
         for ii_local, global_idx in zip(sorted_local, sorted_indices):
-            if any(distances_array[ii_local, k] < distance_tolerance for k in kept_local):
+            # Vectorized distance check: slice the kept columns, take min.
+            if kept_local and distances_array[ii_local, kept_local].min() < distance_tolerance:
                 toss_set_current_day.append(global_idx)
             else:
                 kept_local.append(ii_local)
-        
+
         toss_set_all_days = np.union1d(toss_set_all_days, toss_set_current_day)
 
     toss_set_all_days = toss_set_all_days.astype(int)
