@@ -86,6 +86,19 @@ def NCEI_pipeline(dest_dir, input_dir):
     method = 1                      # method 0 or 1
 
 
+    ncei_function_list = [
+        partial(step01.main, grid_dir=grid_dir, llcN=llcN, wet_or_all=wet_or_all),
+        partial(step02.main, sphere_bin_dir=sphere_bin_dir, grid_dir=grid_dir),
+        partial(step03.main, profile_var_key_set=profile_var_key_set, climatology_file=climatology_file),
+        partial(step04.main, profile_var_key_set=profile_var_key_set, grid_dir=grid_dir, sigma_file_dict=sigma_file_dict, respect_existing_zero_weights=respect_existing_zero_weights, new_floor_dict=new_floor_dict),
+        partial(step05.main, profile_var_key_set=profile_var_key_set, grid_dir=grid_dir, apply_gamma_factor=apply_gamma_factor, llcN=llcN),
+        partial(step06.main, replace_missing_S_with_clim_S=replace_missing_S_with_clim_S), # it's funny to me that all other modules check for S, but this one requires it...
+        partial(step07.main, profile_var_key_set=profile_var_key_set, exclude_high_latitude_profiles_from_clim_cost=exclude_high_latitude_profiles_from_clim_cost, dubious_clim_lat_threshold=dubious_clim_lat_threshold),
+        partial(step08.main, profile_var_key_set=profile_var_key_set),
+        partial(step09.main, profile_var_key_set=profile_var_key_set),
+        partial(step10.main, profile_var_key_set=profile_var_key_set, distance_tolerance=distance_tolerance, closest_time=closest_time, method=method),
+    ]
+
     print()
 
     for file_dex in range(len(input_profile_files)):
@@ -99,26 +112,7 @@ def NCEI_pipeline(dest_dir, input_dir):
         MITprof_ds = xr.open_dataset(original_file)
         MITprof_ds = MITprof_ds.assign_coords({dim: np.arange(MITprof_ds.sizes[dim]) for dim in MITprof_ds.dims if dim not in MITprof_ds.coords})
 
-        # Restrict to variables actually present in this file — e.g. Samoa has
-        # prof_T but no prof_S; passing prof_S to the steps causes a crash at step10.
-        file_var_key_set = {v for v in profile_var_key_set if v in MITprof_ds.data_vars}
-        if file_var_key_set != profile_var_key_set:
-            print(f"  NOTE: {profile_var_key_set - file_var_key_set} not in this file, processing {file_var_key_set} only")
-
-        ncei_function_list = [
-            partial(step01.main, grid_dir=grid_dir, llcN=llcN, wet_or_all=wet_or_all),
-            partial(step02.main, sphere_bin_dir=sphere_bin_dir, grid_dir=grid_dir),
-            partial(step03.main, profile_var_key_set=file_var_key_set, climatology_file=climatology_file),
-            partial(step04.main, profile_var_key_set=file_var_key_set, grid_dir=grid_dir, sigma_file_dict=sigma_file_dict, respect_existing_zero_weights=respect_existing_zero_weights, new_floor_dict=new_floor_dict),
-            partial(step05.main, profile_var_key_set=file_var_key_set, grid_dir=grid_dir, apply_gamma_factor=apply_gamma_factor, llcN=llcN),
-            partial(step06.main, replace_missing_S_with_clim_S=replace_missing_S_with_clim_S), # it's funny to me that all other modules check for S, but this one requires it...
-            partial(step07.main, profile_var_key_set=file_var_key_set, exclude_high_latitude_profiles_from_clim_cost=exclude_high_latitude_profiles_from_clim_cost, dubious_clim_lat_threshold=dubious_clim_lat_threshold),
-            partial(step08.main, profile_var_key_set=file_var_key_set),
-            partial(step09.main, profile_var_key_set=file_var_key_set),
-            partial(step10.main, profile_var_key_set=file_var_key_set, distance_tolerance=distance_tolerance, closest_time=closest_time, method=method),
-        ]
-
-        valid_data_dict_list = [tools.collect_valid_data_stats(MITprof_ds, file_var_key_set)]
+        valid_data_dict_list = [tools.collect_valid_data_stats(MITprof_ds, profile_var_key_set)]
 
         if not MITprof_ds or MITprof_ds.sizes['iPROF'] == 0:
             print("Your profile file may have no valid data; exiting without finishing")

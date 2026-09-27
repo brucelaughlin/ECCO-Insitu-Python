@@ -77,7 +77,8 @@ def update_decimate_profiles_subdaily_to_once_daily(MITprof_ds, profile_var_key_
 
     keep_mask = xr.DataArray(~np.isin(np.arange(len(MITprof_ds['prof_lon'])), toss_set_all_days), dims=['iPROF'])
     for prof_key in profile_var_key_set:
-        MITprof_ds[f"{prof_key}weight"] = MITprof_ds[f"{prof_key}weight"].where(keep_mask, 0)
+        if prof_key in MITprof_ds:
+            MITprof_ds[f"{prof_key}weight"] = MITprof_ds[f"{prof_key}weight"].where(keep_mask, 0)
    
     MITprof_ds = tools.update_remove_zero_T_S_weighted_profiles_from_MITprof(MITprof_ds, profile_var_key_set)
 
