@@ -157,6 +157,17 @@ def update_zero_weight_points_on_prepared_profiles(MITprof_ds, profile_var_key_s
                     clim_for_cost = MITprof_ds[f'{prof_key}clim']
                     weight_for_cost = MITprof_ds[f'{prof_key}weight']
 
+                    # Scrub sentinel/zero values out of the cost inputs, mirroring the MATLAB
+                    # original (update_zero_weight_points_on_prepared_profiles.m, case {9,10}):
+                    # value/clim < -9000 (fill) or == 0 -> NaN; weight < 0 -> NaN. These become
+                    # NaN so they're skipped by the nan-aware mean/threshold below. On current
+                    # inputs there are no such values (fills are already NaN), so this is inert
+                    # today; kept for parity in case a future input carries raw sentinels/zeros.
+                    checkVal = -9000
+                    prof_for_cost   = prof_for_cost.where((prof_for_cost >= checkVal) & (prof_for_cost != 0))
+                    clim_for_cost   = clim_for_cost.where((clim_for_cost >= checkVal) & (clim_for_cost != 0))
+                    weight_for_cost = weight_for_cost.where(weight_for_cost >= 0)
+
                     cost_vs_climatology = (prof_for_cost - clim_for_cost)**2 * weight_for_cost
 
                     if exclude_high_latitude_profiles_from_clim_cost:

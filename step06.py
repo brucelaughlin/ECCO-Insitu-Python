@@ -39,10 +39,15 @@ def calculate_adiabatic_T_gradient(S,T,P):
     return adiabatic_T_gradient
 
 
-def calculate_potential_T(MITprof_ds):
+def calculate_potential_T(MITprof_ds, prof_S):
     """
     % DESCRIPTION:
     %    Calculates potential temperature as per UNESCO 1983 report.
+
+    prof_S is passed explicitly (rather than read from MITprof_ds) so the caller
+    can supply a transient, climatology-augmented salinity for the calculation
+    WITHOUT mutating the stored MITprof_ds['prof_S']. See
+    update_prof_insitu_T_to_potential_T for why that matters.
     """
 
     coord_mesh_depths_as_cols = np.tile(MITprof_ds['prof_depth'], (len(MITprof_ds['prof_lat']), 1))
@@ -55,27 +60,27 @@ def calculate_potential_T(MITprof_ds):
     # We reference the surface, where pressure is 0
     reference_profile_pressures = np.zeros_like(profile_pressures)
 
-    if not (MITprof_ds['prof_S'].shape == MITprof_ds['prof_T'].shape and MITprof_ds['prof_T'].shape == profile_pressures.shape): 
+    if not (prof_S.shape == MITprof_ds['prof_T'].shape and MITprof_ds['prof_T'].shape == profile_pressures.shape):
         raise Exception('Step06 potential T calculation error: all inputs must have the same shape')
 
     # theta1
     del_profile_pressures  = reference_profile_pressures - profile_pressures
-    del_theta = del_profile_pressures * calculate_adiabatic_T_gradient(MITprof_ds['prof_S'], MITprof_ds['prof_T'], profile_pressures)
+    del_theta = del_profile_pressures * calculate_adiabatic_T_gradient(prof_S, MITprof_ds['prof_T'], profile_pressures)
     theta = MITprof_ds['prof_T'] + 0.5* del_theta
     q_factor = del_theta
 
     # theta2
-    del_theta = del_profile_pressures * calculate_adiabatic_T_gradient(MITprof_ds['prof_S'], theta, profile_pressures + 0.5 * del_profile_pressures)
+    del_theta = del_profile_pressures * calculate_adiabatic_T_gradient(prof_S, theta, profile_pressures + 0.5 * del_profile_pressures)
     theta = theta + (1 - 1/np.sqrt(2)) * (del_theta - q_factor)
     q_factor = (2 - np.sqrt(2)) * del_theta + (-2 + 3/np.sqrt(2)) * q_factor
 
     # theta3
-    del_theta = del_profile_pressures * calculate_adiabatic_T_gradient(MITprof_ds['prof_S'], theta, profile_pressures + 0.5 * del_profile_pressures)
+    del_theta = del_profile_pressures * calculate_adiabatic_T_gradient(prof_S, theta, profile_pressures + 0.5 * del_profile_pressures)
     theta = theta + (1 + 1/np.sqrt(2)) * (del_theta - q_factor)
     q_factor = (2 + np.sqrt(2)) * del_theta + (-2 -3/np.sqrt(2)) * q_factor
 
     # theta4
-    del_theta = del_profile_pressures * calculate_adiabatic_T_gradient(MITprof_ds['prof_S'], theta, profile_pressures + del_profile_pressures)
+    del_theta = del_profile_pressures * calculate_adiabatic_T_gradient(prof_S, theta, profile_pressures + del_profile_pressures)
     potential_T = theta + (del_theta - 2 * q_factor)/6
 
     return potential_T
@@ -83,21 +88,42 @@ def calculate_potential_T(MITprof_ds):
 
 def update_prof_insitu_T_to_potential_T(MITprof_ds, replace_missing_S_with_clim_S):
     """
-    This code lets T realize its potential
+    Convert in-situ temperature to potential temperature.
+
+    Potential-T needs salinity, so where salinity is missing we optionally borrow
+    climatology salinity — but ONLY as a transient input to the calculation. We
+    must NOT persist climatology values into the stored prof_S, or those made-up
+    salinities would survive to the output and be assimilated as if they were real
+    observations. (The original MATLAB does the substitution on a local copy and
+    writes back only prof_T; an earlier Python version wrote clim S back into
+    prof_S, which inflated assimilated salinity vs the reference — this restores
+    the MATLAB behaviour.)
+
+    Two distinct cases both use clim S transiently:
+      * replace_missing_S_with_clim_S: mixed T+S file with some T-only casts —
+        borrow clim S at valid-T/missing-S points to salvage those temperatures.
+      * all salinity missing (e.g. XBT / T-only moored buoys): no measured S at
+        all, so clim S is mandatory just to convert any temperature.
     """
 
-    if replace_missing_S_with_clim_S:
-        MITprof_ds['prof_S'] = xr.where((MITprof_ds['prof_S'].isnull()) & (MITprof_ds['prof_T'].notnull()), MITprof_ds['prof_Sclim'], MITprof_ds['prof_S'])
+    # Transient salinity used ONLY for the potential-T calc; prof_S is untouched.
+    S_for_calc = MITprof_ds['prof_S']
 
-    # Check to see if **all** salinity values are missing
+    if replace_missing_S_with_clim_S:
+        S_for_calc = xr.where(
+            S_for_calc.isnull() & MITprof_ds['prof_T'].notnull(),
+            MITprof_ds['prof_Sclim'], S_for_calc)
+
+    # Whole-file temperature-only case: no measured salinity anywhere.
     if MITprof_ds['prof_S'].isnull().all():
-        MITprof_ds['prof_S'] = MITprof_ds['prof_Sclim']
-    
-    if (MITprof_ds['prof_T'].notnull() & MITprof_ds['prof_S'].notnull()).any():
-        MITprof_ds['prof_T'] = xr.DataArray(calculate_potential_T(MITprof_ds), dims=['iPROF','iDEPTH'])
+        S_for_calc = MITprof_ds['prof_Sclim']
+
+    if (MITprof_ds['prof_T'].notnull() & S_for_calc.notnull()).any():
+        MITprof_ds['prof_T'] = xr.DataArray(
+            calculate_potential_T(MITprof_ds, S_for_calc), dims=['iPROF', 'iDEPTH'])
     else:
         print("step06: There is not a single good T and S pair to use here")
-    
+
     return MITprof_ds
 
  

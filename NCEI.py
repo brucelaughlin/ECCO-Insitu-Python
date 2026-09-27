@@ -46,7 +46,8 @@ def NCEI_pipeline(dest_dir, input_dir):
     # Path to dir containing llc090_sphere_point_n_10242_ids.bin and llc090_sphere_point_n_02562_ids.bin
     sphere_bin_dir = '/Users/brucel/ecco/yip/sample_data/ecco-insitu/sweet_gdrive/grid_llc90/sphere_point_distribution'
 
-    climatology_file = "/Users/brucel/ecco/yip/sample_data/ecco-insitu/sweet_gdrive/TS_Climatology/WOA13_v2_TS_clim_merged_with_potential_T.mat"
+    #climatology_file = "/Users/brucel/ecco/yip/sample_data/ecco-insitu/sweet_gdrive/TS_Climatology/WOA13_v2_TS_clim_merged_with_potential_T.mat"  # legacy WOA13 .mat
+    climatology_file = "/Users/brucel/ecco/yip/woa23_climatology/woa23_decav91C0_TS_clim_potential_T_1deg_fulldepth.nc"  # WOA23 1991-2020, full depth, potential T + S
 
     sigma_file_dict = {
             'prof_T': '/Users/brucel/ecco/yip/sample_data/ecco-insitu/sweet_gdrive/CTD_sigma_TS/Theta_sigma_smoothed_method_02_masked_merged_capped_extrapolated.bin',
@@ -177,6 +178,22 @@ def NCEI_pipeline(dest_dir, input_dir):
             for prof_key in profile_var_key_set:
                 if prof_key in MITprof_ds and f'{prof_key}clim' in MITprof_ds and f'{prof_key}weight' in MITprof_ds:
                     MITprof_ds[f'{prof_key}cost'] = (MITprof_ds[prof_key] - MITprof_ds[f'{prof_key}clim'])**2 * MITprof_ds[f'{prof_key}weight']
+
+            # Normalize prof_lon to [-180, 180) for output, matching the reference
+            # end-of-chain files (their prof_lon is -180..180, ours was raw 0..360).
+            # Done only at write time: every in-chain consumer of prof_lon feeds
+            # sph2cart (periodic in longitude, so unaffected), and step07 does its
+            # own local wrap for bounds — so converting here changes only the
+            # stored convention, not any computation. prof_interp_lon is already
+            # -180..180 from step01.
+            # Only wrap physically-valid longitudes (<= 360); leave any missing-
+            # position sentinel (e.g. 99999) untouched so the wrap can't disguise
+            # it as a real location. (No sentinels survive to output today, but
+            # guard anyway.)
+            if 'prof_lon' in MITprof_ds:
+                lon = MITprof_ds['prof_lon']
+                MITprof_ds['prof_lon'] = xr.where(lon <= 360, ((lon + 180) % 360) - 180, lon)
+
             print()
             tools.MITprof_write_to_nc(dest_dir, MITprof_ds, len(ncei_function_list), original_file, input_dir)
         else:
