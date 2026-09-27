@@ -79,6 +79,10 @@ all 10 steps, expressed as % of originals. Samoa fixed files run separately (N=2
 | MEOP | 21 | 68.8% | 69.8% | 73.8% | 73.9% |
 | Samoa | 2 | 4.17% | 4.17% | n/a | n/a |
 
+Samoa detail (T-only moorings, step10 is the only loss step):
+- `samoa_1992_MRB`: 3135/75139 = 4.17%
+- `samoa_2012_MRB`: 2235/53567 = 4.17%
+
 Physical interpretation: GLD low (~12%) because gliders sample continuously and
 step10 decimates to once-daily; CTD moderate (~60%) due to repeat casts at the same
 station; MEOP moderate (~70%) due to seal haul-out clustering. Autonomous platforms
