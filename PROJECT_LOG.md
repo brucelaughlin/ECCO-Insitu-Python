@@ -63,6 +63,53 @@ ocean consistent with the larger input vintage.
 (2) WOA23 vs WOA13 climatology, (3) tighter S range QC. No unexplained
 discrepancies. Chain is producing physically correct output.
 
+### Step-10 survivor rates by source class
+
+Parsed from the production run log. "Survivors" = profiles with nonzero weight after
+all 10 steps, expressed as % of originals. Samoa fixed files run separately (N=2).
+
+| Source | N files | Avg T% | Med T% | Avg S% | Med S% |
+|--------|---------|--------|--------|--------|--------|
+| CTD_WOD | 64 | 60.0% | 77.1% | 59.6% | 75.9% |
+| GLD_WOD | 26 | 12.3% | 8.7% | 12.3% | 8.7% |
+| MRB_WOD | 35 | 91.0% | 98.7% | 89.1% | 99.1% |
+| XBT_WOD | 66 | 94.0% | 94.5% | n/a | n/a |
+| PFL | 87 | 94.8% | 97.4% | 93.6% | 96.8% |
+| PFL_BGC | 55 | 91.2% | 98.5% | 91.3% | 98.5% |
+| MEOP | 21 | 68.8% | 69.8% | 73.8% | 73.9% |
+| Samoa | 2 | 4.17% | 4.17% | n/a | n/a |
+
+Physical interpretation: GLD low (~12%) because gliders sample continuously and
+step10 decimates to once-daily; CTD moderate (~60%) due to repeat casts at the same
+station; MEOP moderate (~70%) due to seal haul-out clustering. Autonomous platforms
+(PFL, MRB, XBT) 90%+ because already well-spaced. Samoa ~4% is deliberate PI design
+(dense hourly mooring time series → one profile per day prevents moorings from
+dominating the cost function).
+
+### Per-step dropout analysis (T profiles, mean % cumulative survival)
+
+Steps 1–7 and 9 drop nothing — they zero weights but do not remove profiles.
+Two steps actually remove profiles:
+
+| Step | CTD_WOD | GLD_WOD | MRB_WOD | XBT_WOD | PFL | PFL_BGC | MEOP |
+|------|---------|---------|---------|---------|-----|---------|------|
+| 8 (QC) | −4.8% | −0.6% | −0.1% | −1.7% | −2.9% | −7.2% | −0.9% |
+| 10 (decimate) | −35.2% | −87.1% | −8.9% | −4.3% | −2.3% | −1.6% | −30.3% |
+
+Step 8 (`update_remove_zero_T_S_weighted_profiles`) is a secondary loss point,
+most significant for PFL_BGC (−7.2%) and CTD (−4.8%). Step 10 (subdaily decimation)
+is the dominant loss for GLD, CTD, and MEOP.
+
+### Additional validation checks
+
+- **NaN cost fields:** NaN exclusively at zero-weight points — correct (cost
+  undefined where weight=0).
+- **High-cost outliers:** MEOP max ~260, MRB max ~82. Confirmed physical —
+  Antarctic baroclinic intrusions (MEOP) and El Niño variability (MRB), not bugs.
+- **lon/lat bounds:** all output `prof_lon` in [−180, 180), `prof_lat` in [−90, 90].
+- **Source type spot-checks:** MRB `prof_S` survival 5.74% (was 1898% pre-fix);
+  XBT T-only clean; CTD/PFL full T+S.
+
 ### Files
 - Changed: `step10.py` (missing guard), `NCEI.py` (reverted; step10 fix is the right approach)
 
