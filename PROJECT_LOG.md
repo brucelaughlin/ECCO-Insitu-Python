@@ -6,6 +6,77 @@ git history with human-readable rationale.)
 
 ---
 
+## 2026-09-26 — Performance audit: step01 and step10 (~36–60× speedups)
+
+### Summary
+Full audit of all 10 step files for xarray-inside-hot-loop antipatterns.
+Two real bottlenecks found and fixed; the rest were structurally clean.
+
+### Audit methodology
+Code-reviewed all step files for: xarray DataArrays accessed element-by-element
+in Python loops; expensive objects (KD-trees, geodesic solvers) rebuilt inside
+loops; `any()`/`all()` generators pulling scalar xarray values; incremental
+`np.union1d`/`append` inside tight loops. Confirmed severity by profiling with
+`cProfile` on the 1992 CTD file (64,928 profiles).
+
+### step10 — 185s → 3s (~60×)
+
+**Root cause (two issues):**
+1. `X`, `Y`, `Z`, `prof_HHMMSS`, `prof_YYYYMMDD` left as xarray DataArrays going
+   into the per-day decimation loop. Every `distances_array[i, k]` scalar access
+   triggered xarray's full `__getattr__` / `_attr_sources` / numpy version-check
+   machinery — ~12M calls, ~170s.
+2. `any(distances_array[ii_local, k] < tol for k in kept_local)` — Python
+   generator pulling xarray scalars one at a time.
+
+**Fix:** extract all five arrays to numpy `.values` before the loop; replace the
+generator with `distances_array[ii_local, kept_local].min() < tol` (one numpy
+slice). Output verified **bit-identical** (`prof_T`, `prof_S`, `prof_Tweight`,
+`prof_Sweight` all match exactly).
+
+### step01 — 27s → 1s (~27×)
+
+**Root cause (two issues):**
+1. `geopy.distance.distance()` called once per profile in a Python loop — each
+   call runs the full iterative Karney WGS84 geodesic solver in pure Python.
+   64,928 calls × ~100 µs each ≈ 7s.
+2. `MITprof_ds['prof_lat'][i]` etc. inside the same loop — xarray scalar `isel()`
+   triggered ~260k DataArray constructions ≈ 12s.
+
+**Fix:** `pyproj.Geod.inv()` — same Karney WGS84 algorithm as geopy, but
+accepts arrays and runs as a single vectorized C call. Verified: max difference
+vs geopy = **0.0 m** (not an approximation — identical algorithm, identical
+ellipsoid). `geopy` import retained in case it's used elsewhere.
+
+**Note on algorithm choice:** an earlier intermediate commit used haversine
+(spherical approximation, max 0.37% error). That was replaced with `pyproj.Geod`
+before merging — full geodesic accuracy was preserved. The haversine would have
+been defensible for this particular 2×dx threshold check, but pyproj is a cleaner
+answer for a production codebase.
+
+### Steps found clean (no action)
+- **step07**: outer loop is ≤11 iterations (one per quality code); each body is
+  fully vectorized xarray/numpy. `.item()` calls are logging only.
+- **steps 02, 04, 05, 06, 08, 09**: no hot-loop antipatterns found in code review.
+  (steps 04–09 could not be timed end-to-end due to missing gdrive grid files in
+  local test environment, but code structure is clean.)
+
+### Cumulative speedups (on 1992 CTD, 64,928 profiles)
+
+| Step | Before | After | Factor |
+|------|--------|-------|--------|
+| step01 | ~27s | ~1s | ~27× |
+| step03 | ~76s (see prior entry) | ~6s | ~13× |
+| step10 | ~185s | ~3s | ~60× |
+
+Chain wall-clock reduction for this file: roughly **280s → 10s** for these three
+steps alone.
+
+### Files
+- Changed: `step01.py`, `step10.py`
+
+---
+
 ## 2026-09-26 — clim_interp.py vectorization (~3000× speedup)
 
 ### Summary
