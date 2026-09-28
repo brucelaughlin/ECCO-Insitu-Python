@@ -6,6 +6,67 @@ git history with human-readable rationale.)
 
 ---
 
+## 2026-09-28 — Parallel file processing with ProcessPoolExecutor
+
+### Motivation
+
+The 509-file loop was sequential: each file went through all 10 steps before the
+next one started.  Since every file is completely independent, running them on
+multiple cores simultaneously was the obvious path to a large wall-clock reduction.
+
+### Design
+
+**`_process_one_file(args)`** — new top-level function that runs the full 10-step
+chain for one input file.  Returns `(file_index, n_total, None, captured_stdout, bad_flag)`.
+
+- All output (`print()` calls from step modules, `tools.MITprof_write_to_nc`, etc.)
+  is captured via `contextlib.redirect_stdout(buf)` into a `StringIO` buffer.
+- The main process receives this buffer and prints it atomically — so the log
+  stays readable even with 8 workers completing out of order.
+
+**`_worker_init(prebaked_clim_paths)`** — runs once per worker process at startup.
+Loads all pre-baked climatology .nc files into module-level numpy arrays
+(`_worker_prebaked_clim_arrays`).
+
+This is where caching now lives.  macOS uses the `spawn` multiprocessing start
+method (a fresh Python interpreter per worker, not a fork of the parent), so
+main-process memory cannot be inherited.  Each worker loads its own copy —
+4 files × 8 workers = 32 loads at startup, versus 509 loads in the old sequential
+loop.
+
+**`NCEI_pipeline`** now builds `prebaked_clim_paths` (the dict of
+`{depth_tuple: path}` strings), passes it to `ProcessPoolExecutor` via
+`initargs=(prebaked_clim_paths,)`, and submits one task per file.
+Results are printed as they complete (`as_completed`).
+
+**Sequential mode** (`n_workers=1`) is preserved: `_worker_init` is called inline
+and the loop runs directly — no `ProcessPoolExecutor` involved.  Single-file
+debugging works unchanged.  Pass `-n 1` on the command line to force it.
+
+### Expected speedup
+
+| Config | Estimated wall time |
+|--------|-------------------|
+| Old sequential | ~3 hours |
+| 8 workers (default, 12-core machine) | ~25 minutes |
+| 4 workers | ~45 minutes |
+
+The theoretical limit is `3 hours / 8 = 22.5 min`; in practice I/O and startup
+overhead put it a bit above that.  Actual time to be measured in next production run.
+
+### Bit-level comparison required
+
+Before this is considered validated, a full parallel run must be compared bit-for-bit
+against the baseline at `/Users/brucel/ecco/yip/profile_files_NCEI_processed_20260926_192623`.
+Since files are processed independently and no shared state exists, the output
+should be identical.
+
+### Files changed
+- `NCEI.py`: replaced sequential loop with `ProcessPoolExecutor`; added
+  `_worker_init`, `_process_one_file`; added `--n_workers` CLI flag.
+
+---
+
 ## 2026-09-28 — Pre-baked climatology on fixed observation depth grids
 
 ### Motivation (the boss's ask)
