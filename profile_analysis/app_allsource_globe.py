@@ -719,6 +719,7 @@ DARK = '#1a1a1a'
 MID  = '#252525'
 TEXT = '#dddddd'
 ACC  = '#88ccff'
+DIM  = '#aaaaaa'   # secondary / label text — readable on dark background
 
 SCALE_MIN, SCALE_MAX = 1.0, 6.0
 
@@ -735,8 +736,13 @@ app.layout = html.Div(style={'backgroundColor': DARK, 'color': TEXT,
                     'alignItems': 'center', 'gap': '20px'}, children=[
         html.H2('Multi-source — Interactive Bin Explorer',
                 style={'margin': 0, 'fontSize': '16px', 'color': ACC}),
-        html.Span('Pick a source, then click a bin to inspect its Z-T structure.',
-                  style={'fontSize': '12px', 'color': '#888'}),
+        html.Span(
+            ('Pick a source, then click a bin to inspect its Z-T structure.  '
+             + (f'Data: {DATASET_FIRST_YM[0]}-{DATASET_FIRST_YM[1]:02d} – '
+                f'{DATASET_LAST_YM[0]}-{DATASET_LAST_YM[1]:02d}  |  '
+                if DATASET_FIRST_YM and DATASET_LAST_YM else '')
+             + f'{len(bins):,} bins  |  {", ".join(SOURCES)}'),
+            style={'fontSize': '12px', 'color': DIM}),
     ]),
 
     html.Div(style={'display': 'flex', 'gap': '8px', 'flex': '0 0 45vh',
@@ -777,7 +783,7 @@ app.layout = html.Div(style={'backgroundColor': DARK, 'color': TEXT,
 
             html.Div([
                 html.Label('Source',
-                           style={'fontSize': '12px', 'color': '#aaa',
+                           style={'fontSize': '12px', 'color': DIM,
                                   'marginBottom': '6px', 'display': 'block'}),
                 dcc.Dropdown(
                     id='source-select',
@@ -790,7 +796,7 @@ app.layout = html.Div(style={'backgroundColor': DARK, 'color': TEXT,
 
             html.Div([
                 html.Label('Globe: probability threshold',
-                           style={'fontSize': '12px', 'color': '#aaa',
+                           style={'fontSize': '12px', 'color': DIM,
                                   'marginBottom': '6px', 'display': 'block'}),
                 dcc.RadioItems(
                     id='prob-radio',
@@ -804,7 +810,7 @@ app.layout = html.Div(style={'backgroundColor': DARK, 'color': TEXT,
 
             html.Div([
                 html.Label('Probability basis',
-                           style={'fontSize': '12px', 'color': '#aaa',
+                           style={'fontSize': '12px', 'color': DIM,
                                   'marginBottom': '6px', 'display': 'block'}),
                 dcc.RadioItems(
                     id='basis-radio',
@@ -820,7 +826,7 @@ app.layout = html.Div(style={'backgroundColor': DARK, 'color': TEXT,
             ]),
 
             html.Div([
-                html.Label('Field', style={'fontSize': '12px', 'color': '#aaa',
+                html.Label('Field', style={'fontSize': '12px', 'color': DIM,
                                            'marginBottom': '6px', 'display': 'block'}),
                 dcc.RadioItems(
                     id='field-radio',
@@ -836,7 +842,7 @@ app.layout = html.Div(style={'backgroundColor': DARK, 'color': TEXT,
             ]),
 
             html.Div([
-                html.Label('Anomaly reference', style={'fontSize': '12px', 'color': '#aaa',
+                html.Label('Anomaly reference', style={'fontSize': '12px', 'color': DIM,
                                                        'marginBottom': '6px', 'display': 'block'}),
                 dcc.RadioItems(
                     id='anom-radio',
@@ -861,7 +867,7 @@ app.layout = html.Div(style={'backgroundColor': DARK, 'color': TEXT,
                 ),
             ]),
 
-            html.Div(id='bin-info', style={'fontSize': '11px', 'color': '#888',
+            html.Div(id='bin-info', style={'fontSize': '11px', 'color': DIM,
                                             'lineHeight': '1.6'}),
         ]),
     ]),
@@ -981,7 +987,7 @@ def _empty_fig(message):
         xaxis=dict(visible=False), yaxis=dict(visible=False),
         annotations=[dict(text=message, xref='paper', yref='paper',
                           x=0.5, y=0.5, showarrow=False,
-                          font=dict(size=14, color='#555'))],
+                          font=dict(size=14, color=DIM))],
         autosize=True, margin=dict(l=20, r=20, t=20, b=20),
     )
     return fig
@@ -1064,7 +1070,7 @@ def update_plots(bin_id, source_sel, field, anom_ref, prob_label, basis):
     if bin_id is None or bin_id not in bins:
         empty = _empty_fig('Click a bin on the globe')
         return (empty, _empty_fig(''),
-                html.Div('No bin selected.', style={'color': '#555', 'fontSize': '12px'}),
+                html.Div('No bin selected.', style={'color': DIM, 'fontSize': '12px'}),
                 '')
 
     resolved = resolve_bin(bins[bin_id], source_sel)
@@ -1077,8 +1083,8 @@ def update_plots(bin_id, source_sel, field, anom_ref, prob_label, basis):
         msg = _empty_fig(f'Bin {bin_id} has no {src_note} data')
         return (msg, _empty_fig(''),
                 html.Div(f'No {src_note} profiles in this bin.',
-                         style={'color': '#555', 'fontSize': '12px'}),
-                html.Div(f'Bin {bin_id}: no {src_note} data', style={'color': '#888'}))
+                         style={'color': DIM, 'fontSize': '12px'}),
+                html.Div(f'Bin {bin_id}: no {src_note} data', style={'color': DIM}))
 
     obs_fig  = make_zt_figure(resolved, field, depth)
     anom_var = f'{field}_minus_clim' if anom_ref == 'minus_clim' else f'{field}_anom'
@@ -1113,14 +1119,14 @@ def update_plots(bin_id, source_sel, field, anom_ref, prob_label, basis):
     n_srcs      = len(bins[bin_id]['by_source'])
     info = [
         html.Div(f'Bin {bin_id}', style={'color': ACC, 'fontWeight': 'bold'}),
-        html.Div(src_note, style={'color': '#aaa'}),
+        html.Div(src_note, style={'color': DIM}),
         html.Div(f'lon {lon:.2f}°'),
         html.Div(f'lat {lat:.2f}°'),
         html.Div(f'{n_months} months'),
         html.Div(f'{n_profs} profiles'),
-        html.Div(f'{n_srcs} source(s) in bin', style={'color': '#666'}),
+        html.Div(f'{n_srcs} source(s) in bin', style={'color': DIM}),
         html.Div(f'P({prob_glyph}) = {prob_val:.3f}'),
-        html.Div(f'({basis_note})', style={'color': '#666'}),
+        html.Div(f'({basis_note})', style={'color': DIM}),
     ]
 
     return obs_fig, anom_fig, table, info
