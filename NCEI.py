@@ -235,9 +235,5 @@ if __name__ == '__main__':
 
     input_dir = args.input_dir
     dest_dir = args.dest_dir
-    #'''
-
-    #dest_dir = "/Users/brucel/ecco/yip/ECCO-Insitu-Python/processed_profile_files"
-    #input_dir = "/Users/brucel/ecco/yip/scripps_data"
 
     main(dest_dir, input_dir)
