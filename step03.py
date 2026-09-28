@@ -21,8 +21,11 @@ def update_monthly_mean_clim_WOA13v2_on_prepared_profiles(MITprof_ds, profile_va
     # depth grid is available, use it and skip per-profile vertical interpolation.
     depth_key = tuple(prof_depths.tolist())   # Python floats -> deterministic hash
     use_prebaked = False
+    _grid_desc = f"{len(prof_depths)}-level grid ({prof_depths[prof_depths>0].min():.0f}–{prof_depths.max():.0f} m)"
     if prebaked_clim_files and depth_key in prebaked_clim_files:
-        pb_ds = xr.open_dataset(prebaked_clim_files[depth_key])
+        pb_path = prebaked_clim_files[depth_key]
+        print(f"  step03: pre-baked climatology matched for {_grid_desc} -> {Path(pb_path).name}")
+        pb_ds = xr.open_dataset(pb_path)
         clim_grid_data_dict = {
             'prof_T':  pb_ds['potential_T_monthly'].values,  # (12, ndepth_obs, nlat, nlon)
             'prof_S':  pb_ds['S_monthly'].values,
@@ -32,24 +35,29 @@ def update_monthly_mean_clim_WOA13v2_on_prepared_profiles(MITprof_ds, profile_va
         }
         pb_ds.close()
         use_prebaked = True
-    elif Path(climatology_file).suffix == ".mat":
-        clim_data_top_level = pymatreader.read_mat(climatology_file)
-        clim_data = clim_data_top_level['WOA_2013_v2_clim']
-        clim_grid_data_dict = {}
-        clim_grid_data_dict['prof_T'] = clim_data['potential_T_monthly']
-        clim_grid_data_dict['prof_S'] = clim_data['S_monthly']
-        clim_grid_data_dict['lon'] = clim_data['lon']['data']
-        clim_grid_data_dict['lat'] = clim_data['lat']['data']
-        clim_grid_data_dict['depths'] = clim_data['depth']['data']
-
-    else:  # .nc full-depth climatology
-        clim_ds = xr.open_dataset(climatology_file)
-        clim_grid_data_dict = {}
-        clim_grid_data_dict['prof_T'] = clim_ds['potential_T_monthly'].values
-        clim_grid_data_dict['prof_S'] = clim_ds['S_monthly'].values
-        clim_grid_data_dict['lon'] = clim_ds['lon'].values
-        clim_grid_data_dict['lat'] = clim_ds['lat'].values
-        clim_grid_data_dict['depths'] = clim_ds['depth'].values
+    else:
+        if prebaked_clim_files:
+            print(f"  step03: no pre-baked match for {_grid_desc} — falling back to full-depth interpolation")
+        else:
+            print(f"  step03: using full-depth climatology interpolation ({_grid_desc})")
+    if not use_prebaked:
+        if Path(climatology_file).suffix == ".mat":
+            clim_data_top_level = pymatreader.read_mat(climatology_file)
+            clim_data = clim_data_top_level['WOA_2013_v2_clim']
+            clim_grid_data_dict = {}
+            clim_grid_data_dict['prof_T'] = clim_data['potential_T_monthly']
+            clim_grid_data_dict['prof_S'] = clim_data['S_monthly']
+            clim_grid_data_dict['lon'] = clim_data['lon']['data']
+            clim_grid_data_dict['lat'] = clim_data['lat']['data']
+            clim_grid_data_dict['depths'] = clim_data['depth']['data']
+        else:  # .nc full-depth climatology
+            clim_ds = xr.open_dataset(climatology_file)
+            clim_grid_data_dict = {}
+            clim_grid_data_dict['prof_T'] = clim_ds['potential_T_monthly'].values
+            clim_grid_data_dict['prof_S'] = clim_ds['S_monthly'].values
+            clim_grid_data_dict['lon'] = clim_ds['lon'].values
+            clim_grid_data_dict['lat'] = clim_ds['lat'].values
+            clim_grid_data_dict['depths'] = clim_ds['depth'].values
 
     deg2rad = np.float64(np.pi/180.0)
 
