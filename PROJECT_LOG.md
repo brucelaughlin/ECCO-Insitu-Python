@@ -6,6 +6,123 @@ git history with human-readable rationale.)
 
 ---
 
+## 2026-09-28 — Pre-baked climatology on fixed observation depth grids
+
+### Motivation (the boss's ask)
+
+All profile files from Scripps use exactly two fixed vertical depth grids:
+
+| Grid | Levels | Depth range | Files |
+|------|--------|-------------|-------|
+| A    | 97     | 2–6000 m    | CTD, GLD, MEOP, PFL, PFL_BGC, XBT, ITP, MRB/97_depths |
+| B    | 36     | 1–750 m     | MRB/36_depths only |
+
+Because these grids are fixed (all files of a given type share the same depth axis),
+the vertical interpolation from WOA23's 102-level grid onto the observation grid
+can be done once offline — rather than repeated for every profile at runtime.
+The boss's intent was also to simplify future lat/lon interpolation: with
+pre-baked files, climatology lookup is a pure lat/lon operation with no vertical
+component, making it straightforward to extend to new source types.
+
+### What was built
+
+**`prebake_woa23_climatology.py`** — new standalone offline tool.
+
+Reads `woa23_decav91C0_TS_clim_potential_T_1deg_fulldepth.nc` (12 months × 102
+depths × 180 lat × 360 lon) and for each grid:
+
+1. Treats each lat/lon cell as a "profile" — reshapes the 102-level column at
+   every grid cell to (64800, 102).
+2. Runs the same `clim_interp._depth_interp` + `clim_interp._fallback_fill` that
+   step03 uses at runtime — so the pre-baked values are exactly what step03 would
+   have computed.
+3. Writes back to (12, ndepth_obs, 180, 360).
+
+Outputs:
+- `woa23_decav91C0_TS_clim_potential_T_1deg_97depths_prebaked.nc`
+- `woa23_decav91C0_TS_clim_potential_T_1deg_36depths_prebaked.nc`
+
+The script exports `GRID_97` and `GRID_36` (Python float lists of the canonical
+depth values) so controller scripts can build the lookup dict.
+
+**`clim_interp.py`** — two small changes, fully backward-compatible:
+
+1. `interpolate_climatology` gains a keyword-only `prebaked=False` argument.
+   When `True`, the function skips `_depth_interp` and `_fallback_fill` at the
+   end — the field is already on the observation depth grid, so those steps are
+   unnecessary.
+2. The `clim_cols` working array is allocated using `field_months.shape[1]`
+   instead of `clim_depths.size`. In normal mode these are always equal (both
+   equal the WOA23 102-level depth count), so no behaviour changes. In pre-baked
+   mode `field_months.shape[1]` equals `ndepth_obs` (97 or 36), which is correct.
+
+**`step03.py`** — accepts an optional `prebaked_clim_files` dict:
+
+```python
+prebaked_clim_files = {
+    tuple(GRID_97): '/path/to/woa23_..._97depths_prebaked.nc',
+    tuple(GRID_36): '/path/to/woa23_..._36depths_prebaked.nc',
+}
+```
+
+At the start of each file, step03 hashes the file's `prof_depth` array
+(`tuple(prof_depths.tolist())`) and looks it up in the dict. If found, it loads
+the pre-baked file instead of the full-depth climatology and passes
+`prebaked=True` to `interpolate_climatology`. If not found (e.g. an ITP file with
+a non-standard grid), it falls back to the existing full-depth interpolation path
+— no error, no change in behaviour.
+
+**`NCEI.py`** — threads `prebaked_clim_files` through `NCEI_pipeline` and `main`.
+The parameter defaults to `None`, so all existing callers are unaffected. A
+commented-out example block near the `climatology_file` config line shows how to
+activate it.
+
+### How to activate
+
+Uncomment the block in `NCEI.py` near line 55:
+
+```python
+from prebake_woa23_climatology import GRID_97, GRID_36
+prebaked_clim_files = {
+    tuple(GRID_97): '/Users/brucel/ecco/yip/woa23_climatology/woa23_decav91C0_TS_clim_potential_T_1deg_97depths_prebaked.nc',
+    tuple(GRID_36): '/Users/brucel/ecco/yip/woa23_climatology/woa23_decav91C0_TS_clim_potential_T_1deg_36depths_prebaked.nc',
+}
+```
+
+### Verification
+
+- CTD 1992 (97-level): new output **bit-identical** to production run across all 37 variables.
+- MRB 1991 (36-level): new output **bit-identical** to production run across all 51 variables.
+- ITP/L2 (non-standard grid): falls back to full-depth interpolation cleanly.
+- Two independent runs from the same input: bit-identical (chain is deterministic).
+
+### Runtime impact: none currently (I/O bound)
+
+Timing on the CTD 1992 file (61,551 profiles):
+
+| Path | Time |
+|------|------|
+| Normal (full-depth clim) | 5.1 s |
+| Pre-baked | 5.5 s |
+
+No speedup — profiling showed that 2.0 s of the 5.3 s total is disk I/O reading
+the climatology file via xarray/netCDF4, and the depth interpolation itself is
+only ~0.9 s (already fast after the prior vectorization). Loading the pre-baked
+file instead saves the depth interp time but adds comparable I/O for a file that
+is similar in size when decompressed.
+
+The pre-bake has latent value in a scenario where the climatology arrays are
+**loaded once and reused across all files in a run** (currently step03 reloads
+from disk on every file). If caching is added at the NCEI pipeline level, the
+pre-baked path would skip both the I/O and the depth interp for every subsequent
+file. That is a separate future change.
+
+### Files
+- Added: `prebake_woa23_climatology.py`
+- Changed: `clim_interp.py`, `step03.py`, `NCEI.py`
+
+---
+
 ## 2026-09-26 — Production run + reference comparison
 
 ### Production run
