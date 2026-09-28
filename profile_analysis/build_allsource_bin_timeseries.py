@@ -70,6 +70,7 @@ Output pickle (new file, does not overwrite the PFL one):
   'total_months'     : int
 """
 
+import argparse
 import pickle
 import numpy as np
 import pandas as pd
@@ -81,9 +82,20 @@ from collections import defaultdict
 # Paths
 # ==============================================================================
 
-SOURCE_ROOT   = Path('/Users/brucel/ecco/yip/profile_files_NCEI_processed')
-GEODESIC_FILE = '/Users/brucel/ecco/yip/sample_data/ecco-insitu/sweet_gdrive/geodesic/10242_bin_locations.csv'
-OUTPUT_PICKLE = Path('/Users/brucel/ecco/yip/profile_data/z_profile_file_analysis/allsource_bin_timeseries.pkl')
+_DEFAULT_SOURCE_ROOT   = '/Users/brucel/ecco/yip/profile_files_NCEI_processed'
+_DEFAULT_GEODESIC_FILE = '/Users/brucel/ecco/yip/sample_data/ecco-insitu/sweet_gdrive/geodesic/10242_bin_locations.csv'
+_DEFAULT_OUTPUT_PICKLE = '/Users/brucel/ecco/yip/profile_data/z_profile_file_analysis/allsource_bin_timeseries.pkl'
+
+_parser = argparse.ArgumentParser(description='Build allsource bin timeseries pickle for the globe app.')
+_parser.add_argument('--source_root', default=_DEFAULT_SOURCE_ROOT,
+                     help='Root directory of NCEI-processed output (default: %(default)s)')
+_parser.add_argument('--output', default=_DEFAULT_OUTPUT_PICKLE,
+                     help='Output pickle path (default: %(default)s)')
+_args = _parser.parse_args()
+
+SOURCE_ROOT   = Path(_args.source_root)
+GEODESIC_FILE = _DEFAULT_GEODESIC_FILE
+OUTPUT_PICKLE = Path(_args.output)
 
 BIN_ID_VAR  = 'prof_bin_id_a'   # 10242-bin resolution, precomputed by NCEI chain
 N_DEPTH_REF = 97                 # full reference depth grid length
@@ -197,10 +209,12 @@ for sdir in source_dirs:
         months   = (yyyymmdd % 10000) // 100
         lons     = ds['prof_lon'].values.astype(float)
         lats     = ds['prof_lat'].values.astype(float)
-        T_all    = ds['prof_T'].values.astype(float)
-        S_all    = ds['prof_S'].values.astype(float)
-        Tc_all   = ds['prof_Tclim'].values.astype(float)
-        Sc_all   = ds['prof_Sclim'].values.astype(float)
+        n_depth  = ds.sizes.get('iDEPTH', N_DEPTH_REF)
+        _nan2d   = np.full((n_prof, n_depth), np.nan, dtype=float)
+        T_all    = ds['prof_T'].values.astype(float)    if 'prof_T'    in ds else _nan2d
+        S_all    = ds['prof_S'].values.astype(float)    if 'prof_S'    in ds else _nan2d
+        Tc_all   = ds['prof_Tclim'].values.astype(float) if 'prof_Tclim' in ds else _nan2d
+        Sc_all   = ds['prof_Sclim'].values.astype(float) if 'prof_Sclim' in ds else _nan2d
         bin_ids  = ds[BIN_ID_VAR].values.astype(float)
 
         estim_present = 'prof_Testim' in ds.variables and 'prof_Sestim' in ds.variables
