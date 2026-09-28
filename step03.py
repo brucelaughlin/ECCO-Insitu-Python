@@ -5,7 +5,7 @@ import pymatreader
 import xarray as xr
 from pathlib import Path
 import clim_interp
-def update_monthly_mean_clim_WOA13v2_on_prepared_profiles(MITprof_ds, profile_var_key_set, climatology_file):
+def update_monthly_mean_clim_WOA13v2_on_prepared_profiles(MITprof_ds, profile_var_key_set, climatology_file, prebaked_clim_files=None):
     """
     Assigns monthly T and S climatology values to MITprof objects.
 
@@ -15,7 +15,24 @@ def update_monthly_mean_clim_WOA13v2_on_prepared_profiles(MITprof_ds, profile_va
     WOA13 .mat and the WOA23 .nc (see build_woa23_climatology.py).
     """
 
-    if Path(climatology_file).suffix == ".mat":
+    prof_depths = np.asarray(MITprof_ds['prof_depth'].values, dtype=float)
+
+    # Pre-baked lookup: if a climatology pre-interpolated onto this file's exact
+    # depth grid is available, use it and skip per-profile vertical interpolation.
+    depth_key = tuple(prof_depths.tolist())   # Python floats -> deterministic hash
+    use_prebaked = False
+    if prebaked_clim_files and depth_key in prebaked_clim_files:
+        pb_ds = xr.open_dataset(prebaked_clim_files[depth_key])
+        clim_grid_data_dict = {
+            'prof_T':  pb_ds['potential_T_monthly'].values,  # (12, ndepth_obs, nlat, nlon)
+            'prof_S':  pb_ds['S_monthly'].values,
+            'lon':     pb_ds['lon'].values,
+            'lat':     pb_ds['lat'].values,
+            'depths':  pb_ds['obs_depth'].values,            # obs depths (unused in prebaked mode)
+        }
+        pb_ds.close()
+        use_prebaked = True
+    elif Path(climatology_file).suffix == ".mat":
         clim_data_top_level = pymatreader.read_mat(climatology_file)
         clim_data = clim_data_top_level['WOA_2013_v2_clim']
         clim_grid_data_dict = {}
@@ -23,9 +40,9 @@ def update_monthly_mean_clim_WOA13v2_on_prepared_profiles(MITprof_ds, profile_va
         clim_grid_data_dict['prof_S'] = clim_data['S_monthly']
         clim_grid_data_dict['lon'] = clim_data['lon']['data']
         clim_grid_data_dict['lat'] = clim_data['lat']['data']
-        clim_grid_data_dict['depths'] =  clim_data['depth']['data']
+        clim_grid_data_dict['depths'] = clim_data['depth']['data']
 
-    elif Path(climatology_file).suffix == ".nc":
+    else:  # .nc full-depth climatology
         clim_ds = xr.open_dataset(climatology_file)
         clim_grid_data_dict = {}
         clim_grid_data_dict['prof_T'] = clim_ds['potential_T_monthly'].values
@@ -50,7 +67,7 @@ def update_monthly_mean_clim_WOA13v2_on_prepared_profiles(MITprof_ds, profile_va
 
     plon = MITprof_ds['prof_lon'].values.astype(float)
     plat = MITprof_ds['prof_lat'].values.astype(float)
-    prof_depths = np.asarray(MITprof_ds['prof_depth'].values, dtype=float)
+    # prof_depths already extracted above for the pre-baked lookup
 
     # Profile day-of-year (1..365/366) for time interpolation.
     ymd = MITprof_ds['prof_YYYYMMDD'].values.astype('int64')
@@ -69,14 +86,16 @@ def update_monthly_mean_clim_WOA13v2_on_prepared_profiles(MITprof_ds, profile_va
             field_months = np.asarray(clim_grid_data_dict[prof_key], dtype=float)  # (12, ndepth, nlat, nlon)
             prof_clim = clim_interp.interpolate_climatology(
                 field_months, clim_lon, clim_lat, clim_depths,
-                plon, plat, pdoy, prof_depths)
+                plon, plat, pdoy, prof_depths,
+                prebaked=use_prebaked)
             MITprof_ds[f'{prof_key}clim'] = xr.DataArray(prof_clim, dims=['iPROF', 'iDEPTH'])
 
     return MITprof_ds
 
 
-def main(MITprof_ds, profile_var_key_set, climatology_file):
-    MITprof_ds = update_monthly_mean_clim_WOA13v2_on_prepared_profiles(MITprof_ds, profile_var_key_set, climatology_file)
+def main(MITprof_ds, profile_var_key_set, climatology_file, prebaked_clim_files=None):
+    MITprof_ds = update_monthly_mean_clim_WOA13v2_on_prepared_profiles(
+        MITprof_ds, profile_var_key_set, climatology_file, prebaked_clim_files)
     return MITprof_ds
 
 

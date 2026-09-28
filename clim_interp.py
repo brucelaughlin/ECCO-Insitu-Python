@@ -19,7 +19,13 @@ Edge-case FALLBACK (config):
 
 Public entry point:
   interpolate_climatology(field_months, lon_grid, lat_grid, clim_depths,
-                          plon, plat, pdoy, prof_depths) -> (nprof, ndepth)
+                          plon, plat, pdoy, prof_depths, *, prebaked=False)
+  -> (nprof, ndepth)
+
+  PREBAKED MODE: when field_months has already been depth-interpolated onto the
+  observation grid (via prebake_woa23_climatology.py), pass prebaked=True.
+  Time-blend + space interpolation run as normal; _depth_interp and _fallback_fill
+  are skipped.  clim_depths is unused in this mode.
 
 All behavior is parameterized so the method can change later without editing
 logic: flip TIME_METHOD / SPACE_METHOD / DEPTH_METHOD / FALLBACK.
@@ -273,13 +279,18 @@ def _fallback_nearest_cell(blended_cols, field3d, lon_grid, lat_grid, plon, plat
 # ==============================================================================
 
 def interpolate_climatology(field_months, lon_grid, lat_grid, clim_depths,
-                            plon, plat, pdoy, prof_depths):
+                            plon, plat, pdoy, prof_depths, *, prebaked=False):
     """
-    field_months : (12, ndepth_clim, nlat, nlon) monthly climatology
-    lon_grid, lat_grid, clim_depths : 1-D grid coordinate vectors
+    field_months : (12, ndepth_clim, nlat, nlon) monthly climatology.
+                   In prebaked mode: (12, ndepth_obs, nlat, nlon) — depth interp
+                   already applied; ndepth_clim == ndepth_obs.
+    lon_grid, lat_grid, clim_depths : 1-D grid coordinate vectors.
+                   clim_depths is unused when prebaked=True.
     plon, plat   : (nprof,) profile longitudes/latitudes (deg)
     pdoy         : (nprof,) profile day-of-year (1..365/366)
-    prof_depths  : (ndepth_prof,) shared profile depth axis
+    prof_depths  : (ndepth_prof,) shared profile depth axis (unused when prebaked=True)
+    prebaked     : if True, skip _depth_interp and _fallback_fill (depth axis
+                   of field_months already matches the observation grid)
     returns      : (nprof, ndepth_prof) interpolated climatology
     """
     plon = np.asarray(plon, float); plat = np.asarray(plat, float)
@@ -297,7 +308,10 @@ def interpolate_climatology(field_months, lon_grid, lat_grid, clim_depths,
     # each profile's own w1 (exact time interp, no rounding). Space-level
     # nearest-cell fallback is applied per field (KD-tree built once per field,
     # cached), not per group.
-    clim_cols = np.full((nprof, clim_depths.size), np.nan)
+    # In prebaked mode field_months.shape[1] == ndepth_obs (not ndepth_clim),
+    # so derive the working-array width from the array, not from clim_depths.
+    ndepth_work = field_months.shape[1]
+    clim_cols = np.full((nprof, ndepth_work), np.nan)
     pairs = {}
     for i in range(nprof):
         pairs.setdefault((int(m0[i]), int(m1[i])), []).append(i)
@@ -321,6 +335,10 @@ def interpolate_climatology(field_months, lon_grid, lat_grid, clim_depths,
             blended = np.where(both, (1 - wcol) * c0 + wcol * c1, blended)
         clim_cols[idxs] = blended
 
+    if prebaked:
+        # Depth interp and fallback were applied offline; clim_cols is already
+        # on the observation depth grid.  Return directly.
+        return clim_cols
     prof_clim = _depth_interp(clim_cols, clim_depths, prof_depths)
     prof_clim = _fallback_fill(prof_clim, clim_cols, clim_depths, prof_depths)
     return prof_clim

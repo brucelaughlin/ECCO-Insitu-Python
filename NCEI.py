@@ -28,7 +28,7 @@ import step09
 import step10
 
 
-def NCEI_pipeline(dest_dir, input_dir):
+def NCEI_pipeline(dest_dir, input_dir, prebaked_clim_files=None):
 
     # Get a list of all netCDF files present in input directory 
     input_profile_files = list(Path(input_dir).rglob("*.nc"))
@@ -48,6 +48,16 @@ def NCEI_pipeline(dest_dir, input_dir):
 
     #climatology_file = "/Users/brucel/ecco/yip/sample_data/ecco-insitu/sweet_gdrive/TS_Climatology/WOA13_v2_TS_clim_merged_with_potential_T.mat"  # legacy WOA13 .mat
     climatology_file = "/Users/brucel/ecco/yip/woa23_climatology/woa23_decav91C0_TS_clim_potential_T_1deg_fulldepth.nc"  # WOA23 1991-2020, full depth, potential T + S
+
+    # Optional: pre-baked climatologies (depth-interpolated offline onto the two obs grids).
+    # Eliminates per-profile vertical interpolation in step03; only time-blend + lat/lon lookup runs.
+    # Build with:  python prebake_woa23_climatology.py
+    # To activate, uncomment and set paths:
+    #   from prebake_woa23_climatology import GRID_97, GRID_36
+    #   prebaked_clim_files = {
+    #       tuple(GRID_97): '/Users/brucel/ecco/yip/woa23_climatology/woa23_decav91C0_TS_clim_potential_T_1deg_97depths_prebaked.nc',
+    #       tuple(GRID_36): '/Users/brucel/ecco/yip/woa23_climatology/woa23_decav91C0_TS_clim_potential_T_1deg_36depths_prebaked.nc',
+    #   }
 
     sigma_file_dict = {
             'prof_T': '/Users/brucel/ecco/yip/sample_data/ecco-insitu/sweet_gdrive/CTD_sigma_TS/Theta_sigma_smoothed_method_02_masked_merged_capped_extrapolated.bin',
@@ -89,7 +99,7 @@ def NCEI_pipeline(dest_dir, input_dir):
     ncei_function_list = [
         partial(step01.main, grid_dir=grid_dir, llcN=llcN, wet_or_all=wet_or_all),
         partial(step02.main, sphere_bin_dir=sphere_bin_dir, grid_dir=grid_dir),
-        partial(step03.main, profile_var_key_set=profile_var_key_set, climatology_file=climatology_file),
+        partial(step03.main, profile_var_key_set=profile_var_key_set, climatology_file=climatology_file, prebaked_clim_files=prebaked_clim_files),
         partial(step04.main, profile_var_key_set=profile_var_key_set, grid_dir=grid_dir, sigma_file_dict=sigma_file_dict, respect_existing_zero_weights=respect_existing_zero_weights, new_floor_dict=new_floor_dict),
         partial(step05.main, profile_var_key_set=profile_var_key_set, grid_dir=grid_dir, apply_gamma_factor=apply_gamma_factor, llcN=llcN),
         partial(step06.main, replace_missing_S_with_clim_S=replace_missing_S_with_clim_S), # it's funny to me that all other modules check for S, but this one requires it...
@@ -202,8 +212,8 @@ def NCEI_pipeline(dest_dir, input_dir):
             print()
 
 
-def main(dest_dir, input_dir):
-    NCEI_pipeline(dest_dir, input_dir)
+def main(dest_dir, input_dir, prebaked_clim_files=None):
+    NCEI_pipeline(dest_dir, input_dir, prebaked_clim_files=prebaked_clim_files)
 
 
 if __name__ == '__main__':
