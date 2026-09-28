@@ -10,6 +10,7 @@ import logging
 import glob
 import io
 import contextlib
+import tempfile
 import concurrent.futures
 from pathlib import Path
 import argparse
@@ -60,136 +61,162 @@ def _worker_init(prebaked_clim_paths):
         _worker_prebaked_clim_arrays = None
 
 
+def _redirect_fd(target_fd):
+    """Context manager: redirect stdout at the OS fd level to target_fd.
+
+    contextlib.redirect_stdout only intercepts Python-level sys.stdout.  C
+    extensions (netCDF4, HDF5) write directly to fd 1, bypassing it.  This
+    context manager duplicates the real fd 1 for later restoration, then
+    replaces fd 1 with target_fd for the duration of the block, so ALL output
+    — Python and C — goes to the file.
+    """
+    import contextlib
+    saved_fd = os.dup(1)           # save real stdout fd
+    os.dup2(target_fd, 1)          # point fd 1 at our temp file
+    sys.stdout.flush()
+    try:
+        yield
+    finally:
+        sys.stdout.flush()
+        os.dup2(saved_fd, 1)       # restore real stdout fd
+        os.close(saved_fd)
+
+
+_redirect_fd = contextlib.contextmanager(_redirect_fd)
+
+
 def _process_one_file(args):
     """Process a single input file through the full NCEI chain.
 
-    Runs in a worker process.  Captures all print output to a string and
-    returns it together with success/failure state — the main process prints
-    the captured output atomically so the log file stays readable.
+    Captures ALL stdout (Python and C-level) to a temp file by redirecting
+    fd 1.  Returns the temp file path; the main process reads and prints it
+    atomically so the log stays clean even with multiple workers running.
 
-    Returns (file_index, n_total, output_path_or_None, captured_stdout, bad_flag).
+    Returns (file_index, n_total, tmp_log_path, bad_flag).
     """
     (file_dex, n_total, original_file, dest_dir, input_dir,
      ncei_function_kwargs, profile_var_key_set) = args
 
-    buf = io.StringIO()
+    original_file = Path(original_file)
+
+    tmp = tempfile.NamedTemporaryFile(mode='w', suffix='.log', delete=False)
+    tmp_path = tmp.name
+    tmp.close()
+
     bad_flag = False
 
-    with contextlib.redirect_stdout(buf):
-        # Everything that prints inside this block — including calls into step
-        # modules and tools.MITprof_write_to_nc — goes to buf, not to real stdout.
-        # The main process prints buf atomically once this file is done.
+    with open(tmp_path, 'w') as log_fh:
+        with _redirect_fd(log_fh.fileno()):
 
-        width = len(str(n_total))
-        print(f"ncei processing for file {file_dex+1:0{width}}/{n_total}: {original_file}")
+            width = len(str(n_total))
+            print(f"ncei processing for file {file_dex+1:0{width}}/{n_total}: {original_file}")
 
-        try:
-            MITprof_ds = xr.open_dataset(original_file)
-            MITprof_ds = MITprof_ds.assign_coords(
-                {dim: np.arange(MITprof_ds.sizes[dim])
-                 for dim in MITprof_ds.dims if dim not in MITprof_ds.coords})
-        except Exception as e:
-            print(f"\n-------- FILE FAILURE --------")
-            print(f"Could not open file: {Path(original_file).name}")
-            print(f"Exception: {e}")
-            print(f"NO OUTPUT FILE WRITTEN for: {Path(original_file).name}")
-            print("-----------------------------\n")
-            return file_dex, n_total, None, buf.getvalue(), True
-
-        valid_data_dict_list = [tools.collect_valid_data_stats(MITprof_ds, profile_var_key_set)]
-
-        if not MITprof_ds or MITprof_ds.sizes['iPROF'] == 0:
-            print("Your profile file may have no valid data; exiting without finishing\n")
-            return file_dex, n_total, None, buf.getvalue(), True
-
-        # Build step functions using the worker-local pre-baked arrays.
-        kw = ncei_function_kwargs
-        ncei_function_list = [
-            partial(step01.main, grid_dir=kw['grid_dir'], llcN=kw['llcN'], wet_or_all=kw['wet_or_all']),
-            partial(step02.main, sphere_bin_dir=kw['sphere_bin_dir'], grid_dir=kw['grid_dir']),
-            partial(step03.main, profile_var_key_set=profile_var_key_set,
-                    climatology_file=kw['climatology_file'],
-                    prebaked_clim_files=_worker_prebaked_clim_arrays),
-            partial(step04.main, profile_var_key_set=profile_var_key_set, grid_dir=kw['grid_dir'],
-                    sigma_file_dict=kw['sigma_file_dict'],
-                    respect_existing_zero_weights=kw['respect_existing_zero_weights'],
-                    new_floor_dict=kw['new_floor_dict']),
-            partial(step05.main, profile_var_key_set=profile_var_key_set, grid_dir=kw['grid_dir'],
-                    apply_gamma_factor=kw['apply_gamma_factor'], llcN=kw['llcN']),
-            partial(step06.main, replace_missing_S_with_clim_S=kw['replace_missing_S_with_clim_S']),
-            partial(step07.main, profile_var_key_set=profile_var_key_set,
-                    exclude_high_latitude_profiles_from_clim_cost=kw['exclude_high_latitude_profiles_from_clim_cost'],
-                    dubious_clim_lat_threshold=kw['dubious_clim_lat_threshold']),
-            partial(step08.main, profile_var_key_set=profile_var_key_set),
-            partial(step09.main, profile_var_key_set=profile_var_key_set),
-            partial(step10.main, profile_var_key_set=profile_var_key_set,
-                    distance_tolerance=kw['distance_tolerance'],
-                    closest_time=kw['closest_time'], method=kw['method']),
-        ]
-
-        step_counter = 0
-        for ii, fn in enumerate(ncei_function_list):
             try:
-                MITprof_ds = fn(MITprof_ds)
+                MITprof_ds = xr.open_dataset(original_file)
+                MITprof_ds = MITprof_ds.assign_coords(
+                    {dim: np.arange(MITprof_ds.sizes[dim])
+                     for dim in MITprof_ds.dims if dim not in MITprof_ds.coords})
             except Exception as e:
                 print(f"\n-------- FILE FAILURE --------")
-                print(f"NCEI chain CRASHED at step: {ii+1:02d} (of {len(ncei_function_list)})")
-                print(f"File: {Path(original_file).name}")
-                print(f"Exception:\n{e}")
-                print(f"NO OUTPUT FILE WRITTEN for: {Path(original_file).name}")
-                print("continuing to next file")
+                print(f"Could not open file: {original_file.name}")
+                print(f"Exception: {e}")
+                print(f"NO OUTPUT FILE WRITTEN for: {original_file.name}")
                 print("-----------------------------\n")
-                bad_flag = True
-                break
+                return file_dex, n_total, tmp_path, True
+
+            valid_data_dict_list = [tools.collect_valid_data_stats(MITprof_ds, profile_var_key_set)]
 
             if not MITprof_ds or MITprof_ds.sizes['iPROF'] == 0:
-                print(f"-------- FILE FAILURE --------")
-                print(f"NCEI chain emptied all valid data at step: {ii+1:02d} (of {len(ncei_function_list)})")
-                print(f"File: {Path(original_file).name}")
-                print(f"NO OUTPUT FILE WRITTEN for: {Path(original_file).name}")
-                print("continuing to next file")
-                print("-----------------------------\n")
-                bad_flag = True
-                break
+                print("Your profile file may have no valid data; exiting without finishing\n")
+                return file_dex, n_total, tmp_path, True
 
-            valid_data_dict_list.append(tools.collect_valid_data_stats(MITprof_ds, profile_var_key_set))
-            step_counter += 1
-            print(f"\nstep: {step_counter}")
-            for prof_key in profile_var_key_set:
-                if prof_key in MITprof_ds:
-                    if valid_data_dict_list[0][prof_key]['valid_profile_count'] > 0:
-                        print(f"valid {prof_key} profile count / original valid {prof_key} profile count: "
-                               f"{valid_data_dict_list[step_counter][prof_key]['valid_profile_count']}/"
-                               f"{valid_data_dict_list[0][prof_key]['valid_profile_count']} = "
-                               f"{valid_data_dict_list[step_counter][prof_key]['valid_profile_count'] / valid_data_dict_list[0][prof_key]['valid_profile_count']*100:.2f}%")
-            for prof_key in profile_var_key_set:
-                if prof_key in MITprof_ds:
-                    if valid_data_dict_list[0][prof_key]['valid_data_count'] > 0:
-                        print(f"valid {prof_key} data count / original valid {prof_key} data count: "
-                               f"{valid_data_dict_list[step_counter][prof_key]['valid_data_count']}/"
-                               f"{valid_data_dict_list[0][prof_key]['valid_data_count']} = "
-                               f"{valid_data_dict_list[step_counter][prof_key]['valid_data_count'] / valid_data_dict_list[0][prof_key]['valid_data_count']*100:.2f}%")
+            kw = ncei_function_kwargs
+            ncei_function_list = [
+                partial(step01.main, grid_dir=kw['grid_dir'], llcN=kw['llcN'], wet_or_all=kw['wet_or_all']),
+                partial(step02.main, sphere_bin_dir=kw['sphere_bin_dir'], grid_dir=kw['grid_dir']),
+                partial(step03.main, profile_var_key_set=profile_var_key_set,
+                        climatology_file=kw['climatology_file'],
+                        prebaked_clim_files=_worker_prebaked_clim_arrays),
+                partial(step04.main, profile_var_key_set=profile_var_key_set, grid_dir=kw['grid_dir'],
+                        sigma_file_dict=kw['sigma_file_dict'],
+                        respect_existing_zero_weights=kw['respect_existing_zero_weights'],
+                        new_floor_dict=kw['new_floor_dict']),
+                partial(step05.main, profile_var_key_set=profile_var_key_set, grid_dir=kw['grid_dir'],
+                        apply_gamma_factor=kw['apply_gamma_factor'], llcN=kw['llcN']),
+                partial(step06.main, replace_missing_S_with_clim_S=kw['replace_missing_S_with_clim_S']),
+                partial(step07.main, profile_var_key_set=profile_var_key_set,
+                        exclude_high_latitude_profiles_from_clim_cost=kw['exclude_high_latitude_profiles_from_clim_cost'],
+                        dubious_clim_lat_threshold=kw['dubious_clim_lat_threshold']),
+                partial(step08.main, profile_var_key_set=profile_var_key_set),
+                partial(step09.main, profile_var_key_set=profile_var_key_set),
+                partial(step10.main, profile_var_key_set=profile_var_key_set,
+                        distance_tolerance=kw['distance_tolerance'],
+                        closest_time=kw['closest_time'], method=kw['method']),
+            ]
 
-        if bad_flag or not MITprof_ds or MITprof_ds.sizes['iPROF'] == 0:
-            if not bad_flag:
-                print(f"NO OUTPUT FILE WRITTEN for: {Path(original_file).name} (no valid data after all steps)\n")
-            return file_dex, n_total, None, buf.getvalue(), True
+            step_counter = 0
+            for ii, fn in enumerate(ncei_function_list):
+                try:
+                    MITprof_ds = fn(MITprof_ds)
+                except Exception as e:
+                    print(f"\n-------- FILE FAILURE --------")
+                    print(f"NCEI chain CRASHED at step: {ii+1:02d} (of {len(ncei_function_list)})")
+                    print(f"File: {original_file.name}")
+                    print(f"Exception:\n{e}")
+                    print(f"NO OUTPUT FILE WRITTEN for: {original_file.name}")
+                    print("continuing to next file")
+                    print("-----------------------------\n")
+                    bad_flag = True
+                    break
 
-        if tools.count_total_survivors_TS(MITprof_ds, profile_var_key_set) > 0:
-            for prof_key in profile_var_key_set:
-                if prof_key in MITprof_ds and f'{prof_key}clim' in MITprof_ds and f'{prof_key}weight' in MITprof_ds:
-                    MITprof_ds[f'{prof_key}cost'] = (MITprof_ds[prof_key] - MITprof_ds[f'{prof_key}clim'])**2 * MITprof_ds[f'{prof_key}weight']
+                if not MITprof_ds or MITprof_ds.sizes['iPROF'] == 0:
+                    print(f"-------- FILE FAILURE --------")
+                    print(f"NCEI chain emptied all valid data at step: {ii+1:02d} (of {len(ncei_function_list)})")
+                    print(f"File: {original_file.name}")
+                    print(f"NO OUTPUT FILE WRITTEN for: {original_file.name}")
+                    print("continuing to next file")
+                    print("-----------------------------\n")
+                    bad_flag = True
+                    break
 
-            if 'prof_lon' in MITprof_ds:
-                lon = MITprof_ds['prof_lon']
-                MITprof_ds['prof_lon'] = xr.where(lon <= 360, ((lon + 180) % 360) - 180, lon)
+                valid_data_dict_list.append(tools.collect_valid_data_stats(MITprof_ds, profile_var_key_set))
+                step_counter += 1
+                print(f"\nstep: {step_counter}")
+                for prof_key in profile_var_key_set:
+                    if prof_key in MITprof_ds:
+                        if valid_data_dict_list[0][prof_key]['valid_profile_count'] > 0:
+                            print(f"valid {prof_key} profile count / original valid {prof_key} profile count: "
+                                   f"{valid_data_dict_list[step_counter][prof_key]['valid_profile_count']}/"
+                                   f"{valid_data_dict_list[0][prof_key]['valid_profile_count']} = "
+                                   f"{valid_data_dict_list[step_counter][prof_key]['valid_profile_count'] / valid_data_dict_list[0][prof_key]['valid_profile_count']*100:.2f}%")
+                for prof_key in profile_var_key_set:
+                    if prof_key in MITprof_ds:
+                        if valid_data_dict_list[0][prof_key]['valid_data_count'] > 0:
+                            print(f"valid {prof_key} data count / original valid {prof_key} data count: "
+                                   f"{valid_data_dict_list[step_counter][prof_key]['valid_data_count']}/"
+                                   f"{valid_data_dict_list[0][prof_key]['valid_data_count']} = "
+                                   f"{valid_data_dict_list[step_counter][prof_key]['valid_data_count'] / valid_data_dict_list[0][prof_key]['valid_data_count']*100:.2f}%")
 
-            print()
-            tools.MITprof_write_to_nc(dest_dir, MITprof_ds, len(ncei_function_list), original_file, input_dir)
-        else:
-            print(f"NO OUTPUT FILE WRITTEN for: {Path(original_file).name} (0 surviving T/S profiles after all steps)\n\n")
+            if bad_flag or not MITprof_ds or MITprof_ds.sizes['iPROF'] == 0:
+                if not bad_flag:
+                    print(f"NO OUTPUT FILE WRITTEN for: {original_file.name} (no valid data after all steps)\n")
+                return file_dex, n_total, tmp_path, True
 
-    return file_dex, n_total, None, buf.getvalue(), bad_flag
+            if tools.count_total_survivors_TS(MITprof_ds, profile_var_key_set) > 0:
+                for prof_key in profile_var_key_set:
+                    if prof_key in MITprof_ds and f'{prof_key}clim' in MITprof_ds and f'{prof_key}weight' in MITprof_ds:
+                        MITprof_ds[f'{prof_key}cost'] = (MITprof_ds[prof_key] - MITprof_ds[f'{prof_key}clim'])**2 * MITprof_ds[f'{prof_key}weight']
+
+                if 'prof_lon' in MITprof_ds:
+                    lon = MITprof_ds['prof_lon']
+                    MITprof_ds['prof_lon'] = xr.where(lon <= 360, ((lon + 180) % 360) - 180, lon)
+
+                print()
+                tools.MITprof_write_to_nc(dest_dir, MITprof_ds, len(ncei_function_list), original_file, input_dir)
+            else:
+                print(f"NO OUTPUT FILE WRITTEN for: {original_file.name} (0 surviving T/S profiles after all steps)\n\n")
+
+    return file_dex, n_total, tmp_path, bad_flag
 
 
 def NCEI_pipeline(dest_dir, input_dir, n_workers=None):
@@ -277,12 +304,23 @@ def NCEI_pipeline(dest_dir, input_dir, n_workers=None):
         for file_dex, f in enumerate(input_profile_files)
     ]
 
+    def _flush_log(tmp_path):
+        """Read a worker's temp log file, print it, and delete it."""
+        try:
+            with open(tmp_path) as f:
+                print(f.read(), end='')
+        finally:
+            try:
+                os.unlink(tmp_path)
+            except OSError:
+                pass
+
     if n_workers == 1:
         # Sequential: run initializer inline so worker globals are populated.
         _worker_init(prebaked_clim_paths)
         for item in work_items:
-            _, _, _, stdout, _ = _process_one_file(item)
-            print(stdout, end='')
+            _, _, tmp_path, _ = _process_one_file(item)
+            _flush_log(tmp_path)
     else:
         with concurrent.futures.ProcessPoolExecutor(
             max_workers=n_workers,
@@ -292,12 +330,11 @@ def NCEI_pipeline(dest_dir, input_dir, n_workers=None):
             futures = {executor.submit(_process_one_file, item): item[0] for item in work_items}
             for fut in concurrent.futures.as_completed(futures):
                 try:
-                    _, _, _, stdout, _ = fut.result()
+                    _, _, tmp_path, _ = fut.result()
                 except Exception as e:
                     print(f"\n[NCEI] Unexpected worker exception: {e}\n")
                     continue
-                # Print atomically — one file's output lands as one block.
-                print(stdout, end='')
+                _flush_log(tmp_path)
 
 
 def main(dest_dir, input_dir, n_workers=None):
