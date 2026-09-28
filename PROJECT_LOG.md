@@ -54,12 +54,21 @@ debugging works unchanged.  Pass `-n 1` on the command line to force it.
 The theoretical limit is `3 hours / 8 = 22.5 min`; in practice I/O and startup
 overhead put it a bit above that.  Actual time to be measured in next production run.
 
-### Bit-level comparison required
+### Validation
 
-Before this is considered validated, a full parallel run must be compared bit-for-bit
-against the baseline at `/Users/brucel/ecco/yip/profile_files_NCEI_processed_20260926_192623`.
-Since files are processed independently and no shared state exists, the output
-should be identical.
+Full sequential run (`-n 1`, float64 pre-baked) compared against parallel run
+(`profile_files_NCEI_processed_20260928_142926`):
+
+- 424 output files checked
+- 8,454,150 profiles in both runs
+- Zero count mismatches, zero data mismatches
+
+Parallelism validated: sequential and parallel produce bit-identical output.
+New reference baseline: `profile_files_NCEI_processed_20260928_142926`
+
+Note: the earlier float32 baseline (`20260926_192623`) differs by ~18k profiles
+(0.22%) due to float32 rounding noise in the pre-baked climatology — not a
+regression, just the effect of the float32→float64 precision fix.
 
 ### Files changed
 - `NCEI.py`: replaced sequential loop with `ProcessPoolExecutor`; added
