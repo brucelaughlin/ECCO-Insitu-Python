@@ -156,11 +156,13 @@ def _process_one_file(args):
 
             step_counter = 0
             for ii, fn in enumerate(ncei_function_list):
+                step_counter += 1
+                print(f"\nstep: {step_counter}")
                 try:
                     MITprof_ds = fn(MITprof_ds)
                 except Exception as e:
                     print(f"\n-------- FILE FAILURE --------")
-                    print(f"NCEI chain CRASHED at step: {ii+1:02d} (of {len(ncei_function_list)})")
+                    print(f"NCEI chain CRASHED at step: {step_counter:02d} (of {len(ncei_function_list)})")
                     print(f"File: {original_file.name}")
                     print(f"Exception:\n{e}")
                     print(f"NO OUTPUT FILE WRITTEN for: {original_file.name}")
@@ -171,7 +173,7 @@ def _process_one_file(args):
 
                 if not MITprof_ds or MITprof_ds.sizes['iPROF'] == 0:
                     print(f"-------- FILE FAILURE --------")
-                    print(f"NCEI chain emptied all valid data at step: {ii+1:02d} (of {len(ncei_function_list)})")
+                    print(f"NCEI chain emptied all valid data at step: {step_counter:02d} (of {len(ncei_function_list)})")
                     print(f"File: {original_file.name}")
                     print(f"NO OUTPUT FILE WRITTEN for: {original_file.name}")
                     print("continuing to next file")
@@ -180,8 +182,6 @@ def _process_one_file(args):
                     break
 
                 valid_data_dict_list.append(tools.collect_valid_data_stats(MITprof_ds, profile_var_key_set))
-                step_counter += 1
-                print(f"\nstep: {step_counter}")
                 for prof_key in profile_var_key_set:
                     if prof_key in MITprof_ds:
                         if valid_data_dict_list[0][prof_key]['valid_profile_count'] > 0:
