@@ -49,15 +49,21 @@ def NCEI_pipeline(dest_dir, input_dir, prebaked_clim_files=None):
     #climatology_file = "/Users/brucel/ecco/yip/sample_data/ecco-insitu/sweet_gdrive/TS_Climatology/WOA13_v2_TS_clim_merged_with_potential_T.mat"  # legacy WOA13 .mat
     climatology_file = "/Users/brucel/ecco/yip/woa23_climatology/woa23_decav91C0_TS_clim_potential_T_1deg_fulldepth.nc"  # WOA23 1991-2020, full depth, potential T + S
 
-    # Optional: pre-baked climatologies (depth-interpolated offline onto the two obs grids).
-    # Eliminates per-profile vertical interpolation in step03; only time-blend + lat/lon lookup runs.
-    # Build with:  python prebake_woa23_climatology.py
-    # To activate, uncomment and set paths:
-    #   from prebake_woa23_climatology import GRID_97, GRID_36
-    #   prebaked_clim_files = {
-    #       tuple(GRID_97): '/Users/brucel/ecco/yip/woa23_climatology/woa23_decav91C0_TS_clim_potential_T_1deg_97depths_prebaked.nc',
-    #       tuple(GRID_36): '/Users/brucel/ecco/yip/woa23_climatology/woa23_decav91C0_TS_clim_potential_T_1deg_36depths_prebaked.nc',
-    #   }
+    # Pre-baked climatologies: depth-interpolation done offline per grid, so step03
+    # only needs time-blend + lat/lon lookup at runtime.  Falls back to full-depth
+    # interpolation for any grid not listed here (with a log line saying so).
+    # Regenerate with:  python prebake_woa23_climatology.py
+    _woa23_dir = '/Users/brucel/ecco/yip/woa23_climatology'
+    prebaked_clim_files = {
+        tuple([2.0, 4.0, 7.0, 10.0, 13.0, 16.0, 20.0, 25.0, 30.0, 35.0, 40.0, 45.0, 50.0, 55.0, 60.0, 65.0, 70.0, 75.0, 80.0, 85.0, 90.0, 95.0, 100.0, 105.0, 110.0, 115.0, 120.0, 125.0, 130.0, 135.0, 140.0, 150.0, 160.0, 170.0, 180.0, 190.0, 200.0, 210.0, 220.0, 230.0, 240.0, 250.0, 260.0, 270.0, 280.0, 290.0, 300.0, 325.0, 350.0, 375.0, 400.0, 425.0, 450.0, 475.0, 500.0, 525.0, 550.0, 600.0, 650.0, 700.0, 750.0, 800.0, 850.0, 900.0, 950.0, 1000.0, 1050.0, 1100.0, 1200.0, 1300.0, 1400.0, 1500.0, 1600.0, 1700.0, 1800.0, 1900.0, 2000.0, 2200.0, 2400.0, 2600.0, 2800.0, 3000.0, 3200.0, 3400.0, 3600.0, 3800.0, 4000.0, 4200.0, 4400.0, 4600.0, 4800.0, 5000.0, 5200.0, 5400.0, 5600.0, 5800.0, 6000.0]):
+            f'{_woa23_dir}/woa23_decav91C0_TS_clim_potential_T_1deg_97depths_prebaked.nc',   # 97-level, 2-6000 m
+        tuple([1.0, 2.0, 5.0, 10.0, 13.0, 20.0, 25.0, 28.0, 30.0, 40.0, 45.0, 48.0, 50.0, 53.0, 60.0, 75.0, 80.0, 83.0, 100.0, 103.0, 120.0, 123.0, 125.0, 140.0, 150.0, 153.0, 175.0, 180.0, 200.0, 203.0, 225.0, 250.0, 300.0, 400.0, 500.0, 750.0]):
+            f'{_woa23_dir}/woa23_decav91C0_TS_clim_potential_T_1deg_36depths_prebaked.nc',   # 36-level, 1-750 m
+        tuple([3698.0, 3700.0, 3984.0, 3998.0, 3999.0, 4000.0, 4124.0, 4198.0, 4250.0, 4251.0, 4285.0, 4321.0, 4344.0, 4349.0, 4499.0, 4500.0, 4643.0, 4650.0, 4899.0, 4900.0, 5001.0, 5100.0, 5101.0, 5217.0, 5270.0]):
+            f'{_woa23_dir}/woa23_decav91C0_TS_clim_potential_T_1deg_25depths_prebaked.nc',   # 25-level, Samoa 2012
+        tuple([2890.0, 2970.0, 2990.0, 3940.0, 3970.0, 3980.0, 4160.0, 4230.0, 4300.0, 4330.0, 4340.0, 4350.0, 4360.0, 4630.0, 4640.0, 4650.0, 4880.0, 4890.0, 4900.0, 5080.0, 5100.0, 5103.0]):
+            f'{_woa23_dir}/woa23_decav91C0_TS_clim_potential_T_1deg_22depths_prebaked.nc',   # 22-level, Samoa 1992
+    }
 
     sigma_file_dict = {
             'prof_T': '/Users/brucel/ecco/yip/sample_data/ecco-insitu/sweet_gdrive/CTD_sigma_TS/Theta_sigma_smoothed_method_02_masked_merged_capped_extrapolated.bin',
