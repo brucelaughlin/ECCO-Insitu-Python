@@ -38,12 +38,14 @@ STAMP="$(date +%Y%m%d_%H%M%S)"
 # --- parse optional overrides ---
 INPUT_DIR=""
 DEST_DIR=""
-while getopts "i:d:h" opt; do
+N_WORKERS=""
+while getopts "i:d:n:h" opt; do
   case "${opt}" in
     i) INPUT_DIR="${OPTARG}" ;;
     d) DEST_DIR="${OPTARG}" ;;
+    n) N_WORKERS="${OPTARG}" ;;
     h) grep '^#' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;;
-    *) echo "Usage: $0 [-i input_dir] [-d dest_dir]"; exit 2 ;;
+    *) echo "Usage: $0 [-i input_dir] [-d dest_dir] [-n n_workers]"; exit 2 ;;
   esac
 done
 
@@ -82,7 +84,9 @@ echo ""
 
 # python3 -u keeps output unbuffered so the log fills in real time; 2>&1 folds
 # stderr into stdout before the pipe so warnings/tracebacks land in the log too.
-python3 -u "${SCRIPT_DIR}/NCEI.py" -i "${INPUT_DIR}" -d "${DEST_DIR}" 2>&1 | tee -a "${LOG_FILE}"
+N_WORKERS_ARG=""
+if [[ -n "${N_WORKERS}" ]]; then N_WORKERS_ARG="-n ${N_WORKERS}"; fi
+python3 -u "${SCRIPT_DIR}/NCEI.py" -i "${INPUT_DIR}" -d "${DEST_DIR}" ${N_WORKERS_ARG} 2>&1 | tee -a "${LOG_FILE}"
 STATUS="${PIPESTATUS[0]}"
 
 {
