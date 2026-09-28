@@ -82,8 +82,8 @@ def prebake_one_grid(obs_depths, T_all, S_all, clim_depths, lat, lon,
     print(f"\nPre-baking onto {tag} ({ndepth_obs} levels, "
           f"{obs_depths[obs_depths > 0].min():.0f}–{obs_depths.max():.0f} m) ...")
 
-    T_out = np.full((12, ndepth_obs, nlat, nlon), np.nan, dtype=np.float32)
-    S_out = np.full((12, ndepth_obs, nlat, nlon), np.nan, dtype=np.float32)
+    T_out = np.full((12, ndepth_obs, nlat, nlon), np.nan, dtype=np.float64)
+    S_out = np.full((12, ndepth_obs, nlat, nlon), np.nan, dtype=np.float64)
 
     for m in range(12):
         print(f"  month {m+1:2d}/12", end='\r', flush=True)
@@ -112,7 +112,7 @@ def prebake_one_grid(obs_depths, T_all, S_all, clim_depths, lat, lon,
         },
         coords={
             'month':     np.arange(1, 13, dtype=np.int32),
-            'obs_depth': obs_depths.astype(np.float32),
+            'obs_depth': obs_depths.astype(np.float64),
             'lat':       lat,
             'lon':       lon,
         },
@@ -128,8 +128,8 @@ def prebake_one_grid(obs_depths, T_all, S_all, clim_depths, lat, lon,
         },
     )
     enc = {
-        'potential_T_monthly': {'zlib': True, 'complevel': 4, 'dtype': 'float32'},
-        'S_monthly':           {'zlib': True, 'complevel': 4, 'dtype': 'float32'},
+        'potential_T_monthly': {'zlib': True, 'complevel': 4, 'dtype': 'float64'},
+        'S_monthly':           {'zlib': True, 'complevel': 4, 'dtype': 'float64'},
     }
     out_ds.to_netcdf(out_path, encoding=enc)
     print(f"  Written: {out_path}")
