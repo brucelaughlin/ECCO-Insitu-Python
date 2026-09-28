@@ -65,6 +65,27 @@ def NCEI_pipeline(dest_dir, input_dir, prebaked_clim_files=None):
             f'{_woa23_dir}/woa23_decav91C0_TS_clim_potential_T_1deg_22depths_prebaked.nc',   # 22-level, Samoa 1992
     }
 
+    # Pre-load all pre-baked climatology arrays into memory now, once, before the
+    # file loop.  Step03 will receive ready-to-use numpy arrays on every call —
+    # no disk I/O per file.  This is the speedup the entire pre-bake was designed for.
+    if prebaked_clim_files:
+        print("Loading pre-baked climatology arrays into memory ...")
+        prebaked_clim_arrays = {}
+        for depth_key, pb_path in prebaked_clim_files.items():
+            pb_ds = xr.open_dataset(pb_path)
+            prebaked_clim_arrays[depth_key] = {
+                'prof_T':       pb_ds['potential_T_monthly'].values,  # (12, ndepth_obs, nlat, nlon)
+                'prof_S':       pb_ds['S_monthly'].values,
+                'lon':          pb_ds['lon'].values,
+                'lat':          pb_ds['lat'].values,
+                'depths':       pb_ds['obs_depth'].values,
+                '_source_name': Path(pb_path).name,
+            }
+            pb_ds.close()
+            print(f"  loaded: {Path(pb_path).name}  ({len(depth_key)}-level grid)")
+        print(f"Pre-baked arrays ready ({len(prebaked_clim_arrays)} grid(s)).\n")
+        prebaked_clim_files = prebaked_clim_arrays   # replace path dict with loaded-array dict
+
     sigma_file_dict = {
             'prof_T': '/Users/brucel/ecco/yip/sample_data/ecco-insitu/sweet_gdrive/CTD_sigma_TS/Theta_sigma_smoothed_method_02_masked_merged_capped_extrapolated.bin',
             'prof_S': '/Users/brucel/ecco/yip/sample_data/ecco-insitu/sweet_gdrive/CTD_sigma_TS/Salt_sigma_smoothed_method_02_masked_merged_capped_extrapolated.bin',

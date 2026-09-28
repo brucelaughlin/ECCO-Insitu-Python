@@ -23,17 +23,10 @@ def update_monthly_mean_clim_WOA13v2_on_prepared_profiles(MITprof_ds, profile_va
     use_prebaked = False
     _grid_desc = f"{len(prof_depths)}-level grid ({prof_depths[prof_depths>0].min():.0f}–{prof_depths.max():.0f} m)"
     if prebaked_clim_files and depth_key in prebaked_clim_files:
-        pb_path = prebaked_clim_files[depth_key]
-        print(f"  [step03] CLIM MODE : PRE-BAKED  | {_grid_desc} | {Path(pb_path).name}")
-        pb_ds = xr.open_dataset(pb_path)
-        clim_grid_data_dict = {
-            'prof_T':  pb_ds['potential_T_monthly'].values,  # (12, ndepth_obs, nlat, nlon)
-            'prof_S':  pb_ds['S_monthly'].values,
-            'lon':     pb_ds['lon'].values,
-            'lat':     pb_ds['lat'].values,
-            'depths':  pb_ds['obs_depth'].values,            # obs depths (unused in prebaked mode)
-        }
-        pb_ds.close()
+        # Arrays already loaded into memory by NCEI_pipeline at startup — no I/O here.
+        entry = prebaked_clim_files[depth_key]
+        print(f"  [step03] CLIM MODE : PRE-BAKED  | {_grid_desc} | {entry['_source_name']}")
+        clim_grid_data_dict = entry
         use_prebaked = True
     else:
         if prebaked_clim_files:

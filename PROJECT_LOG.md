@@ -96,26 +96,46 @@ prebaked_clim_files = {
 - ITP/L2 (non-standard grid): falls back to full-depth interpolation cleanly.
 - Two independent runs from the same input: bit-identical (chain is deterministic).
 
-### Runtime impact: none currently (I/O bound)
+### Runtime impact: none before caching (I/O bound)
 
-Timing on the CTD 1992 file (61,551 profiles):
+Timing on the CTD 1992 file (61,551 profiles) before caching was added:
 
 | Path | Time |
 |------|------|
 | Normal (full-depth clim) | 5.1 s |
-| Pre-baked | 5.5 s |
+| Pre-baked (no cache) | 5.5 s |
 
-No speedup — profiling showed that 2.0 s of the 5.3 s total is disk I/O reading
-the climatology file via xarray/netCDF4, and the depth interpolation itself is
-only ~0.9 s (already fast after the prior vectorization). Loading the pre-baked
-file instead saves the depth interp time but adds comparable I/O for a file that
-is similar in size when decompressed.
+No speedup without caching — profiling showed that ~2.0 s of the ~5.3 s total
+was disk I/O reading the climatology file via xarray/netCDF4, and the depth
+interpolation itself was only ~0.9 s. Loading the pre-baked file instead saved
+the depth interp time but added comparable I/O for a file that is similar in
+size when decompressed.
 
-The pre-bake has latent value in a scenario where the climatology arrays are
-**loaded once and reused across all files in a run** (currently step03 reloads
-from disk on every file). If caching is added at the NCEI pipeline level, the
-pre-baked path would skip both the I/O and the depth interp for every subsequent
-file. That is a separate future change.
+### Climatology caching (the actual speedup)
+
+The pre-bake only produces a real speedup if the arrays are loaded **once** into
+memory before the file loop, not re-read from disk on every file.
+
+**How it works now:**
+
+1. `NCEI_pipeline` defines `prebaked_clim_files` as `{depth_tuple: path}` as before.
+2. Immediately after, a new block iterates over that dict, calls `xr.open_dataset`
+   on each path, extracts all numpy arrays, and builds a new dict:
+   `{depth_tuple: {'prof_T': ndarray, 'prof_S': ndarray, 'lon': ..., 'lat': ..., 'depths': ..., '_source_name': filename}}`.
+3. The original path dict is replaced in-place (`prebaked_clim_files = prebaked_clim_arrays`).
+4. This new array dict is passed to `partial(step03.main, ..., prebaked_clim_files=...)`.
+5. In step03, the pre-baked branch now just uses the dict value directly — no
+   `xr.open_dataset` call at all. The `_source_name` key holds the original
+   filename for the log line.
+
+The 4 pre-baked .nc files (97-level, 36-level, 25-level Samoa, 22-level Samoa)
+are loaded at pipeline start, once. For the remaining 509 files, step03's
+climatology lookup is purely in-memory: a dict key check + time-blend + bilinear
+lat/lon interpolation. The disk I/O cost (~2 s/file) is paid four times total
+instead of 509 times.
+
+**Expected speedup:** ~2 s per file × (509 − 4) files ≈ **17 minutes** saved on
+a full 509-file run. Actual speedup to be measured in the next production run.
 
 ### Files
 - Added: `prebake_woa23_climatology.py`
