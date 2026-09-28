@@ -24,7 +24,7 @@ def update_monthly_mean_clim_WOA13v2_on_prepared_profiles(MITprof_ds, profile_va
     _grid_desc = f"{len(prof_depths)}-level grid ({prof_depths[prof_depths>0].min():.0f}–{prof_depths.max():.0f} m)"
     if prebaked_clim_files and depth_key in prebaked_clim_files:
         pb_path = prebaked_clim_files[depth_key]
-        print(f"  step03: pre-baked climatology matched for {_grid_desc} -> {Path(pb_path).name}")
+        print(f"  [step03] CLIM MODE : PRE-BAKED  | {_grid_desc} | {Path(pb_path).name}")
         pb_ds = xr.open_dataset(pb_path)
         clim_grid_data_dict = {
             'prof_T':  pb_ds['potential_T_monthly'].values,  # (12, ndepth_obs, nlat, nlon)
@@ -37,9 +37,9 @@ def update_monthly_mean_clim_WOA13v2_on_prepared_profiles(MITprof_ds, profile_va
         use_prebaked = True
     else:
         if prebaked_clim_files:
-            print(f"  step03: no pre-baked match for {_grid_desc} — falling back to full-depth interpolation")
+            print(f"  [step03] CLIM MODE : FULL-DEPTH FALLBACK  | {_grid_desc} | *** no pre-baked file registered for this grid ***")
         else:
-            print(f"  step03: using full-depth climatology interpolation ({_grid_desc})")
+            print(f"  [step03] CLIM MODE : FULL-DEPTH  | {_grid_desc}")
     if not use_prebaked:
         if Path(climatology_file).suffix == ".mat":
             clim_data_top_level = pymatreader.read_mat(climatology_file)
