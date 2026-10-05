@@ -1,73 +1,32 @@
 """
-Preprocessing script for the multi-source interactive globe app.
+Preprocessing script for the multi-source interactive globe app with anomaly coloring.
 
-Generalizes build_pfl_bin_timeseries.py to ingest EVERY post-NCEI source under
-profile_files_NCEI_processed/ (CTD_WOD, GLD_WOD, MEOP, MRB_WOD, PFL, PFL_BGC,
-XBT_WOD, ...), not just PFL. ITP is currently empty and is skipped with a log.
+Extends build_allsource_bin_timeseries.py with per-bin, per-depth anomaly statistics
+(mean and std of T - Tclim and S - Sclim across all profiles ever in the bin).
+These are stored directly in the zarr store alongside T_mean/S_mean:
 
-All sources share the same physical depth grid — each is a clean prefix of the
-97-level reference grid (2, 4, 7, 10 ... m), differing only in max depth — so a
-single pad-to-97 handles every source without interpolation.
+  fine/<bid>/T_anom_mean   (97,) float32
+  fine/<bid>/T_anom_std    (97,) float32
+  fine/<bid>/S_anom_mean   (97,) float32
+  fine/<bid>/S_anom_std    (97,) float32
 
-Data is partitioned BY SOURCE so the app can either show one instrument in
-isolation or pool them. The pooled ("all") view is derived on the fly; storing
-per-source keeps every option open (the reverse is not recoverable).
+Run modes
+---------
+Default (full rebuild):
+    python build_allsource_bin_timeseries_with_anomalies.py --source_root <dir>
 
-Model equivalents (prof_Testim / prof_Sestim, the ECCO profiles-package
-model-sampled T/S) are ingested WHEN PRESENT. As of this writing only MEOP has
-them; the other sources have not had the upstream model-sampling step run yet.
-The code fills estim for any source that has the fields and stores None-flagged
-NaNs otherwise, so it auto-populates once upstream is run.
+Append anomaly arrays to an existing store (skips ingest + aggregate):
+    python build_allsource_bin_timeseries_with_anomalies.py \\
+        --source_root <dir> --append_anomalies
 
-Per bin, per (year, month), per source, computes nanmean of:
-  T, S           — observed profiles
-  Tclim, Sclim   — climatology interpolated to each profile's location/time
-  Testim, Sestim — model equivalent, where available
+Output
+------
+  <output>.zarr              zarr store (arrays)
+  <output>_metadata.json     JSON (scalars, profile records, bin centres)
 
-Pooling convention: the combined ("all") monthly mean is profile-weighted
-(nanmean over every profile in the bin-month regardless of source), NOT a mean
-of per-source means. A source contributing more profiles therefore weighs more.
-
-STORAGE NOTES (why this pickle is compact):
-  * Per-source arrays are the source of truth. The combined ("all") monthly
-    arrays are NOT stored — the app shows one bin at a time and derives the
-    profile-weighted combined view on click. Storing them for ~840k bin-months
-    was pure redundancy.
-  * Depth arrays are stored as float32 (ample for T/S) to halve array bytes.
-  * Model equivalents (prof_Testim/Sestim) are currently ALL-NaN in every
-    source file (the upstream ECCO model-sampling step has not populated them),
-    so their arrays are NOT stored — only a per-source `has_estim` flag. Add the
-    array storage back (see INGEST_ESTIM) once upstream fills the fields.
-
-Output pickle (new file, does not overwrite the PFL one):
-  'depth'            : np.ndarray float32 (97,)
-  'sources'          : list[str]                sorted source names ingested
-  'bins'             : dict[bin_id -> {
-      'bin_id'       : int
-      'months'       : dict[(year,month) -> {
-          'n'        : int                      total profiles this month
-          'by_source': dict[src -> {
-              'T','S','Tclim','Sclim' : np.ndarray float32 (97,)
-              'n'      : int
-              'sources': list of {file, prof_idx, date, lon, lat, qual}
-          }]
-      }]
-      'T_mean','S_mean' : np.ndarray float32 (97,)  combined long-run monthly mean
-      'hit_counts'      : {1,2,3 -> int}         combined months with >= N profiles
-      'first_ym','last_ym' : (year,month)
-      'prob_1plus'      : float                  combined day-0 probability
-      'by_source'       : dict[src -> {
-          'T_mean','S_mean' : np.ndarray float32 (97,)
-          'hit_counts'      : {1,2,3 -> int}
-          'first_ym','last_ym' : (year,month)
-          'n_profiles'      : int
-          'has_estim'       : bool               True once upstream fills estim
-      }]
-  }]
-  'bin_centres'      : dict[bin_id -> (lon, lat)]
-  'dataset_first_ym' : (year, month)
-  'dataset_last_ym'  : (year, month)
-  'total_months'     : int
+Default output path:
+  /Users/brucel/ecco/yip/profile_data/z_profile_file_analysis/
+      allsource_bin_timeseries_with_anomalies
 """
 
 import argparse
@@ -75,7 +34,6 @@ import concurrent.futures
 import json
 import multiprocessing as mp
 import os
-import pickle
 import re
 import sqlite3
 import warnings
@@ -90,23 +48,32 @@ from collections import defaultdict
 # Paths
 # ==============================================================================
 
-_DEFAULT_GEODESIC_FILE    = '/Users/brucel/ecco/yip/sample_data/ecco-insitu/sweet_gdrive/geodesic/10242_bin_locations.csv'
-_DEFAULT_GEODESIC_FILE_B  = '/Users/brucel/ecco/yip/sample_data/ecco-insitu/sweet_gdrive/geodesic/02562_bin_locations.csv'
-_OUTPUT_BASE              = '/Users/brucel/ecco/yip/profile_data/z_profile_file_analysis/allsource_bin_timeseries'
+_DEFAULT_GEODESIC_FILE   = '/Users/brucel/ecco/yip/sample_data/ecco-insitu/sweet_gdrive/geodesic/10242_bin_locations.csv'
+_DEFAULT_GEODESIC_FILE_B = '/Users/brucel/ecco/yip/sample_data/ecco-insitu/sweet_gdrive/geodesic/02562_bin_locations.csv'
+_OUTPUT_BASE             = ('/Users/brucel/ecco/yip/profile_data/z_profile_file_analysis/'
+                            'allsource_bin_timeseries_with_anomalies')
 
 # nanmean/nanstd over all-NaN depth levels (e.g. XBT shallower than 97 levels) is expected.
 warnings.filterwarnings('ignore', message='Mean of empty slice', category=RuntimeWarning)
 warnings.filterwarnings('ignore', message='Degrees of freedom <= 0', category=RuntimeWarning)
 
-_parser = argparse.ArgumentParser(description='Build allsource bin timeseries (zarr + JSON) for the globe app.')
+_parser = argparse.ArgumentParser(
+    description='Build allsource bin timeseries with anomaly stats (zarr + JSON).')
 _parser.add_argument('--source_root', required=True,
-                     help='Root directory of NCEI-processed output (e.g. profile_files_NCEI_processed_20260930_164848)')
+                     help='Root directory of NCEI-processed output')
 _parser.add_argument('--output', default=None,
-                     help='Output path stem; writes <output>.zarr and <output>_metadata.json. '
-                          'Defaults to allsource_bin_timeseries_YYYYMMDD_HHMMSS derived from source_root name.')
+                     help='Output path stem; writes <output>.zarr + <output>_metadata.json. '
+                          'Defaults to allsource_bin_timeseries_with_anomalies_YYYYMMDD_HHMMSS '
+                          'derived from source_root name.')
+_parser.add_argument('--append_anomalies', action='store_true',
+                     help='Skip ingest/aggregate; open existing store and write only the '
+                          'T/S_anom_mean/std arrays. Requires the store to already exist.')
 _args = _parser.parse_args()
 
-SOURCE_ROOT    = Path(_args.source_root)
+SOURCE_ROOT      = Path(_args.source_root)
+GEODESIC_FILE    = _DEFAULT_GEODESIC_FILE
+GEODESIC_FILE_B  = _DEFAULT_GEODESIC_FILE_B
+APPEND_ANOMALIES = _args.append_anomalies
 
 def _derive_output(source_root, base):
     """Append _YYYYMMDD_HHMMSS timestamp from source_root name to base, if present."""
@@ -118,17 +85,21 @@ def _derive_output(source_root, base):
 OUTPUT_DIR = Path(_args.output) if _args.output else Path(_derive_output(SOURCE_ROOT, _OUTPUT_BASE))
 print(f"Output path stem: {OUTPUT_DIR}")
 
-GEODESIC_FILE  = _DEFAULT_GEODESIC_FILE
-GEODESIC_FILE_B = _DEFAULT_GEODESIC_FILE_B
-
 BIN_ID_VAR   = 'prof_bin_id_a'   # 10242-bin resolution
 BIN_ID_VAR_B = 'prof_bin_id_b'   # 2562-bin resolution
-N_DEPTH_REF  = 97                 # full reference depth grid length
+N_DEPTH_REF  = 97
 
-# prof_Testim/Sestim are all-NaN in every source today (upstream model-sampling
-# step not yet run). We still track a per-source has_estim flag. Flip this to
-# True to also STORE the estim arrays once upstream populates them.
 INGEST_ESTIM = False
+
+_INGEST_WORKERS = min(8, max(1, (os.cpu_count() or 1) - 1))
+
+# Output layout: a directory named after the stem, containing both files.
+#   <stem>/
+#       <stem>.zarr
+#       <stem>_metadata.json
+OUTPUT_CONTAINER = OUTPUT_DIR
+OUTPUT_ZARR      = OUTPUT_CONTAINER / (OUTPUT_DIR.name + '.zarr')
+OUTPUT_JSON      = OUTPUT_CONTAINER / (OUTPUT_DIR.name + '_metadata.json')
 
 # ==============================================================================
 # Helpers
@@ -141,7 +112,6 @@ def load_geodesic_centres(geodesic_file):
 
 
 def pad_to_ref(arr, n_ref=N_DEPTH_REF):
-    """Pad a 1-D depth profile to n_ref levels with NaNs; stored as float32."""
     arr = np.asarray(arr, dtype=np.float32)
     if len(arr) == n_ref:
         return arr
@@ -151,69 +121,55 @@ def pad_to_ref(arr, n_ref=N_DEPTH_REF):
 
 
 def stack_nanmean(profiles, key):
-    """nanmean over a list of profile dicts for the given per-profile key."""
     return np.nanmean(np.stack([p[key] for p in profiles], axis=0),
                       axis=0).astype(np.float32)
 
 
 def file_qualifier(stem):
-    """Sub-source qualifier from the filename (e.g. PFL D/R/A, WOD OSD/noflag).
-
-    The true source is the directory name; this is only a finer tag kept for
-    the source table. Returns '' when there is no meaningful qualifier.
-    """
     parts = stem.split('_')
-    # parts like: ARGO_WO_1997_PFL_D__ncei_step_10  or  WOD_WO_1992_CTD_OSD__ncei
-    # index 4 is the token after the instrument code, before the trailing __ncei
     if len(parts) > 4 and parts[4] and parts[4] != 'ncei':
         return parts[4]
     return ''
 
+
+def _ym_str(ym):
+    return f"{ym[0]}-{ym[1]:02d}"
+
+
+def _ym_int(ym):
+    return ym[0] * 100 + ym[1]
+
 # ==============================================================================
-# Reference depth grid
+# Anomaly-only append mode
 # ==============================================================================
 
-print("Loading geodesic bin centres...")
-bin_centres   = load_geodesic_centres(GEODESIC_FILE)
-bin_centres_b = load_geodesic_centres(GEODESIC_FILE_B)
-print(f"  {len(bin_centres):,} fine (10242) + {len(bin_centres_b):,} coarse (2562) centres loaded")
-
-# Establish the 97-level reference depth grid from the first file that has it,
-# searching across all sources.
-DEPTH_REF = None
-for _d in sorted(SOURCE_ROOT.iterdir()):
-    if not _d.is_dir():
-        continue
-    for _f in sorted(_d.glob('*.nc')):
-        try:
-            _ds = xr.open_dataset(_f)
-        except Exception:
+def _append_anomaly_arrays_from_store(store, resolution_label, bin_profiles_res):
+    """Compute and write T/S_anom_mean/std into an already-open zarr store."""
+    grp  = store[resolution_label]
+    bids = list(bin_profiles_res.keys())
+    print(f"  Writing anomaly arrays for {len(bids):,} {resolution_label} bins...", flush=True)
+    for i, bid in enumerate(bids):
+        all_profs = [p for profs in bin_profiles_res[bid].values() for p in profs]
+        if not all_profs:
             continue
-        if _ds.sizes.get('iDEPTH', 0) == N_DEPTH_REF:
-            DEPTH_REF = _ds['depth'].values.astype(float).ravel()
-            _ds.close()
-            break
-        _ds.close()
-    if DEPTH_REF is not None:
-        break
-if DEPTH_REF is None:
-    raise RuntimeError(f"No post-NCEI file found with iDEPTH={N_DEPTH_REF}")
-print(f"  Reference depth grid: {N_DEPTH_REF} levels, "
-      f"{DEPTH_REF[0]:.0f}-{DEPTH_REF[-1]:.0f} m")
+        T_anom = np.stack([p['T'] - p['Tclim'] for p in all_profs], axis=0).astype(np.float32)
+        S_anom = np.stack([p['S'] - p['Sclim'] for p in all_profs], axis=0).astype(np.float32)
+        bg = grp.require_group(str(bid))
+        for name, arr in (('T_anom_mean', np.nanmean(T_anom, axis=0).astype(np.float32)),
+                          ('T_anom_std',  np.nanstd( T_anom, axis=0).astype(np.float32)),
+                          ('S_anom_mean', np.nanmean(S_anom, axis=0).astype(np.float32)),
+                          ('S_anom_std',  np.nanstd( S_anom, axis=0).astype(np.float32))):
+            if name in bg:
+                del bg[name]
+            bg.create_array(name, data=arr, chunks=(N_DEPTH_REF,))
+        if i % 1000 == 0:
+            print(f"    {i}/{len(bids)}", flush=True)
 
 # ==============================================================================
-# Ingest — bin_profiles[bin_id][source] = list of per-profile dicts
+# Ingest worker
 # ==============================================================================
-
-_INGEST_WORKERS = min(8, max(1, (os.cpu_count() or 1) - 1))
-
 
 def _ingest_file(fpath_source):
-    """Read one .nc file and return a list of per-profile record dicts.
-
-    Returns (source, fpath.name, records_fine, records_coarse) where each
-    records_* is a list of (bin_id, rec) tuples.  Returns None on failure.
-    """
     fpath, source = fpath_source
     qual = file_qualifier(fpath.stem)
     try:
@@ -233,10 +189,10 @@ def _ingest_file(fpath_source):
     lats     = ds['prof_lat'].values.astype(float)
     n_depth  = ds.sizes.get('iDEPTH', N_DEPTH_REF)
     _nan2d   = np.full((n_prof, n_depth), np.nan, dtype=float)
-    T_all    = ds['prof_T'].values.astype(float)     if 'prof_T'    in ds else _nan2d
-    S_all    = ds['prof_S'].values.astype(float)     if 'prof_S'    in ds else _nan2d
-    Tc_all   = ds['prof_Tclim'].values.astype(float) if 'prof_Tclim' in ds else _nan2d
-    Sc_all   = ds['prof_Sclim'].values.astype(float) if 'prof_Sclim' in ds else _nan2d
+    T_all    = ds['prof_T'].values.astype(float)      if 'prof_T'     in ds else _nan2d
+    S_all    = ds['prof_S'].values.astype(float)      if 'prof_S'     in ds else _nan2d
+    Tc_all   = ds['prof_Tclim'].values.astype(float)  if 'prof_Tclim' in ds else _nan2d
+    Sc_all   = ds['prof_Sclim'].values.astype(float)  if 'prof_Sclim' in ds else _nan2d
     bin_ids   = ds[BIN_ID_VAR].values.astype(float)
     bin_ids_b = ds[BIN_ID_VAR_B].values.astype(float) if BIN_ID_VAR_B in ds else None
 
@@ -280,69 +236,11 @@ def _ingest_file(fpath_source):
     ds.close()
     return source, fpath.name, recs_fine, recs_coarse, None
 
-
-source_dirs = sorted(d for d in SOURCE_ROOT.iterdir() if d.is_dir())
-bin_profiles   = defaultdict(lambda: defaultdict(list))   # fine  (10242)
-bin_profiles_b = defaultdict(lambda: defaultdict(list))   # coarse (2562)
-sources_seen = set()
-
-# Build a flat work list across all source dirs, preserving source name per file.
-all_work = []
-for sdir in source_dirs:
-    files = sorted(sdir.glob('*.nc'))
-    if not files:
-        print(f"\n=== {sdir.name} === no .nc files, skipping")
-        continue
-    print(f"\n=== {sdir.name} === {len(files)} files")
-    all_work.extend((f, sdir.name) for f in files)
-
-n_total   = len(all_work)
-done      = 0
-print(f"\nIngesting {n_total} files with {_INGEST_WORKERS} workers...")
-
-with concurrent.futures.ThreadPoolExecutor(max_workers=_INGEST_WORKERS) as pool:
-    futures = {pool.submit(_ingest_file, item): item for item in all_work}
-    for fut in concurrent.futures.as_completed(futures):
-        source, fname, recs_fine, recs_coarse, err = fut.result()
-        done += 1
-        if err is not None:
-            print(f"  [{done}/{n_total}] {fname}: skipping ({err})", flush=True)
-            continue
-        for bid, rec in recs_fine:
-            bin_profiles[bid][source].append(rec)
-        if recs_coarse:
-            for bid_b, rec in recs_coarse:
-                bin_profiles_b[bid_b][source].append(rec)
-        sources_seen.add(source)
-        if done % 20 == 0 or done == n_total:
-            print(f"  [{done}/{n_total}] ingested; "
-                  f"{len(bin_profiles):,} fine / {len(bin_profiles_b):,} coarse bins so far",
-                  flush=True)
-
-sources_sorted = sorted(sources_seen)
-print(f"\nSources ingested: {', '.join(sources_sorted)}")
-print(f"  {len(bin_profiles):,} fine bins, {len(bin_profiles_b):,} coarse bins")
-
 # ==============================================================================
-# Dataset-wide calendar span (probability denominator) — derived from fine grid
+# Aggregate
 # ==============================================================================
-
-all_ym = set()
-for src_map in bin_profiles.values():
-    for profs in src_map.values():
-        for p in profs:
-            all_ym.add((p['year'], p['month']))
-all_ym = sorted(all_ym)
-if all_ym:
-    (y0, m0), (y1, m1) = all_ym[0], all_ym[-1]
-    total_months = (y1 - y0) * 12 + (m1 - m0) + 1
-else:
-    y0 = m0 = y1 = m1 = None
-    total_months = 1
-
 
 def hit_counts_from_groups(ym_groups):
-    """{1,2,3 -> #months with >= N profiles} from a (y,m)->list mapping."""
     hc = {1: 0, 2: 0, 3: 0}
     for group in ym_groups.values():
         n = len(group)
@@ -409,6 +307,14 @@ def _agg_bin(bid_src_map_tm):
     S_long_mean = (np.nanmean(np.stack(all_S_monthly, axis=0), axis=0).astype(np.float32)
                    if all_S_monthly else np.full(N_DEPTH_REF, np.nan, dtype=np.float32))
 
+    all_profs_bin = [p for profs in src_map.values() for p in profs]
+    T_anom_stack  = np.stack([p['T'] - p['Tclim'] for p in all_profs_bin], axis=0).astype(np.float32)
+    S_anom_stack  = np.stack([p['S'] - p['Sclim'] for p in all_profs_bin], axis=0).astype(np.float32)
+    T_anom_mean   = np.nanmean(T_anom_stack, axis=0).astype(np.float32)
+    T_anom_std    = np.nanstd( T_anom_stack, axis=0).astype(np.float32)
+    S_anom_mean   = np.nanmean(S_anom_stack, axis=0).astype(np.float32)
+    S_anom_std    = np.nanstd( S_anom_stack, axis=0).astype(np.float32)
+
     combined_hits = hit_counts_from_groups(combined_ym)
     bin_yms       = sorted(combined_ym.keys())
 
@@ -431,15 +337,19 @@ def _agg_bin(bid_src_map_tm):
         }
 
     return bid, {
-        'bin_id':     bid,
-        'months':     months_dict,
-        'T_mean':     T_long_mean,
-        'S_mean':     S_long_mean,
-        'hit_counts': combined_hits,
-        'first_ym':   bin_yms[0],
-        'last_ym':    bin_yms[-1],
-        'prob_1plus': combined_hits[1] / tm,
-        'by_source':  by_source_roll,
+        'bin_id':      bid,
+        'months':      months_dict,
+        'T_mean':      T_long_mean,
+        'S_mean':      S_long_mean,
+        'T_anom_mean': T_anom_mean,
+        'T_anom_std':  T_anom_std,
+        'S_anom_mean': S_anom_mean,
+        'S_anom_std':  S_anom_std,
+        'hit_counts':  combined_hits,
+        'first_ym':    bin_yms[0],
+        'last_ym':     bin_yms[-1],
+        'prob_1plus':  combined_hits[1] / tm,
+        'by_source':   by_source_roll,
     }
 
 
@@ -448,9 +358,9 @@ _AGG_WORKERS = max(1, (os.cpu_count() or 1) - 1)
 
 def aggregate_bins(bp, tm):
     """Aggregate bin_profiles in parallel across CPUs (bins are independent)."""
-    work  = [(bid, dict(src_map), tm) for bid, src_map in bp.items()]
-    out   = {}
-    done  = 0
+    work = [(bid, dict(src_map), tm) for bid, src_map in bp.items()]
+    out  = {}
+    done = 0
     # 'fork' copies the parent process (with bin_profiles already loaded) into
     # each worker instantly — avoiding the cost of re-importing and re-ingesting
     # that 'spawn' (the macOS default) would cause.
@@ -460,7 +370,7 @@ def aggregate_bins(bp, tm):
     # hang silently, no output after "Aggregating N bins...".
     # FIX: run with OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 python build_allsource...
     # or switch mp_context to 'spawn' and accept the re-import overhead.
-    ctx   = mp.get_context('fork')
+    ctx  = mp.get_context('fork')
     with concurrent.futures.ProcessPoolExecutor(max_workers=_AGG_WORKERS,
                                                 mp_context=ctx) as pool:
         futures = {pool.submit(_agg_bin, item): item for item in work}
@@ -473,55 +383,61 @@ def aggregate_bins(bp, tm):
     return out
 
 # ==============================================================================
-# Aggregate per bin — fine and coarse
+# Zarr + JSON serialisation
 # ==============================================================================
 
-print(f"Aggregating {len(bin_profiles):,} fine bins...")
-bins_out = aggregate_bins(bin_profiles, total_months)
-print(f"Aggregating {len(bin_profiles_b):,} coarse bins...")
-bins_out_b = aggregate_bins(bin_profiles_b, total_months)
+def write_bin_arrays(parent_group, bid, bd):
+    bg = parent_group.require_group(str(bid))
+    for key in ('T_mean', 'S_mean', 'T_anom_mean', 'T_anom_std', 'S_anom_mean', 'S_anom_std'):
+        bg.create_array(key, data=np.asarray(bd[key], dtype=np.float32), chunks=(N_DEPTH_REF,))
 
-# ==============================================================================
-# Save
-# ==============================================================================
+    sorted_yms = sorted(bd['months'].keys())
+    nm         = len(sorted_yms)
+    ym_ints    = np.array([_ym_int(ym) for ym in sorted_yms], dtype=np.int32)
+    bg.create_array('ym_index', data=ym_ints, chunks=(nm,))
 
-# Output layout: a directory named after the stem, containing both files.
-#   <stem>/
-#       <stem>.zarr
-#       <stem>_metadata.json
-OUTPUT_CONTAINER = OUTPUT_DIR        # the directory
-OUTPUT_ZARR      = OUTPUT_CONTAINER / (OUTPUT_DIR.name + '.zarr')
-OUTPUT_JSON      = OUTPUT_CONTAINER / (OUTPUT_DIR.name + '_metadata.json')
-
-OUTPUT_CONTAINER.mkdir(parents=True, exist_ok=True)
-
-# ==============================================================================
-# Serialise — zarr store (arrays) + JSON (scalars / profile record lists)
-#
-# Zarr layout:
-#   depth                        (97,) float32  — shared depth grid
-#   fine/<bid>/T_mean            (97,) float32
-#   fine/<bid>/S_mean            (97,) float32
-#   fine/<bid>/months/<ym_str>/<src>/T   (97,) float32  — ym_str = "YYYY-MM"
-#   fine/<bid>/months/<ym_str>/<src>/S   same
-#   fine/<bid>/months/<ym_str>/<src>/Tclim  same
-#   fine/<bid>/months/<ym_str>/<src>/Sclim  same
-#   fine/<bid>/by_source/<src>/T_mean  (97,) float32
-#   fine/<bid>/by_source/<src>/S_mean  (97,) float32
-#   coarse/<bid>/...  (same structure)
-#
-# JSON carries everything else:
-#   depth_list, sources, dataset_first_ym, dataset_last_ym, total_months
-#   bin_centres, bin_centres_coarse  (as [[lon,lat], ...] lists keyed by bid)
-#   bins_meta / bins_coarse_meta: per-bin scalars + profile records
-# ==============================================================================
-
-def _ym_str(ym):
-    return f"{ym[0]}-{ym[1]:02d}"
+    nan_row = np.full(N_DEPTH_REF, np.nan, dtype=np.float32)
+    bsg = bg.require_group('by_source')
+    for src, roll in bd['by_source'].items():
+        rg = bsg.require_group(src)
+        rg.create_array('T_mean', data=np.asarray(roll['T_mean'], dtype=np.float32), chunks=(N_DEPTH_REF,))
+        rg.create_array('S_mean', data=np.asarray(roll['S_mean'], dtype=np.float32), chunks=(N_DEPTH_REF,))
+        for key in ('T', 'S', 'Tclim', 'Sclim'):
+            mat = np.stack([
+                np.asarray(bd['months'][ym]['by_source'][src][key], dtype=np.float32)
+                if (src in bd['months'][ym]['by_source']) else nan_row
+                for ym in sorted_yms
+            ], axis=0)   # (n_months, N_DEPTH_REF)
+            rg.create_array(key, data=mat, chunks=(nm, N_DEPTH_REF))
 
 
-def _ym_int(ym):
-    return ym[0] * 100 + ym[1]
+def bin_meta(bd):
+    months_meta = {}
+    for ym, m in bd['months'].items():
+        by_src = {}
+        for src, e in m['by_source'].items():
+                by_src[src] = {'n': e['n']}   # profile records moved to SQLite
+        months_meta[_ym_str(ym)] = {'n': m['n'], 'by_source': by_src}
+
+    by_src_roll = {}
+    for src, roll in bd['by_source'].items():
+        by_src_roll[src] = {
+            'hit_counts': {str(k): v for k, v in roll['hit_counts'].items()},
+            'first_ym':   list(roll['first_ym']),
+            'last_ym':    list(roll['last_ym']),
+            'n_profiles': roll['n_profiles'],
+            'has_estim':  roll['has_estim'],
+        }
+
+    return {
+        'bin_id':     bd['bin_id'],
+        'hit_counts': {str(k): v for k, v in bd['hit_counts'].items()},
+        'first_ym':   list(bd['first_ym']),
+        'last_ym':    list(bd['last_ym']),
+        'prob_1plus': float(bd['prob_1plus']),
+        'months':     months_meta,
+        'by_source':  by_src_roll,
+    }
 
 
 def write_zarr_and_json(bins_fine, bins_coarse_dict, bin_centres_fine,
@@ -530,37 +446,7 @@ def write_zarr_and_json(bins_fine, bins_coarse_dict, bin_centres_fine,
 
     print(f"\nWriting zarr store → {OUTPUT_ZARR} ...")
     store = zarr.open_group(str(OUTPUT_ZARR), mode='w')
-
-    store.create_array('depth', data=depth_arr.astype(np.float32), chunks=(97,))
-
-    nd = len(depth_arr)
-
-    def write_bin_arrays(parent_group, bid, bd):
-        bg = parent_group.require_group(str(bid))
-        bg.create_array('T_mean', data=np.asarray(bd['T_mean'], dtype=np.float32), chunks=(nd,))
-        bg.create_array('S_mean', data=np.asarray(bd['S_mean'], dtype=np.float32), chunks=(nd,))
-
-        # Sorted month list shared across all sources for this bin.
-        sorted_yms = sorted(bd['months'].keys())
-        nm = len(sorted_yms)
-        ym_ints = np.array([_ym_int(ym) for ym in sorted_yms], dtype=np.int32)
-        bg.create_array('ym_index', data=ym_ints, chunks=(nm,))
-
-        # Per-source 2D monthly arrays: (n_months, n_depth).
-        # Missing months for a source get NaN rows so the matrix aligns with ym_index.
-        nan_row = np.full(nd, np.nan, dtype=np.float32)
-        bsg = bg.require_group('by_source')
-        for src, roll in bd['by_source'].items():
-            rg = bsg.require_group(src)
-            rg.create_array('T_mean', data=np.asarray(roll['T_mean'], dtype=np.float32), chunks=(nd,))
-            rg.create_array('S_mean', data=np.asarray(roll['S_mean'], dtype=np.float32), chunks=(nd,))
-            for key in ('T', 'S', 'Tclim', 'Sclim'):
-                mat = np.stack([
-                    np.asarray(bd['months'][ym]['by_source'][src][key], dtype=np.float32)
-                    if (src in bd['months'][ym]['by_source']) else nan_row
-                    for ym in sorted_yms
-                ], axis=0)   # (n_months, n_depth)
-                rg.create_array(key, data=mat, chunks=(nm, nd))
+    store.create_array('depth', data=depth_arr.astype(np.float32), chunks=(N_DEPTH_REF,))
 
     fine_g   = store.require_group('fine')
     coarse_g = store.require_group('coarse')
@@ -599,37 +485,7 @@ def write_zarr_and_json(bins_fine, bins_coarse_dict, bin_centres_fine,
     zarr_size_mb = sum(f.stat().st_size for f in OUTPUT_ZARR.rglob('*') if f.is_file()) / 1e6
     print(f"  zarr done — {zarr_size_mb:.1f} MB")
 
-    # ---- JSON metadata ----
     print(f"Writing JSON metadata → {OUTPUT_JSON} ...")
-
-    def bin_meta(bd):
-        months_meta = {}
-        for ym, m in bd['months'].items():
-            by_src = {}
-            for src, e in m['by_source'].items():
-                by_src[src] = {'n': e['n']}   # profile records moved to SQLite
-            months_meta[_ym_str(ym)] = {'n': m['n'], 'by_source': by_src}
-
-        by_src_roll = {}
-        for src, roll in bd['by_source'].items():
-            by_src_roll[src] = {
-                'hit_counts': {str(k): v for k, v in roll['hit_counts'].items()},
-                'first_ym':   list(roll['first_ym']),
-                'last_ym':    list(roll['last_ym']),
-                'n_profiles': roll['n_profiles'],
-                'has_estim':  roll['has_estim'],
-            }
-
-        return {
-            'bin_id':     bd['bin_id'],
-            'hit_counts': {str(k): v for k, v in bd['hit_counts'].items()},
-            'first_ym':   list(bd['first_ym']),
-            'last_ym':    list(bd['last_ym']),
-            'prob_1plus': float(bd['prob_1plus']),
-            'months':     months_meta,
-            'by_source':  by_src_roll,
-        }
-
     meta = {
         'depth_list':         depth_arr.astype(np.float32).tolist(),
         'sources':            sources,
@@ -641,12 +497,157 @@ def write_zarr_and_json(bins_fine, bins_coarse_dict, bin_centres_fine,
         'bins_meta':          {str(bid): bin_meta(bd) for bid, bd in bins_fine.items()},
         'bins_coarse_meta':   {str(bid): bin_meta(bd) for bid, bd in bins_coarse_dict.items()},
     }
-
     with open(OUTPUT_JSON, 'w') as f:
         json.dump(meta, f, separators=(',', ':'))
     json_size_mb = OUTPUT_JSON.stat().st_size / 1e6
     print(f"  JSON done — {json_size_mb:.1f} MB")
 
+# ==============================================================================
+# Main
+# ==============================================================================
+
+print("Loading geodesic bin centres...")
+bin_centres   = load_geodesic_centres(GEODESIC_FILE)
+bin_centres_b = load_geodesic_centres(GEODESIC_FILE_B)
+print(f"  {len(bin_centres):,} fine (10242) + {len(bin_centres_b):,} coarse (2562) centres loaded")
+
+# --append_anomalies: open existing store, reuse existing JSON, write only anomaly arrays.
+if APPEND_ANOMALIES:
+    if not OUTPUT_ZARR.exists():
+        raise FileNotFoundError(f"--append_anomalies requires existing store: {OUTPUT_ZARR}")
+    print(f"\n=== APPEND MODE: adding anomaly arrays to {OUTPUT_ZARR} ===")
+
+    # Need to re-ingest to get the per-profile T/Tclim arrays in memory.
+    # (They are not stored in the zarr — only monthly means are.)
+    source_dirs = sorted(d for d in SOURCE_ROOT.iterdir() if d.is_dir())
+    bin_profiles   = defaultdict(lambda: defaultdict(list))
+    bin_profiles_b = defaultdict(lambda: defaultdict(list))
+    sources_seen   = set()
+
+    all_work = []
+    for sdir in source_dirs:
+        files = sorted(sdir.glob('*.nc'))
+        if not files:
+            print(f"\n=== {sdir.name} === no .nc files, skipping")
+            continue
+        print(f"\n=== {sdir.name} === {len(files)} files")
+        all_work.extend((f, sdir.name) for f in files)
+
+    n_total = len(all_work)
+    done    = 0
+    print(f"\nIngesting {n_total} files with {_INGEST_WORKERS} workers (append mode)...")
+    with concurrent.futures.ThreadPoolExecutor(max_workers=_INGEST_WORKERS) as pool:
+        futures = {pool.submit(_ingest_file, item): item for item in all_work}
+        for fut in concurrent.futures.as_completed(futures):
+            source, fname, recs_fine, recs_coarse, err = fut.result()
+            done += 1
+            if err is not None:
+                print(f"  [{done}/{n_total}] {fname}: skipping ({err})", flush=True)
+                continue
+            for bid, rec in recs_fine:
+                bin_profiles[bid][source].append(rec)
+            if recs_coarse:
+                for bid_b, rec in recs_coarse:
+                    bin_profiles_b[bid_b][source].append(rec)
+            sources_seen.add(source)
+            if done % 20 == 0 or done == n_total:
+                print(f"  [{done}/{n_total}] ingested", flush=True)
+
+    store = zarr.open_group(str(OUTPUT_ZARR), mode='a')
+    _append_anomaly_arrays_from_store(store, 'fine',   bin_profiles)
+    _append_anomaly_arrays_from_store(store, 'coarse', bin_profiles_b)
+    zarr_size_mb = sum(f.stat().st_size for f in OUTPUT_ZARR.rglob('*') if f.is_file()) / 1e6
+    print(f"\nAppend done — store size {zarr_size_mb:.1f} MB")
+    import sys; sys.exit(0)
+
+# ==============================================================================
+# Full rebuild path
+# ==============================================================================
+
+# Reference depth grid
+DEPTH_REF = None
+for _d in sorted(SOURCE_ROOT.iterdir()):
+    if not _d.is_dir(): continue
+    for _f in sorted(_d.glob('*.nc')):
+        try: _ds = xr.open_dataset(_f)
+        except Exception: continue
+        if _ds.sizes.get('iDEPTH', 0) == N_DEPTH_REF:
+            DEPTH_REF = _ds['depth'].values.astype(float).ravel()
+            _ds.close(); break
+        _ds.close()
+    if DEPTH_REF is not None: break
+if DEPTH_REF is None:
+    raise RuntimeError(f"No post-NCEI file found with iDEPTH={N_DEPTH_REF}")
+print(f"  Reference depth grid: {N_DEPTH_REF} levels, "
+      f"{DEPTH_REF[0]:.0f}-{DEPTH_REF[-1]:.0f} m")
+
+# Ingest
+source_dirs = sorted(d for d in SOURCE_ROOT.iterdir() if d.is_dir())
+bin_profiles   = defaultdict(lambda: defaultdict(list))
+bin_profiles_b = defaultdict(lambda: defaultdict(list))
+sources_seen   = set()
+
+all_work = []
+for sdir in source_dirs:
+    files = sorted(sdir.glob('*.nc'))
+    if not files:
+        print(f"\n=== {sdir.name} === no .nc files, skipping")
+        continue
+    print(f"\n=== {sdir.name} === {len(files)} files")
+    all_work.extend((f, sdir.name) for f in files)
+
+n_total = len(all_work)
+done    = 0
+print(f"\nIngesting {n_total} files with {_INGEST_WORKERS} workers...")
+with concurrent.futures.ThreadPoolExecutor(max_workers=_INGEST_WORKERS) as pool:
+    futures = {pool.submit(_ingest_file, item): item for item in all_work}
+    for fut in concurrent.futures.as_completed(futures):
+        source, fname, recs_fine, recs_coarse, err = fut.result()
+        done += 1
+        if err is not None:
+            print(f"  [{done}/{n_total}] {fname}: skipping ({err})", flush=True)
+            continue
+        for bid, rec in recs_fine:
+            bin_profiles[bid][source].append(rec)
+        if recs_coarse:
+            for bid_b, rec in recs_coarse:
+                bin_profiles_b[bid_b][source].append(rec)
+        sources_seen.add(source)
+        if done % 20 == 0 or done == n_total:
+            print(f"  [{done}/{n_total}] ingested; "
+                  f"{len(bin_profiles):,} fine / {len(bin_profiles_b):,} coarse bins so far",
+                  flush=True)
+
+sources_sorted = sorted(sources_seen)
+print(f"\nSources ingested: {', '.join(sources_sorted)}")
+print(f"  {len(bin_profiles):,} fine bins, {len(bin_profiles_b):,} coarse bins")
+
+# Calendar span
+all_ym = set()
+for src_map in bin_profiles.values():
+    for profs in src_map.values():
+        for p in profs:
+            all_ym.add((p['year'], p['month']))
+all_ym = sorted(all_ym)
+if all_ym:
+    (y0, m0), (y1, m1) = all_ym[0], all_ym[-1]
+    total_months = (y1 - y0) * 12 + (m1 - m0) + 1
+else:
+    y0 = m0 = y1 = m1 = None
+    total_months = 1
+
+# Aggregate
+print(f"Aggregating {len(bin_profiles):,} fine bins...")
+bins_out = aggregate_bins(bin_profiles, total_months)
+print(f"Aggregating {len(bin_profiles_b):,} coarse bins...")
+bins_out_b = aggregate_bins(bin_profiles_b, total_months)
+
+# Coarse geodesic centres (full 2562 set)
+_coarse_raw = np.genfromtxt(GEODESIC_FILE_B, delimiter=',')
+_all_coarse_centres = {i + 1: (float(_coarse_raw[i, 0]), float(_coarse_raw[i, 1]))
+                       for i in range(len(_coarse_raw))}
+for k, v in _all_coarse_centres.items():
+    bin_centres_b.setdefault(k, v)
 
 def write_profiles_db(bins_fine, bins_coarse_dict):
     """Write per-profile records to SQLite for lazy lookup on bin click.
@@ -697,6 +698,7 @@ def write_profiles_db(bins_fine, bins_coarse_dict):
     print(f"  SQLite done — {db_size_mb:.1f} MB")
 
 
+OUTPUT_CONTAINER.mkdir(parents=True, exist_ok=True)
 write_zarr_and_json(
     bins_out, bins_out_b,
     bin_centres, bin_centres_b,

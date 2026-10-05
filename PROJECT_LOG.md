@@ -6,6 +6,71 @@ git history with human-readable rationale.)
 
 ---
 
+## 2026-10-05 — Globe/flat-map app overhaul: performance, provenance, UX
+
+### Build scripts (`build_allsource_bin_timeseries.py`, `build_allsource_bin_timeseries_with_anomalies.py`)
+
+- **Parallel aggregation**: `aggregate_bins` now uses `ProcessPoolExecutor` with
+  `mp.get_context('fork')` — bins are independent, so this is embarrassingly
+  parallel.  Known risk: `fork` + OpenMP/BLAS can deadlock if a numpy thread pool
+  was active at fork time.  Symptom: silent hang after "Aggregating N bins...".
+  Fix: `OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 python build_allsource...`, or
+  switch `mp_context` to `'spawn'` (slower but safe).
+
+- **Parallel zarr write**: bin groups are written concurrently with
+  `ThreadPoolExecutor` (I/O-bound; GIL releases on filesystem calls).
+
+- **Timestamped output directory**: output is now a self-contained directory
+  `<stem>_YYYYMMDD_HHMMSS/` containing `<stem>.zarr` and `<stem>_metadata.json`,
+  where the timestamp is extracted from the `--source_root` name.  The `--output`
+  flag overrides.
+
+- **Profile records moved to SQLite**: per-profile records (`file`, `prof_idx`,
+  `date`, `lon`, `lat`, `qual`) were stored in the JSON, bloating it to ~1.8 GB.
+  They are now written to `<stem>_profiles.db` (SQLite, indexed on
+  `(resolution, bin_id)`).  JSON drops to ~tens of MB; db is ~200–400 MB and is
+  never loaded at startup — queried lazily on bin click.
+
+- **Suppressed expected RuntimeWarnings**: `nanmean`/`nanstd` over all-NaN depth
+  levels (instruments shallower than 97 levels) emit `Mean of empty slice` /
+  `Degrees of freedom <= 0` — these are correct behaviour, not bugs.
+
+### Apps (`app_allsource_globe.py`, `app_allsource_anomaly_globe.py`)
+
+- **Auto-select latest store**: apps find the most recent
+  `<stem>_YYYYMMDD_HHMMSS/` directory automatically.  `--data <path>` overrides.
+
+- **SQLite lazy profile lookup**: `_query_profiles(resolution, bid)` replaces the
+  in-memory `sources` list in each bin's month dict.  Called once per bin click.
+
+- **Loading spinners**: `dcc.Loading(type='circle')` wraps `zt-obs`, `zt-anom`,
+  and `source-table-container`.  Spinner appears on bin click in both globe and
+  flat map modes while zarr arrays and SQLite records are being fetched.
+
+- **Flat map default**: app now opens in flat map view by default.
+
+- **`RES_FINE`/`RES_COARSE` moved earlier**: constants were defined after their
+  first use as default arguments (a NameError at startup); moved above
+  `resolve_bin`.
+
+### Known deferred issues
+
+- **Globe zoom snap near poles**: when panning near the poles (and occasionally
+  near other continents), the zoom briefly snaps to a higher level then recovers.
+  Root cause: gimbal lock in the Euler-angle rotation math of the clientside drag
+  handler — a singularity at the poles produces a momentarily incorrect camera
+  position.  Fix: rewrite the clientside rotation using quaternions.  Deferred.
+
+- **Flat map zoom-out jerkiness**: when zooming out on the flat map, the plot
+  limits adjust with a visible jump rather than smoothly.  Root cause: Plotly
+  redraws the entire choropleth figure when bounds change — there is no
+  incremental update path.  One possible mitigation: pre-compute a fixed set of
+  zoom levels and snap to them (like a tiled map), reducing redraw frequency but
+  not eliminating the jump.  Still non-trivial and not clearly worth the effort.
+  Deferred.
+
+---
+
 ## 2026-09-28 — Parallel file processing with ProcessPoolExecutor
 
 ### Motivation

@@ -3,7 +3,7 @@ Interactive multi-source globe app.
 
 Generalizes app_pfl_globe.py to every NCEI-processed source (CTD_WOD, GLD_WOD,
 MEOP, MRB_WOD, PFL, PFL_BGC, XBT_WOD, ...) via a Source selector. Reads the
-partitioned pickle from build_allsource_bin_timeseries.py.
+zarr+JSON data store from build_allsource_bin_timeseries.py.
 
 Run with:
     python app_allsource_globe.py
@@ -16,18 +16,25 @@ Controls:
   - Field T / S, anomaly reference (− climatology / − bin time-mean)
   - Probability threshold (>=1/2/3) and denominator basis
 
-The pickle stores data PARTITIONED BY SOURCE. The combined ("All") view is
-derived here on the fly by profile-weighted pooling of the per-source monthly
-means (weight = #profiles that source contributed that month, applied per
-depth level so a level missing in one source is filled by the others).
+Data is PARTITIONED BY SOURCE. The combined ("All") view is derived here on
+the fly by profile-weighted pooling of the per-source monthly means (weight =
+#profiles that source contributed that month, applied per depth level so a
+level missing in one source is filled by the others).
 
-Requires: dash, plotly
-Pickle produced by: build_allsource_bin_timeseries.py
+Startup loads only the JSON (metadata + scalars). Per-bin arrays (T/S/Tclim/
+Sclim) are read lazily from the zarr store on each bin click.
+
+Requires: dash, plotly, zarr
+Data store produced by: build_allsource_bin_timeseries.py
 """
 
-import pickle
+import json
 import numpy as np
 import plotly.graph_objects as go
+import cartopy.feature as cfeature
+import argparse
+import sqlite3
+import zarr
 from dash import Dash, dcc, html, Input, Output, State, dash_table, Patch, no_update
 from pathlib import Path
 from scipy.spatial import SphericalVoronoi
@@ -36,7 +43,29 @@ from scipy.spatial import SphericalVoronoi
 # Config
 # ==============================================================================
 
-PICKLE_FILE = Path('/Users/brucel/ecco/yip/profile_data/z_profile_file_analysis/allsource_bin_timeseries.pkl')
+_OUTPUT_BASE = Path('/Users/brucel/ecco/yip/profile_data/z_profile_file_analysis/allsource_bin_timeseries')
+
+def _latest_store(base):
+    """Return the most recent timestamped store directory, falling back to base itself."""
+    parent = base.parent
+    candidates = sorted(
+        p for p in parent.glob(base.name + '_????????_??????')
+        if p.is_dir()
+    )
+    return candidates[-1] if candidates else base
+
+_app_parser = argparse.ArgumentParser(description='Allsource globe app.')
+_app_parser.add_argument('--data', default=None,
+                         help='Path to the store directory to load. '
+                              'Defaults to the most recently timestamped allsource_bin_timeseries_* directory.')
+_app_args, _unknown = _app_parser.parse_known_args()
+
+_DATA_DIR     = Path(_app_args.data) if _app_args.data else _latest_store(_OUTPUT_BASE)
+ZARR_STORE    = _DATA_DIR / (_DATA_DIR.name + '.zarr')
+METADATA_JSON = _DATA_DIR / (_DATA_DIR.name + '_metadata.json')
+print(f"Using data store: {_DATA_DIR}", flush=True)
+GEODESIC_2562_CSV = Path('/Users/brucel/ecco/yip/sample_data/ecco-insitu/sweet_gdrive/geodesic/02562_bin_locations.csv')
+# Used as fallback if metadata predates the dual-grid rebuild
 
 SOURCE_ALL = 'ALL'   # sentinel for the combined view
 
@@ -48,25 +77,125 @@ SOURCE_ALL = 'ALL'   # sentinel for the combined view
 CELL_WINDING = -1
 
 # ==============================================================================
-# Load data
+# Load data — JSON metadata (fast) + zarr store (lazy arrays on bin click)
 # ==============================================================================
 
-print("Loading pickle...", flush=True)
-with open(PICKLE_FILE, 'rb') as f:
-    data = pickle.load(f)
+print("Loading metadata JSON...", flush=True)
+with open(METADATA_JSON, 'r') as _f:
+    _meta = json.load(_f)
 
-depth        = data['depth']           # (97,) float32
-bins         = data['bins']            # dict: bin_id -> bin data (by_source)
-bin_centres  = data['bin_centres']     # dict: bin_id -> (lon, lat)
-SOURCES      = data['sources']         # sorted list of source names
+depth               = np.array(_meta['depth_list'], dtype=np.float32)
+SOURCES             = _meta['sources']
+DATASET_FIRST_YM    = tuple(_meta['dataset_first_ym']) if _meta.get('dataset_first_ym') else None
+DATASET_LAST_YM     = tuple(_meta['dataset_last_ym'])  if _meta.get('dataset_last_ym')  else None
+DATASET_MONTHS      = _meta.get('total_months', 1)
 
-print(f"  {len(bins):,} bins, {len(SOURCES)} sources: {', '.join(SOURCES)}")
+# bin_centres: int keys, (lon, lat) tuples
+bin_centres         = {int(k): tuple(v) for k, v in _meta['bin_centres'].items()}
+bin_centres_coarse  = {int(k): tuple(v) for k, v in _meta['bin_centres_coarse'].items()}
 
-DATASET_FIRST_YM = data.get('dataset_first_ym')
-DATASET_LAST_YM  = data.get('dataset_last_ym')
-DATASET_MONTHS   = data.get('total_months', 1)
+# bins / bins_coarse: lightweight dicts with scalars + profile records only.
+# Arrays (T, S, etc.) are NOT loaded here — fetched lazily from zarr on click.
+def _parse_bin_meta(raw):
+    months = {}
+    for ym_str, m in raw['months'].items():
+        y, mo = int(ym_str[:4]), int(ym_str[5:])
+        by_src = {}
+        for src, e in m['by_source'].items():
+            by_src[src] = {'n': e['n']}
+        months[(y, mo)] = {'n': m['n'], 'by_source': by_src}
+
+    by_source = {}
+    for src, roll in raw['by_source'].items():
+        by_source[src] = {
+            'hit_counts': {int(k): v for k, v in roll['hit_counts'].items()},
+            'first_ym':   tuple(roll['first_ym']),
+            'last_ym':    tuple(roll['last_ym']),
+            'n_profiles': roll['n_profiles'],
+            'has_estim':  roll['has_estim'],
+        }
+
+    return {
+        'bin_id':     raw['bin_id'],
+        'hit_counts': {int(k): v for k, v in raw['hit_counts'].items()},
+        'first_ym':   tuple(raw['first_ym']),
+        'last_ym':    tuple(raw['last_ym']),
+        'prob_1plus': raw['prob_1plus'],
+        'months':     months,
+        'by_source':  by_source,
+    }
+
+bins        = {int(k): _parse_bin_meta(v) for k, v in _meta['bins_meta'].items()}
+bins_coarse = {int(k): _parse_bin_meta(v) for k, v in _meta['bins_coarse_meta'].items()}
+
+print(f"  {len(bins):,} fine bins, {len(bins_coarse):,} coarse bins, "
+      f"{len(SOURCES)} sources: {', '.join(SOURCES)}")
+
+# Open zarr store (read-only, lazy — no data is read until indexed)
+print("Opening zarr store...", flush=True)
+_ZARR = zarr.open_group(str(ZARR_STORE), mode='r')
+print("  Ready.")
+
+# Open SQLite profile-records db (read-only; profile rows fetched lazily on bin click)
+_PROFILES_DB = _DATA_DIR / (_DATA_DIR.name + '_profiles.db')
+_DB_CON = sqlite3.connect(f'file:{_PROFILES_DB}?mode=ro', uri=True, check_same_thread=False)
+_DB_CON.row_factory = sqlite3.Row
+
+
+def _query_profiles(resolution, bid):
+    """Return list of profile record dicts for a bin, keyed by (year, month, src)."""
+    cur = _DB_CON.execute(
+        'SELECT src, year, month, date, lon, lat, file, prof_idx, qual '
+        'FROM profiles WHERE resolution=? AND bin_id=?',
+        (resolution, bid)
+    )
+    result = {}
+    for row in cur:
+        ym = (row['year'], row['month'])
+        src = row['src']
+        result.setdefault(ym, {}).setdefault(src, []).append({
+            'date':     row['date'],
+            'lon':      row['lon'],
+            'lat':      row['lat'],
+            'file':     row['file'],
+            'prof_idx': row['prof_idx'],
+            'qual':     row['qual'],
+            'source':   src,
+        })
+    return result
 
 N_DEPTH = len(depth)
+
+
+def _zarr_src_monthly(resolution, bid, src):
+    """Return (ym_index, arrays_dict) for one source from the 2D monthly zarr arrays.
+
+    ym_index : (n_months,) int32  — YYYYMM integers, one per row
+    arrays_dict : key -> (n_months, N_DEPTH) float32
+    """
+    node     = _ZARR[f"{resolution}/{bid}/by_source/{src}"]
+    ym_index = np.asarray(_ZARR[f"{resolution}/{bid}/ym_index"], dtype=np.int32)
+    arrays   = {k: np.asarray(node[k], dtype=np.float32) for k in ('T', 'S', 'Tclim', 'Sclim')}
+    return ym_index, arrays
+
+
+def _zarr_arrays(resolution, bid, ym, src):
+    """Read one month's per-source T/S/Tclim/Sclim. Returns dict of (N_DEPTH,) float32."""
+    ym_int   = ym[0] * 100 + ym[1]
+    ym_index, arrays = _zarr_src_monthly(resolution, bid, src)
+    idx = int(np.searchsorted(ym_index, ym_int))
+    if idx >= len(ym_index) or ym_index[idx] != ym_int:
+        nan = np.full(N_DEPTH, np.nan, dtype=np.float32)
+        return {k: nan for k in ('T', 'S', 'Tclim', 'Sclim')}
+    return {k: arrays[k][idx] for k in ('T', 'S', 'Tclim', 'Sclim')}
+
+
+def _zarr_means(resolution, bid, src=None):
+    """Read T_mean / S_mean for a bin (combined or per-source) from zarr."""
+    path = f"{resolution}/{bid}" if src is None else f"{resolution}/{bid}/by_source/{src}"
+    node = _ZARR[path]
+    return (np.asarray(node['T_mean'], dtype=np.float32),
+            np.asarray(node['S_mean'], dtype=np.float32))
 
 # ==============================================================================
 # Geodesic cell polygons (computed once) — the geodesic partitioning as filled
@@ -127,9 +256,24 @@ def _build_cell_geojson(centres):
     return {'type': 'FeatureCollection', 'features': features}, ids
 
 
-print("Building geodesic cell polygons (SphericalVoronoi)...", flush=True)
+print("Building fine (10242-bin) geodesic cell polygons...", flush=True)
 CELL_GEOJSON, CELL_IDS = _build_cell_geojson(bin_centres)
-print(f"  {len(CELL_IDS):,} cells built")
+print(f"  {len(CELL_IDS):,} fine cells built")
+
+print("Building coarse (2562-bin) geodesic cell polygons...", flush=True)
+# Always build from the full 2562-centre CSV so every cell has a polygon,
+# even if only a subset of bins have data in the store.
+_coarse_raw = np.genfromtxt(GEODESIC_2562_CSV, delimiter=',')
+_all_coarse_centres = {i + 1: (float(_coarse_raw[i, 0]), float(_coarse_raw[i, 1]))
+                       for i in range(len(_coarse_raw))}
+# Merge into bin_centres_coarse so hover/click lookups cover all cells
+if not bin_centres_coarse:
+    bin_centres_coarse = _all_coarse_centres
+else:
+    for k, v in _all_coarse_centres.items():
+        bin_centres_coarse.setdefault(k, v)
+COARSE_GEOJSON, COARSE_IDS = _build_cell_geojson(_all_coarse_centres)
+print(f"  {len(COARSE_IDS):,} coarse cells built")
 
 
 def _months_between(ym0, ym1):
@@ -169,6 +313,10 @@ def _pool_level_weighted(entries, key):
     return out
 
 
+RES_FINE   = 'fine'    # 10242-bin grid
+RES_COARSE = 'coarse'  # 2562-bin grid
+
+
 def _source_entries(month, source_sel):
     """List of by_source entries for the selected source (or all) in a month."""
     bs = month['by_source']
@@ -178,47 +326,63 @@ def _source_entries(month, source_sel):
     return [entry] if entry is not None else []
 
 
-def resolve_bin(bin_data, source_sel):
+def resolve_bin(bin_data, source_sel, res=RES_FINE):
     """Collapse a partitioned bin to a flat shape for the given source (or All).
 
-    Returns a dict shaped like the old PFL pickle's bin so make_zt_figure and
+    Returns a dict shaped like the PFL-era bin format so make_zt_figure and
     make_source_table work unchanged:
       {'bin_id', 'months': {ym: {'T','S','Tclim','Sclim','sources','n'}},
        'T_mean','S_mean','hit_counts','first_ym','last_ym', 'n_profiles'}
+
+    Arrays are fetched lazily from zarr here (one zarr read per bin click, not
+    at startup).
     """
+    bid  = bin_data['bin_id']
+    zres = 'fine' if res == RES_FINE else 'coarse'
+
+    # Fetch profile records for this bin from SQLite (one query for all months/sources)
+    db_recs = _query_profiles(zres, bid)
+
     months = {}
     for ym, m in bin_data['months'].items():
-        entries = _source_entries(m, source_sel)
+        if source_sel != SOURCE_ALL and source_sel not in m['by_source']:
+            continue
+        src_list = (list(m['by_source'].keys()) if source_sel == SOURCE_ALL
+                    else [source_sel])
+        entries = []
+        for src in src_list:
+            if src not in m['by_source']:
+                continue
+            arrays = _zarr_arrays(zres, bid, ym, src)
+            entry  = dict(arrays)
+            entry['n'] = m['by_source'][src]['n']
+            entries.append(entry)
+
         if not entries:
             continue
-        # flatten source-profile records, tagging each with its source name
+
         recs = []
-        for src_name, e in ((s, m['by_source'][s]) for s in m['by_source']
-                            if source_sel in (SOURCE_ALL, s)):
-            for r in e['sources']:
-                rr = dict(r)
-                rr['source'] = src_name
-                recs.append(rr)
+        for src in src_list:
+            recs.extend(db_recs.get(ym, {}).get(src, []))
+
         months[ym] = {
-            'T':      _pool_level_weighted(entries, 'T'),
-            'S':      _pool_level_weighted(entries, 'S'),
-            'Tclim':  _pool_level_weighted(entries, 'Tclim'),
-            'Sclim':  _pool_level_weighted(entries, 'Sclim'),
+            'T':       _pool_level_weighted(entries, 'T'),
+            'S':       _pool_level_weighted(entries, 'S'),
+            'Tclim':   _pool_level_weighted(entries, 'Tclim'),
+            'Sclim':   _pool_level_weighted(entries, 'Sclim'),
             'sources': recs,
-            'n':      sum(e['n'] for e in entries),
+            'n':       sum(e['n'] for e in entries),
         }
 
     if source_sel == SOURCE_ALL:
-        T_mean     = bin_data['T_mean']
-        S_mean     = bin_data['S_mean']
+        T_mean, S_mean = _zarr_means(zres, bid)
         hit_counts = bin_data['hit_counts']
         first_ym   = bin_data['first_ym']
         last_ym    = bin_data['last_ym']
         n_profiles = sum(r['n_profiles'] for r in bin_data['by_source'].values())
     else:
-        roll = bin_data['by_source'][source_sel]
-        T_mean     = roll['T_mean']
-        S_mean     = roll['S_mean']
+        T_mean, S_mean = _zarr_means(zres, bid, source_sel)
+        roll       = bin_data['by_source'][source_sel]
         hit_counts = roll['hit_counts']
         first_ym   = roll['first_ym']
         last_ym    = roll['last_ym']
@@ -263,40 +427,47 @@ def bin_probability(bin_data, source_sel, n_threshold, basis):
 # Globe figure
 # ==============================================================================
 
-def _visible_ids(source_sel):
-    return [b for b in sorted(bins.keys())
-            if b in bin_centres and bin_has_source(bins[b], source_sel)]
+def _grid(res):
+    """Return (bins_dict, centres_dict, geojson, ids) for the chosen resolution."""
+    if res == RES_COARSE:
+        return bins_coarse, bin_centres_coarse, COARSE_GEOJSON, COARSE_IDS
+    return bins, bin_centres, CELL_GEOJSON, CELL_IDS
 
 
-def _build_hover(ids_clean, source_sel, n_threshold, basis, prob_label):
+def _visible_ids(source_sel, res=RES_FINE):
+    b_dict, c_dict, _, _ = _grid(res)
+    return [b for b in sorted(b_dict.keys())
+            if b in c_dict and bin_has_source(b_dict[b], source_sel)]
+
+
+def _build_hover(ids_clean, source_sel, n_threshold, basis, prob_label, res=RES_FINE):
+    b_dict, c_dict, _, _ = _grid(res)
     src_note = 'All sources' if source_sel == SOURCE_ALL else source_sel
     return [
         f'Bin {b} — {src_note}'
-        f'<br>lon={bin_centres[b][0]:.2f}, lat={bin_centres[b][1]:.2f}'
-        f'<br>P({prob_label} prof/month) = {bin_probability(bins[b], source_sel, n_threshold, basis):.3f}'
+        f'<br>lon={c_dict[b][0]:.2f}, lat={c_dict[b][1]:.2f}'
+        f'<br>P({prob_label} prof/month) = {bin_probability(b_dict[b], source_sel, n_threshold, basis):.3f}'
         for b in ids_clean
     ]
 
 
-def _globe_arrays(source_sel, n_threshold, basis, selected_bin_id=None):
-    """Per-visible-cell arrays for the choropleth: locations (bin ids), z
-    (probability), and hover text."""
-    ids_clean = _visible_ids(source_sel)
-    probs     = [bin_probability(bins[b], source_sel, n_threshold, basis) for b in ids_clean]
+def _globe_arrays(source_sel, n_threshold, basis, res=RES_FINE):
+    b_dict, _, _, _ = _grid(res)
+    ids_clean  = _visible_ids(source_sel, res)
+    probs      = [bin_probability(b_dict[b], source_sel, n_threshold, basis) for b in ids_clean]
     prob_label = next(k for k, v in PROB_KEYS.items() if v == n_threshold)
-    hover     = _build_hover(ids_clean, source_sel, n_threshold, basis, prob_label)
+    hover      = _build_hover(ids_clean, source_sel, n_threshold, basis, prob_label, res)
     return dict(ids=ids_clean, probs=probs, hover=hover, prob_label=prob_label)
 
 
-def _selected_trace(selected_bin_id):
-    """A thin Scattergeo outline of the selected cell, drawn on top of the
-    choropleth so the selection reads clearly. Empty when nothing is selected."""
+def _selected_trace(selected_bin_id, res=RES_FINE):
+    """A thin Scattergeo outline of the selected cell."""
     if selected_bin_id is None:
         return go.Scattergeo(lon=[], lat=[], mode='lines', hoverinfo='skip',
                              showlegend=False, name='selection')
-    # find the cell ring from the prebuilt GeoJSON
+    _, _, geojson, _ = _grid(res)
     ring_lon, ring_lat = [], []
-    for feat in CELL_GEOJSON['features']:
+    for feat in geojson['features']:
         if feat['id'] == selected_bin_id:
             coords = feat['geometry']['coordinates'][0]
             ring_lon = [c[0] for c in coords]
@@ -310,11 +481,12 @@ def _selected_trace(selected_bin_id):
 
 
 def make_globe(source_sel=SOURCE_ALL, selected_bin_id=None,
-               n_threshold=1, basis=BASIS_DAY0, scale=1.0):
-    a = _globe_arrays(source_sel, n_threshold, basis, selected_bin_id)
+               n_threshold=1, basis=BASIS_DAY0, scale=1.0, res=RES_FINE):
+    _, _, geojson, _ = _grid(res)
+    a = _globe_arrays(source_sel, n_threshold, basis, res)
 
     fig = go.Figure(go.Choropleth(
-        geojson=CELL_GEOJSON,
+        geojson=geojson,
         locations=a['ids'],
         z=a['probs'],
         featureidkey='id',
@@ -326,15 +498,18 @@ def make_globe(source_sel=SOURCE_ALL, selected_bin_id=None,
         hoverinfo='text',
         customdata=a['ids'],
     ))
-    fig.add_trace(_selected_trace(selected_bin_id))
+    fig.add_trace(_selected_trace(selected_bin_id, res))
 
     fig.update_geos(
         projection_type='orthographic',
         projection_scale=scale,
         projection_rotation=dict(lon=0, lat=20, roll=0),
-        showland=True,   landcolor='#2a2a2a',
-        showocean=True,  oceancolor='#0d1b2a',
-        showcoastlines=True, coastlinecolor='#555',
+        showland=True,    landcolor='#2a2a2a',
+        showocean=True,   oceancolor='#0d1b2a',
+        showlakes=True,   lakecolor='#3a3a3a',
+        showrivers=True,  rivercolor='#3a3a3a',
+        showcoastlines=True, coastlinecolor='#cccccc',
+        coastlinewidth=0.8,
         showframe=False,
         bgcolor='#1a1a1a',
     )
@@ -344,7 +519,72 @@ def make_globe(source_sel=SOURCE_ALL, selected_bin_id=None,
         geo=dict(bgcolor='#1a1a1a'),
         autosize=True,
         dragmode=False,
-        uirevision='globe',   # keeps rotation/zoom across figure updates
+        uirevision='globe',
+    )
+    return fig
+
+
+def _build_coastline_trace():
+    """Scattergeo trace of 50m coastlines — rendered on top of the choropleth."""
+    lons, lats = [], []
+    for g in cfeature.NaturalEarthFeature('physical', 'coastline', '50m').geometries():
+        parts = [g] if g.geom_type == 'LineString' else list(g.geoms)
+        for part in parts:
+            x, y = part.xy
+            lons.extend(list(x) + [None])
+            lats.extend(list(y) + [None])
+    return go.Scattergeo(
+        lon=lons, lat=lats,
+        mode='lines',
+        line=dict(color='#4a9eff', width=0.9),
+        hoverinfo='skip',
+        showlegend=False,
+    )
+
+_COAST_TRACE = _build_coastline_trace()
+
+
+def make_flat(source_sel=SOURCE_ALL, selected_bin_id=None,
+              n_threshold=1, basis=BASIS_DAY0, res=RES_FINE, uirevision='flat'):
+    """Flat (natural-earth projection) choropleth — same data as make_globe."""
+    _, _, geojson, _ = _grid(res)
+    a = _globe_arrays(source_sel, n_threshold, basis, res)
+
+    fig = go.Figure(go.Choropleth(
+        geojson=geojson,
+        locations=a['ids'],
+        z=a['probs'],
+        featureidkey='id',
+        colorscale='RdYlGn',
+        zmin=0, zmax=1,
+        marker=dict(line=dict(color='rgba(40,40,40,0.5)', width=0.3)),
+        colorbar=dict(title=f'P({a["prob_label"]})', thickness=14, len=0.6),
+        text=a['hover'],
+        hoverinfo='text',
+        customdata=a['ids'],
+    ))
+    fig.add_trace(_selected_trace(selected_bin_id, res))  # trace[1]
+    fig.add_trace(_COAST_TRACE)                            # trace[2]
+
+    fig.update_geos(
+        projection_type='natural earth',
+        showland=True,    landcolor='#2a2a2a',
+        showocean=True,   oceancolor='#0d1b2a',
+        showlakes=True,   lakecolor='#3a3a3a',
+        showrivers=True,  rivercolor='#3a3a3a',
+        showcoastlines=False,
+        showframe=False,
+        bgcolor='#1a1a1a',
+        lataxis_range=[-90, 90],
+        lonaxis_range=[-180, 180],
+    )
+    fig.update_layout(
+        margin=dict(l=0, r=0, t=0, b=0),
+        paper_bgcolor='#1a1a1a',
+        geo=dict(bgcolor='#1a1a1a'),
+        autosize=True,
+        dragmode='pan',
+        uirevision=uirevision,
     )
     return fig
 
@@ -413,7 +653,7 @@ def make_zt_figure(bin_data, var, depth):
     ))
 
     bid = bin_data['bin_id']
-    lon, lat = bin_centres.get(bid, (np.nan, np.nan))
+    lon, lat = (bin_centres.get(bid) or bin_centres_coarse.get(bid) or (np.nan, np.nan))
     fig.update_layout(
         title=dict(
             text=f'Bin {bid} ({lon:.1f}°, {lat:.1f}°) — {title_var} (monthly bin average)',
@@ -723,6 +963,9 @@ DIM  = '#aaaaaa'   # secondary / label text — readable on dark background
 
 SCALE_MIN, SCALE_MAX = 1.0, 6.0
 
+VIEW_GLOBE = 'globe'
+VIEW_FLAT  = 'flat'
+
 _SOURCE_OPTIONS = ([{'label': ' All (combined)', 'value': SOURCE_ALL}]
                    + [{'label': f' {s}', 'value': s} for s in SOURCES])
 
@@ -748,14 +991,27 @@ app.layout = html.Div(style={'backgroundColor': DARK, 'color': TEXT,
     html.Div(style={'display': 'flex', 'gap': '8px', 'flex': '0 0 45vh',
                     'minHeight': '0'}, children=[
 
-        html.Div(style={'flex': '1', 'backgroundColor': MID,
+        html.Div(id='map-container',
+                 style={'flex': '1', 'backgroundColor': MID,
                         'borderRadius': '4px', 'padding': '4px',
                         'minHeight': '0', 'position': 'relative'}, children=[
             dcc.Graph(id='globe', figure=make_globe(),
                       config={'scrollZoom': False, 'doubleClick': False,
                               'displaylogo': False, 'displayModeBar': False},
-                      style={'height': '100%'}),
-            html.Div(className='zoom-box',
+                      style={'height': '100%', 'display': 'block'}),
+            dcc.Graph(id='flatmap', figure=make_flat(),
+                      config={'scrollZoom': True, 'doubleClick': False,
+                              'displaylogo': False, 'displayModeBar': False},
+                      style={'height': '100%', 'display': 'none'}),
+            html.Button('⌂', id='flat-home-btn',
+                        style={'display': 'none', 'position': 'absolute',
+                               'top': '12px', 'right': '12px', 'zIndex': 10,
+                               'fontSize': '18px', 'lineHeight': '1',
+                               'padding': '4px 8px', 'cursor': 'pointer',
+                               'backgroundColor': 'rgba(20,20,20,0.8)',
+                               'color': '#ccc', 'border': '1px solid #666',
+                               'borderRadius': '4px'}),
+            html.Div(id='zoom-box-wrap', className='zoom-box',
                      style={'position': 'absolute', 'top': '12px', 'left': '12px',
                             'zIndex': 10, 'padding': '10px 8px 14px 8px',
                             'backgroundColor': 'rgba(20,20,20,0.8)',
@@ -782,6 +1038,42 @@ app.layout = html.Div(style={'backgroundColor': DARK, 'color': TEXT,
                  children=[
 
             html.Div([
+                html.Label('View',
+                           style={'fontSize': '12px', 'color': DIM,
+                                  'marginBottom': '6px', 'display': 'block'}),
+                dcc.RadioItems(
+                    id='view-radio',
+                    options=[
+                        {'label': ' Globe',    'value': VIEW_GLOBE},
+                        {'label': ' Flat map', 'value': VIEW_FLAT},
+                    ],
+                    value=VIEW_FLAT,
+                    labelStyle={'display': 'inline-block', 'fontSize': '12px',
+                                'marginRight': '12px', 'cursor': 'pointer',
+                                'color': TEXT},
+                    inputStyle={'marginRight': '4px'},
+                ),
+            ]),
+
+            html.Div([
+                html.Label('Grid resolution',
+                           style={'fontSize': '12px', 'color': DIM,
+                                  'marginBottom': '6px', 'display': 'block'}),
+                dcc.RadioItems(
+                    id='res-radio',
+                    options=[
+                        {'label': ' Fine (10242 bins)',   'value': RES_FINE},
+                        {'label': ' Coarse (2562 bins)',  'value': RES_COARSE},
+                    ],
+                    value=RES_FINE,
+                    labelStyle={'display': 'block', 'fontSize': '12px',
+                                'marginBottom': '5px', 'cursor': 'pointer',
+                                'color': TEXT},
+                    inputStyle={'marginRight': '6px'},
+                ),
+            ]),
+
+            html.Div([
                 html.Label('Source',
                            style={'fontSize': '12px', 'color': DIM,
                                   'marginBottom': '6px', 'display': 'block'}),
@@ -803,7 +1095,8 @@ app.layout = html.Div(style={'backgroundColor': DARK, 'color': TEXT,
                     options=[{'label': f' {k}', 'value': k} for k in PROB_KEYS],
                     value='>=1',
                     labelStyle={'display': 'block', 'fontSize': '12px',
-                                'marginBottom': '5px', 'cursor': 'pointer'},
+                                'marginBottom': '5px', 'cursor': 'pointer',
+                                'color': TEXT},
                     inputStyle={'marginRight': '6px'},
                 ),
             ]),
@@ -820,7 +1113,8 @@ app.layout = html.Div(style={'backgroundColor': DARK, 'color': TEXT,
                     ],
                     value=BASIS_DAY0,
                     labelStyle={'display': 'block', 'fontSize': '12px',
-                                'marginBottom': '5px', 'cursor': 'pointer'},
+                                'marginBottom': '5px', 'cursor': 'pointer',
+                                'color': TEXT},
                     inputStyle={'marginRight': '6px'},
                 ),
             ]),
@@ -836,7 +1130,8 @@ app.layout = html.Div(style={'backgroundColor': DARK, 'color': TEXT,
                     ],
                     value='T',
                     labelStyle={'display': 'block', 'fontSize': '12px',
-                                'marginBottom': '5px', 'cursor': 'pointer'},
+                                'marginBottom': '5px', 'cursor': 'pointer',
+                                'color': TEXT},
                     inputStyle={'marginRight': '6px'},
                 ),
             ]),
@@ -852,7 +1147,8 @@ app.layout = html.Div(style={'backgroundColor': DARK, 'color': TEXT,
                     ],
                     value='minus_clim',
                     labelStyle={'display': 'block', 'fontSize': '12px',
-                                'marginBottom': '5px', 'cursor': 'pointer'},
+                                'marginBottom': '5px', 'cursor': 'pointer',
+                                'color': TEXT},
                     inputStyle={'marginRight': '6px'},
                 ),
             ]),
@@ -862,7 +1158,7 @@ app.layout = html.Div(style={'backgroundColor': DARK, 'color': TEXT,
                     id='show-sources',
                     options=[{'label': ' Show source table', 'value': 'show'}],
                     value=[],
-                    labelStyle={'fontSize': '12px', 'cursor': 'pointer'},
+                    labelStyle={'fontSize': '12px', 'cursor': 'pointer', 'color': TEXT},
                     inputStyle={'marginRight': '6px'},
                 ),
             ]),
@@ -878,24 +1174,28 @@ app.layout = html.Div(style={'backgroundColor': DARK, 'color': TEXT,
         html.Div(style={'flex': '1', 'backgroundColor': MID,
                         'borderRadius': '4px', 'padding': '4px',
                         'minWidth': '0'}, children=[
-            dcc.Graph(id='zt-obs', figure=go.Figure(),
-                      config={'scrollZoom': True, 'displayModeBar': True,
-                              'modeBarButtonsToAdd': ['resetScale2d'],
-                              'modeBarButtonsToRemove': ['toImage', 'sendDataToCloud'],
-                              'displaylogo': False},
-                      style={'height': '100%'}),
+            dcc.Loading(type='circle', color=ACC, children=[
+                dcc.Graph(id='zt-obs', figure=go.Figure(),
+                          config={'scrollZoom': True, 'displayModeBar': True,
+                                  'modeBarButtonsToAdd': ['resetScale2d'],
+                                  'modeBarButtonsToRemove': ['toImage', 'sendDataToCloud'],
+                                  'displaylogo': False},
+                          style={'height': '100%'}),
+            ]),
         ]),
 
         html.Div(id='zt-anom-container',
                  style={'flex': '1', 'backgroundColor': MID,
                         'borderRadius': '4px', 'padding': '4px',
                         'minWidth': '0'}, children=[
-            dcc.Graph(id='zt-anom', figure=go.Figure(),
-                      config={'scrollZoom': True, 'displayModeBar': True,
-                              'modeBarButtonsToAdd': ['resetScale2d'],
-                              'modeBarButtonsToRemove': ['toImage', 'sendDataToCloud'],
-                              'displaylogo': False},
-                      style={'height': '100%'}),
+            dcc.Loading(type='circle', color=ACC, children=[
+                dcc.Graph(id='zt-anom', figure=go.Figure(),
+                          config={'scrollZoom': True, 'displayModeBar': True,
+                                  'modeBarButtonsToAdd': ['resetScale2d'],
+                                  'modeBarButtonsToRemove': ['toImage', 'sendDataToCloud'],
+                                  'displaylogo': False},
+                          style={'height': '100%'}),
+            ]),
         ]),
 
         html.Div(id='source-container',
@@ -905,17 +1205,61 @@ app.layout = html.Div(style={'backgroundColor': DARK, 'color': TEXT,
                         'minWidth': '0'}, children=[
             html.Div('Source profiles', style={'fontSize': '12px', 'color': ACC,
                                                 'marginBottom': '6px'}),
-            html.Div(id='source-table-container', style={'flex': '1', 'overflowY': 'auto'}),
+            dcc.Loading(type='circle', color=ACC, children=[
+                html.Div(id='source-table-container', style={'flex': '1', 'overflowY': 'auto'}),
+            ]),
         ]),
     ]),
 
     dcc.Store(id='selected-bin', data=None),
     dcc.Store(id='globe-scale', data=1.0),
+    dcc.Store(id='grid-res', data=RES_FINE),
+    dcc.Store(id='map-view', data=VIEW_FLAT),
+    dcc.Store(id='flat-proj', data={'scale': 1.0, 'center_lat': 0.0, 'center_lon': 0.0}),
 ])
 
 # ==============================================================================
 # Callbacks
 # ==============================================================================
+
+@app.callback(
+    Output('globe',         'style'),
+    Output('flatmap',       'style'),
+    Output('zoom-box-wrap', 'style'),
+    Output('flat-home-btn', 'style'),
+    Output('map-view',      'data'),
+    Output('flatmap',       'figure', allow_duplicate=True),
+    Input('view-radio', 'value'),
+    State('source-select', 'value'),
+    State('prob-radio',    'value'),
+    State('basis-radio',   'value'),
+    State('grid-res',      'data'),
+    State('selected-bin',  'data'),
+    prevent_initial_call=True,
+)
+def on_view_toggle(view, source_sel, prob_label, basis, res, selected_bin):
+    globe_style = {'height': '100%', 'display': 'block' if view == VIEW_GLOBE else 'none'}
+    flat_style  = {'height': '100%', 'display': 'block' if view == VIEW_FLAT  else 'none'}
+    zoom_style  = {'position': 'absolute', 'top': '12px', 'left': '12px',
+                   'zIndex': 10, 'padding': '10px 8px 14px 8px',
+                   'backgroundColor': 'rgba(20,20,20,0.8)',
+                   'border': '1px solid #666', 'borderRadius': '6px',
+                   'display': 'flex' if view == VIEW_GLOBE else 'none',
+                   'flexDirection': 'column', 'alignItems': 'center', 'gap': '6px'}
+    home_style  = {'display': 'block' if view == VIEW_FLAT else 'none',
+                   'position': 'absolute', 'top': '12px', 'right': '12px',
+                   'zIndex': 10, 'fontSize': '18px', 'lineHeight': '1',
+                   'padding': '4px 8px', 'cursor': 'pointer',
+                   'backgroundColor': 'rgba(20,20,20,0.8)',
+                   'color': '#ccc', 'border': '1px solid #666', 'borderRadius': '4px'}
+    if view == VIEW_FLAT:
+        n_threshold = PROB_KEYS[prob_label]
+        flat_fig = make_flat(source_sel, selected_bin, n_threshold, basis,
+                             res=res or RES_FINE)
+    else:
+        flat_fig = no_update
+    return globe_style, flat_style, zoom_style, home_style, view, flat_fig
+
 
 @app.callback(
     Output('globe', 'figure', allow_duplicate=True),
@@ -931,53 +1275,130 @@ def on_zoom(scale):
 
 
 @app.callback(
-    Output('globe', 'figure', allow_duplicate=True),
+    Output('globe',   'figure', allow_duplicate=True),
+    Output('flatmap', 'figure', allow_duplicate=True),
+    Output('grid-res', 'data'),
+    Output('selected-bin', 'data', allow_duplicate=True),
     Input('source-select', 'value'),
     Input('prob-radio', 'value'),
     Input('basis-radio', 'value'),
+    Input('res-radio', 'value'),
     State('selected-bin', 'data'),
+    State('globe-scale', 'data'),
+    State('map-view', 'data'),
     prevent_initial_call=True,
 )
-def on_globe_controls(source_sel, prob_label, basis, selected_bin):
-    """Recolour/refilter the choropleth (which cells are visible + their z
-    change with source), leaving layout (rotation/zoom) untouched."""
+def on_globe_controls(source_sel, prob_label, basis, res, selected_bin, scale, view):
+    from dash import ctx
     n_threshold = PROB_KEYS[prob_label]
-    a = _globe_arrays(source_sel, n_threshold, basis, selected_bin)
+    res = res or RES_FINE
+
+    if ctx.triggered_id == 'res-radio':
+        globe_fig = make_globe(source_sel, None, n_threshold, basis,
+                               scale=scale or 1.0, res=res)
+        flat_fig  = make_flat(source_sel, None, n_threshold, basis, res=res)
+        return globe_fig, flat_fig, res, None
+
+    a = _globe_arrays(source_sel, n_threshold, basis, res)
     patched = Patch()
-    patched['data'][0]['locations']                           = a['ids']
-    patched['data'][0]['z']                                   = a['probs']
-    patched['data'][0]['customdata']                          = a['ids']
-    patched['data'][0]['colorbar']['title']['text']           = f'P({prob_label})'
-    patched['data'][0]['text']                                = a['hover']
-    return patched
+    patched['data'][0]['locations']                 = a['ids']
+    patched['data'][0]['z']                         = a['probs']
+    patched['data'][0]['customdata']                = a['ids']
+    patched['data'][0]['colorbar']['title']['text'] = f'P({prob_label})'
+    patched['data'][0]['text']                      = a['hover']
+    return patched, patched, res, no_update
 
 
 @app.callback(
     Output('selected-bin', 'data'),
-    Output('globe', 'figure'),
-    Input('globe', 'clickData'),
+    Output('globe',   'figure'),
+    Output('flatmap', 'figure', allow_duplicate=True),
+    Input('globe',   'clickData'),
+    Input('flatmap', 'clickData'),
     State('selected-bin', 'data'),
     State('source-select', 'value'),
+    State('grid-res', 'data'),
+    prevent_initial_call=True,
 )
-def on_globe_click(click_data, current_bin, source_sel):
+def on_map_click(globe_click, flat_click, current_bin, source_sel, res):
+    from dash import ctx
+    click_data = globe_click if ctx.triggered_id == 'globe' else flat_click
     if click_data is None:
-        return current_bin, no_update
+        return current_bin, no_update, no_update
     points = click_data.get('points', [])
     if not points:
-        return current_bin, no_update
-    # choropleth click returns the bin id via 'location' (and customdata)
+        return current_bin, no_update, no_update
     p = points[0]
     bid = p.get('customdata', p.get('location'))
-    if bid is None or bid not in bins:
-        return current_bin, no_update
+    b_dict, _, _, _ = _grid(res or RES_FINE)
+    if bid is None or bid not in b_dict:
+        return current_bin, no_update, no_update
 
-    # Update only the selection-outline trace (data[1]); the choropleth
-    # (data[0]) is untouched so no recolour fl: no flash.
     patched = Patch()
-    sel = _selected_trace(bid)
+    sel = _selected_trace(bid, res or RES_FINE)
     patched['data'][1]['lon'] = list(sel['lon'])
     patched['data'][1]['lat'] = list(sel['lat'])
-    return bid, patched
+    return bid, patched, patched
+
+
+@app.callback(
+    Output('flatmap', 'figure', allow_duplicate=True),
+    Output('flat-proj', 'data'),
+    Input('flatmap', 'relayoutData'),
+    State('flat-proj', 'data'),
+    prevent_initial_call=True,
+)
+def clamp_flat_zoom(relayout, proj_state):
+    if not relayout:
+        return no_update, no_update
+
+    ps = proj_state or {'scale': 1.0, 'center_lat': 0.0, 'center_lon': 0.0}
+
+    raw_scale = float(relayout.get('geo.projection.scale', ps['scale']))
+    raw_lat   = float(relayout.get('geo.center.lat',       ps['center_lat']))
+    raw_lon   = float(relayout.get('geo.center.lon',       ps['center_lon']))
+
+    scale      = max(1.0, raw_scale)
+    max_clat   = max(0.0, 81.0 - 81.0 / scale)
+    center_lat = max(-max_clat, min(max_clat, raw_lat))
+    center_lon = raw_lon
+
+    new_state = {'scale': scale, 'center_lat': center_lat, 'center_lon': center_lon}
+
+    if scale == raw_scale and center_lat == raw_lat:
+        return no_update, new_state
+
+    patched = Patch()
+    if scale != raw_scale:
+        patched['layout']['geo']['projection']['scale'] = scale
+    if center_lat != raw_lat:
+        patched['layout']['geo']['center']['lat'] = center_lat
+    return patched, new_state
+
+
+@app.callback(
+    Output('flatmap', 'figure', allow_duplicate=True),
+    Output('flat-proj', 'data', allow_duplicate=True),
+    Input('flat-home-btn', 'n_clicks'),
+    State('source-select', 'value'),
+    State('prob-radio',    'value'),
+    State('basis-radio',   'value'),
+    State('grid-res',      'data'),
+    State('selected-bin',  'data'),
+    prevent_initial_call=True,
+)
+def flat_home(n_clicks, source_sel, n_threshold, basis, res, selected_bin):
+    # Return a full fresh figure rather than a patch so the entire geo layout
+    # (center, projection scale, rotation, axis ranges) resets cleanly.
+    # Pass n_clicks as uirevision so Plotly sees a new value every press and
+    # does not preserve the prior pan/zoom interaction state.
+    fig = make_flat(source_sel or SOURCE_ALL,
+                    selected_bin,
+                    n_threshold or 1,
+                    basis or BASIS_DAY0,
+                    res or RES_FINE,
+                    uirevision=f'home-{n_clicks}')
+    return fig, {'scale': 1.0, 'center_lat': 0.0, 'center_lon': 0.0}
 
 
 def _empty_fig(message):
@@ -1065,22 +1486,27 @@ def toggle_right_panel(show_sources):
     Input('anom-radio', 'value'),
     Input('prob-radio', 'value'),
     Input('basis-radio', 'value'),
+    Input('grid-res', 'data'),
 )
-def update_plots(bin_id, source_sel, field, anom_ref, prob_label, basis):
-    if bin_id is None or bin_id not in bins:
+def update_plots(bin_id, source_sel, field, anom_ref, prob_label, basis, res):
+    res = res or RES_FINE
+    b_dict, c_dict, _, _ = _grid(res)
+    res_label = '10242-bin' if res == RES_FINE else '2562-bin'
+
+    if bin_id is None or bin_id not in b_dict:
         empty = _empty_fig('Click a bin on the globe')
         return (empty, _empty_fig(''),
                 html.Div('No bin selected.', style={'color': DIM, 'fontSize': '12px'}),
                 '')
 
-    resolved = resolve_bin(bins[bin_id], source_sel)
-    lon, lat = bin_centres.get(bin_id, (np.nan, np.nan))
+    resolved = resolve_bin(b_dict[bin_id], source_sel, res)
+    lon, lat = c_dict.get(bin_id, (np.nan, np.nan))
     n_months = len(resolved['months'])
     n_profs  = resolved['n_profiles']
 
     if n_months == 0:
         src_note = 'all sources' if source_sel == SOURCE_ALL else source_sel
-        msg = _empty_fig(f'Bin {bin_id} has no {src_note} data')
+        msg = _empty_fig(f'Bin {bin_id} ({res_label}) has no {src_note} data')
         return (msg, _empty_fig(''),
                 html.Div(f'No {src_note} profiles in this bin.',
                          style={'color': DIM, 'fontSize': '12px'}),
@@ -1113,12 +1539,12 @@ def update_plots(bin_id, source_sel, field, anom_ref, prob_label, basis):
 
     n_threshold = PROB_KEYS[prob_label]
     prob_glyph  = prob_label.replace('>=', '≥')
-    prob_val    = bin_probability(bins[bin_id], source_sel, n_threshold, basis)
+    prob_val    = bin_probability(b_dict[bin_id], source_sel, n_threshold, basis)
     basis_note  = 'since first obs' if basis == BASIS_SINCE_FIRST else 'full span'
     src_note    = 'All sources' if source_sel == SOURCE_ALL else source_sel
-    n_srcs      = len(bins[bin_id]['by_source'])
+    n_srcs      = len(b_dict[bin_id]['by_source'])
     info = [
-        html.Div(f'Bin {bin_id}', style={'color': ACC, 'fontWeight': 'bold'}),
+        html.Div(f'Bin {bin_id} ({res_label})', style={'color': ACC, 'fontWeight': 'bold'}),
         html.Div(src_note, style={'color': DIM}),
         html.Div(f'lon {lon:.2f}°'),
         html.Div(f'lat {lat:.2f}°'),
