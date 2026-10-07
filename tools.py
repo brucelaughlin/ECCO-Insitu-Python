@@ -62,9 +62,10 @@ def update_remove_extraneous_depth_levels(MITprof_ds, profile_var_key_set):
     #    return MITprof_ds
     max_depth_level = max(depth_level_max_list)
     if max_depth_level < len(MITprof_ds['prof_depth']) - 1:
-        MITprof_ds['global_1D_mask_iDEPTH_max_depth'] = xr.full_like(MITprof_ds['prof_depth'], fill_value=False, dtype=bool)
-        MITprof_ds['global_1D_mask_iDEPTH_max_depth'].data = np.arange(len(MITprof_ds['prof_depth'])) <= max_depth_level
-        return extract_profile_subset_from_MITprof_iDEPTH_mask(MITprof_ds, bool_mask_name='global_1D_mask_iDEPTH_max_depth')
+        bool_mask_name = "global_1D_mask_iDEPTH_max_depth"
+        MITprof_ds[bool_mask_name] = xr.full_like(MITprof_ds['prof_depth'], fill_value=False, dtype=bool)
+        MITprof_ds[bool_mask_name].data = np.arange(len(MITprof_ds['prof_depth'])) <= max_depth_level
+        return extract_profile_subset_from_MITprof_iDEPTH_mask(MITprof_ds, bool_mask_name=bool_mask_name)
     else:
         return MITprof_ds
 
@@ -97,18 +98,20 @@ def update_remove_zero_T_S_weighted_profiles_from_MITprof(MITprof_ds, profile_va
             num_nan_weights += MITprof_ds[f'{prof_key}weight'].isnull().sum().item()
     if num_nan_weights > 0:
         raise Exception('you have nans in your weights, this should never happen')
-    MITprof_ds['global_1D_mask_iPROF_nonzero_weight'] = xr.full_like(MITprof_ds['prof_lon'], fill_value=False, dtype=bool)
-    MITprof_ds['global_1D_mask_iPROF_notnull'] = xr.full_like(MITprof_ds['prof_lon'], fill_value=False, dtype=bool)
+    bool_mask_name = "global_1D_mask_iPROF_nonzero_weight"
+    bool_mask_notnull_name = 'global_1D_mask_iPROF_notnull'
+    MITprof_ds[bool_mask_name] = xr.full_like(MITprof_ds['prof_lon'], fill_value=False, dtype=bool)
+    MITprof_ds[bool_mask_notnull_name] = xr.full_like(MITprof_ds['prof_lon'], fill_value=False, dtype=bool)
     for prof_key in profile_var_key_set:
         if prof_key in MITprof_ds.data_vars:
-            MITprof_ds['global_1D_mask_iPROF_nonzero_weight'] = (MITprof_ds['global_1D_mask_iPROF_nonzero_weight']) | (MITprof_ds[f'{prof_key}weight'].sum(dim="iDEPTH") > 0)
-            MITprof_ds['global_1D_mask_iPROF_notnull'] = (MITprof_ds['global_1D_mask_iPROF_notnull']) | (MITprof_ds[prof_key].notnull().sum(dim="iDEPTH") > 0)
+            MITprof_ds[bool_mask_name] = (MITprof_ds[bool_mask_name]) | (MITprof_ds[f'{prof_key}weight'].sum(dim="iDEPTH") > 0)
+            MITprof_ds[bool_mask_notnull_name] = (MITprof_ds[bool_mask_notnull_name]) | (MITprof_ds[prof_key].notnull().sum(dim="iDEPTH") > 0)
     print()
-    if MITprof_ds['global_1D_mask_iPROF_notnull'].sum().item() > 0:
+    if MITprof_ds[bool_mask_notnull_name].sum().item() > 0:
         print("note for the following step:")
-        print(f"profiles not nuked/total number of profiles: {MITprof_ds['global_1D_mask_iPROF_nonzero_weight'].sum().item()}/{MITprof_ds['global_1D_mask_iPROF_notnull'].sum().item()} = {MITprof_ds['global_1D_mask_iPROF_nonzero_weight'].sum().item()/MITprof_ds['global_1D_mask_iPROF_notnull'].sum().item()*100:.2f}%")
+        print(f"profiles not nuked/total number of profiles: {MITprof_ds[bool_mask_name].sum().item()}/{MITprof_ds[bool_mask_notnull_name].sum().item()} = {MITprof_ds[bool_mask_name].sum().item()/MITprof_ds[bool_mask_notnull_name].sum().item()*100:.2f}%")
 
-    return extract_profile_subset_from_MITprof_iPROF_mask(MITprof_ds, bool_mask_name='global_1D_mask_iPROF_nonzero_weight')
+    return extract_profile_subset_from_MITprof_iPROF_mask(MITprof_ds, bool_mask_name=bool_mask_name)
 
 
 def extract_profile_subset_from_MITprof_iPROF_mask(MITprof_ds, bool_mask_name):
@@ -164,6 +167,14 @@ def MITprof_dataset_from_dict(MITprof_dict: dict):
 def MITprof_write_to_nc(dest_dir, MITprof_ds, step, original_file, input_dir):
 
     Path(dest_dir).mkdir(parents=True, exist_ok=True)
+
+    # Fortran code expects prof_interp_* to have dims (iPROF, iINTERP) where
+    # iINTERP=1.  Expand any prof_interp_* variables that are currently 1-D
+    # (iPROF,) by adding the iINTERP dimension of size 1.
+    interp_vars = [v for v in MITprof_ds.data_vars if v.startswith('prof_interp')]
+    for v in interp_vars:
+        if MITprof_ds[v].dims == ('iPROF',):
+            MITprof_ds[v] = MITprof_ds[v].expand_dims('iINTERP', axis=1)
 
     # Make encoding
     encoding = {**make_encoding(MITprof_ds)}
