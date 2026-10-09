@@ -14,12 +14,17 @@
 #   -i <input_dir>    use a different input directory
 #   -d <dest_dir>     use this EXACT output directory (no timestamp appended;
 #                     you are being explicit, so you own the name)
-#   -c                run step11_profiles_compact.py (compact is skipped by default).
+#   -S                skip step11 spatial scaling (scaling runs by default).
+#   -w [monthly|10day] spatial scaling window mode (default: monthly).
+#   -p                run plot_spatial_scaling.py after step11 (skipped by default).
+#   -c                run step12_profiles_compact.py (compact is skipped by default).
 #
 # Examples:
-#   ./run_ncei.sh                                   # defaults + timestamp, no compact
+#   ./run_ncei.sh                                   # defaults + timestamp, scaling on, no compact
 #   ./run_ncei.sh -i /path/to/other_inputs          # other input, default+ts output
 #   ./run_ncei.sh -d /path/to/exact_output_dir      # default input, exact output
+#   ./run_ncei.sh -S                                # skip spatial scaling
+#   ./run_ncei.sh -w 10day                          # use 10-day windows instead of monthly
 #   ./run_ncei.sh -c                                # also run compact step
 #   ./run_ncei.sh -n 8 -c                           # 8 workers + compact
 #
@@ -30,6 +35,9 @@ set -euo pipefail
 # --- defaults (edit these to change what a bare run does) ---
 DEFAULT_INPUT_DIR="/Users/brucel/ecco/yip/profile_data/Interp_Profiles"
 DEFAULT_OUTPUT_BASE="/Users/brucel/ecco/yip/processed_by_NCEI_profile_data/profile_files_NCEI_processed"
+DEFAULT_RUN_SCALING=1        # 1 = run spatial scaling by default; 0 = skip by default
+DEFAULT_SCALING_WINDOW="monthly"  # monthly or 10day
+DEFAULT_RUN_PLOTS=0          # 1 = run diagnostic plots after scaling by default; 0 = skip
 
 # --- locate ourselves so paths work regardless of CWD ---
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -42,15 +50,21 @@ STAMP="$(date +%Y%m%d_%H%M%S)"
 INPUT_DIR=""
 DEST_DIR=""
 N_WORKERS=""
+RUN_SCALING="${DEFAULT_RUN_SCALING}"
+SCALING_WINDOW="${DEFAULT_SCALING_WINDOW}"
+RUN_PLOTS="${DEFAULT_RUN_PLOTS}"
 RUN_COMPACT=0
-while getopts "i:d:n:ch" opt; do
+while getopts "i:d:n:w:Spch" opt; do
   case "${opt}" in
     i) INPUT_DIR="${OPTARG}" ;;
     d) DEST_DIR="${OPTARG}" ;;
     n) N_WORKERS="${OPTARG}" ;;
+    w) SCALING_WINDOW="${OPTARG}" ;;
+    S) RUN_SCALING=0 ;;
+    p) RUN_PLOTS=1 ;;
     c) RUN_COMPACT=1 ;;
     h) grep '^#' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;;
-    *) echo "Usage: $0 [-i input_dir] [-d dest_dir] [-n n_workers] [-c]"; exit 2 ;;
+    *) echo "Usage: $0 [-i input_dir] [-d dest_dir] [-n n_workers] [-w monthly|10day] [-S] [-p] [-c]"; exit 2 ;;
   esac
 done
 
@@ -102,11 +116,50 @@ echo "Output dir: ${DEST_DIR}"
 echo "==============================================================="
 } | tee -a "${LOG_FILE}"
 
+if [[ "${RUN_SCALING}" -eq 1 && "${STATUS}" -eq 0 ]]; then
+  {
+  echo ""
+  echo "==============================================================="
+  echo "Step 11 (spatial scaling): window=${SCALING_WINDOW}"
+  echo "==============================================================="
+  } | tee -a "${LOG_FILE}"
+
+  python3 -u "${SCRIPT_DIR}/step11_spatial_scaling.py" \
+    "${DEST_DIR}" --window "${SCALING_WINDOW}" 2>&1 | tee -a "${LOG_FILE}"
+  STATUS="${PIPESTATUS[0]}"
+
+  {
+  echo ""
+  echo "==============================================================="
+  echo "Step 11 (spatial scaling) finished: $(date) (exit code ${STATUS})"
+  echo "==============================================================="
+  } | tee -a "${LOG_FILE}"
+fi
+
+if [[ "${RUN_PLOTS}" -eq 1 && "${STATUS}" -eq 0 ]]; then
+  {
+  echo ""
+  echo "==============================================================="
+  echo "Spatial scaling diagnostic plots"
+  echo "==============================================================="
+  } | tee -a "${LOG_FILE}"
+
+  python3 -u "${SCRIPT_DIR}/plot_spatial_scaling.py" \
+    "${DEST_DIR}" --window "${SCALING_WINDOW}" 2>&1 | tee -a "${LOG_FILE}"
+
+  {
+  echo ""
+  echo "==============================================================="
+  echo "Diagnostic plots finished: $(date)"
+  echo "==============================================================="
+  } | tee -a "${LOG_FILE}"
+fi
+
 if [[ "${RUN_COMPACT}" -eq 1 && "${STATUS}" -eq 0 ]]; then
   {
   echo ""
   echo "==============================================================="
-  echo "Step 11 (compact): rewriting output files in-place"
+  echo "Step 12 (compact): rewriting output files in-place"
   echo "==============================================================="
   } | tee -a "${LOG_FILE}"
 
@@ -114,13 +167,18 @@ if [[ "${RUN_COMPACT}" -eq 1 && "${STATUS}" -eq 0 ]]; then
   while IFS= read -r -d '' NC_FILE; do
     STEM="${NC_FILE%.nc}"
     TMP_OUT="${STEM}_compact.nc"
-    python3 -u "${SCRIPT_DIR}/step11_profiles_compact.py" \
+    python3 -u "${SCRIPT_DIR}/step12_profiles_compact.py" \
       "${NC_FILE}" -o "${TMP_OUT}" --complevel 2 --overwrite 2>&1 | tee -a "${LOG_FILE}"
     COMPACT_STATUS="${PIPESTATUS[0]}"
     if [[ "${COMPACT_STATUS}" -eq 0 ]]; then
-      mv "${TMP_OUT}" "${NC_FILE}"
+      # Rename to reflect step_12 and remove the old file
+      NEW_NC_FILE="$(echo "${NC_FILE}" | sed 's/__ncei_step_[0-9][0-9]*/__ncei_step_12/')"
+      mv "${TMP_OUT}" "${NEW_NC_FILE}"
+      if [[ "${NEW_NC_FILE}" != "${NC_FILE}" ]]; then
+        rm "${NC_FILE}"
+      fi
     else
-      echo "WARNING: step11 failed for ${NC_FILE}; leaving original in place" | tee -a "${LOG_FILE}"
+      echo "WARNING: step12 failed for ${NC_FILE}; leaving original in place" | tee -a "${LOG_FILE}"
       COMPACT_FAILED=1
     fi
   done < <(find "${DEST_DIR}" -name '*.nc' -print0)
@@ -128,7 +186,7 @@ if [[ "${RUN_COMPACT}" -eq 1 && "${STATUS}" -eq 0 ]]; then
   {
   echo ""
   echo "==============================================================="
-  echo "Step 11 (compact) finished: $(date)"
+  echo "Step 12 (compact) finished: $(date)"
   echo "==============================================================="
   } | tee -a "${LOG_FILE}"
 

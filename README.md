@@ -1,107 +1,238 @@
-# ECCO-Insitu Processing Pipeline
-Sweet Zhang 5/21/2023
+# ECCO In-Situ Processing Pipeline
 
-The **NCEI.py** is a python script that is designed to process a NETCDF file that contains WOD data. There are 10 steps included in the pipeline that run various data verification tests to ensure data quality. Please reference this google drive for example output/ input files, and needed binary files, the link is [here](https://drive.google.com/drive/folders/17h0qMS7vVimet8FXieGP1mWhnqnY0ljr?usp=sharing).
+Authors: Sweet Zhang, Ian Fenty, Bruce Laughlin  
+Originally: Sweet Zhang, 2023-05-21  
+Updated: 2026-09
 
-## Preprocessing: csv_to_nc.py
-This script creates a set of NETCDF files from a '.csv' file containing WOD data. This script does some preliminary error checks of the following fields: 
-- prof_flag: origin flag verification to make sure data is accurate
-  - Origin flag information link [here](https://www.nodc.noaa.gov/OC5/WOD/CODES/s_96_origflagset.html)
-- datetime: makes sure date and time is valid
-- longitude: value must be between - 180/180 and have valid units of 'decimal degrees'
-- latitude: value must be between -90/90 and have valid units of 'decimal degrees'
-- depth column: data must exist and have valid units of 'm'
-- temperature column: data must exist and have valid units of 'degrees C'
-- salinity column: if salinity data exists, must have valid units of 'PSS'
+---
 
-Any profiles failing the aforementioned tests will be excluded from the final NETCDF file. A log file will be generated containing a description of the failed test and the line number at which it occured in the '.csv' file.
+## Overview
 
-### Running the script
-FLAG          | DESCRIPTION
-------------- | -------------
--i            | Path of directory where input NETCDF files are stored
--d            | Path of directory where output NETCDF and log files will be stored
+This repository contains a Python pipeline for post-processing in-situ ocean
+profile data (from WOD, Argo, MEOP, mooring, and other sources) into a form
+suitable for assimilation into the ECCO ocean state estimate. The pipeline:
 
-Output files: 
-- Log file: log_[filename]_[YYYY-MM-DD-HH-MM].txt
-- NETCDF files: [filename]_[year].csv
+1. Converts raw WOD CSV exports to NetCDF (`csv_to_nc.py`)
+2. Runs a 10-step quality-control and preprocessing chain on each profile file (`NCEI.py`)
+3. Aggregates the processed profiles into geodesic bins for visualisation (`profile_analysis/build_allsource_bin_timeseries.py`)
+4. Provides an interactive globe app for exploring the data (`profile_analysis/app_allsource_globe.py`)
 
-### Example Data
-Please see the **preprocessing_examples** folder inside the linked google drive for examples of data input and output.
-- Input file: ocldb1525460187.4974.CTD.csv 
-- Output files: all '.nc' files in folder, a '.txt' log file
+A support data package (LLC90 grid, WOA23 climatology, sigma files, geodesic
+bin files) is required and is available on the project Google Drive:
+https://drive.google.com/drive/folders/17h0qMS7vVimet8FXieGP1mWhnqnY0ljr
 
-## NCEI.py
-This script creates a set of NETCDF files containing processed data. The steps of the data verification process are outlined below.
-1. **update_prof_and_tile_points_on_profiles(MITprofs, grid_dir, llcN, wet_or_all)**
-   - Updates profile_flattened_monotonic_grid_indicess and tile interpolation points so that the MITgcm knows which grid points to use for the cost 
-2. **update_spatial_bin_index_on_prepared_profiles(sphere_bin, MITprofs, grid_dir)**
-   - Updates each profile with a bin index that is specified from some file.
-3. **update_monthly_mean_TS_clim_WOA13v2_on_prepared_profiles(clim_dir, MITprofs)**
-   - Assigns the WOA13 T and S climatology values to MITprof objects. 
-4. **update_sigmaTS_on_prepared_profiles(MITprofs, grid_dir, CTD_TS_bin, respect_existing_zero_weights, new_S_floor, new_T_floor)**
-   - Update MITprof objects with new T and S uncertainity fields
-5. **update_gamma_factor_on_prepared_profiles(MITprofs, grid_dir, apply_gamma_factor, llcN)**
-   - Updates the MITprof profiles with a new sigma based on whether we are applying or removing the 'gamma' factor
-6. **update_prof_insitu_T_to_potential_T(MITprofs, replace_missing_S_with_clim_S)**
-    - Updates profile in-situ temperatures so that they are potential temperatures
-7. **update_zero_weight_points_on_prepared_profiles('adjust', MITprofs)**
-    - Zeros out profile profTweight and profSweight on points matching some criteria 
-8. **update_remove_zero_T_S_weighted_profiles_from_MITprof(MITprofs)**
-    - Remove profiles whose T and S weights are all zero from MITprof structures
-9. **update_remove_extraneous_depth_levels(MITprofs)**
-    - Remove profiles that whose T and S weights are all zero from from MITprof structures
-10. **update_decimate_profiles_subdaily_to_once_daily(MITprofs, distance_tolerance, closest_time, method)**
-    - Decimates profiles with subdaily sampling at the same location to once-daily sampling
+---
 
-### Running the script
-Before running the script, there are some input parameters to adjust within the function **NCEI_pipeline** located in the **NCEI.py** file. Between lines 25-65, the following paths will need to be set:
-- grid_dir
-  - Path to grid_llc90 or grid_llc270 folder
-- sphere_bin
-  - Path to sphere_point_distribution folder containing files llc090_sphere_point_n_10242_ids.bin and llc090_sphere_point_n_02562_ids.bin
-- clim_dir
-  - Path to TS_climatology folder containing file WOA13_v2_TS_clim_merged_with_potential_T.nc
-- CTD_TS_bin
-  - Path to CTD_sigma_TS folder containing files Salt_sigma_smoothed_method_02_masked_merged_capped_extrapolated.bin and Theta_sigma_smoothed_method_02_masked_merged_capped_extrapolated.bin
+## Repository structure
 
-These files can be downloaded in the **Dependents** folder inside of the linked google drive. In addition to these paths, various input parameters can be adjusted depending on user specifications.
-Step 1:
-  - **llcN**: this number should correspond to grid_dir (90 or 270)
-  - **wet_or_all**: 0 = interpolated to nearest wet point, 1 = interpolated all points, regardless of wet or dry
-    
-Step 4: 
-  - **respect_existing_zero_weights**: 0 = no, 1 = yes
-  - **new_S_floor**: set this to zero if S_floor is unused 
-  - **new_T_floor**: set this to zero if T_floor is unused
+```
+ECCO-Insitu-Python/
+  NCEI.py                         — main pipeline controller
+  run_ncei.sh                     — shell wrapper for NCEI.py (recommended entry point)
+  csv_to_nc.py                    — convert WOD CSV exports to NetCDF
+  prebake_woa23_climatology.py    — offline climatology pre-interpolation (run once)
+  clim_interp.py                  — climatology interpolation library
+  step01.py … step10.py           — individual pipeline steps
+  step11_spatial_scaling.py       — post-chain spatial density scaling (per T/S)
+  step11_spatial_scaling_combined_LEGACY.py — old combined-count version (not in chain)
+  plot_spatial_scaling.py         — step 11 diagnostic figures
+  step12_profiles_compact.py      — optional post-chain compaction
+  tools.py                        — shared utilities
+  profile_analysis/
+    app_allsource_globe.py        — interactive globe app
+    build_allsource_bin_timeseries.py  — builds the pickle for the globe app
+    README_globe_app.md           — globe app documentation
+```
 
-Step 5:
-  - **apply_gamma_factor**: 0 = remove gamma factor from sigma, 1 = apply gamma to sigma. Gamma factor is factor 1/sqrt(alpha), where alpha = area/max(area) of the grid cell area in which this profile is found.
+---
 
-Step 6:
-  - **replace_missing_S_with_clim_S**: 1 = replace, 0 = do not replace
+## Step 0 — Preprocessing: `csv_to_nc.py`
 
-Step 7:
-  - Various parameters inside 'if' block pertaining to 'adjust' on lines 142 - 161 within script
+Converts a WOD `.csv` export to a set of per-year NetCDF files, with basic
+validation of flags, coordinates, and units. Profiles failing validation are
+excluded and logged.
 
-Step 10:
-  - **distance_tolerance**: radius within which profiles are considered to be at the same location in meters
-  - **closest_time**: HHMMSS: if there is more than one profile per day in a location, choose the one that is closest in time to 'closest time' default is noon 
-  - **method**: located within step10, choose method 0 or 1
+```bash
+python csv_to_nc.py -i <input_csv_dir> -d <output_dir>
+```
 
-Right below these steps located on lines 69-70, adjust parameters **steps_to_run** and **steps_to_save** if there is need to step any step or save any intermediate files. 
+Output filenames: `[stem]_[year].nc`
 
-Output files: 
-- NETCDF files: [filename]_[step]_[number]_[DATA_FLAG]_[year].nc
-Example: if input NETCDF name is **ocldb1525460187.4974.CTD_1995.nc**, output filename will be **ocldb15254601874974_step_10_CTD_1995.nc**
+---
 
-### Example Data
-Please see the **processed_ex** folder for examples of data output inside of the google drive. 
+## Step 1 — NCEI processing chain: `NCEI.py` / `run_ncei.sh`
 
-## Future Tasks
-- [ ] Clean up unpopulated fields in NETCDF files
-- [ ] Memory allocation issue (step 4), figure out a more efficent way of computing interpolations
-      
-Author: Sweet Zhang, Ian Fenty
-Transferred to ECCO-GROUP 2024-05-16
+Processes each input NetCDF file through 10 sequential steps:
 
+| Step | Function | Description |
+|------|----------|-------------|
+| 01 | `update_prof_and_tile_points` | Interpolates profiles onto LLC90 grid; assigns tile/grid indices |
+| 02 | `update_spatial_bin_index` | Assigns geodesic bin IDs (`prof_bin_id_a` at 10242-bin, `prof_bin_id_b` at 2562-bin) |
+| 03 | `update_monthly_mean_TS_clim` | Interpolates WOA23 T/S climatology to each profile's location, depth, and day-of-year |
+| 04 | `update_sigmaTS` | Assigns T/S uncertainty fields from pre-computed CTD sigma files |
+| 05 | `update_gamma_factor` | Applies area-based gamma correction to sigma |
+| 06 | `update_prof_insitu_T_to_potential_T` | Converts in-situ temperature to potential temperature; optionally fills missing S with climatology |
+| 07 | `update_zero_weight_points` | Zeros weights on profiles failing quality criteria; optionally excludes high-latitude profiles from climatology cost |
+| 08 | `update_remove_zero_weighted_profiles` | Removes profiles with all-zero T and S weights |
+| 09 | `update_remove_extraneous_depth_levels` | Removes depth levels with no valid data |
+| 10 | `update_decimate_subdaily_profiles` | Decimates sub-daily sampling at the same location to once-daily |
+
+### Post-chain steps (run by `run_ncei.sh` across the whole run directory)
+
+| Step | Script | Default | Description |
+|------|--------|---------|-------------|
+| 11 | `step11_spatial_scaling.py` | on (`-S` to skip) | Spatial density scaling of T and S weights |
+| — | `plot_spatial_scaling.py` | off (`-p` to run) | Step 11 diagnostic figures |
+| 12 | `step12_profiles_compact.py` | off (`-c` to run) | Rewrites files compactly in-place |
+
+**Step 11 — spatial density scaling.** Downweights densely sampled regions so
+each (geodesic bin, window) contributes roughly one profile's worth of forcing.
+For each variable V in `SCALED_VARS` (`T`, `S`), step 11 counts the profiles
+with at least one nonzero `prof_Vweight` in each 10242-bin cell per window
+(calendar month by default; `-w 10day` for 10-day windows), across all sources
+combined, and multiplies each profile's `prof_Vweight` by 1/n_V. T and S are
+counted separately, so T-only profiles (e.g. Samoa moorings) do not reduce the
+S weights of other profiles in the same bin. Files carrying only some of the
+weights are scaled for what they have. Adds `prof_Tspatial_scaling_factor` /
+`prof_Sspatial_scaling_factor` and renames files to `__ncei_step_11.nc`.
+Refuses to run on files that are already scaled — run it on a step-10 copy.
+
+The original MATLAB (`update_weights_based_on_spatial_density_TRYTOIMPLEMENT.m`)
+counts all profiles together and applies one factor to both T and S; that
+behaviour is preserved in `step11_spatial_scaling_combined_LEGACY.py` (writes
+a single `prof_spatial_scaling_factor`; skips files lacking `prof_Sweight`).
+Unlike the MATLAB, neither Python version zeroes weights outside a fixed range
+of scaling years.
+
+```bash
+python step11_spatial_scaling.py <run_dir> --dry_run   # preview
+python step11_spatial_scaling.py <run_dir>             # apply in-place
+python plot_spatial_scaling.py   <run_dir>             # 28 figures (14 per T/S)
+```
+
+Figures go to `<processed_root>/figures/figures_<YYYYMMDD_HHMMSS>/`, outside
+the run directory.
+
+### Required support files
+
+All paths are set in `NCEI.py` under the `NEED PATHS / PARAMETERS` block:
+
+| Variable | Description | Location in support package |
+|----------|-------------|---------------------------|
+| `grid_dir` | LLC90 grid directory | `grid_llc90/` |
+| `sphere_bin_dir` | Geodesic bin assignment files | `grid_llc90/sphere_point_distribution/` |
+| `climatology_file` | WOA23 full-depth T/S climatology (NetCDF) | `woa23_climatology/woa23_decav91C0_TS_clim_potential_T_1deg_fulldepth.nc` |
+| `sigma_file_dict` | CTD T/S uncertainty fields (binary) | `CTD_sigma_TS/` |
+
+Pre-baked climatology files (optional but strongly recommended for performance)
+are also referenced in `NCEI.py`. Generate them once with:
+
+```bash
+python prebake_woa23_climatology.py \
+    --input_dir <path_to_Interp_Profiles> \
+    --source    <path_to_woa23_fulldepth.nc> \
+    --out_dir   <path_to_woa23_climatology_dir>
+```
+
+This pre-interpolates the WOA23 climatology onto each distinct observation depth
+grid found in the input files, eliminating per-profile vertical interpolation at
+runtime (step 03). Without pre-baked files the chain still runs correctly but
+is significantly slower.
+
+### Running the chain
+
+The recommended entry point is `run_ncei.sh`, which timestamps the output
+directory and tees all output to a log file:
+
+```bash
+./run_ncei.sh                              # default input/output paths
+./run_ncei.sh -i /path/to/input           # override input directory
+./run_ncei.sh -n 8                        # use 8 parallel workers
+./run_ncei.sh -i /path/to/input -n 8 -d /path/to/output
+./run_ncei.sh -S                          # skip step 11 spatial scaling
+./run_ncei.sh -w 10day                    # step 11 with 10-day windows
+./run_ncei.sh -p                          # also make step 11 diagnostic figures
+./run_ncei.sh -c                          # also run step 12 compaction
+```
+
+Parallelism default: `min(8, cpu_count - 1)` workers. Sequential mode: `-n 1`.
+On a modern workstation, ~420 files complete in approximately 10–15 minutes
+with 8 workers.
+
+Alternatively, call `NCEI.py` directly:
+
+```bash
+python NCEI.py -i <input_dir> -d <output_dir> [-n <n_workers>]
+```
+
+### Output
+
+One NetCDF file per input file, written to the output directory under a
+subdirectory named by source (e.g. `CTD_WOD/`, `PFL/`). Each output file
+contains the original profile data plus added fields including:
+
+- `prof_bin_id_a`, `prof_bin_id_b` — geodesic bin assignments
+- `prof_Tclim`, `prof_Sclim` — WOA23 climatology at each profile
+- `prof_Tweight`, `prof_Sweight` — quality weights (spatially scaled after step 11)
+- `prof_Tspatial_scaling_factor`, `prof_Sspatial_scaling_factor` — step 11 factors
+- `prof_Tcost`, `prof_Scost` — climatology misfit cost (computed in step 07 with pre-scaling weights; not updated by step 11)
+
+### Parameter reference
+
+Parameters set in `NCEI.py` under the `NEED PATHS / PARAMETERS` block:
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `llcN` | 90 | LLC grid resolution (90 or 270) |
+| `wet_or_all` | 1 | Grid interpolation: 0 = nearest wet point, 1 = all points |
+| `respect_existing_zero_weights` | False | Preserve pre-existing zero weights |
+| `new_floor_dict` | T=0, S=0.005 | Minimum weight floors |
+| `apply_gamma_factor` | True | Apply area-based gamma correction to sigma |
+| `replace_missing_S_with_clim_S` | True | Fill missing salinity with WOA23 climatology |
+| `exclude_high_latitude_profiles_from_clim_cost` | True | Exclude profiles poleward of `dubious_clim_lat_threshold` from climatology cost |
+| `dubious_clim_lat_threshold` | 60 | Latitude threshold for the above |
+| `distance_tolerance` | 5000 m | Radius for sub-daily co-location test (step 10) |
+| `closest_time` | 120000 (noon) | Preferred sampling time for daily decimation (HHMMSS) |
+| `method` | 1 | Decimation method (step 10) |
+
+---
+
+## Step 2 — Globe app
+
+See `profile_analysis/README_globe_app.md` for full documentation.
+
+The short version:
+
+```bash
+# Build the pickle (once, or after re-running the NCEI chain)
+cd profile_analysis
+python build_allsource_bin_timeseries.py \
+    --source_root /path/to/profile_files_NCEI_processed \
+    --output      /path/to/allsource_bin_timeseries.pkl
+
+# Run the app
+python app_allsource_globe.py
+# Open http://127.0.0.1:8050
+```
+
+---
+
+## Python dependencies
+
+```
+numpy
+xarray
+scipy
+matplotlib
+cartopy
+pandas
+dash
+plotly
+```
+
+---
+
+## Authors
+
+Sweet Zhang, Ian Fenty, Bruce Laughlin  
+ECCO Group, JPL / MIT
