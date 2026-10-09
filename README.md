@@ -125,7 +125,10 @@ All paths are set in `NCEI.py` under the `NEED PATHS / PARAMETERS` block:
 | `sigma_file_dict` | CTD T/S uncertainty fields (binary) | `CTD_sigma_TS/` |
 
 Pre-baked climatology files (optional but strongly recommended for performance)
-are also referenced in `NCEI.py`. Generate them once with:
+are picked up automatically: every `*_prebaked.nc` in `prebaked_clim_dir`
+(set in `NCEI.py`) is loaded and matched to input files by the depth grid
+stored in the file (`obs_depth`), so adding a new grid needs no code change.
+Generate them once with:
 
 ```bash
 python prebake_woa23_climatology.py \

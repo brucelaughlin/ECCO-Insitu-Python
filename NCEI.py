@@ -42,12 +42,22 @@ _worker_prebaked_clim_arrays = None
 
 
 def _worker_init(prebaked_clim_paths):
-    """Load pre-baked climatology arrays into a module global, once per worker."""
+    """Load pre-baked climatology arrays into a module global, once per worker.
+
+    Keyed by the file's own obs_depth grid, as a tuple of Python floats — the
+    same key step03 builds from each input file's prof_depth.
+    """
     global _worker_prebaked_clim_arrays
     if prebaked_clim_paths:
         _worker_prebaked_clim_arrays = {}
-        for depth_key, pb_path in prebaked_clim_paths.items():
+        for pb_path in prebaked_clim_paths:
             pb_ds = xr.open_dataset(pb_path)
+            depth_key = tuple(pb_ds['obs_depth'].values.astype(float).tolist())
+            if depth_key in _worker_prebaked_clim_arrays:
+                raise ValueError(
+                    f"Pre-baked climatologies {Path(pb_path).name} and "
+                    f"{_worker_prebaked_clim_arrays[depth_key]['_source_name']} "
+                    f"share the same depth grid; remove one.")
             _worker_prebaked_clim_arrays[depth_key] = {
                 'prof_T':       pb_ds['potential_T_monthly'].values,
                 'prof_S':       pb_ds['S_monthly'].values,
@@ -59,6 +69,40 @@ def _worker_init(prebaked_clim_paths):
             pb_ds.close()
     else:
         _worker_prebaked_clim_arrays = None
+
+
+def _normalize_date_time(yyyymmdd, hhmmss):
+    """Roll out-of-range YYYYMMDD / HHMMSS values forward into valid ones.
+
+    WOD decimal-time rounding produces SS == 60, MM == 60, HH == 24 (also the
+    24:00:00 end-of-day midnight convention) and days past month end (Sep 31).
+    Each is treated as an overflow and carried, exactly as prof_date's
+    day-number + seconds/86400 arithmetic does:
+        042760  -> 042800            235960 day X -> 000000 day X+1
+        240000 day X -> 000000 day X+1      Sep 31 -> Oct 1
+    Values outside the plausible overflow range (month not 1-12, day not 1-31,
+    HH > 24, MM/SS > 60, fill values) are returned unchanged.
+    """
+    d = np.asarray(yyyymmdd, dtype=np.int64)
+    t = np.asarray(hhmmss,   dtype=np.int64)
+    y, m, dd = d // 10000, (d // 100) % 100, d % 100
+    hh, mi, ss = t // 10000, (t // 100) % 100, t % 100
+    ok = ((m >= 1) & (m <= 12) & (dd >= 1) & (dd <= 31) &
+          (t >= 0) & (hh <= 24) & (mi <= 60) & (ss <= 60))
+
+    out_d, out_t = d.copy(), t.copy()
+    if ok.any():
+        month0 = ((y[ok] - 1970).astype('M8[Y]').astype('M8[M]') + (m[ok] - 1))
+        ts = (month0.astype('M8[s]')
+              + ((dd[ok] - 1) * 86400 + hh[ok] * 3600 + mi[ok] * 60 + ss[ok]))
+        day = ts.astype('M8[D]')
+        sec = (ts - day.astype('M8[s]')).astype(np.int64)
+        yy  = day.astype('M8[Y]').astype(np.int64) + 1970
+        mm_ = day.astype('M8[M]').astype(np.int64) % 12 + 1
+        dd_ = (day - day.astype('M8[M]').astype('M8[D]')).astype(np.int64) + 1
+        out_d[ok] = yy * 10000 + mm_ * 100 + dd_
+        out_t[ok] = sec // 3600 * 10000 + (sec // 60) % 60 * 100 + sec % 60
+    return out_d, out_t
 
 
 def _redirect_fd(target_fd):
@@ -123,6 +167,22 @@ def _process_one_file(args):
                 print(f"NO OUTPUT FILE WRITTEN for: {original_file.name}")
                 print("-----------------------------\n")
                 return file_dex, n_total, tmp_path, True
+
+            # Normalize out-of-range dates/times (WOD rounding artefacts, the
+            # 24:00:00 midnight convention) by rolling forward, so YYYYMMDD/HHMMSS
+            # agree with prof_date.  See _normalize_date_time.
+            if 'prof_YYYYMMDD' in MITprof_ds and 'prof_HHMMSS' in MITprof_ds:
+                raw_d = MITprof_ds['prof_YYYYMMDD'].values
+                raw_t = MITprof_ds['prof_HHMMSS'].values
+                fixed_d, fixed_t = _normalize_date_time(raw_d, raw_t)
+                n_changed = int(np.count_nonzero((fixed_d != raw_d) | (fixed_t != raw_t)))
+                if n_changed:
+                    print(f"  normalizing {n_changed} out-of-range prof_YYYYMMDD/prof_HHMMSS values")
+                    for name, fixed in (('prof_YYYYMMDD', fixed_d), ('prof_HHMMSS', fixed_t)):
+                        MITprof_ds[name] = xr.DataArray(
+                            fixed.astype(MITprof_ds[name].dtype),
+                            dims=MITprof_ds[name].dims,
+                            attrs=MITprof_ds[name].attrs)
 
             valid_data_dict_list = [tools.collect_valid_data_stats(MITprof_ds, profile_var_key_set)]
 
@@ -235,20 +295,11 @@ def NCEI_pipeline(dest_dir, input_dir, n_workers=None):
     climatology_file = "/Users/brucel/ecco/yip/woa23_climatology/woa23_decav91C0_TS_clim_potential_T_1deg_fulldepth.nc"
 
     # Pre-baked climatologies: depth-interpolation done offline per grid, so step03
-    # only needs time-blend + lat/lon lookup at runtime.  Falls back to full-depth
-    # interpolation for any grid not listed here (with a log line saying so).
-    # Regenerate with:  python prebake_woa23_climatology.py
-    _woa23_dir = '/Users/brucel/ecco/yip/woa23_climatology'
-    prebaked_clim_paths = {
-        tuple([2.0, 4.0, 7.0, 10.0, 13.0, 16.0, 20.0, 25.0, 30.0, 35.0, 40.0, 45.0, 50.0, 55.0, 60.0, 65.0, 70.0, 75.0, 80.0, 85.0, 90.0, 95.0, 100.0, 105.0, 110.0, 115.0, 120.0, 125.0, 130.0, 135.0, 140.0, 150.0, 160.0, 170.0, 180.0, 190.0, 200.0, 210.0, 220.0, 230.0, 240.0, 250.0, 260.0, 270.0, 280.0, 290.0, 300.0, 325.0, 350.0, 375.0, 400.0, 425.0, 450.0, 475.0, 500.0, 525.0, 550.0, 600.0, 650.0, 700.0, 750.0, 800.0, 850.0, 900.0, 950.0, 1000.0, 1050.0, 1100.0, 1200.0, 1300.0, 1400.0, 1500.0, 1600.0, 1700.0, 1800.0, 1900.0, 2000.0, 2200.0, 2400.0, 2600.0, 2800.0, 3000.0, 3200.0, 3400.0, 3600.0, 3800.0, 4000.0, 4200.0, 4400.0, 4600.0, 4800.0, 5000.0, 5200.0, 5400.0, 5600.0, 5800.0, 6000.0]):
-            f'{_woa23_dir}/woa23_decav91C0_TS_clim_potential_T_1deg_97depths_prebaked.nc',
-        tuple([1.0, 2.0, 5.0, 10.0, 13.0, 20.0, 25.0, 28.0, 30.0, 40.0, 45.0, 48.0, 50.0, 53.0, 60.0, 75.0, 80.0, 83.0, 100.0, 103.0, 120.0, 123.0, 125.0, 140.0, 150.0, 153.0, 175.0, 180.0, 200.0, 203.0, 225.0, 250.0, 300.0, 400.0, 500.0, 750.0]):
-            f'{_woa23_dir}/woa23_decav91C0_TS_clim_potential_T_1deg_36depths_prebaked.nc',
-        tuple([3698.0, 3700.0, 3984.0, 3998.0, 3999.0, 4000.0, 4124.0, 4198.0, 4250.0, 4251.0, 4285.0, 4321.0, 4344.0, 4349.0, 4499.0, 4500.0, 4643.0, 4650.0, 4899.0, 4900.0, 5001.0, 5100.0, 5101.0, 5217.0, 5270.0]):
-            f'{_woa23_dir}/woa23_decav91C0_TS_clim_potential_T_1deg_25depths_prebaked.nc',
-        tuple([2890.0, 2970.0, 2990.0, 3940.0, 3970.0, 3980.0, 4160.0, 4230.0, 4300.0, 4330.0, 4340.0, 4350.0, 4360.0, 4630.0, 4640.0, 4650.0, 4880.0, 4890.0, 4900.0, 5080.0, 5100.0, 5103.0]):
-            f'{_woa23_dir}/woa23_decav91C0_TS_clim_potential_T_1deg_22depths_prebaked.nc',
-    }
+    # only needs time-blend + lat/lon lookup at runtime.  Every *_prebaked.nc in
+    # this directory is used, keyed by the obs_depth grid stored in the file; any
+    # input grid without a match falls back to full-depth interpolation (with a
+    # log line saying so).  Regenerate with:  python prebake_woa23_climatology.py
+    prebaked_clim_dir = '/Users/brucel/ecco/yip/woa23_climatology'
 
     sigma_file_dict = {
             'prof_T': '/Users/brucel/ecco/yip/sample_data/ecco-insitu/sweet_gdrive/CTD_sigma_TS/Theta_sigma_smoothed_method_02_masked_merged_capped_extrapolated.bin',
@@ -270,6 +321,11 @@ def NCEI_pipeline(dest_dir, input_dir, n_workers=None):
     # ==========================================================================================
     # ========================== END OF NEED PATHS/ PARAMETERS ================================
     # ==========================================================================================
+
+    prebaked_clim_paths = sorted(Path(prebaked_clim_dir).glob('*_prebaked.nc'))
+    print(f"[NCEI] {len(prebaked_clim_paths)} pre-baked climatology file(s) in {prebaked_clim_dir}")
+    for _pb in prebaked_clim_paths:
+        print(f"         {_pb.name}")
 
     ncei_function_kwargs = dict(
         grid_dir=grid_dir,
