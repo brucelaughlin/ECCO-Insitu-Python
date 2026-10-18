@@ -25,7 +25,7 @@ def get_profpoint_llc_ian(lon_llc, lat_llc, mask_llc, MITprof_ds):
     Z_grid, faces = tools.patchface3D(llc_horizontal_resolution, 13*llc_horizontal_resolution, 1, array_in = Z_grid_tiled, direction = 2)
     mask_untiled, faces = tools.patchface3D(llc_horizontal_resolution, 13*llc_horizontal_resolution, 1, array_in = mask_llc, direction = 2)
 
-    bool_mask_untiled = mask_untiled== 1
+    bool_mask_untiled = mask_untiled == 1
 
     flattened_monotonic_grid_indices_valid = np.arange(0, X_grid.size)[bool_mask_untiled.ravel()]
 

@@ -6,13 +6,27 @@ import os
 import numpy as np
 from scipy.interpolate import griddata
 import tools 
+import high_latitude_sigma
 from scipy.interpolate import interp1d
 #from scipy import interpolate, interp1d
 
 
-def update_sigmaTS_on_prepared_profiles(MITprof_ds, profile_var_key_set, grid_dir, sigma_file_dict, respect_existing_zero_weights, new_floor_dict, llcN=90):
+def update_sigmaTS_on_prepared_profiles(MITprof_ds, profile_var_key_set, grid_dir, sigma_file_dict, respect_existing_zero_weights, new_floor_dict, llcN=90,
+                                        high_lat_sigma_file_dict=None, high_lat_sigma_min_lat=60.0, high_lat_sigma_max_dist_km=300.0,
+                                        southern_sigma_const_dict=None):
     """
     Update MITprof objects with new T and S uncertainty fields
+
+    sigma comes from the CTD sigma files (sigma_file_dict, LLC90).  Where
+    high_lat_sigma_file_dict is given ({prof_key: (path, variable)}), profiles
+    with |lat| > high_lat_sigma_min_lat that have a high-latitude sigma value
+    within high_lat_sigma_max_dist_km use that instead (see
+    high_latitude_sigma.py; the files used today are Arctic only).  Where
+    southern_sigma_const_dict is given ({prof_key: sigma}), profiles with
+    lat < -high_lat_sigma_min_lat use that constant at all depths.
+    prof_Tuncertainty_source / prof_Suncertainty_source record which was used per
+    profile (0 = CTD sigma files, 1 = high-latitude file, 2 = southern constant);
+    step 06 applies its climatology-cost tests to 1 and 2.
     """
     deg2rad = np.pi/180
     mform = '>f4'
@@ -43,7 +57,7 @@ def update_sigmaTS_on_prepared_profiles(MITprof_ds, profile_var_key_set, grid_di
     flattened_monotonic_grid_indices = flattened_monotonic_grid_indices_mitgcm.ravel()[bools_masks_list_by_depth[0]] 
     prof_mitgcm_cell_indices = griddata(xyz_grid, flattened_monotonic_grid_indices, np.column_stack(profiles_xyz_threetuple), 'nearest').astype(int)
 
-    # ok i am hackily adding this here bc step05 wants it.  But the array itself is calcualted in all prevoius steps... when should i actually save in in the ds??
+    # ok i am hackily adding this here bc step10 (gamma) wants it.  But the array itself is calcualted in all prevoius steps... when should i actually save in in the ds??
     #MITprof_ds['profile_flattened_monotonic_grid_indices'] = xr.DataArray(flattened_monotonic_grid_indices, dims="iPROF")
 
 
@@ -86,10 +100,40 @@ def update_sigmaTS_on_prepared_profiles(MITprof_ds, profile_var_key_set, grid_di
                 #sigma_np_array_MITprof_2D[bool_mask] = np.maximum(new_floor_dict[prof_key], sigma_np_array_MITprof_2D[bool_mask])
                 sigma_np_array_MITprof_2D = np.maximum(new_floor_dict[prof_key], sigma_np_array_MITprof_2D)
 
+            sigma_prof = sigma_np_array_MITprof_2D[prof_mitgcm_cell_indices,:]
+
+            # High-latitude sigma replaces the CTD sigma where it covers a profile
+            source = np.zeros(sigma_prof.shape[0], dtype=np.int8)
+            if high_lat_sigma_file_dict and prof_key in high_lat_sigma_file_dict:
+                path, var = high_lat_sigma_file_dict[prof_key]
+                hl = high_latitude_sigma.get(path, var)
+                hl_sigma, covered = hl.sigma(MITprof_ds['prof_lat'].values, MITprof_ds['prof_lon'].values,
+                                             MITprof_ds['prof_depth'].values,
+                                             min_lat=high_lat_sigma_min_lat, max_dist_km=high_lat_sigma_max_dist_km)
+                if new_floor_dict[prof_key] > 0:
+                    hl_sigma = np.maximum(new_floor_dict[prof_key], hl_sigma)
+                sigma_prof = np.where(covered[:, None], hl_sigma, sigma_prof)
+                source[covered] = 1
+                n_hl = int((np.abs(MITprof_ds['prof_lat'].values) > high_lat_sigma_min_lat).sum())
+                print(f"  [step04] {prof_key[-1]}: high-latitude sigma ({hl.name}) for {int(covered.sum())} of "
+                      f"{n_hl} profiles with |lat| > {high_lat_sigma_min_lat:g}")
+
+            # Southern constant sigma (no southern file yet), at all depths
+            if southern_sigma_const_dict and prof_key in southern_sigma_const_dict:
+                south = MITprof_ds['prof_lat'].values < -high_lat_sigma_min_lat
+                sigma_south = max(new_floor_dict[prof_key], southern_sigma_const_dict[prof_key])
+                sigma_prof[south, :] = sigma_south
+                source[south] = 2
+                print(f"  [step04] {prof_key[-1]}: constant sigma {sigma_south:g} for {int(south.sum())} profiles "
+                      f"with lat < -{high_lat_sigma_min_lat:g}")
+
             # Store original weights, since we reset modified weights to 0 if original weights were 0 (if <respect_existing_zero_weights> == True) 
             orig_profweight_np_array = MITprof_ds[f'{prof_key}weight'].data.copy()
-            MITprof_ds[f'{prof_key}weight'] = xr.DataArray(1/sigma_np_array_MITprof_2D[prof_mitgcm_cell_indices,:]**2, dims=['iPROF', 'iDEPTH'])
-            MITprof_ds[f'{prof_key}uncertainty'] = xr.DataArray(sigma_np_array_MITprof_2D[prof_mitgcm_cell_indices,:], dims=['iPROF', 'iDEPTH'])
+            MITprof_ds[f'{prof_key}weight'] = xr.DataArray(1/sigma_prof**2, dims=['iPROF', 'iDEPTH'])
+            MITprof_ds[f'{prof_key}uncertainty'] = xr.DataArray(sigma_prof, dims=['iPROF', 'iDEPTH'])
+            MITprof_ds[f'{prof_key}uncertainty_source'] = xr.DataArray(source, dims=['iPROF'], attrs={
+                'long_name': f'source of {prof_key}uncertainty: 0 = CTD sigma files, 1 = high-latitude sigma file, '
+                             '2 = southern constant sigma'})
 
             ###############################################
             # these "prof_T/Serr" fields seem strange to me... why are "floor" and "err" used interchangeably here?
@@ -106,8 +150,14 @@ def update_sigmaTS_on_prepared_profiles(MITprof_ds, profile_var_key_set, grid_di
     return MITprof_ds
 
     
-def main(MITprof_ds, profile_var_key_set, grid_dir, sigma_file_dict, respect_existing_zero_weights, new_floor_dict, llcN=90):
-    MITprof_ds = update_sigmaTS_on_prepared_profiles(MITprof_ds, profile_var_key_set, grid_dir, sigma_file_dict, respect_existing_zero_weights, new_floor_dict, llcN=llcN)
+def main(MITprof_ds, profile_var_key_set, grid_dir, sigma_file_dict, respect_existing_zero_weights, new_floor_dict, llcN=90,
+         high_lat_sigma_file_dict=None, high_lat_sigma_min_lat=60.0, high_lat_sigma_max_dist_km=300.0,
+         southern_sigma_const_dict=None):
+    MITprof_ds = update_sigmaTS_on_prepared_profiles(MITprof_ds, profile_var_key_set, grid_dir, sigma_file_dict, respect_existing_zero_weights, new_floor_dict, llcN=llcN,
+                                                     high_lat_sigma_file_dict=high_lat_sigma_file_dict,
+                                                     high_lat_sigma_min_lat=high_lat_sigma_min_lat,
+                                                     high_lat_sigma_max_dist_km=high_lat_sigma_max_dist_km,
+                                                     southern_sigma_const_dict=southern_sigma_const_dict)
     return MITprof_ds
     
 

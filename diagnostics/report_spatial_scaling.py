@@ -16,9 +16,9 @@ counts for V if it has any nonzero prof_Vweight — same rule as step 11.
 All figures are saved as PNG under <processed_root>/figures/figures_<ts>/.
 
 Run standalone:
-    python plot_spatial_scaling.py /path/to/run_dir
-    python plot_spatial_scaling.py /path/to/run_dir --window 10day
-    python plot_spatial_scaling.py /path/to/run_dir --dpi 150
+    python diagnostics/report_spatial_scaling.py /path/to/run_dir
+    python diagnostics/report_spatial_scaling.py /path/to/run_dir --window 10day
+    python diagnostics/report_spatial_scaling.py /path/to/run_dir --dpi 150
 """
 
 import argparse
@@ -33,7 +33,8 @@ import cartopy.crs as ccrs
 import cartopy.feature as cfeature
 
 # Reuse count/window logic from step11 — no duplication
-from step11_spatial_scaling import (
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))   # repo root, for step11
+from step11_spatial_scaling import (  # noqa: E402
     _count_profiles, _has_obs, _WINDOW_FN, N_BINS, SCALED_VARS
 )
 
@@ -293,18 +294,21 @@ def main(run_dir, window_mode='monthly', dpi=150):
     if window_fn is None:
         raise ValueError(f"Unknown window_mode '{window_mode}'. Choose from: {list(_WINDOW_FN)}")
 
+    if (run_dir / 'yearly').is_dir():          # run folder with a yearly/ subfolder
+        run_dir = run_dir / 'yearly'
+    root = run_dir.parent if run_dir.name == 'yearly' else run_dir
     nc_files = sorted(run_dir.rglob('*.nc'))
     if not nc_files:
         print(f"No .nc files found under {run_dir}")
         return
 
-    run_label  = run_dir.name
+    run_label  = root.name
 
     # Extract timestamp from run directory name (e.g. ..._20261007_144529)
     import re as _re
-    _ts_match = _re.search(r'_(\d{8}_\d{6})$', run_dir.name)
-    _ts = _ts_match.group(1) if _ts_match else run_dir.name
-    fig_dir = run_dir.parent / 'figures' / f'figures_{_ts}'
+    _ts_match = _re.search(r'_(\d{8}_\d{6})$', root.name)
+    _ts = _ts_match.group(1) if _ts_match else root.name
+    fig_dir = root.parent / 'figures' / f'figures_{_ts}'
 
     print(f"\n{'='*60}")
     print(f"Spatial scaling diagnostic plots")

@@ -1,73 +1,139 @@
 # Handoff Context — ECCO-Insitu-Python
 
-**Branch:** `devel_v3`  
-**Last commit:** `3c12a6b`  
-**Date:** 2026-10-09
+**Branch:** `devel_v3`
+**Last commit:** `1aa5bd1` (much of the work below is not yet committed — see the end)
+**Date:** 2026-10-12
 
 ---
 
 ## Current state
 
-### NCEI processing chain
+### Inputs (`/Users/brucel/ecco/yip/profile_data/Interp_Profiles/`)
+246 files, all on one 97-level depth grid (2–6000 m). Deliberately moved to
+`profile_data/Raw_Profile_Data_Unused_By_Ecco/`: Argo A and R files (Argo is
+delayed-mode **D only**), PFL_BGC (95% duplicate of PFL T/S), CTD_WOD `*_BGC` (no
+T/S), SOCAT (no T/S), MRB_WOD `36_depths/` and `97_depths/` (overlapping
+duplicates), Samoa (own deep grid). Two ITP L2 files (2008, 2018) are empty and
+three (2012, 2014, 2017) have bad salinity; the chain rejects all five.
 
-- The NCEI 10-step chain runs via `run_ncei.sh`, followed by post-chain steps: **step 11 spatial scaling** (on by default, `-S` to skip), diagnostic plots (`-p`), **step 12 compaction** (off by default, `-c`).
+### Chain (`run_ncei.sh` → `NCEI.py`, then post-chain steps)
+| Step | What | Notes |
+|---|---|---|
+| 01–04 | grid/tile points, geodesic bins, WOA23 climatology, σ | step 01 assigns LLC90 cells and 30×30 tiles |
+| 05 | potential T | |
+| 06 | QC (zero weights) | runs **before** γ since 2026-10-12, so its cost tests use (ΔV/σ)²; skips the cost tests poleward of 60° |
+| 07 | drop all-zero-weight profiles | |
+| 08 | trim empty depth levels | **off** by default (`remove_extraneous_depth_levels = False`) → every file on the 97-level grid |
+| 09 | decimate sub-daily repeats | removes ~92% of glider and ~61% of ITP profiles |
+| 10 | γ (grid-cell area factor) | moved here from step 05 on 2026-10-12 |
+| 11 | spatial scaling, T and S separately | rewrites files in parallel (8 workers, `-n`; ~3× faster); `-S` to skip |
+| 12 | compaction | off by default (`-c`) |
+| 13 | ECCO-ready profile files | `-A` to skip; see below |
 
-### Step 11 spatial scaling (changed 2026-10-09)
+Output: `processed_by_NCEI_profile_data/profile_files_NCEI_processed_<ts>/` with
+`yearly/` (per source and year), `ecco_arrays/` (step 13 model-ready files only)
+and `documentation/` (step 13 manifest, trade-off sweep, `PROFILES_SIZE.h` values
+and `data.profiles` list).
 
-- `step11_spatial_scaling.py` now scales **T and S independently**: n_V = profiles with any nonzero `prof_Vweight` per (10242-bin, month) across all sources; `prof_Vweight *= 1/n_V`. Writes `prof_Tspatial_scaling_factor` / `prof_Sspatial_scaling_factor`. Handles T-only files (Samoa). Refuses to run on already-scaled files.
-- This is a best guess at what the team wants; may change with new instructions. Variables scaled are set by `SCALED_VARS` (U/V in Samoa are not scaled).
-- Old combined-count version (matches original MATLAB) kept as `step11_spatial_scaling_combined_LEGACY.py`, not in the chain.
-- `profile_files_NCEI_processed_20261007_144529` was scaled with the **LEGACY** version, and its two Samoa files were skipped (no `prof_Sweight`) — they are still unscaled step-10 files. Re-run new step 11 on a copy of `..._20261007_144529_step10_backup`.
-- `plot_spatial_scaling.py` is per-variable (28 PNGs, `_T`/`_S` tags), reusing step 11's counting.
-- Step 11 only changes weights; T/S/clim/bins are untouched, so the globe/scatter apps and geodesic binning plots are unaffected. `prof_Tcost`/`prof_Scost` are from step 07 (pre-scaling weights) and are not recomputed.
-- Most recent completed run: `profile_files_NCEI_processed_20261006_192019` (in `/Users/brucel/ecco/yip/processed_by_NCEI_profile_data/`)
-- **Known issue with this run**: the `booL_mask_notnull_name` typo in `tools.py` (capital L) caused step 08 crashes on some GLD files. This was fixed in commit `3c12a6b` but the run was not restarted after the fix — so some GLD files from this run may be missing output.
-- **`iINTERP` dimension**: Fortran code needs `prof_interp_*` variables to have dims `(iPROF, iINTERP)` with `iINTERP=1`. Fixed in `tools.py:MITprof_write_to_nc` — all future runs will produce the correct shape.
+High-latitude uncertainties (2026-10-14), set in `NCEI.py`, step 04:
+- **North of 60°N:** σ from `profile_data/high_latitude_uncertanties/` (`Theta_rmse_se`,
+  `S_rmse_se`; rmse confirmed by the team). EASE2 100 km, Arctic only (59.4–89.4°N);
+  nearest cell within 300 km.
+- **South of 60°S:** no file yet; for now (team instruction) a constant σ_T = 10 °C,
+  σ_S = 5 psu at all depths (`southern_sigma_const_dict`).
+- `prof_Vuncertainty_source`: 0 = CTD σ, 1 = Arctic file, 2 = southern constant. Step 06
+  runs its cost tests on 1 and 2 (`clim_cost_qc_with_high_lat_sigma`); with the southern
+  σ that large, they reject essentially nothing there (MEOP 2010: none).
+- Effect: Arctic S σ often larger at high-misfit points (fewer large costs; the QC removes
+  the rest). Southern weights drop to ~1/100 (T) and ~1/25 (S) of a σ = 1 profile.
+- Not yet in a full run with the southern constant (the 2026-10-14 10:44 run has the Arctic σ only).
 
-### Timeseries / visualization data
+Date/time clean-up (in `NCEI.py`, before step 01): out-of-range `HHMMSS` /
+`YYYYMMDD` values from WOD rounding (seconds or minutes = 60, 24:00:00, day past
+month end) are rolled forward with real date arithmetic, so they agree with
+`prof_date` (≈3,900 profiles, mostly gliders).
 
-Two timeseries stores exist under `/Users/brucel/ecco/yip/profile_data/z_profile_file_analysis/`:
+### Step 13 / `optimize_profile_files.py` — model-ready files
+Target: ECCO v4r6 (LLC90, 30×30 tiles; 117 tiles, 113 active). The model
+reserves per tile `NFILESPROFMAX` × `NOBSGLOB` profile slots (× levels), where
+`NOBSGLOB` is the most profiles any one file puts in any one tile. The program
+minimizes that product: one provenance per file (ITP L2/L3 separate, XBT flag +
+noflag together), chronological, files labelled in whole calendar years (several
+whole years, or parts of one too-dense year with the year's label). Default
+`NOBSGLOB = 'auto'` = fewest files within 5% of the minimum product. Needs only
+the LLC size and tile size — not blank tiles or bathymetry (the model ignores
+profiles on land / in blank tiles itself). Writes the `PROFILES_SIZE.h` values and
+the `data.profiles` file list. **Plain-language guide:
+`docs/profile_file_optimization.md`.** Validate with
+`diagnostics/check_ecco_arrays.py <run>`.
 
-1. **`allsource_bin_timeseries_20260930_164848/`** — new layout (directory contains zarr + json + will need profiles.db). Built from the `20260930_164848` NCEI run. Compatible with `app_allsource_globe.py`. **Missing `_profiles.db`** — SQLite profile records were added to the build scripts after this was built, so bin-click source tables won't work until rebuilt.
+Result for the 2026-10-12 data: 18 files, `NOBSGLOB` 43,469 (product 782,442;
+minimum 762,750 at 27 files; lower bound 599,691). Argo gets 3 files
+(1997–2013, 2014–2021, 2022–2026), close to the colleague's own split.
 
-2. **`allsource_bin_timeseries_with_anomalies_20260930_164848_metadata.json` + `.zarr`** — old flat layout (files loose in `z_profile_file_analysis/`, not inside a container directory). Built before the directory-structure change. **Not compatible with `app_allsource_anomaly_globe.py`** as-is — the app now expects files inside a `<stem>_YYYYMMDD_HHMMSS/` directory.
+### Runs
+- **`profile_files_NCEI_processed_20261012_172848`** — newest; new step order,
+  new layout. `ecco_arrays/` re-made with the current step 13 on 2026-10-12
+  (summary files moved to `documentation/`):
+  **18 files, set `NOBSGLOB = 43351`, `NFILESPROFMAX = 18`** (5,941,130
+  profiles; `check_ecco_arrays.py` PASS, log `z_logs/check_ecco_arrays_20261012_172848.log`).
+  `check_run_files.py` not yet run on it.
+- `..._20261012_103552` — old step order (γ before QC), old flat layout; passed
+  `check_run_files.py`. Used for the cost reports.
+- `..._20261009_151941` — first run from the cleaned-up inputs; old step order.
 
-### What needs to happen next
+### Diagnostics (`diagnostics/`, see `diagnostics/README.md`)
+`check_run_files.py` (structure, ~15 s), `check_run_qc.py` (science QC, ~1 h —
+run with `nohup`), `check_ecco_arrays.py`, `report_profile_counts.py` (UCSD vs
+processed counts, maps), `report_costs.py` (cost vs climatology with/without γ and
+step 11 factors, sf_T vs sf_S, decimation), `report_spatial_scaling.py`.
+All accept either run layout and read each run's step order from its log.
 
-1. **Rebuild both timeseries** from the `20261006_192019` NCEI run (or a cleaner one) to get:
-   - new directory layout
-   - SQLite `_profiles.db` included
-   - anomaly arrays in the same store
-   - Data from the fixed chain (iINTERP + booL typo fixed)
-
-   Commands (from repo root):
-   ```bash
-   python profile_analysis/build_allsource_bin_timeseries.py \
-       --source_root /Users/brucel/ecco/yip/processed_by_NCEI_profile_data/profile_files_NCEI_processed_20261006_192019
-
-   python profile_analysis/build_allsource_bin_timeseries_with_anomalies.py \
-       --source_root /Users/brucel/ecco/yip/processed_by_NCEI_profile_data/profile_files_NCEI_processed_20261006_192019
-   ```
-
-2. **Test `app_allsource_anomaly_globe.py`** — this has not been tested end-to-end with the new data layout yet.
+### Findings worth remembering
+- **Large costs**: the extreme ones (up to ~10⁵) are all poleward of 60°, where
+  step 06 skips its cost tests — bad climatology (Laptev Sea S = 25.7 at all
+  depths) and bad data (MEOP 2019 Ross Sea T ≈ 30 °C, a 2003 Ross Sea XBT). With
+  γ before QC (old order) ~27,600 mid-latitude profiles also passed QC with
+  (ΔV/σ)² > 100; the new order removes that effect.
+- **sf_T ≠ sf_S** for ~30% of profiles, because XBTs, moorings and seal tags add
+  T-only profiles to bin-months.
+- **446 profiles per run have no geodesic bin** (nearest LLC90 cell is inland or
+  ice-shelf land); kept for now — see the to-do below.
+- **4,841 profiles (0.08%)** sit exactly equidistant between two LLC90 cells at
+  facet seams; step 01's choice is self-consistent, so no action.
 
 ---
 
-## Pending / shelved issues
+## Pending
 
-### MRB_WOD data ambiguity (awaiting team feedback)
-Under `/Users/brucel/ecco/yip/profile_data/Interp_Profiles/MRB_WOD/` there are three overlapping datasets:
-- `MRB_WOD/` (top-level): 1.07M profiles across all years
-- `MRB_WOD/36_depths/`: 44K profiles/year on 36-level grid
-- `MRB_WOD/97_depths/`: same 44K profiles as 36_depths, interpolated to 97-level grid
+1. **Check the yearly files** of `..._20261012_172848`:
+   `python diagnostics/check_run_files.py <run> --input_dir …/Interp_Profiles --log z_logs/ncei_log_20261012_172848.log`
+   (its `ecco_arrays/` already passed `check_ecco_arrays.py`).
+2. **Confirm with the model team**: the `PROFILES_SIZE.h` values step 13 prints;
+   `NLEVELMAX` could drop from 140 to 97 (our depth grid), shrinking every tile's
+   arrays by ~30%.
+3. **To-do next time — drop profiles with no geodesic bin** (approved idea, not
+   applied). Tested patch: `patches/step06_code12_drop_unbinned_profiles.patch`
+   adds QC code 12, toggled by `zero_weights_of_unbinned_profiles` in `NCEI.py`.
+   `git apply --check patches/step06_code12_drop_unbinned_profiles.patch`, then
+   `git apply …`.
+4. **Possible QC change for the team**: switch the cost tests back on poleward of
+   60° with looser thresholds (would catch the bad seal / XBT data); the bad
+   Laptev climatology needs its own fix.
+5. **Timeseries stores for the globe apps** need rebuilding from a current run
+   (`profile_analysis/build_allsource_bin_timeseries*.py --source_root <run>`;
+   `yearly/` is found automatically).
+6. Deferred app issues: globe rotation gimbal lock near the poles (fix: quaternion
+   rotation); flat-map zoom-out jerkiness.
 
-The top-level and `97_depths` sets overlap ~86% by location/date, but T values differ by up to ~0.8°C for matched profiles — they are different versions of the data, not just different grids. The chain currently ingests all three via `rglob`, triple-counting many profiles. Decision needed on which folder(s) to use before the next production run.
+---
 
-### Globe rotation gimbal lock (deferred)
-When panning near the poles (occasionally near other continents), the globe zoom briefly snaps to a higher level then recovers. Root cause: gimbal lock in Euler-angle rotation math of the clientside drag handler. Fix: rewrite clientside rotation using quaternions. Deferred.
-
-### Flat map zoom-out jerkiness (deferred)
-When zooming out on the flat map, plot limits jump rather than updating smoothly. Root cause: Plotly redraws the entire choropleth figure on bounds change — no incremental update path. Possible mitigation: snap to discrete zoom levels. Deferred.
+## Uncommitted work (as of 2026-10-12)
+`NCEI.py`, `step01`–`step10` (renumbering, step 08 switch), `run_ncei.sh` (layout,
+step 13), `optimize_profile_files.py`, `step13_pack_ecco_arrays.py`,
+`diagnostics/` (all), `docs/`, `patches/`, `README.md`, this file, and earlier
+edits to `csv_to_nc.py`, `tools.py`, the `profile_analysis/` apps and build
+scripts.
 
 ---
 
@@ -75,27 +141,25 @@ When zooming out on the flat map, plot limits jump rather than updating smoothly
 
 | What | Path |
 |------|------|
-| NCEI chain controller | `NCEI.py` |
-| Run script | `run_ncei.sh` |
-| Decimation (step10) | `step10.py` |
-| Spatial scaling (step11) | `step11_spatial_scaling.py` (+ `_combined_LEGACY.py`) |
-| Scaling diagnostic plots | `plot_spatial_scaling.py` |
-| Compaction (step12) | `step12_profiles_compact.py` |
-| Build timeseries | `profile_analysis/build_allsource_bin_timeseries.py` |
-| Build timeseries w/ anomalies | `profile_analysis/build_allsource_bin_timeseries_with_anomalies.py` |
-| Globe app | `profile_analysis/app_allsource_globe.py` |
-| Anomaly globe app | `profile_analysis/app_allsource_anomaly_globe.py` |
-| WOA23 climatology | `/Users/brucel/ecco/yip/woa23_climatology/woa23_decav91C0_TS_clim_potential_T_1deg_fulldepth.nc` |
-| NCEI processed output | `/Users/brucel/ecco/yip/processed_by_NCEI_profile_data/` |
-| Timeseries stores | `/Users/brucel/ecco/yip/profile_data/z_profile_file_analysis/` |
+| Chain controller / run script | `NCEI.py`, `run_ncei.sh` |
+| Steps | `step01.py` … `step10.py`, `step11_spatial_scaling.py`, `step12_profiles_compact.py`, `step13_pack_ecco_arrays.py` |
+| File-packing program | `optimize_profile_files.py` (guide: `docs/profile_file_optimization.md`) |
+| Checks & reports | `diagnostics/` (see `diagnostics/README.md`) |
+| Saved, tested patches | `patches/` |
+| Globe apps and their build scripts | `profile_analysis/` |
 | Input profiles | `/Users/brucel/ecco/yip/profile_data/Interp_Profiles/` |
+| Unused inputs | `/Users/brucel/ecco/yip/profile_data/Raw_Profile_Data_Unused_By_Ecco/` |
+| Chain output | `/Users/brucel/ecco/yip/processed_by_NCEI_profile_data/` |
+| Reports | `/Users/brucel/ecco/yip/cost_reports/`, `/Users/brucel/ecco/yip/insitu_reports/` |
+| Logs | `z_logs/` |
+| WOA23 climatology | `/Users/brucel/ecco/yip/woa23_climatology/` |
+| ECCO v4r6 config (tiles, PROFILES_SIZE.h, data.profiles) | github.com/ECCO-GROUP/ECCO-v4-Configurations, `ECCOv4 Release 6/` |
 
----
-
-## Architecture notes
-
-- All sources share a 97-level reference depth grid; shallower instruments are NaN-padded.
-- Zarr layout: 2D `(n_months, 97)` arrays per source per bin, with shared `ym_index` (YYYYMM int32) for alignment.
-- Profile records (file, prof_idx, date, lon, lat, qual) are stored in SQLite (`_profiles.db`), not in the JSON, to keep startup memory manageable.
-- Apps auto-select the most recent timestamped store directory; `--data <path>` overrides.
-- `aggregate_bins` uses `ProcessPoolExecutor(fork)` — known risk: fork+OpenMP deadlock. Fix: `OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 python build_allsource...`
+## Architecture notes (globe apps)
+- Zarr layout: 2-D `(n_months, 97)` arrays per source per bin, with a shared
+  `ym_index` (YYYYMM int32).
+- Profile records are in SQLite (`_profiles.db`), not the JSON, to keep start-up
+  memory manageable.
+- Apps auto-select the most recent timestamped store; `--data <path>` overrides.
+- `aggregate_bins` uses `ProcessPoolExecutor(fork)`; if it deadlocks, run with
+  `OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1`.

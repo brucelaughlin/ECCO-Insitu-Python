@@ -16,8 +16,15 @@
 #                     you are being explicit, so you own the name)
 #   -S                skip step11 spatial scaling (scaling runs by default).
 #   -w [monthly|10day] spatial scaling window mode (default: monthly).
-#   -p                run plot_spatial_scaling.py after step11 (skipped by default).
+#   -p                run diagnostics/report_spatial_scaling.py after step11 (skipped by default).
 #   -c                run step12_profiles_compact.py (compact is skipped by default).
+#   -A                skip step13 ECCO-ready file packing (packing runs by default).
+#
+# OUTPUT LAYOUT (inside the timestamped output dir):
+#   yearly/        one file per source and year (NCEI.py, then steps 11 and 12)
+#   ecco_arrays/   step13: the model-ready profile files only (see optimize_profile_files.py)
+#   documentation/ step13 summary: manifest, NOBSGLOB / NFILESPROFMAX trade-off,
+#                  PROFILES_SIZE.h values and data.profiles file list
 #
 # Examples:
 #   ./run_ncei.sh                                   # defaults + timestamp, scaling on, no compact
@@ -38,6 +45,7 @@ DEFAULT_OUTPUT_BASE="/Users/brucel/ecco/yip/processed_by_NCEI_profile_data/profi
 DEFAULT_RUN_SCALING=1        # 1 = run spatial scaling by default; 0 = skip by default
 DEFAULT_SCALING_WINDOW="monthly"  # monthly or 10day
 DEFAULT_RUN_PLOTS=0          # 1 = run diagnostic plots after scaling by default; 0 = skip
+DEFAULT_RUN_PACK=1           # 1 = run step13 ECCO-ready file packing by default; 0 = skip
 
 # --- locate ourselves so paths work regardless of CWD ---
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -54,7 +62,8 @@ RUN_SCALING="${DEFAULT_RUN_SCALING}"
 SCALING_WINDOW="${DEFAULT_SCALING_WINDOW}"
 RUN_PLOTS="${DEFAULT_RUN_PLOTS}"
 RUN_COMPACT=0
-while getopts "i:d:n:w:Spch" opt; do
+RUN_PACK="${DEFAULT_RUN_PACK}"
+while getopts "i:d:n:w:SpcAh" opt; do
   case "${opt}" in
     i) INPUT_DIR="${OPTARG}" ;;
     d) DEST_DIR="${OPTARG}" ;;
@@ -63,8 +72,9 @@ while getopts "i:d:n:w:Spch" opt; do
     S) RUN_SCALING=0 ;;
     p) RUN_PLOTS=1 ;;
     c) RUN_COMPACT=1 ;;
+    A) RUN_PACK=0 ;;
     h) grep '^#' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;;
-    *) echo "Usage: $0 [-i input_dir] [-d dest_dir] [-n n_workers] [-w monthly|10day] [-S] [-p] [-c]"; exit 2 ;;
+    *) echo "Usage: $0 [-i input_dir] [-d dest_dir] [-n n_workers] [-w monthly|10day] [-S] [-p] [-c] [-A]"; exit 2 ;;
   esac
 done
 
@@ -78,6 +88,8 @@ if [[ -z "${DEST_DIR}" ]]; then
 fi
 
 LOG_FILE="${LOG_DIR}/ncei_log_${STAMP}.log"
+YEARLY_DIR="${DEST_DIR}/yearly"
+ARRAYS_DIR="${DEST_DIR}/ecco_arrays"
 
 # --- safety checks ---
 if [[ ! -d "${INPUT_DIR}" ]]; then
@@ -105,7 +117,7 @@ echo ""
 # stderr into stdout before the pipe so warnings/tracebacks land in the log too.
 N_WORKERS_ARG=""
 if [[ -n "${N_WORKERS}" ]]; then N_WORKERS_ARG="-n ${N_WORKERS}"; fi
-python3 -u "${SCRIPT_DIR}/NCEI.py" -i "${INPUT_DIR}" -d "${DEST_DIR}" ${N_WORKERS_ARG} 2>&1 | tee -a "${LOG_FILE}"
+python3 -u "${SCRIPT_DIR}/NCEI.py" -i "${INPUT_DIR}" -d "${YEARLY_DIR}" ${N_WORKERS_ARG} 2>&1 | tee -a "${LOG_FILE}"
 STATUS="${PIPESTATUS[0]}"
 
 {
@@ -125,7 +137,7 @@ if [[ "${RUN_SCALING}" -eq 1 && "${STATUS}" -eq 0 ]]; then
   } | tee -a "${LOG_FILE}"
 
   python3 -u "${SCRIPT_DIR}/step11_spatial_scaling.py" \
-    "${DEST_DIR}" --window "${SCALING_WINDOW}" 2>&1 | tee -a "${LOG_FILE}"
+    "${YEARLY_DIR}" --window "${SCALING_WINDOW}" 2>&1 | tee -a "${LOG_FILE}"
   STATUS="${PIPESTATUS[0]}"
 
   {
@@ -144,8 +156,8 @@ if [[ "${RUN_PLOTS}" -eq 1 && "${STATUS}" -eq 0 ]]; then
   echo "==============================================================="
   } | tee -a "${LOG_FILE}"
 
-  python3 -u "${SCRIPT_DIR}/plot_spatial_scaling.py" \
-    "${DEST_DIR}" --window "${SCALING_WINDOW}" 2>&1 | tee -a "${LOG_FILE}"
+  python3 -u "${SCRIPT_DIR}/diagnostics/report_spatial_scaling.py" \
+    "${YEARLY_DIR}" --window "${SCALING_WINDOW}" 2>&1 | tee -a "${LOG_FILE}"
 
   {
   echo ""
@@ -181,7 +193,7 @@ if [[ "${RUN_COMPACT}" -eq 1 && "${STATUS}" -eq 0 ]]; then
       echo "WARNING: step12 failed for ${NC_FILE}; leaving original in place" | tee -a "${LOG_FILE}"
       COMPACT_FAILED=1
     fi
-  done < <(find "${DEST_DIR}" -name '*.nc' -print0)
+  done < <(find "${YEARLY_DIR}" -name '*.nc' -print0)
 
   {
   echo ""
@@ -193,6 +205,26 @@ if [[ "${RUN_COMPACT}" -eq 1 && "${STATUS}" -eq 0 ]]; then
   if [[ "${COMPACT_FAILED}" -ne 0 ]]; then
     STATUS=1
   fi
+fi
+
+if [[ "${RUN_PACK}" -eq 1 && "${STATUS}" -eq 0 ]]; then
+  {
+  echo ""
+  echo "==============================================================="
+  echo "Step 13 (ECCO-ready files): ${YEARLY_DIR} -> ${ARRAYS_DIR}"
+  echo "==============================================================="
+  } | tee -a "${LOG_FILE}"
+
+  python3 -u "${SCRIPT_DIR}/step13_pack_ecco_arrays.py" \
+    "${YEARLY_DIR}" "${ARRAYS_DIR}" ${N_WORKERS_ARG} 2>&1 | tee -a "${LOG_FILE}"
+  STATUS="${PIPESTATUS[0]}"
+
+  {
+  echo ""
+  echo "==============================================================="
+  echo "Step 13 finished: $(date) (exit code ${STATUS})"
+  echo "==============================================================="
+  } | tee -a "${LOG_FILE}"
 fi
 
 exit "${STATUS}"

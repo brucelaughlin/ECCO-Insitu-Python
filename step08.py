@@ -1,24 +1,20 @@
-import glob
-import os
-import numpy as np
-import numpy.ma as ma
-import xarray as xr
-import tools
+# Probably my favorite module ever
 
-        
-def main(MITprof_ds, profile_var_key_set):
-    #print("step08: update_remove_zero_T_S_weighted_profiles_from_MITprof")
-         
-    MITprof_ds_new = tools.update_remove_zero_T_S_weighted_profiles_from_MITprof(MITprof_ds, profile_var_key_set)
+import tools 
 
-    # make sure subsetting worked
-    for prof_key in profile_var_key_set:
-        if prof_key in MITprof_ds:
-            old = ((MITprof_ds[f'{prof_key}'] - MITprof_ds[f'{prof_key}clim'])**2 * MITprof_ds[f'{prof_key}weight']).sum().item()
-            new = ((MITprof_ds_new[f'{prof_key}'] - MITprof_ds_new[f'{prof_key}clim'])**2 * MITprof_ds_new[f'{prof_key}weight']).sum().item()
+def main(MITprof_ds, profile_var_key_set, remove_extraneous_depth_levels=True):
+    """Trim trailing depth levels with no valid data in the file.
 
-            #if old != new:
-            if np.abs(old - new) > 1:
-                raise Exception(f'profile {prof_key[-1]} costs is big')
+    Controlled by remove_extraneous_depth_levels in NCEI.py.  When False, the
+    step passes the data through untouched so every output file stays on the
+    full input depth grid (empty levels are written as fill, and their weights
+    are already zero from step 06).  The step stays in the chain either way so
+    step numbering (step 09 = decimation, file names, log messages) is unchanged.
+    """
+    if not remove_extraneous_depth_levels:
+        print("  step 08 disabled (remove_extraneous_depth_levels = False): keeping all depth levels")
+        return MITprof_ds
+    #print("step08: update_remove_extraneous_depth_levels")
+    MITprof_ds = tools.update_remove_extraneous_depth_levels(MITprof_ds, profile_var_key_set) 
 
-    return MITprof_ds_new
+    return MITprof_ds

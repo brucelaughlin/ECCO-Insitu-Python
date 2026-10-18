@@ -62,30 +62,30 @@ def update_remove_extraneous_depth_levels(MITprof_ds, profile_var_key_set):
     #    return MITprof_ds
     max_depth_level = max(depth_level_max_list)
     if max_depth_level < len(MITprof_ds['prof_depth']) - 1:
-        bool_mask_name = "global_1D_mask_iDEPTH_max_depth"
-        MITprof_ds[bool_mask_name] = xr.full_like(MITprof_ds['prof_depth'], fill_value=False, dtype=bool)
-        MITprof_ds[bool_mask_name].data = np.arange(len(MITprof_ds['prof_depth'])) <= max_depth_level
-        return extract_profile_subset_from_MITprof_iDEPTH_mask(MITprof_ds, bool_mask_name=bool_mask_name)
+        global_1D_mask_iDEPTH_max_depth = np.arange(len(MITprof_ds['prof_depth'])) <= max_depth_level
+        return extract_profile_subset_from_MITprof_iDEPTH_mask(MITprof_ds, global_1D_mask_iDEPTH_max_depth)
     else:
         return MITprof_ds
 
 
-def extract_profile_subset_from_MITprof_iDEPTH_mask(MITprof_ds, bool_mask_name):
+def extract_profile_subset_from_MITprof_iDEPTH_mask(MITprof_ds, bool_mask):
+    """Keep the depth levels where bool_mask (1-D numpy bool, length iDEPTH) is True."""
+    bool_mask = np.asarray(bool_mask, dtype=bool)
     new_ds_dict = {}
     for data_var in MITprof_ds.data_vars:
         if "iDEPTH" not in MITprof_ds[data_var].dims:
             new_ds_dict[data_var] = MITprof_ds[data_var].copy(deep=True)
         else:
             if len(MITprof_ds[data_var].dims) == 2:
-                new_data = MITprof_ds[data_var].data.copy()[:, MITprof_ds[bool_mask_name].data]
+                new_data = MITprof_ds[data_var].data.copy()[:, bool_mask]
                 new_coords = {
                     "iPROF": MITprof_ds[data_var].coords["iPROF"].data,
-                    "iDEPTH": MITprof_ds[data_var].coords["iDEPTH"].data[MITprof_ds[bool_mask_name].data], 
+                    "iDEPTH": MITprof_ds[data_var].coords["iDEPTH"].data[bool_mask], 
                 }
             else:
-                new_data = MITprof_ds[data_var].data.copy()[MITprof_ds[bool_mask_name].data]
+                new_data = MITprof_ds[data_var].data.copy()[bool_mask]
                 new_coords = {
-                    "iDEPTH": MITprof_ds[data_var].coords["iDEPTH"].data[MITprof_ds[bool_mask_name].data], 
+                    "iDEPTH": MITprof_ds[data_var].coords["iDEPTH"].data[bool_mask], 
                 }
             new_ds_dict[data_var] = xr.DataArray(data=new_data, dims=MITprof_ds[data_var].dims, coords=new_coords)
     return xr.Dataset(new_ds_dict)
@@ -98,38 +98,38 @@ def update_remove_zero_T_S_weighted_profiles_from_MITprof(MITprof_ds, profile_va
             num_nan_weights += MITprof_ds[f'{prof_key}weight'].isnull().sum().item()
     if num_nan_weights > 0:
         raise Exception('you have nans in your weights, this should never happen')
-    bool_mask_name = "global_1D_mask_iPROF_nonzero_weight"
-    bool_mask_notnull_name = 'global_1D_mask_iPROF_notnull'
-    MITprof_ds[bool_mask_name] = xr.full_like(MITprof_ds['prof_lon'], fill_value=False, dtype=bool)
-    MITprof_ds[bool_mask_notnull_name] = xr.full_like(MITprof_ds['prof_lon'], fill_value=False, dtype=bool)
+    global_1D_mask_iPROF_nonzero_weight = np.zeros(MITprof_ds.sizes['iPROF'], dtype=bool)
+    global_1D_mask_iPROF_notnull = np.zeros(MITprof_ds.sizes['iPROF'], dtype=bool)
     for prof_key in profile_var_key_set:
         if prof_key in MITprof_ds.data_vars:
-            MITprof_ds[bool_mask_name] = (MITprof_ds[bool_mask_name]) | (MITprof_ds[f'{prof_key}weight'].sum(dim="iDEPTH") > 0)
-            MITprof_ds[bool_mask_notnull_name] = (MITprof_ds[bool_mask_notnull_name]) | (MITprof_ds[prof_key].notnull().sum(dim="iDEPTH") > 0)
+            global_1D_mask_iPROF_nonzero_weight |= (MITprof_ds[f'{prof_key}weight'].sum(dim="iDEPTH") > 0).values
+            global_1D_mask_iPROF_notnull |= (MITprof_ds[prof_key].notnull().sum(dim="iDEPTH") > 0).values
     print()
-    if MITprof_ds[bool_mask_notnull_name].sum().item() > 0:
+    if np.sum(global_1D_mask_iPROF_notnull) > 0:
         print("note for the following step:")
-        print(f"profiles not nuked/total number of profiles: {MITprof_ds[bool_mask_name].sum().item()}/{MITprof_ds[bool_mask_notnull_name].sum().item()} = {MITprof_ds[bool_mask_name].sum().item()/MITprof_ds[bool_mask_notnull_name].sum().item()*100:.2f}%")
+        print(f"number of passing profiles/total number of profiles: {np.sum(global_1D_mask_iPROF_nonzero_weight)}/{np.sum(global_1D_mask_iPROF_notnull)} = {np.sum(global_1D_mask_iPROF_nonzero_weight)/np.sum(global_1D_mask_iPROF_notnull)*100:.2f}%")
 
-    return extract_profile_subset_from_MITprof_iPROF_mask(MITprof_ds, bool_mask_name=bool_mask_name)
+    return extract_profile_subset_from_MITprof_iPROF_mask(MITprof_ds, global_1D_mask_iPROF_nonzero_weight)
 
 
-def extract_profile_subset_from_MITprof_iPROF_mask(MITprof_ds, bool_mask_name):
+def extract_profile_subset_from_MITprof_iPROF_mask(MITprof_ds, bool_mask):
+    """Keep the profiles where bool_mask (1-D numpy bool, length iPROF) is True."""
+    bool_mask = np.asarray(bool_mask, dtype=bool)
     new_ds_dict = {}
     for data_var in MITprof_ds.data_vars:
         if "iPROF" not in MITprof_ds[data_var].dims:
             new_ds_dict[data_var] = MITprof_ds[data_var].copy(deep=True)
         else:
             if len(MITprof_ds[data_var].dims) == 2:
-                new_data = MITprof_ds[data_var].data.copy()[MITprof_ds[bool_mask_name].data, :]
+                new_data = MITprof_ds[data_var].data.copy()[bool_mask, :]
                 new_coords = {
-                    "iPROF": MITprof_ds[data_var].coords["iPROF"].data[MITprof_ds[bool_mask_name].data], 
+                    "iPROF": MITprof_ds[data_var].coords["iPROF"].data[bool_mask], 
                     "iDEPTH": MITprof_ds[data_var].coords["iDEPTH"].data,
                 }
             else:
-                new_data = MITprof_ds[data_var].data.copy()[MITprof_ds[bool_mask_name].data]
+                new_data = MITprof_ds[data_var].data.copy()[bool_mask]
                 new_coords = {
-                    "iPROF": MITprof_ds[data_var].coords["iPROF"].data[MITprof_ds[bool_mask_name].data], 
+                    "iPROF": MITprof_ds[data_var].coords["iPROF"].data[bool_mask], 
                 }
             new_ds_dict[data_var] = xr.DataArray(data=new_data, dims=MITprof_ds[data_var].dims, coords=new_coords)
     return xr.Dataset(new_ds_dict)
@@ -171,7 +171,10 @@ def MITprof_write_to_nc(dest_dir, MITprof_ds, step, original_file, input_dir):
     # Fortran code expects prof_interp_* to have dims (iPROF, iINTERP) where
     # iINTERP=1.  Expand any prof_interp_* variables that are currently 1-D
     # (iPROF,) by adding the iINTERP dimension of size 1.
-    interp_vars = [v for v in MITprof_ds.data_vars if v.startswith('prof_interp')]
+    _NO_INTERP_DIM = {'prof_interp_XC11', 'prof_interp_YC11',
+                      'prof_interp_XCNINJ', 'prof_interp_YCNINJ'}
+    interp_vars = [v for v in MITprof_ds.data_vars
+                   if v.startswith('prof_interp') and v not in _NO_INTERP_DIM]
     for v in interp_vars:
         if MITprof_ds[v].dims == ('iPROF',):
             MITprof_ds[v] = MITprof_ds[v].expand_dims('iINTERP', axis=1)

@@ -5,8 +5,9 @@ Calculates a spatial scaling factor for every profile, separately for each
 observed variable (T, S), across all processed NC files in a run directory,
 then writes the scaled weights back in-place.
 
-Differs from the original MATLAB (update_weights_based_on_spatial_density.m,
-reproduced in step11_spatial_scaling_combined_LEGACY.py), which counts every
+Differs from the original MATLAB (update_weights_based_on_spatial_density.m;
+a Python copy, step11_spatial_scaling_combined_LEGACY.py, is in git history up
+to commit 1aa5bd1), which counts every
 profile together and applies one 1/n to both T and S. Here each variable is
 counted on its own: a T-only profile (e.g. a Samoa mooring) raises the T count
 in its bin but does not dilute the S weights of CTDs sharing that bin.
@@ -34,8 +35,12 @@ WINDOW_MODE = '10day'     (set via --window 10day)
     Key = (year, window_index).  Approximately matches the team's stated
     Argo reference of "one profile per 3°×3° box per 10-day window".
 
+Pass 2 rewrites every file, which is nearly all of the run time, so it runs
+in parallel (one file per worker; -n to set the number of workers).
+
 Run standalone:
     python step11_spatial_scaling.py /path/to/run_dir
+    python step11_spatial_scaling.py /path/to/run_dir -n 4
     python step11_spatial_scaling.py /path/to/run_dir --window 10day
     python step11_spatial_scaling.py /path/to/run_dir --dry_run
 
@@ -43,7 +48,9 @@ Called from run_ncei.sh (on by default; -S to skip).
 """
 
 import argparse
+import concurrent.futures
 import datetime
+import os
 import re
 from pathlib import Path
 
@@ -164,97 +171,128 @@ def _count_profiles(nc_files, window_fn):
 # Pass 2 — apply scaling factors
 # ---------------------------------------------------------------------------
 
-def _apply_scaling(nc_files, counts, window_fn, dry_run=False):
+# Set once per worker process by _worker_init (the counts are large; sending
+# them with every file would cost more than the work itself).
+_W_COUNTS = None
+_W_WINDOW_FN = None
+
+
+def _worker_init(counts, window_mode):
+    global _W_COUNTS, _W_WINDOW_FN
+    _W_COUNTS = counts
+    _W_WINDOW_FN = _WINDOW_FN[window_mode]
+
+
+def _apply_one(f, dry_run=False):
+    """Scale and rewrite one file.  Returns (written: bool, log lines)."""
+    counts, window_fn = _W_COUNTS, _W_WINDOW_FN
+    log = []
+    try:
+        ds = xr.open_dataset(f, mask_and_scale=False)
+    except Exception as e:
+        return False, [f"  [warn] cannot open {f.name}: {e}"]
+
+    present = [v for v in SCALED_VARS if f'prof_{v}weight' in ds.data_vars]
+    if 'prof_bin_id_a' not in ds or 'prof_YYYYMMDD' not in ds or not present:
+        ds.close()
+        return False, [f"  [warn] {f.name} missing bin id / date / any of "
+                       f"{[f'prof_{v}weight' for v in SCALED_VARS]}, skipping"]
+
+    bin_ids  = np.asarray(ds['prof_bin_id_a'], dtype=np.int32)
+    yyyymmdd = np.asarray(ds['prof_YYYYMMDD'], dtype=np.int64)
+    n_prof   = len(bin_ids)
+    keys     = _profile_keys(bin_ids, yyyymmdd, window_fn)
+
+    ds_out = ds.copy()
+    summary = []
+    for v in present:
+        wname = f'prof_{v}weight'
+        has   = _has_obs(ds[wname])
+        cv    = counts[v]
+
+        sf = np.ones(n_prof, dtype=np.float64)
+        for p in range(n_prof):
+            if keys[p] is None or not has[p]:
+                continue
+            c = cv.get(keys[p], 0)
+            sf[p] = 1.0 / c if c > 0 else 1.0
+
+        W = np.asarray(ds[wname], dtype=np.float64)
+        # sf is (iPROF,); weights are (iPROF, iDEPTH) — broadcast
+        sf_col = sf[:, np.newaxis] if W.ndim == 2 else sf
+        ds_out[wname] = xr.DataArray(
+            (W * sf_col).astype(ds[wname].dtype),
+            dims=ds[wname].dims,
+            attrs=ds[wname].attrs,
+        )
+        ds_out[f'prof_{v}spatial_scaling_factor'] = xr.DataArray(
+            sf,
+            dims=('iPROF',),
+            attrs={
+                'long_name': f'spatial density scaling factor applied to {v} weights',
+                'units':     ' ',
+                '_FillValue': -9999.,
+                'missing_value': -9999.,
+            },
+        )
+        sf_obs = sf[has]
+        rng = (f"[{sf_obs.min():.4f}, {sf_obs.max():.4f}]"
+               if sf_obs.size else "n/a")
+        summary.append(f"{v} sf {rng} ({int(has.sum())} w/ obs)")
+
+    log.append(f"  {f.name}: {n_prof} profiles, " + "; ".join(summary)
+               + (" [dry run]" if dry_run else ""))
+
+    if dry_run:
+        ds.close()
+        ds_out.close()
+        return True, log
+    ds.close()
+
+    # Derive output filename: replace __ncei_step_N with __ncei_step_11
+    new_name = re.sub(r'__ncei_step_\d+', '__ncei_step_11', f.name)
+    new_path = f.parent / new_name
+
+    tmp = f.with_suffix('.spatial_scaling_tmp.nc')
+    try:
+        ds_out.to_netcdf(tmp)
+        tmp.replace(new_path)
+        # Remove old file if the name changed
+        if new_path != f and f.exists():
+            f.unlink()
+        return True, log
+    except Exception as e:
+        log.append(f"  [error] failed to write {f.name}: {e}")
+        if tmp.exists():
+            tmp.unlink()
+        return False, log
+    finally:
+        ds_out.close()
+
+
+def _apply_scaling(nc_files, counts, window_mode, dry_run=False, n_workers=None):
+    """Pass 2, one worker process per file at a time (the rewrite is the slow part)."""
     n_written = 0
     n_skipped = 0
-    for f in nc_files:
-        try:
-            ds = xr.open_dataset(f, mask_and_scale=False)
-        except Exception as e:
-            print(f"  [warn] cannot open {f.name}: {e}")
-            n_skipped += 1
-            continue
-
-        present = [v for v in SCALED_VARS if f'prof_{v}weight' in ds.data_vars]
-        if 'prof_bin_id_a' not in ds or 'prof_YYYYMMDD' not in ds or not present:
-            print(f"  [warn] {f.name} missing bin id / date / any of "
-                  f"{[f'prof_{v}weight' for v in SCALED_VARS]}, skipping")
-            ds.close()
-            n_skipped += 1
-            continue
-
-        bin_ids  = np.asarray(ds['prof_bin_id_a'], dtype=np.int32)
-        yyyymmdd = np.asarray(ds['prof_YYYYMMDD'], dtype=np.int64)
-        n_prof   = len(bin_ids)
-        keys     = _profile_keys(bin_ids, yyyymmdd, window_fn)
-
-        ds_out = ds.copy()
-        summary = []
-        for v in present:
-            wname = f'prof_{v}weight'
-            has   = _has_obs(ds[wname])
-            cv    = counts[v]
-
-            sf = np.ones(n_prof, dtype=np.float64)
-            for p in range(n_prof):
-                if keys[p] is None or not has[p]:
-                    continue
-                c = cv.get(keys[p], 0)
-                sf[p] = 1.0 / c if c > 0 else 1.0
-
-            W = np.asarray(ds[wname], dtype=np.float64)
-            # sf is (iPROF,); weights are (iPROF, iDEPTH) — broadcast
-            sf_col = sf[:, np.newaxis] if W.ndim == 2 else sf
-            ds_out[wname] = xr.DataArray(
-                (W * sf_col).astype(ds[wname].dtype),
-                dims=ds[wname].dims,
-                attrs=ds[wname].attrs,
-            )
-            ds_out[f'prof_{v}spatial_scaling_factor'] = xr.DataArray(
-                sf,
-                dims=('iPROF',),
-                attrs={
-                    'long_name': f'spatial density scaling factor applied to {v} weights',
-                    'units':     ' ',
-                    '_FillValue': -9999.,
-                    'missing_value': -9999.,
-                },
-            )
-            sf_obs = sf[has]
-            rng = (f"[{sf_obs.min():.4f}, {sf_obs.max():.4f}]"
-                   if sf_obs.size else "n/a")
-            summary.append(f"{v} sf {rng} ({int(has.sum())} w/ obs)")
-
-        print(f"  {f.name}: {n_prof} profiles, " + "; ".join(summary)
-              + (" [dry run]" if dry_run else ""))
-
-        if dry_run:
-            ds.close()
-            ds_out.close()
-            n_written += 1
-            continue
-        ds.close()
-
-        # Derive output filename: replace __ncei_step_N with __ncei_step_11
-        new_name = re.sub(r'__ncei_step_\d+', '__ncei_step_11', f.name)
-        new_path = f.parent / new_name
-
-        tmp = f.with_suffix('.spatial_scaling_tmp.nc')
-        try:
-            ds_out.to_netcdf(tmp)
-            tmp.replace(new_path)
-            # Remove old file if the name changed
-            if new_path != f and f.exists():
-                f.unlink()
-            n_written += 1
-        except Exception as e:
-            print(f"  [error] failed to write {f.name}: {e}")
-            if tmp.exists():
-                tmp.unlink()
-            n_skipped += 1
-        finally:
-            ds_out.close()
-
+    if n_workers == 1:
+        _worker_init(counts, window_mode)
+        results = (_apply_one(f, dry_run) for f in nc_files)
+        ex = None
+    else:
+        ex = concurrent.futures.ProcessPoolExecutor(
+            max_workers=n_workers, initializer=_worker_init, initargs=(counts, window_mode))
+        results = ex.map(_apply_one, nc_files, [dry_run] * len(nc_files))   # in file order
+    try:
+        for written, log in results:
+            for line in log:
+                print(line)
+            if written:
+                n_written += 1
+            else:
+                n_skipped += 1
+    finally:
+        if ex is not None:
+            ex.shutdown()
     return n_written, n_skipped
 
 
@@ -262,7 +300,7 @@ def _apply_scaling(nc_files, counts, window_fn, dry_run=False):
 # Main
 # ---------------------------------------------------------------------------
 
-def main(run_dir, window_mode='monthly', dry_run=False):
+def main(run_dir, window_mode='monthly', dry_run=False, n_workers=None):
     run_dir = Path(run_dir)
     if not run_dir.is_dir():
         raise ValueError(f"run_dir does not exist: {run_dir}")
@@ -289,7 +327,10 @@ def main(run_dir, window_mode='monthly', dry_run=False):
     print(f"  run_dir    : {run_dir}")
     print(f"  window     : {window_mode}")
     print(f"  files      : {len(nc_files)}")
+    if n_workers is None:
+        n_workers = min(8, max(1, (os.cpu_count() or 1) - 1))
     print(f"  dry run    : {dry_run}")
+    print(f"  workers    : {n_workers} (pass 2)")
     print(f"{'='*60}")
 
     print("\nPass 1: counting profiles per (bin, window), per variable...")
@@ -301,7 +342,7 @@ def main(run_dir, window_mode='monthly', dry_run=False):
               f"max count per cell = {max(cv.values()) if cv else 0}")
 
     print("\nPass 2: applying scaling factors...")
-    n_written, n_skipped = _apply_scaling(nc_files, counts, window_fn, dry_run)
+    n_written, n_skipped = _apply_scaling(nc_files, counts, window_mode, dry_run, n_workers)
 
     print(f"\n{'='*60}")
     status = "DRY RUN — no files modified" if dry_run else f"{n_written} files written"
@@ -320,5 +361,7 @@ if __name__ == '__main__':
                              '(default: monthly; 10day for 10-day windows)')
     parser.add_argument('--dry_run', action='store_true',
                         help='Print what would be done without modifying any files')
+    parser.add_argument('-n', '--n_workers', type=int, default=None,
+                        help='Worker processes for pass 2 (default: min(8, cpu_count-1))')
     args = parser.parse_args()
-    main(args.run_dir, window_mode=args.window, dry_run=args.dry_run)
+    main(args.run_dir, window_mode=args.window, dry_run=args.dry_run, n_workers=args.n_workers)

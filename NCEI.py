@@ -200,18 +200,24 @@ def _process_one_file(args):
                 partial(step04.main, profile_var_key_set=profile_var_key_set, grid_dir=kw['grid_dir'],
                         sigma_file_dict=kw['sigma_file_dict'],
                         respect_existing_zero_weights=kw['respect_existing_zero_weights'],
+                        high_lat_sigma_file_dict=kw['high_lat_sigma_file_dict'],
+                        high_lat_sigma_min_lat=kw['high_lat_sigma_min_lat'],
+                        high_lat_sigma_max_dist_km=kw['high_lat_sigma_max_dist_km'],
+                        southern_sigma_const_dict=kw['southern_sigma_const_dict'],
                         new_floor_dict=kw['new_floor_dict']),
-                partial(step05.main, profile_var_key_set=profile_var_key_set, grid_dir=kw['grid_dir'],
-                        apply_gamma_factor=kw['apply_gamma_factor'], llcN=kw['llcN']),
-                partial(step06.main, replace_missing_S_with_clim_S=kw['replace_missing_S_with_clim_S']),
-                partial(step07.main, profile_var_key_set=profile_var_key_set,
+                partial(step05.main, replace_missing_S_with_clim_S=kw['replace_missing_S_with_clim_S']),
+                partial(step06.main, profile_var_key_set=profile_var_key_set,
                         exclude_high_latitude_profiles_from_clim_cost=kw['exclude_high_latitude_profiles_from_clim_cost'],
-                        dubious_clim_lat_threshold=kw['dubious_clim_lat_threshold']),
-                partial(step08.main, profile_var_key_set=profile_var_key_set),
-                partial(step09.main, profile_var_key_set=profile_var_key_set),
-                partial(step10.main, profile_var_key_set=profile_var_key_set,
+                        dubious_clim_lat_threshold=kw['dubious_clim_lat_threshold'],
+                        clim_cost_qc_with_high_lat_sigma=kw['clim_cost_qc_with_high_lat_sigma']),
+                partial(step07.main, profile_var_key_set=profile_var_key_set),
+                partial(step08.main, profile_var_key_set=profile_var_key_set,
+                        remove_extraneous_depth_levels=kw['remove_extraneous_depth_levels']),
+                partial(step09.main, profile_var_key_set=profile_var_key_set,
                         distance_tolerance=kw['distance_tolerance'],
                         closest_time=kw['closest_time'], method=kw['method']),
+                partial(step10.main, profile_var_key_set=profile_var_key_set, grid_dir=kw['grid_dir'],
+                        apply_gamma_factor=kw['apply_gamma_factor'], llcN=kw['llcN']),
             ]
 
             step_counter = 0
@@ -271,6 +277,9 @@ def _process_one_file(args):
                     lon = MITprof_ds['prof_lon']
                     MITprof_ds['prof_lon'] = xr.where(lon <= 360, ((lon + 180) % 360) - 180, lon)
 
+                # Chain-internal only (steps 01 and 10 use it to look up grid-cell values); not saved.
+                MITprof_ds = MITprof_ds.drop_vars('profile_flattened_monotonic_grid_indices', errors='ignore')
+
                 print()
                 tools.MITprof_write_to_nc(dest_dir, MITprof_ds, len(ncei_function_list), original_file, input_dir)
             else:
@@ -306,6 +315,24 @@ def NCEI_pipeline(dest_dir, input_dir, n_workers=None):
             'prof_S': '/Users/brucel/ecco/yip/sample_data/ecco-insitu/sweet_gdrive/CTD_sigma_TS/Salt_sigma_smoothed_method_02_masked_merged_capped_extrapolated.bin',
     }
 
+    # High-latitude T / S uncertainties, used instead of sigma_file_dict poleward
+    # of high_lat_sigma_min_lat; those profiles then get the step 06 climatology-cost
+    # tests (prof_Vuncertainty_source: 0 = CTD sigma, 1 = Arctic file, 2 = southern constant).
+    # North: Arctic files (EASE2 100 km grid, 59.4-89.4 N; see high_latitude_sigma.py),
+    #   nearest cell with a value within high_lat_sigma_max_dist_km.
+    # South: no file yet; a constant sigma per variable at all depths
+    #   (southern_sigma_const_dict, deg C / psu).  None = CTD sigma, cost tests skipped.
+    # Set use_high_lat_sigma = False to go back to the CTD sigma everywhere.
+    use_high_lat_sigma = True
+    _hl_dir = '/Users/brucel/ecco/yip/profile_data/high_latitude_uncertanties'
+    high_lat_sigma_file_dict = {
+            'prof_T': (f'{_hl_dir}/expected_rmse_from_woa23_and_aotd_potential_temperature_ease2_100km.nc', 'Theta_rmse_se'),
+            'prof_S': (f'{_hl_dir}/expected_rmse_from_woa23_and_aotd_salinity_ease2_100km.nc', 'S_rmse_se'),
+    } if use_high_lat_sigma else None
+    high_lat_sigma_min_lat = 60
+    high_lat_sigma_max_dist_km = 300
+    southern_sigma_const_dict = {'prof_T': 10.0, 'prof_S': 5.0} if use_high_lat_sigma else None
+
     llcN = 90
     wet_or_all = 1
     respect_existing_zero_weights = False
@@ -314,6 +341,13 @@ def NCEI_pipeline(dest_dir, input_dir, n_workers=None):
     replace_missing_S_with_clim_S = True
     exclude_high_latitude_profiles_from_clim_cost = True
     dubious_clim_lat_threshold = 60
+    # step06: apply the clim-cost tests poleward of dubious_clim_lat_threshold to
+    # profiles with a high-latitude sigma (Arctic file or southern constant; False = skip them all, as before)
+    clim_cost_qc_with_high_lat_sigma = True
+    # step08: True = trim trailing depth levels with no data (each file ends at its
+    # deepest data).  False = keep every file on the full input depth grid
+    # (97 levels, 2-6000 m); empty levels are fill with zero weight.
+    remove_extraneous_depth_levels = False
     distance_tolerance = 5e3
     closest_time = 120000
     method = 1
@@ -340,6 +374,12 @@ def NCEI_pipeline(dest_dir, input_dir, n_workers=None):
         replace_missing_S_with_clim_S=replace_missing_S_with_clim_S,
         exclude_high_latitude_profiles_from_clim_cost=exclude_high_latitude_profiles_from_clim_cost,
         dubious_clim_lat_threshold=dubious_clim_lat_threshold,
+        clim_cost_qc_with_high_lat_sigma=clim_cost_qc_with_high_lat_sigma,
+        high_lat_sigma_file_dict=high_lat_sigma_file_dict,
+        high_lat_sigma_min_lat=high_lat_sigma_min_lat,
+        high_lat_sigma_max_dist_km=high_lat_sigma_max_dist_km,
+        southern_sigma_const_dict=southern_sigma_const_dict,
+        remove_extraneous_depth_levels=remove_extraneous_depth_levels,
         distance_tolerance=distance_tolerance,
         closest_time=closest_time,
         method=method,

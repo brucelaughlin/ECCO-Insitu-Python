@@ -508,7 +508,6 @@ GEO_STYLE = dict(
     showocean=True,   oceancolor='#0d1b2a',
     showlakes=True,   lakecolor='#3a3a3a',
     showrivers=True,  rivercolor='#3a3a3a',
-    showcoastlines=True, coastlinecolor='#cccccc', coastlinewidth=0.8,
     showframe=False,  bgcolor='#1a1a1a',
 )
 
@@ -523,6 +522,7 @@ def make_globe(source_sel=SOURCE_ALL, selected_bin_id=None,
     fig.update_geos(projection_type='orthographic',
                     projection_scale=scale,
                     projection_rotation=dict(lon=0, lat=20, roll=0),
+                    showcoastlines=True, coastlinecolor='#cccccc', coastlinewidth=0.8,
                     **GEO_STYLE)
     fig.update_layout(margin=dict(l=0, r=0, t=0, b=0),
                       paper_bgcolor='#1a1a1a', geo=dict(bgcolor='#1a1a1a'),

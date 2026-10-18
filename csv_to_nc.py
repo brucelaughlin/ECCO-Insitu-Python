@@ -25,10 +25,6 @@ def make_prof_depth(levels):
 
     return np.array(depth)
 
-def to_julian_date(date):
-    tt = (date - dt.datetime(2000, 1, 1, 12)).total_seconds() / 86400
-    return tt + 2451545.0
-
 def createNETCDF(file, dest_dir, prof_desc, prof_HHMMSS, prof_lat, prof_lon, prof_S, 
                  prof_T, prof_YYMMDD, prof_depth_f_flag, prof_depth_o_flag, 
                  prof_T_f_flag, prof_T_o_flag, prof_S_f_flag, prof_S_o_flag):
@@ -100,20 +96,20 @@ def createNETCDF(file, dest_dir, prof_desc, prof_HHMMSS, prof_lat, prof_lon, pro
     prof_depth_var.units = 'me'
     prof_depth_var[:] = make_prof_depth(y)
 
-    # make julian day parem
+    # prof_date as MATLAB datenum (fractional days since 0000-01-00), computed
+    # from prof_YYYYMMDD + prof_HHMMSS to avoid the datestr mm/MM mix-up that
+    # stores the month number in the minutes field.
+    _DATENUM_1970 = 719529  # MATLAB datenum(1970,1,1)
     prof_date = nc.createVariable('prof_date', np.float64, 'iPROF')
-    prof_date.long_name = "Julian day since Jan 1, 2000"
+    prof_date.long_name = "MATLAB datenum (fractional days since 0000-01-00)"
     prof_date.units = 'N/A'
-
-    julian = []
-    for date in prof_YYMMDD:
-        year = date // 10000
-        month = (date // 100) % 100
-        day = date % 100
-        date = dt.datetime(year, month, day)
-        julian.append(to_julian_date(date))
-
-    prof_date[:] = np.array(julian)
+    _t  = np.asarray(prof_YYMMDD_np, dtype=np.int64)
+    _s  = np.asarray(prof_HHMMSS_np, dtype=np.int64)
+    _y, _m, _d = _t // 10000, (_t // 100) % 100, _t % 100
+    _day = ((((_y - 1970).astype('M8[Y]').astype('M8[M]') + (_m - 1))
+             .astype('M8[D]') + (_d - 1)).astype(np.int64))
+    _sec = _s // 10000 * 3600 + (_s // 100) % 100 * 60 + _s % 100
+    prof_date[:] = _day + _DATENUM_1970 + _sec / 86400.0
 
     # Create var - multi dim
     time_x, time_y = prof_desc_np.shape

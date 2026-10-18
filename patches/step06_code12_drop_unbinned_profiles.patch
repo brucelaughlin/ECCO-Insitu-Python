@@ -1,0 +1,126 @@
+--- a/step06.py
++++ b/step06.py
+@@ -5,7 +5,7 @@
+ import datetime
+ 
+ 
+-def update_zero_weight_points_on_prepared_profiles(MITprof_ds, profile_var_key_set, exclude_high_latitude_profiles_from_clim_cost, dubious_clim_lat_threshold):
++def update_zero_weight_points_on_prepared_profiles(MITprof_ds, profile_var_key_set, exclude_high_latitude_profiles_from_clim_cost, dubious_clim_lat_threshold, zero_weights_of_unbinned_profiles=True):
+     """
+     This script zeros-out profTweight and profSweight at points that match some criteria
+ 
+@@ -23,6 +23,10 @@
+ 
+     % dubious_clim_lat_threshold : latitude poleward of which to ignore clim costs (if
+     %          above flag is 1.
++
++    % zero_weights_of_unbinned_profiles : code 12.  If True, zero the T and S
++    %          weights of profiles with no geodesic bin (prof_bin_id_a missing or
++    %          -9999), so step 07 removes them.  See code 12 below.
+     """
+ 
+     criteria_names =  [
+@@ -37,6 +41,7 @@
+         'high avg cost of whole prof vs. climatology',
+         'high cost of a particular value vs. climatology',
+         'test of likely bad conductivity cell',
++        'no geodesic bin (nearest LLC90 cell is inland / ice-shelf land)',
+         ]
+ 
+     zero_criteria_codes = np.arange(1, len(criteria_names) + 1)
+@@ -51,6 +56,7 @@
+     single_datum_cost_threshold = 100
+             
+     num_profs = len(MITprof_ds['prof_lon'])
++    code12_reported = False
+ 
+     for prof_key in profile_var_key_set:
+         if prof_key in MITprof_ds:
+@@ -200,6 +206,35 @@
+                         MITprof_ds[f'{prof_key}weight_code'] = xr.where(bool_mask_da, MITprof_ds[f'{prof_key}weight_code'] + 2**(zero_criteria_code - 1), MITprof_ds[f'{prof_key}weight_code'])
+ 
+ 
++                if zero_criteria_code == 12: # no geodesic bin
++                    # Step 02 bins each profile by its nearest LLC90 cell.  The bin
++                    # files mark inland and ice-shelf land cells -9999 (coastal land
++                    # cells do have bins), so profiles there get no bin.  Typically a
++                    # few hundred per run: seals at Antarctic ice-shelf fronts, some
++                    # Arctic coast, and the Caspian Sea (outside the ECCO domain).
++                    # With wet_or_all = 1 step 01 also puts them on that land cell, so
++                    # the model cannot sample them, and step 11 cannot scale them
++                    # (it needs a bin).  Zeroing their weights lets step 07 drop them.
++                    #
++                    # To keep these profiles instead, set
++                    # zero_weights_of_unbinned_profiles = False in NCEI.py; they then
++                    # pass through unbinned and with unscaled weights.
++                    if not zero_weights_of_unbinned_profiles:
++                        print(f"  code 12 disabled (zero_weights_of_unbinned_profiles = False)")
++                        continue
++                    if 'prof_bin_id_a' not in MITprof_ds:
++                        print(f"  code 12 skipped: no prof_bin_id_a (step 02 not run?)")
++                        continue
++                    bin_ids = MITprof_ds['prof_bin_id_a'].data
++                    bool_mask_1D_np = ~(bin_ids >= 1)          # catches -9999 and NaN
++                    if not code12_reported:
++                        print(f"  code 12: {int(bool_mask_1D_np.sum())} of {num_profs} profiles have no geodesic bin")
++                        code12_reported = True
++                    bool_mask_da = MITprof_ds[prof_key].copy(deep=False, data=np.broadcast_to(bool_mask_1D_np[:, None], MITprof_ds[prof_key].shape))
++                    MITprof_ds[f'{prof_key}weight'] = xr.where(bool_mask_da, 0, MITprof_ds[f'{prof_key}weight'])
++                    MITprof_ds[f'{prof_key}weight_code'] = xr.where(bool_mask_da, MITprof_ds[f'{prof_key}weight_code'] + 2**(zero_criteria_code - 1), MITprof_ds[f'{prof_key}weight_code'])
++
++
+                 if zero_criteria_code == 11: # test for possible bad conductivity cell.
+                     if prof_key == 'prof_S':
+                         if len(MITprof_ds[prof_key].shape) > 1:
+@@ -267,8 +302,8 @@
+     return MITprof_ds
+ 
+ 
+-def main(MITprof_ds, profile_var_key_set, exclude_high_latitude_profiles_from_clim_cost, dubious_clim_lat_threshold):
+-    MITprof_ds = update_zero_weight_points_on_prepared_profiles(MITprof_ds, profile_var_key_set, exclude_high_latitude_profiles_from_clim_cost, dubious_clim_lat_threshold)
++def main(MITprof_ds, profile_var_key_set, exclude_high_latitude_profiles_from_clim_cost, dubious_clim_lat_threshold, zero_weights_of_unbinned_profiles=True):
++    MITprof_ds = update_zero_weight_points_on_prepared_profiles(MITprof_ds, profile_var_key_set, exclude_high_latitude_profiles_from_clim_cost, dubious_clim_lat_threshold, zero_weights_of_unbinned_profiles)
+     return MITprof_ds
+     
+ 
+--- a/NCEI.py
++++ b/NCEI.py
+@@ -204,7 +204,8 @@
+                 partial(step05.main, replace_missing_S_with_clim_S=kw['replace_missing_S_with_clim_S']),
+                 partial(step06.main, profile_var_key_set=profile_var_key_set,
+                         exclude_high_latitude_profiles_from_clim_cost=kw['exclude_high_latitude_profiles_from_clim_cost'],
+-                        dubious_clim_lat_threshold=kw['dubious_clim_lat_threshold']),
++                        dubious_clim_lat_threshold=kw['dubious_clim_lat_threshold'],
++                        zero_weights_of_unbinned_profiles=kw['zero_weights_of_unbinned_profiles']),
+                 partial(step07.main, profile_var_key_set=profile_var_key_set),
+                 partial(step08.main, profile_var_key_set=profile_var_key_set,
+                         remove_extraneous_depth_levels=kw['remove_extraneous_depth_levels']),
+@@ -315,6 +316,10 @@
+     replace_missing_S_with_clim_S = True
+     exclude_high_latitude_profiles_from_clim_cost = True
+     dubious_clim_lat_threshold = 60
++    # step06 code 12: drop profiles with no geodesic bin (inland / ice-shelf
++    # LLC90 cells; a few hundred per run).  False = keep them, unbinned and
++    # not spatially scaled by step 11.
++    zero_weights_of_unbinned_profiles = True
+     # step08: True = trim trailing depth levels with no data (each file ends at its
+     # deepest data).  False = keep every file on the full input depth grid
+     # (97 levels, 2-6000 m); empty levels are fill with zero weight.
+@@ -345,6 +350,7 @@
+         replace_missing_S_with_clim_S=replace_missing_S_with_clim_S,
+         exclude_high_latitude_profiles_from_clim_cost=exclude_high_latitude_profiles_from_clim_cost,
+         dubious_clim_lat_threshold=dubious_clim_lat_threshold,
++        zero_weights_of_unbinned_profiles=zero_weights_of_unbinned_profiles,
+         remove_extraneous_depth_levels=remove_extraneous_depth_levels,
+         distance_tolerance=distance_tolerance,
+         closest_time=closest_time,
+--- a/README.md
++++ b/README.md
+@@ -195,6 +195,7 @@
+ | `replace_missing_S_with_clim_S` | True | Fill missing salinity with WOA23 climatology |
+ | `exclude_high_latitude_profiles_from_clim_cost` | True | Exclude profiles poleward of `dubious_clim_lat_threshold` from climatology cost |
+ | `dubious_clim_lat_threshold` | 60 | Latitude threshold for the above |
++| `zero_weights_of_unbinned_profiles` | True | Step 06 code 12: zero weights of profiles with no geodesic bin (nearest LLC90 cell is inland / ice-shelf land; a few hundred per run), so step 07 drops them. False = keep them unbinned and unscaled by step 11 |
+ | `remove_extraneous_depth_levels` | False | Step 08: True = trim trailing depth levels with no data; False = keep all files on the full 97-level input depth grid (empty levels = fill, zero weight) |
+ | `distance_tolerance` | 5000 m | Radius for sub-daily co-location test (step 09) |
+ | `closest_time` | 120000 (noon) | Preferred sampling time for daily decimation (HHMMSS) |

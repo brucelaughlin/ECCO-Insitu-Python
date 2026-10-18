@@ -34,6 +34,8 @@ import concurrent.futures
 import json
 import multiprocessing as mp
 import os
+os.environ.setdefault('OMP_NUM_THREADS', '1')
+os.environ.setdefault('OPENBLAS_NUM_THREADS', '1')
 import re
 import sqlite3
 import warnings
@@ -84,6 +86,12 @@ def _derive_output(source_root, base):
 
 OUTPUT_DIR = Path(_args.output) if _args.output else Path(_derive_output(SOURCE_ROOT, _OUTPUT_BASE))
 print(f"Output path stem: {OUTPUT_DIR}")
+
+# Run folders hold yearly/ (per-year files, one sub-folder per source) and
+# ecco_arrays/; read the sources from yearly/.  (Older runs: sources at the top.)
+if (SOURCE_ROOT / 'yearly').is_dir():
+    SOURCE_ROOT = SOURCE_ROOT / 'yearly'
+    print(f"Reading sources from {SOURCE_ROOT}")
 
 BIN_ID_VAR   = 'prof_bin_id_a'   # 10242-bin resolution
 BIN_ID_VAR_B = 'prof_bin_id_b'   # 2562-bin resolution
