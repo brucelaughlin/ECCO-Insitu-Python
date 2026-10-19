@@ -28,6 +28,7 @@ import cartopy.feature as cfeature
 import zarr
 from dash import Dash, dcc, html, Input, Output, State, no_update, Patch
 from pathlib import Path
+from scipy.spatial import SphericalVoronoi
 
 # ==============================================================================
 # Config
@@ -356,17 +357,61 @@ print("Building coastline trace...", flush=True)
 _COAST_TRACE = _build_coastline_trace()
 
 
+def _build_bin_outline_trace(centres, keep):
+    """Faint outlines of the geodesic bins in `keep` (the bins with data), as one
+    lines trace.  Cells are the spherical Voronoi regions of all the bin centres,
+    as in the globe apps; rings are broken where they cross the antimeridian."""
+    ids = sorted(centres)
+    lon = np.radians([centres[b][0] for b in ids])
+    lat = np.radians([centres[b][1] for b in ids])
+    xyz = np.stack([np.cos(lat) * np.cos(lon), np.cos(lat) * np.sin(lon), np.sin(lat)], axis=-1)
+    sv = SphericalVoronoi(xyz, radius=1.0, center=np.zeros(3))
+    sv.sort_vertices_of_regions()
+    out_lon, out_lat = [], []
+    for k, bid in enumerate(ids):
+        if bid not in keep:
+            continue
+        v = sv.vertices[sv.regions[k] + sv.regions[k][:1]]          # closed ring
+        r_lon = np.degrees(np.arctan2(v[:, 1], v[:, 0]))
+        r_lat = np.degrees(np.arcsin(np.clip(v[:, 2], -1.0, 1.0)))
+        for i in range(len(r_lon)):
+            if i and abs(r_lon[i] - r_lon[i - 1]) > 180:
+                out_lon.append(None); out_lat.append(None)
+            out_lon.append(float(r_lon[i])); out_lat.append(float(r_lat[i]))
+        out_lon.append(None); out_lat.append(None)
+    return go.Scattergeo(lon=out_lon, lat=out_lat, mode='lines',
+                         line=dict(color='rgba(200,200,200,0.22)', width=0.5),
+                         hoverinfo='skip', showlegend=False, name='_bins')
+
+
+print("Building bin outlines...", flush=True)
+_BIN_OUTLINES = {RES_FINE:   _build_bin_outline_trace(bin_centres, set(bins)),
+                 RES_COARSE: _build_bin_outline_trace(bin_centres_coarse, set(bins_coarse))}
+
+
+def _n_dot_traces(source_sel):
+    return len(SOURCES) if source_sel == SOURCE_ALL else 1
+
+
 def _scatter_traces(data, source_sel):
-    """One Scattergeo trace per source (for legend); empty trace if no data."""
+    """Dot traces: one per source for the combined view, one for a single source.
+
+    Always exactly _n_dot_traces(source_sel) traces (empty ones for sources with
+    no profiles in the window), so the selection star that follows them is at a
+    known index for on_map_click.
+    """
+    def _empty(name='_empty'):
+        return go.Scattergeo(lat=[], lon=[], mode='markers', showlegend=False, name=name)
+
     if data is None:
-        return [go.Scattergeo(lat=[], lon=[], mode='markers',
-                              showlegend=False, name='_empty')]
+        return [_empty() for _ in range(_n_dot_traces(source_sel))]
 
     if source_sel == SOURCE_ALL:
         traces = []
         for src in SOURCES:
             mask = data['srcs'] == src
             if not np.any(mask):
+                traces.append(_empty(src))
                 continue
             lats_s    = data['lats'][mask]
             lons_s    = data['lons'][mask]
@@ -384,8 +429,7 @@ def _scatter_traces(data, source_sel):
                 name=src, text=hover, hoverinfo='text',
                 customdata=bin_ids_s.tolist(),
             ))
-        return traces or [go.Scattergeo(lat=[], lon=[], mode='markers',
-                                        showlegend=False, name='_empty')]
+        return traces
     else:
         hover = [
             f'{s}<br>{d // 100}-{d % 100:02d}'
@@ -420,8 +464,12 @@ _LEGEND_STYLE = dict(
 )
 
 
-def make_globe(data, source_sel, sel_lon=None, sel_lat=None, scale=1.0):
-    traces = _scatter_traces(data, source_sel) + [_selection_trace(sel_lon, sel_lat)]
+# Trace order on both maps: bin outlines (under everything), the dot traces, the
+# selection star (index 1 + _n_dot_traces, used by on_map_click), then on the flat
+# map the coastline.
+def make_globe(data, source_sel, sel_lon=None, sel_lat=None, scale=1.0, res=RES_FINE):
+    traces = ([_BIN_OUTLINES[res]] + _scatter_traces(data, source_sel)
+              + [_selection_trace(sel_lon, sel_lat)])
     fig = go.Figure(traces)
     fig.update_geos(projection_type='orthographic',
                     projection_scale=scale,
@@ -434,14 +482,13 @@ def make_globe(data, source_sel, sel_lon=None, sel_lat=None, scale=1.0):
     return fig
 
 
-def make_flat(data, source_sel, sel_lon=None, sel_lat=None, uirevision='flat'):
-    traces = _scatter_traces(data, source_sel) + [_selection_trace(sel_lon, sel_lat),
-                                                   _COAST_TRACE]
+def make_flat(data, source_sel, sel_lon=None, sel_lat=None, uirevision='flat', res=RES_FINE):
+    traces = ([_BIN_OUTLINES[res]] + _scatter_traces(data, source_sel)
+              + [_selection_trace(sel_lon, sel_lat), _COAST_TRACE])
     fig = go.Figure(traces)
     fig.update_geos(projection_type='natural earth',
-                    showcoastlines=False,
                     lataxis_range=[-90, 90], lonaxis_range=[-180, 180],
-                    **GEO_STYLE)
+                    **{**GEO_STYLE, 'showcoastlines': False})   # own coastline trace (_COAST_TRACE) instead
     fig.update_layout(margin=dict(l=0, r=0, t=0, b=0),
                       paper_bgcolor='#1a1a1a', geo=dict(bgcolor='#1a1a1a'),
                       autosize=True, dragmode='pan', uirevision=uirevision,
@@ -859,8 +906,8 @@ def on_map_controls(source_sel, years, res, sel_lonlat, scale):
     count = (f'showing {data["n_shown"]:,} of {data["n_total"]:,} profiles'
              if data else 'no profiles in this window')
 
-    globe_fig = make_globe(data, source_sel, sel_lon, sel_lat, scale=scale or 1.0)
-    flat_fig  = make_flat(data,  source_sel, sel_lon, sel_lat)
+    globe_fig = make_globe(data, source_sel, sel_lon, sel_lat, scale=scale or 1.0, res=res)
+    flat_fig  = make_flat(data,  source_sel, sel_lon, sel_lat, res=res)
     return globe_fig, flat_fig, res, count
 
 
@@ -872,9 +919,10 @@ def on_map_controls(source_sel, years, res, sel_lonlat, scale):
     Input('globe',   'clickData'),
     Input('flatmap', 'clickData'),
     State('selected-lonlat', 'data'),
+    State('source-select', 'value'),
     prevent_initial_call=True,
 )
-def on_map_click(globe_click, flat_click, current_lonlat):
+def on_map_click(globe_click, flat_click, current_lonlat, source_sel):
     from dash import ctx
     click_data = globe_click if ctx.triggered_id == 'globe' else flat_click
     if not click_data:
@@ -891,16 +939,13 @@ def on_map_click(globe_click, flat_click, current_lonlat):
     sel_lat = p.get('lat')
     sel_lonlat = {'lon': sel_lon, 'lat': sel_lat}
 
-    sel_trace = _selection_trace(sel_lon, sel_lat)
-    patched   = Patch()
-    # Selection trace is always the last data trace (after source traces)
-    # We rebuild it by updating via index -1 (last trace before coast on flat)
-    # Simpler: just update both figs by patching last scatter trace.
-    # Since trace count varies with sources present, use a full Patch on the last trace.
-    patched['data'][-1]['lat'] = [sel_lat]
-    patched['data'][-1]['lon'] = [sel_lon]
-    patched['data'][-1]['marker'] = dict(size=14, symbol='star', color='white',
-                                         line=dict(color='black', width=1))
+    # The star follows the bin outlines and the dot traces on both maps (see make_globe).
+    i = 1 + _n_dot_traces(source_sel or SOURCE_ALL)
+    patched = Patch()
+    patched['data'][i]['lat'] = [sel_lat]
+    patched['data'][i]['lon'] = [sel_lon]
+    patched['data'][i]['marker'] = dict(size=14, symbol='star', color='white',
+                                        line=dict(color='black', width=1))
     return bid, sel_lonlat, patched, patched
 
 
@@ -1040,7 +1085,7 @@ def flat_home(n_clicks, source_sel, years, res, sel_lonlat):
     sel_lat  = sel_lonlat['lat'] if sel_lonlat else None
     data     = query_profiles(source_sel or SOURCE_ALL, res, y0, y1)
     fig      = make_flat(data, source_sel or SOURCE_ALL, sel_lon, sel_lat,
-                         uirevision=f'home-{n_clicks}')
+                         uirevision=f'home-{n_clicks}', res=res)
     return fig, {'scale': 1.0, 'center_lat': 0.0, 'center_lon': 0.0}
 
 

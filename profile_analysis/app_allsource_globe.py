@@ -46,12 +46,16 @@ from scipy.spatial import SphericalVoronoi
 _OUTPUT_BASE = Path('/Users/brucel/ecco/yip/profile_data/z_profile_file_analysis/allsource_bin_timeseries')
 
 def _latest_store(base):
-    """Return the most recent timestamped store directory, falling back to base itself."""
+    """Return the most recent timestamped store directory, falling back to base itself.
+
+    The _with_anomalies stores hold everything this app reads too, so either kind
+    counts; the newest run timestamp wins (the anomaly store on a tie).
+    """
     parent = base.parent
     candidates = sorted(
-        p for p in parent.glob(base.name + '_????????_??????')
-        if p.is_dir()
-    )
+        (p for name in (base.name, base.name + '_with_anomalies')
+         for p in parent.glob(name + '_????????_??????') if p.is_dir()),
+        key=lambda p: (p.name[-15:], '_with_anomalies' in p.name))
     return candidates[-1] if candidates else base
 
 _app_parser = argparse.ArgumentParser(description='Allsource globe app.')

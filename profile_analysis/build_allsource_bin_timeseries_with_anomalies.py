@@ -91,6 +91,12 @@ print(f"Output path stem: {OUTPUT_DIR}")
 # ecco_arrays/; read the sources from yearly/.  (Older runs: sources at the top.)
 if (SOURCE_ROOT / 'yearly').is_dir():
     SOURCE_ROOT = SOURCE_ROOT / 'yearly'
+
+
+def _source_dirs(root):
+    """[(source_name, folder)]: one source per top-level folder holding .nc files,
+    directly or in sub-folders (ITP/L2 and ITP/L3 together form source ITP)."""
+    return [(d.name, d) for d in sorted(p for p in root.iterdir() if p.is_dir()) if any(d.rglob('*.nc'))]
     print(f"Reading sources from {SOURCE_ROOT}")
 
 BIN_ID_VAR   = 'prof_bin_id_a'   # 10242-bin resolution
@@ -219,7 +225,7 @@ def _ingest_file(fpath_source):
         rec = {
             'year':     int(years[i]),
             'month':    int(months[i]),
-            'file':     fpath.name,
+            'file':     str(fpath.relative_to(SOURCE_ROOT / source)),   # L2/..., L3/... for ITP
             'prof_idx': i,
             'date':     int(yyyymmdd[i]),
             'lon':      float(lons[i]),
@@ -527,19 +533,16 @@ if APPEND_ANOMALIES:
 
     # Need to re-ingest to get the per-profile T/Tclim arrays in memory.
     # (They are not stored in the zarr — only monthly means are.)
-    source_dirs = sorted(d for d in SOURCE_ROOT.iterdir() if d.is_dir())
+    source_dirs = _source_dirs(SOURCE_ROOT)
     bin_profiles   = defaultdict(lambda: defaultdict(list))
     bin_profiles_b = defaultdict(lambda: defaultdict(list))
     sources_seen   = set()
 
     all_work = []
-    for sdir in source_dirs:
-        files = sorted(sdir.glob('*.nc'))
-        if not files:
-            print(f"\n=== {sdir.name} === no .nc files, skipping")
-            continue
-        print(f"\n=== {sdir.name} === {len(files)} files")
-        all_work.extend((f, sdir.name) for f in files)
+    for sname, sdir in source_dirs:
+        files = sorted(sdir.rglob('*.nc'))
+        print(f"\n=== {sname} === {len(files)} files")
+        all_work.extend((f, sname) for f in files)
 
     n_total = len(all_work)
     done    = 0
@@ -574,9 +577,8 @@ if APPEND_ANOMALIES:
 
 # Reference depth grid
 DEPTH_REF = None
-for _d in sorted(SOURCE_ROOT.iterdir()):
-    if not _d.is_dir(): continue
-    for _f in sorted(_d.glob('*.nc')):
+for _, _d in _source_dirs(SOURCE_ROOT):
+    for _f in sorted(_d.rglob('*.nc')):
         try: _ds = xr.open_dataset(_f)
         except Exception: continue
         if _ds.sizes.get('iDEPTH', 0) == N_DEPTH_REF:
@@ -590,19 +592,16 @@ print(f"  Reference depth grid: {N_DEPTH_REF} levels, "
       f"{DEPTH_REF[0]:.0f}-{DEPTH_REF[-1]:.0f} m")
 
 # Ingest
-source_dirs = sorted(d for d in SOURCE_ROOT.iterdir() if d.is_dir())
+source_dirs = _source_dirs(SOURCE_ROOT)
 bin_profiles   = defaultdict(lambda: defaultdict(list))
 bin_profiles_b = defaultdict(lambda: defaultdict(list))
 sources_seen   = set()
 
 all_work = []
-for sdir in source_dirs:
-    files = sorted(sdir.glob('*.nc'))
-    if not files:
-        print(f"\n=== {sdir.name} === no .nc files, skipping")
-        continue
-    print(f"\n=== {sdir.name} === {len(files)} files")
-    all_work.extend((f, sdir.name) for f in files)
+for sname, sdir in source_dirs:
+    files = sorted(sdir.rglob('*.nc'))
+    print(f"\n=== {sname} === {len(files)} files")
+    all_work.extend((f, sname) for f in files)
 
 n_total = len(all_work)
 done    = 0

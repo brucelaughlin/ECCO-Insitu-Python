@@ -25,7 +25,9 @@ import numpy as np
 import plotly.graph_objects as go
 import cartopy.feature as cfeature
 import argparse
+import concurrent.futures
 import sqlite3
+import threading
 import zarr
 from dash import Dash, dcc, html, Input, Output, State, dash_table, Patch, no_update
 from pathlib import Path
@@ -212,6 +214,27 @@ def _zarr_anom_stats(resolution, bid):
             np.asarray(node['S_anom_mean'], dtype=np.float32),
             np.asarray(node['S_anom_std'],  dtype=np.float32))
 
+
+# The four anomaly stats of every bin, per grid, read once (in parallel) and kept
+# in memory (~15 MB in all): colouring the map then just indexes them, instead of
+# re-reading ~8,000 zarr groups (~30 s) on every colour-mode or depth change.
+# Loaded in a background thread at start-up; a request that comes first waits.
+_ANOM_ROWS = {}          # res -> {bin_id: (4, N_DEPTH) float32, or None if unreadable}
+_ANOM_LOCKS = {}          # res -> lock (one per grid, so the grids load independently)
+
+
+def _anom_rows(res):
+    with _ANOM_LOCKS.setdefault(res, threading.Lock()):
+        if res not in _ANOM_ROWS:
+            def one(bid):
+                try:
+                    return bid, np.stack(_zarr_anom_stats(res, bid))
+                except Exception:
+                    return bid, None
+            with concurrent.futures.ThreadPoolExecutor(max_workers=16) as ex:
+                _ANOM_ROWS[res] = dict(ex.map(one, sorted(_grid(res)[0])))
+        return _ANOM_ROWS[res]
+
 # ==============================================================================
 # Geodesic cell polygons
 # ==============================================================================
@@ -283,6 +306,10 @@ def _grid(res):
     if res == RES_COARSE:
         return bins_coarse, bin_centres_coarse, COARSE_GEOJSON, COARSE_IDS
     return bins, bin_centres, CELL_GEOJSON, CELL_IDS
+
+
+for _r in (RES_FINE, RES_COARSE):
+    threading.Thread(target=_anom_rows, args=(_r,), daemon=True, name=f'anom-preload-{_r}').start()
 
 
 def _pool_level_weighted(entries, key):
@@ -398,20 +425,12 @@ def _anom_arrays_for_display(ids_clean, cmode, depth_idx, res):
     cs_info = _CMODE_CS[cmode]
     colorscale, label, zmin_fixed, zmax_fixed, diverging = cs_info
 
+    k = {CMODE_T_MEAN: 0, CMODE_T_STD: 1, CMODE_S_MEAN: 2}.get(cmode, 3)   # row in _anom_rows
+    rows = _anom_rows(zres)
     z_vals = []
     for bid in ids_clean:
-        try:
-            T_am, T_as, S_am, S_as = _zarr_anom_stats(zres, bid)
-            if cmode == CMODE_T_MEAN:
-                v = float(T_am[depth_idx]) if not np.isnan(T_am[depth_idx]) else 0.0
-            elif cmode == CMODE_T_STD:
-                v = float(T_as[depth_idx]) if not np.isnan(T_as[depth_idx]) else 0.0
-            elif cmode == CMODE_S_MEAN:
-                v = float(S_am[depth_idx]) if not np.isnan(S_am[depth_idx]) else 0.0
-            else:  # S_STD
-                v = float(S_as[depth_idx]) if not np.isnan(S_as[depth_idx]) else 0.0
-        except Exception:
-            v = 0.0
+        r = rows.get(bid)
+        v = float(r[k, depth_idx]) if r is not None and not np.isnan(r[k, depth_idx]) else 0.0
         z_vals.append(v)
 
     z_arr = np.array(z_vals, dtype=float)

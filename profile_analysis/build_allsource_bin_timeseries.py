@@ -3,7 +3,7 @@ Preprocessing script for the multi-source interactive globe app.
 
 Generalizes build_pfl_bin_timeseries.py to ingest EVERY post-NCEI source under
 profile_files_NCEI_processed/ (CTD_WOD, GLD_WOD, MEOP, MRB_WOD, PFL, PFL_BGC,
-XBT_WOD, ...), not just PFL. ITP is currently empty and is skipped with a log.
+XBT_WOD, ...), not just PFL. ITP's L2 and L3 sub-folders are read together as source ITP.
 
 All sources share the same physical depth grid — each is a clean prefix of the
 97-level reference grid (2, 4, 7, 10 ... m), differing only in max depth — so a
@@ -124,6 +124,12 @@ print(f"Output path stem: {OUTPUT_DIR}")
 # ecco_arrays/; read the sources from yearly/.  (Older runs: sources at the top.)
 if (SOURCE_ROOT / 'yearly').is_dir():
     SOURCE_ROOT = SOURCE_ROOT / 'yearly'
+
+
+def _source_dirs(root):
+    """[(source_name, folder)]: one source per top-level folder holding .nc files,
+    directly or in sub-folders (ITP/L2 and ITP/L3 together form source ITP)."""
+    return [(d.name, d) for d in sorted(p for p in root.iterdir() if p.is_dir()) if any(d.rglob('*.nc'))]
     print(f"Reading sources from {SOURCE_ROOT}")
 
 GEODESIC_FILE  = _DEFAULT_GEODESIC_FILE
@@ -189,10 +195,8 @@ print(f"  {len(bin_centres):,} fine (10242) + {len(bin_centres_b):,} coarse (256
 # Establish the 97-level reference depth grid from the first file that has it,
 # searching across all sources.
 DEPTH_REF = None
-for _d in sorted(SOURCE_ROOT.iterdir()):
-    if not _d.is_dir():
-        continue
-    for _f in sorted(_d.glob('*.nc')):
+for _, _d in _source_dirs(SOURCE_ROOT):
+    for _f in sorted(_d.rglob('*.nc')):
         try:
             _ds = xr.open_dataset(_f)
         except Exception:
@@ -263,7 +267,7 @@ def _ingest_file(fpath_source):
         rec = {
             'year':     int(years[i]),
             'month':    int(months[i]),
-            'file':     fpath.name,
+            'file':     str(fpath.relative_to(SOURCE_ROOT / source)),   # L2/..., L3/... for ITP
             'prof_idx': i,
             'date':     int(yyyymmdd[i]),
             'lon':      float(lons[i]),
@@ -289,20 +293,17 @@ def _ingest_file(fpath_source):
     return source, fpath.name, recs_fine, recs_coarse, None
 
 
-source_dirs = sorted(d for d in SOURCE_ROOT.iterdir() if d.is_dir())
+source_dirs = _source_dirs(SOURCE_ROOT)
 bin_profiles   = defaultdict(lambda: defaultdict(list))   # fine  (10242)
 bin_profiles_b = defaultdict(lambda: defaultdict(list))   # coarse (2562)
 sources_seen = set()
 
 # Build a flat work list across all source dirs, preserving source name per file.
 all_work = []
-for sdir in source_dirs:
-    files = sorted(sdir.glob('*.nc'))
-    if not files:
-        print(f"\n=== {sdir.name} === no .nc files, skipping")
-        continue
-    print(f"\n=== {sdir.name} === {len(files)} files")
-    all_work.extend((f, sdir.name) for f in files)
+for sname, sdir in source_dirs:
+    files = sorted(sdir.rglob('*.nc'))
+    print(f"\n=== {sname} === {len(files)} files")
+    all_work.extend((f, sname) for f in files)
 
 n_total   = len(all_work)
 done      = 0

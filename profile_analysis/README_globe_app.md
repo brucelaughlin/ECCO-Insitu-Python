@@ -1,141 +1,69 @@
-# Multi-source Profile Globe App
+# Profile globe apps
 
-Interactive Dash/Plotly application for exploring ECCO in-situ profile data
-across instrument sources, geodesic bins, and time.
+Interactive Dash/Plotly apps for exploring the NCEI-processed in-situ profiles
+by instrument source, geodesic bin and time. They read a pre-built data store
+(zarr + JSON + SQLite) made from one chain run by a build script.
 
-## What the app shows
+| App | Shows | Store it reads |
+|---|---|---|
+| `app_allsource_globe.py` | Rotatable globe (or flat map) of geodesic bins coloured by sampling probability; click a bin for depth–time heatmaps of monthly-mean T / S (observed, climatology, anomaly) and a table of its profiles | `allsource_bin_timeseries_<ts>/`, or the anomaly store (the newest of either) |
+| `app_allsource_anomaly_globe.py` | The same, plus colouring by the long-run anomaly mean / std (T or S, with a depth slider) | `allsource_bin_timeseries_with_anomalies_<ts>/` |
+| `app_profile_scatter.py` | Individual profiles as dots coloured by source, with a date-range slider; click a dot for its bin's T / S timeseries | `allsource_bin_timeseries_with_anomalies_<ts>/` |
 
-- A rotatable orthographic globe with geodesic bins coloured by sampling
-  probability (fraction of months in the dataset record that received at least N
-  profiles in that bin).
-- Two resolution modes: **fine** (10242-bin geodesic grid, `prof_bin_id_a`) and
-  **coarse** (2562-bin grid, `prof_bin_id_b`).
-- Clicking a bin loads depth–time heatmaps of monthly-mean T or S (observed,
-  climatology, or anomaly) for that bin, plus an optional source-profile table.
-- Data is partitioned by instrument source (CTD\_WOD, GLD\_WOD, MEOP, MRB\_WOD,
-  PFL, PFL\_BGC, Samoa, XBT\_WOD). The "All (combined)" view pools sources with
-  profile-weighted averaging.
-
----
-
-## Files
-
-```
-profile_analysis/
-  app_allsource_globe.py          — the app itself
-  build_allsource_bin_timeseries.py  — preprocessing script that builds the pickle
-  README_globe_app.md             — this file
-```
+Sources are whatever the run holds, one per source folder of its `yearly/`
+directory (today CTD_WOD, GLD_WOD, ITP, MEOP, MRB_WOD, PFL, XBT_WOD); files in
+sub-folders (ITP/L2, ITP/L3) belong to their top folder's source. The
+"All (combined)" view pools the sources, weighting each by its number of profiles.
+Two grids: **fine** (10242 bins, `prof_bin_id_a`) and **coarse** (2562 bins,
+`prof_bin_id_b`).
 
 ---
 
-## Dependencies
-
-### Python packages
-
-```
-dash
-plotly
-numpy
-scipy          (SphericalVoronoi for geodesic cell polygons)
-pandas
-xarray         (build script only)
-```
-
-Install with:
+## Running an app
 
 ```bash
-pip install dash plotly numpy scipy pandas xarray
+python profile_analysis/app_allsource_globe.py              # newest store
+python profile_analysis/app_allsource_globe.py --data <store_dir>
 ```
 
-### Data files
-
-Two external data files are required. **Neither is included in this repository.**
-
-| File | Purpose | Approx. size |
-|------|---------|-------------|
-| `allsource_bin_timeseries.pkl` | Pre-aggregated profile data (all sources, both grids, monthly means) | ~4 GB |
-| `02562_bin_locations.csv` | Lon/lat centres for all 2562 coarse-grid geodesic bins | <1 MB |
-
-The geodesic CSV files (`10242_bin_locations.csv`, `02562_bin_locations.csv`)
-are part of the ECCO in-situ support data package (available on the project
-Google Drive).
-
-The pickle is produced by running `build_allsource_bin_timeseries.py` (see
-below). It is not a raw data file; it is a derived product from the NCEI
-post-processing chain output.
+Then open `http://127.0.0.1:8050`. All three apps use port 8050, so run one at a
+time. Each picks the newest timestamped store in
+`/Users/brucel/ecco/yip/profile_data/z_profile_file_analysis/` unless given
+`--data`. Start-up loads only the JSON metadata; per-bin arrays are read from zarr,
+and profile rows from SQLite, when you click a bin.
 
 ---
 
-## Configuring paths
-
-The app has two hardcoded paths near the top of `app_allsource_globe.py`:
-
-```python
-PICKLE_FILE       = Path('/path/to/allsource_bin_timeseries.pkl')
-GEODESIC_2562_CSV = Path('/path/to/02562_bin_locations.csv')
-```
-
-Edit these before running. The rest of the app reads everything from the pickle
-and does not require any other files at runtime.
-
----
-
-## Running the app
+## Building a store from a chain run
 
 ```bash
-cd profile_analysis
-python app_allsource_globe.py
+R=/Users/brucel/ecco/yip/processed_by_NCEI_profile_data/profile_files_NCEI_processed_<ts>
+python profile_analysis/build_allsource_bin_timeseries_with_anomalies.py --source_root $R
 ```
 
-Then open `http://127.0.0.1:8050` in a browser.
+The anomaly store is a superset of the plain one, so this one build serves all
+three apps (`build_allsource_bin_timeseries.py` still makes a plain store if you
+want one; it is ~5 GB either way).
 
-Startup takes 30–60 seconds: the pickle (~4 GB) must load and two
-SphericalVoronoi tessellations (10242 + 2562 cells) must be computed before
-the server accepts connections.
+- `--source_root` can be the run folder: the scripts read `yearly/` inside it
+  (older runs with source folders at the top level also work).
+- Output: `z_profile_file_analysis/allsource_bin_timeseries[_with_anomalies]_<ts>/`,
+  where `<ts>` is the run's timestamp, holding `<name>.zarr`,
+  `<name>_metadata.json` and `<name>_profiles.db`. `--output <path>` overrides.
+- The anomaly build can add its anomaly arrays to an existing store instead of
+  rebuilding: `--append_anomalies`.
+- Rebuild after every chain run you want to look at; an old store keeps showing
+  the old run.
+- If a build hangs after "Aggregating N bins...", rerun it with
+  `OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1`.
+- The geodesic bin-centre files are set at the top of the build scripts
+  (`_DEFAULT_GEODESIC_FILE`, `_DEFAULT_GEODESIC_FILE_B`).
 
----
-
-## Building the pickle from scratch
-
-If you have your own NCEI-processed profile files and want to build the pickle:
-
-```bash
-python build_allsource_bin_timeseries.py \
-    --source_root /path/to/profile_files_NCEI_processed \
-    --output      /path/to/allsource_bin_timeseries.pkl
-```
-
-The build script also requires two geodesic CSV files. Their paths are
-currently hardcoded in the script (`_DEFAULT_GEODESIC_FILE`,
-`_DEFAULT_GEODESIC_FILE_B`) and must be edited before running.
-
-### Input: NCEI-processed profile files
-
-The source directory must contain one subdirectory per instrument source
-(e.g. `CTD_WOD/`, `PFL/`), each holding NetCDF files produced by the NCEI
-post-processing chain (`NCEI.py`). Each file must contain at minimum:
-
-- `prof_YYYYMMDD`, `prof_lon`, `prof_lat`
-- `prof_T`, `prof_Tclim` (and `prof_S`, `prof_Sclim` where available)
-- `prof_bin_id_a` — 10242-bin geodesic bin index (assigned by NCEI chain step 2)
-- `prof_bin_id_b` — 2562-bin geodesic bin index (assigned by NCEI chain step 2)
-
-Producing these files from raw WOD data requires running the full NCEI
-processing chain (`NCEI.py` and its 10 steps), which depends on additional
-support files (LLC90 grid, WOA23 climatology, sigma files). See the top-level
-`README.md` for details on that pipeline.
-
-### Output
-
-The build script writes a single pickle containing:
-
-- Per-bin, per-source, per-month mean profiles of T, S, T\_clim, S\_clim
-- Long-run T/S means and sampling hit counts per bin
-- Both fine (10242) and coarse (2562) grid aggregations
-- Dataset date range and geodesic bin centre coordinates
-
-Build time is approximately 15–20 minutes for ~420 files across 8 sources.
+Per bin, per month and per source the store holds the mean T, S, Tclim, Sclim
+profiles on the 97-level grid, the number of profiles, and (anomaly build) the
+long-run mean and std of T − Tclim and S − Sclim at each depth. The model
+equivalents (`prof_Testim`, `prof_Sestim`) are stored when a file has them; the
+chain does not produce them yet.
 
 ---
 
@@ -144,25 +72,22 @@ Build time is approximately 15–20 minutes for ~420 files across 8 sources.
 | Control | Effect |
 |---------|--------|
 | Drag globe | Rotate |
-| Scroll wheel | Zoom toward cursor |
-| Zoom slider | Zoom (alternative) |
-| Grid resolution | Switch between 10242-bin (fine) and 2562-bin (coarse) geodesic grids |
-| Source | Filter to a single instrument source or show all combined |
-| Globe: probability threshold | Colour bins by P(≥1), P(≥2), or P(≥3) profiles/month |
-| Probability basis | Denominator: full dataset span, or since each bin's first observation |
+| Scroll wheel / zoom slider | Zoom |
+| Grid resolution | Fine (10242) or coarse (2562) bins |
+| Source | One source, or all combined |
+| Probability threshold | Colour bins by P(≥1), P(≥2) or P(≥3) profiles per month |
+| Probability basis | Denominator: the whole record, or since the bin's first profile |
+| Color by (anomaly app) | Probability, or T / S anomaly mean / std at the chosen depth |
 | Field | Temperature or salinity |
-| Anomaly reference | Subtract climatology or bin long-run time-mean |
-| Click a bin | Load depth–time heatmaps and (optionally) source-profile table |
-| Show source table | Replace anomaly heatmap with a table of individual profiles |
+| Anomaly reference | Subtract the climatology or the bin's long-run mean |
+| Click a bin | Depth–time heatmaps and (optionally) the bin's profile table |
 
----
+## Notes
 
-## Notes on data coverage
-
-- Bins with no data for the selected source are not shown on the globe.
-- Switching grid resolution clears the current bin selection.
-- The coarse grid (2562 bins) will show higher probabilities than the fine grid
-  (10242 bins) because each coarse bin aggregates the profiles of roughly four
-  fine bins.
-- Model-equivalent profiles (`prof_Testim`, `prof_Sestim`) are not yet
-  populated in the upstream NCEI chain and are not displayed.
+- Bins with no data for the selected source are not drawn.
+- Switching grid resolution clears the selected bin.
+- Coarse bins show higher probabilities than fine bins: each holds the profiles
+  of about four fine bins.
+- Known issues: rotation sticks near the poles (gimbal lock; a quaternion-based
+  rotation would fix it); zooming out on the flat map is jerky.
+- Older app variants are in `x_old/` (not tracked by git).
