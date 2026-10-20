@@ -9,7 +9,7 @@ unless you pass a run directory.
 |---|---|---|---|
 | `check_run_files.py` | Is the run complete and well-formed? | ~15 s | console; exit code 0 = PASS |
 | `check_run_qc.py` | Are the values scientifically plausible? | ~1 h | console |
-| `check_ecco_arrays.py` | Are the step 13 ECCO-ready files complete, correctly labelled, within the NOBSGLOB cap, and identical to the yearly files? | ~1 min per GB | console; exit code 0 = PASS |
+| `check_ecco_arrays.py` | Are the step 13 ECCO-ready files complete, correctly labeled, within the NOBSGLOB cap, and identical to the yearly files? | ~1 min per GB | console; exit code 0 = PASS |
 | `report_profile_counts.py` | How many profiles UCSD delivered vs how many survive processing, per source / year / bin? | ~10 min (scan) + plots | `insitu_reports/report_<run>__<ts>/` (HTML, PNGs) |
 | `report_costs.py` | How big are the T/S costs vs climatology, per source / year? | ~1 min + report | `cost_reports/cost_<run>__<ts>/` (HTML + PDF, per-profile costs) |
 | `report_spatial_scaling.py` | What did step 11 do (counts, occupancy, mean scaling factor, per T/S)? | minutes | `processed_by_NCEI_profile_data/figures/figures_<ts>/` (PNGs) |
@@ -160,5 +160,5 @@ python diagnostics/report_spatial_scaling.py <run_dir> [--window monthly|10day] 
 | `counts_index.py`, `counts_timeseries.py`, `counts_maps.py` | `report_profile_counts.py` (scan → per-profile index; time-series figures; maps) |
 | `costs_compute.py`, `costs_report.py` | `report_costs.py` (compute + store costs; figures, HTML, PDF) |
 
-Older one-off Argo analyses (`plot_bin_*`, `build_slideshow.py`) and the globe
-apps remain in `profile_analysis/`.
+The interactive map app (`app_profile_map.py`) and the Argo bin-occupancy plots
+(`plot_bin_occupancy_per_month.py`) are in `profile_analysis/`.

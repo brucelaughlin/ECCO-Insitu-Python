@@ -6,10 +6,17 @@ Two data sources: raw (before NCEI chain) and processed (after NCEI chain).
 Two time views: calendar month (Jan-Dec, aggregated across all years) and
                 month-by-year time series.
 
-Output: 4 figures saved to ../plots/data_coverage/
+Inputs: raw Argo files in Interp_Profiles/PFL, and the processed ones in a chain run's
+yearly/PFL (default: the newest run; --processed <run_dir> to choose).
+
+Output: figures in profile_data/z_profile_file_analysis/plots/bin_occupancy/
+
+    python profile_analysis/plot_bin_occupancy_per_month.py [--processed <run_dir>] [--no_raw] [--no_processed]
 """
 
+import argparse
 import os
+import re
 import sys
 import numpy as np
 import xarray as xr
@@ -25,15 +32,33 @@ import tools
 # Switches
 # ==============================================================================
 
-RUN_RAW       = True
-RUN_PROCESSED = False  # set True once NCEI pipeline output is available
+_PROCESSED_ROOT = Path('/Users/brucel/ecco/yip/processed_by_NCEI_profile_data')
+
+
+def _newest_run(root):
+    runs = sorted(p for p in root.glob('profile_files_NCEI_processed_*') if (p / 'yearly').is_dir())
+    return runs[-1] if runs else None
+
+
+_ap = argparse.ArgumentParser(description='Argo bin occupancy per month, raw vs processed.')
+_ap.add_argument('--processed', default=None, help='chain run folder (default: the newest with yearly/)')
+_ap.add_argument('--no_raw', action='store_true', help='skip the raw (pre-chain) files')
+_ap.add_argument('--no_processed', action='store_true', help='skip the processed files')
+_args = _ap.parse_args()
+
+RUN_RAW       = not _args.no_raw
+RUN_PROCESSED = not _args.no_processed
 
 # ==============================================================================
 # Paths
 # ==============================================================================
 
 raw_pfl_dir   = Path('/Users/brucel/ecco/yip/profile_data/Interp_Profiles/PFL')
-processed_dir = Path('/Users/brucel/ecco/yip/profile_files_NCEI_processed/PFL')
+_run          = Path(_args.processed) if _args.processed else _newest_run(_PROCESSED_ROOT)
+processed_dir = (_run / 'yearly' / 'PFL') if _run else None
+if RUN_PROCESSED and (processed_dir is None or not processed_dir.is_dir()):
+    sys.exit(f'No processed PFL folder found ({processed_dir}); pass --processed <run_dir> or --no_processed')
+print(f'Processed run: {_run}' if RUN_PROCESSED else 'Processed run: (skipped)')
 
 sphere_bin_dir  = '/Users/brucel/ecco/yip/sample_data/ecco-insitu/sweet_gdrive/grid_llc90/sphere_point_distribution'
 grid_dir        = '/Users/brucel/ecco/yip/sample_data/ecco-insitu/sweet_gdrive/grid_llc90'
@@ -112,8 +137,10 @@ def collect_records(file_list, bin_arrays, xyz_grid=None, grid_indices=None,
             ds.close()
             continue
 
-        # Extract profile type (A, D, or R) from filename, e.g. ARGO_WO_2005_PFL_D.nc
-        prof_type = fpath.stem.split('_')[-1][0]
+        # Profile type (A, D or R) from the file name, e.g. ARGO_WO_2005_PFL_D.nc or
+        # ARGO_WO_2005_PFL_D__ncei_step_11.nc (only D files are used since 2026-10)
+        m = re.search(r'_PFL_([ADR])', fpath.stem)
+        prof_type = m.group(1) if m else '?'
 
         yyyymmdd = ds['prof_YYYYMMDD'].values.astype(int)
         months = (yyyymmdd % 10000) // 100

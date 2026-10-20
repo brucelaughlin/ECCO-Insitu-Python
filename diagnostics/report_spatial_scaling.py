@@ -39,14 +39,14 @@ from step11_spatial_scaling import (  # noqa: E402
 )
 
 # ---------------------------------------------------------------------------
-# Geodesic bin centres
+# Geodesic bin centers
 # ---------------------------------------------------------------------------
 
 _GEO_CSV = Path('/Users/brucel/ecco/yip/sample_data/ecco-insitu/sweet_gdrive/'
                 'geodesic/10242_bin_locations.csv')
 
 
-def _load_bin_centres():
+def _load_bin_centers():
     data = np.genfromtxt(_GEO_CSV, delimiter=',')
     lons = data[:, 0]   # column 0 = lon
     lats = data[:, 1]   # column 1 = lat
@@ -318,8 +318,8 @@ def main(run_dir, window_mode='monthly', dpi=150):
     print(f"  fig_dir : {fig_dir}")
     print(f"{'='*60}\n")
 
-    print("Loading bin centres...")
-    lons_g, lats_g = _load_bin_centres()
+    print("Loading bin centers...")
+    lons_g, lats_g = _load_bin_centers()
 
     print("Counting profiles per variable (step 11 pass 1)...")
     counts = _count_profiles(nc_files, window_fn)

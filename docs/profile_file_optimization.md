@@ -69,12 +69,14 @@ Two things are worth noticing:
    empty Southern Ocean, because the table is sized by the single busiest
    (file, tile) combination anywhere.
 
-So the memory each tile reserves is proportional to
+So the **total memory allocated** across the whole model run is:
 
-> **`NFILESPROFMAX` × `NOBSGLOB`**  (× the number of depth levels)
+> **n_tiles × `NFILESPROFMAX` × `NOBSGLOB` × n_depths**
 
-and **making that product small is the whole goal**. Because the number of
-profiles is fixed, a smaller product simply means **less empty space**.
+`n_tiles` (117 for LLC90) and `n_depths` (the number of vertical levels) are
+fixed by the grid and the data. The only knobs we have are `NFILESPROFMAX` and
+`NOBSGLOB`. **Making their product small is the whole goal.** Because the number
+of profiles is fixed, a smaller product simply means **less empty space**.
 
 ---
 
@@ -85,8 +87,8 @@ The files are not free-form; a few rules come from how the data are used:
 | Rule | Why |
 |---|---|
 | **One provenance per file** (all Argo in Argo files, all XBTs in XBT files, …; ITP L2 and L3 kept apart) | The model's weighting knobs in `data.profiles` are set per file, so mixing sources in one file would mix their weights. |
-| **Chronological, one continuous time span per file** | Easier to manage, and it is how ECCO's own files are organised. |
-| **Files labelled in whole calendar years** (start 1 Jan, end 31 Dec) | Easier internal bookkeeping. A file can hold several whole years (e.g. `PFL_001_19970101_20131231`). If one single year is too dense, that year is split into parts that each carry the year's label (`XBT_WOD_001_19920101_19921231`, `XBT_WOD_002_19920101_19921231`). A file never mixes part of a year with other years. |
+| **Chronological, one continuous time span per file** | Easier to manage, and it is how ECCO's own files are organized. |
+| **Files labeled in whole calendar years** (start 1 Jan, end 31 Dec) | Easier internal bookkeeping. A file can hold several whole years (e.g. `PFL_001_19970101_20131231`). If one single year is too dense, that year is split into parts that each carry the year's label (`XBT_WOD_001_19920101_19921231`, `XBT_WOD_002_19920101_19921231`). A file never mixes part of a year with other years. |
 
 ---
 
@@ -105,10 +107,53 @@ Pacific (South China Sea / Philippine Sea / around Japan), where CTD casts alone
 put 168,201 profiles in one tile. A tile like that forces either a long row or
 many files.
 
-There is also a **hard floor**: whatever you do, `NFILESPROFMAX` × `NOBSGLOB`
-cannot go below the sum of each provenance's busiest-tile count — about
-**600,000** for the 2026-10-12 data. (Each provenance's busiest tile has to
-fit, spread over that provenance's files.)
+### Why multiple provenances create real leverage — a toy example
+
+It is tempting to think that M × `NOBSGLOB` is always roughly equal to the
+busiest tile's total profile count, and that you are just slicing a fixed
+quantity differently. That would be true with only one provenance: M × N stays
+roughly constant no matter how you split the files, and no arrangement helps.
+
+With multiple provenances, real savings are possible. Here is the simplest case:
+
+> **Two provenances.** Provenance A's worst tile holds **10 profiles**;
+> provenance B's worst tile holds **5 profiles**. There are **10 tiles** in
+> total (not something we control — it is set by the model grid).
+
+**Naive layout — one file per provenance (M = 2):**
+`NOBSGLOB` must be at least 10 (to fit A's worst tile). Every tile reserves a
+table of 2 rows × 10 slots = 20 slots. Total across all tiles: 10 × 20 = **200**.
+
+**Split A into two files (M = 3, `NOBSGLOB` = 5):**
+A's worst tile now has at most 5 profiles per file, so `NOBSGLOB` can drop to 5.
+Every tile reserves 3 rows × 5 slots = 15 slots. Total: 10 × 15 = **150**.
+
+The saving comes entirely from provenance B: its file was already fine at
+`NOBSGLOB` = 5, but in the naive layout it was forced to allocate 10 slots per
+row because A set the global column width. Splitting A removes that tax from B.
+
+Notice also that the optimized total (150) equals the **hard floor** for this
+example: the sum of each provenance's worst-tile count is 10 + 5 = 15 slots per
+tile, times 10 tiles = 150. In the real data the floor is not quite reachable
+(see below), but the mechanism is the same.
+
+### Why the real data cannot reach the floor
+
+In the real data the hard floor is the sum of each provenance's busiest-tile
+count — about **600,000** for the 2026-10-12 data. The optimized result of
+~782,000 sits above it for two reasons:
+
+1. **Year-boundary constraint**: files must close at year boundaries, so a file
+   sometimes closes before its busiest tile is completely full, wasting some
+   slots and requiring slightly more files than ⌈B/N⌉.
+2. **Different provenances peak at different tiles**: the provenance whose file
+   sets `NOBSGLOB` at any given split is not always the same, so the column
+   width can never be trimmed to fit every provenance's worst tile simultaneously.
+
+The naive one-file-per-provenance layout is **4× the busiest single tile's
+total** (8 × 168,201 = 1,345,608 vs. the single busiest tile's 330,655
+profiles). The optimized layout brings that down to about 2.3×. The remaining
+gap above the floor is irreducible waste from uneven geographic distribution.
 
 ---
 
@@ -160,7 +205,7 @@ profiles, the median tile has a few percent of that, and many tiles have almost
 none — yet every tile must reserve the same size of table. Even the
 mathematically best possible arrangement would still be about 91% empty.
 
-What the optimisation *does* buy is a much smaller table than a naive
+What the optimization *does* buy is a much smaller table than a naive
 arrangement: about **782,000 slots per tile instead of 1,350,000** (one file
 per provenance), i.e. roughly 40% less reserved memory.
 

@@ -14,7 +14,7 @@ Rules for the files:
   * one provenance per file (data.profiles weights are per file),
   * chronological, each file one continuous time span,
   * year rule (--year_rule):
-      whole_years (default) files are labelled in whole calendar years (1 Jan to
+      whole_years (default) files are labeled in whole calendar years (1 Jan to
                             31 Dec of the same or a later year): a file holds
                             several whole years, or, if one year alone has more
                             than NOBSGLOB profiles in some tile, one part of that

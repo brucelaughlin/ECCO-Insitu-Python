@@ -58,7 +58,7 @@ Target: ECCO v4r6 (LLC90, 30×30 tiles; 117 tiles, 113 active). The model
 reserves per tile `NFILESPROFMAX` × `NOBSGLOB` profile slots (× levels), where
 `NOBSGLOB` is the most profiles any one file puts in any one tile. The program
 minimizes that product: one provenance per file (ITP L2/L3 separate, XBT flag +
-noflag together), chronological, files labelled in whole calendar years (several
+noflag together), chronological, files labeled in whole calendar years (several
 whole years, or parts of one too-dense year with the year's label). Default
 `NOBSGLOB = 'auto'` = fewest files within 5% of the minimum product. Needs only
 the LLC size and tile size — not blank tiles or bathymetry (the model ignores
@@ -120,11 +120,12 @@ All accept either run layout and read each run's step order from its log.
 4. **Possible QC change for the team**: switch the cost tests back on poleward of
    60° with looser thresholds (would catch the bad seal / XBT data); the bad
    Laptev climatology needs its own fix.
-5. **Timeseries stores for the globe apps** need rebuilding from a current run
-   (`profile_analysis/build_allsource_bin_timeseries*.py --source_root <run>`;
-   `yearly/` is found automatically).
-6. Deferred app issues: globe rotation gimbal lock near the poles (fix: quaternion
-   rotation); flat-map zoom-out jerkiness.
+5. **Map app** (`profile_analysis/app_profile_map.py`, replaced the three globe apps
+   on 2026-10-19; globe versions at tag `globe-apps-2026-10-19`): its store is built
+   from the 20261014_170404 run. After a new chain run, rebuild with
+   `profile_analysis/build_allsource_bin_timeseries_with_anomalies.py --source_root <run>`
+   (the only build script now; `yearly/` is found automatically). See
+   `profile_analysis/README_maps.md`.
 
 ---
 

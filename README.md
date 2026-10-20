@@ -19,7 +19,7 @@ suitable for assimilation into the ECCO ocean state estimate. The pipeline:
    memory (step 13, `optimize_profile_files.py`; plain-language explanation in
    [`docs/profile_file_optimization.md`](docs/profile_file_optimization.md))
 5. Checks and reports on the output (`diagnostics/`, see `diagnostics/README.md`)
-6. Aggregates the processed profiles into geodesic bins for visualisation, with an
+6. Aggregates the processed profiles into geodesic bins for visualization, with an
    interactive globe app (`profile_analysis/`)
 
 A support data package (LLC90 grid, WOA23 climatology, sigma files, geodesic
@@ -49,9 +49,10 @@ ECCO-Insitu-Python/
   docs/profile_file_optimization.md — plain-language guide to the step 13 file packing (also .pdf)
   patches/                        — saved, tested changes not yet applied (see HANDOFF.md)
   profile_analysis/
-    app_allsource_globe.py        — interactive globe app
-    build_allsource_bin_timeseries.py  — builds the timeseries store for the globe app
-    README_globe_app.md           — globe app documentation
+    app_profile_map.py            — interactive map app (World / Arctic / Southern Ocean; bins or profiles)
+    map_common.py                 — its projections, bin cells and zoom handling
+    build_allsource_bin_timeseries_with_anomalies.py — builds the data store the app reads
+    README_maps.md                — map app documentation
 ```
 
 ---
@@ -141,7 +142,7 @@ the run directory.
 allocates per-tile arrays of `NFILESPROFMAX` × `NOBSGLOB` (× levels), where
 `NOBSGLOB` is the most profiles any one file puts in any one tile; the program
 arranges the files to keep that product (i.e. the empty space) small: one
-provenance per file (ITP split into L2 / L3), chronological, each file labelled in
+provenance per file (ITP split into L2 / L3), chronological, each file labeled in
 whole calendar years (`YYYY0101`–`YYYY1231`; several whole years, or — if one year
 is too dense — one part of a single year, e.g. `XBT_WOD_001_19920101_19921231`,
 `XBT_WOD_002_19920101_19921231`). It sweeps `NOBSGLOB`, prints the trade-off
@@ -278,22 +279,28 @@ Parameters set in `NCEI.py` under the `NEED PATHS / PARAMETERS` block:
 
 ---
 
-## Step 2 — Globe app
+## Step 2 — Map app
 
-See `profile_analysis/README_globe_app.md` for full documentation.
+The map app is **standalone**: it needs only its three files and a data store built from
+post-NCEI profile files. Users with someone else's chain output, or a ready store, don't
+need to run the chain. See the **"What you need"** section of
+`profile_analysis/README_maps.md` (inputs, commands, options) for full documentation.
 
 The short version:
 
 ```bash
-# Build the timeseries store (once, or after re-running the NCEI chain).
+# Build the data store (once, or after re-running the NCEI chain).
 # --source_root is the run folder; its yearly/ sub-folder is used automatically.
-python profile_analysis/build_allsource_bin_timeseries.py \
+python profile_analysis/build_allsource_bin_timeseries_with_anomalies.py \
     --source_root /path/to/profile_files_NCEI_processed_<YYYYMMDD_HHMMSS>
 
 # Run the app
-python profile_analysis/app_allsource_globe.py
+python profile_analysis/app_profile_map.py
 # Open http://127.0.0.1:8050
 ```
+
+The earlier globe apps (`app_allsource_globe.py`, `app_allsource_anomaly_globe.py`,
+`app_profile_scatter.py`) are kept at git tag `globe-apps-2026-10-19`.
 
 ---
 

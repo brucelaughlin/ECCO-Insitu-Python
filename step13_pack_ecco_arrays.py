@@ -20,7 +20,7 @@ import optimize_profile_files as opt
 LLC = 90                      # model grid: LLC90 (ECCO v4r6)
 TILE = 30                     # per-rank tile size, 30x30 cells (v4r6 SIZE.h sNx = sNy = 30)
 GRID_DIR = opt.DEFAULTS['grid_dir']
-YEAR_RULE = 'whole_years'     # files labelled in whole years; a too-dense year is split into parts
+YEAR_RULE = 'whole_years'     # files labeled in whole years; a too-dense year is split into parts
 NOBSGLOB = 'auto'             # or an integer
 TOLERANCE = 0.05              # auto: fewest files within 5% of the smallest NFILESPROFMAX x NOBSGLOB
 MAX_FILES = None              # auto: optional cap on the number of files
