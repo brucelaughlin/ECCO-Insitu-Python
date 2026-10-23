@@ -1,0 +1,13 @@
+C PROFILES_SIZE.h — values needed for these files
+      PARAMETER ( NOBSGLOB = 150 )
+      PARAMETER ( NFILESPROFMAX = 8 )
+
+# data.profiles — file list (names without .nc)
+ profilesfiles(1)= 'CTD_WOD_001_19920101_19921231',
+ profilesfiles(2)= 'GLD_WOD_001_20130101_20131231',
+ profilesfiles(3)= 'ITP_L2_001_20230101_20231231',
+ profilesfiles(4)= 'ITP_L3_001_20040101_20041231',
+ profilesfiles(5)= 'MEOP_001_20240101_20241231',
+ profilesfiles(6)= 'MRB_WOD_001_20250101_20251231',
+ profilesfiles(7)= 'PFL_001_20150101_20151231',
+ profilesfiles(8)= 'XBT_WOD_001_19920101_19921231',

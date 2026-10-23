@@ -17,3 +17,7 @@ processed_profile_files/
 x_old/
 binned_output/
 **/binned_output/
+
+# --- tests: the small fixture files are tracked despite *.nc above ---
+!tests/fixtures/**/*.nc
+.pytest_cache/
