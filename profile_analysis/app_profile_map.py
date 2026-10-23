@@ -291,6 +291,13 @@ for _r in (RES_FINE, RES_COARSE):
     threading.Thread(target=_anom_tables, args=(_r,), daemon=True, name=f'anom-preload-{_r}').start()
 
 
+def _preload_subpoly_ranges():
+    """Read the single-profile anomalies once (all sources, T and S, fine grid) in the
+    background (~1 min), so the first zoom to sub-polygons doesn't wait for it."""
+    for var in (0, 1):
+        _single_profile_values(RES_FINE, SOURCE_ALL, var)
+
+
 @functools.lru_cache(maxsize=None)
 def _cs(name):
     """A named color scale as an explicit list. Plotly's browser side does not know
@@ -388,7 +395,93 @@ def resolve_bin(bin_data, source_sel, res=RES_FINE):
 #   trace order: [0] bins choropleth, [1] selected-bin ring, [2] coastline
 # ==============================================================================
 
-def _anom_arrays_for_display(ids_clean, cmode, depth_idx, res, src=SOURCE_ALL):
+# ---- Color ranges --------------------------------------------------------------
+# Fixed per selection (grid, source, variable, mean or std): computed over all bins and
+# all depths, each (bin, depth) weighted by its number of profiles, so a color means the
+# same at every depth and zoom. "Rescale to this depth" switches to the same statistic
+# at the chosen depth only (more detail where anomalies are small, e.g. at depth); it
+# turns itself off at RESCALE_RESET_DEPTH and above, and with "Reset view".
+RANGE_PCTL = 95.0                # mean modes: ±P95 of |value|; std modes: 0 .. P95
+RESCALE_RESET_DEPTH = 200.0      # m: "rescale to this depth" switches off at or above this
+
+
+def _wpct(values, weights, pct):
+    """Weighted percentile (values, weights 1-D; NaNs ignored)."""
+    ok = np.isfinite(values) & (weights > 0)
+    if not ok.any():
+        return np.nan
+    v, w = values[ok], weights[ok]
+    o = np.argsort(v); v, w = v[o], w[o]
+    c = np.cumsum(w)
+    return float(np.interp(pct / 100.0 * c[-1], c, v))
+
+
+@functools.lru_cache(maxsize=512)
+def _color_range(res, src, k, depth_idx=None):
+    """Upper end of the bins' color range for stat row k (0 T mean, 1 T std, 2 S mean,
+    3 S std): P95 of |value| over (bins x depths), weighted by profile counts; one depth
+    only if depth_idx is given."""
+    rows, counts = _anom_tables(res, src)
+    ids = [b for b in rows if b in counts]
+    if not ids:
+        return 1.0
+    S = np.stack([rows[b] for b in ids])                      # (nbins, 4, ndepth)
+    N = np.stack([counts[b] for b in ids]).astype(float)       # (nbins, 2, ndepth)
+    var = 0 if k in (0, 1) else 1
+    x, w = S[:, k, :], N[:, var, :]
+    if depth_idx is not None:
+        x, w = x[:, depth_idx], w[:, depth_idx]
+    hi = _wpct(np.abs(x.ravel()), w.ravel(), RANGE_PCTL)
+    return hi if np.isfinite(hi) and hi > 1e-9 else 1.0
+
+
+def _subpoly_range(res, src, var, depth_idx=None):
+    """Upper end of the sub-polygons' color range: P95 of |single-profile anomaly|
+    (var 0 T, 1 S); falls back to the bins' range where there are no values."""
+    single = _single_profile_range(res, src, var, depth_idx)
+    return single if np.isfinite(single) and single > 1e-9 else _color_range(res, src, 2 * var, depth_idx)
+
+
+_SP_LOCK = threading.Lock()
+
+
+def _single_profile_values(res, src, var):
+    with _SP_LOCK:                                   # one reader at a time; repeats come from the cache
+        return _single_profile_values_cached(res, src, var)
+
+
+@functools.lru_cache(maxsize=256)
+def _single_profile_values_cached(res, src, var):
+    """|single-profile anomaly| values and weights, per depth, from every bin's stored
+    quantiles (var 0 T, 1 S): {depth_idx: (values, weights)}. Read once per selection
+    (all bins, in parallel), then kept."""
+    ids = sorted(_anom_tables(res, src)[0])
+    def one(bid):
+        q = _anom_quantiles(res, bid, src)
+        return None if q is None else (q[2 * var], q[2 * var + 1])
+    with concurrent.futures.ThreadPoolExecutor(max_workers=16) as ex:
+        got = [g for g in ex.map(one, ids) if g is not None]
+    out = {}
+    for d in range(N_DEPTH):
+        v, w = [], []
+        for q, n in got:
+            kk = min(int(n[d]), q.shape[0])
+            if kk:
+                v.append(np.abs(q[:kk, d])); w.append(np.full(kk, n[d] / kk))
+        out[d] = (np.concatenate(v), np.concatenate(w)) if v else (np.empty(0), np.empty(0))
+    return out
+
+
+def _single_profile_range(res, src, var, depth_idx=None):
+    vals = _single_profile_values(res, src, var)
+    if depth_idx is not None:
+        v, w = vals[depth_idx]
+    else:
+        v = np.concatenate([a for a, _ in vals.values()]); w = np.concatenate([b for _, b in vals.values()])
+    return _wpct(v, w, RANGE_PCTL)
+
+
+def _anom_arrays_for_display(ids_clean, cmode, depth_idx, res, src=SOURCE_ALL, rescale=False):
     """(z_values, colorscale, zmin, zmax, label, depth_m) for the anomaly modes."""
     colorscale, label, zmin_fixed, zmax_fixed, diverging = _CMODE_CS[cmode]
     k = {CMODE_T_MEAN: 0, CMODE_T_STD: 1, CMODE_S_MEAN: 2}.get(cmode, 3)   # row in _anom_rows
@@ -399,25 +492,12 @@ def _anom_arrays_for_display(ids_clean, cmode, depth_idx, res, src=SOURCE_ALL):
     for bid in ids_clean:
         r = rows.get(bid)
         z_vals.append(float(r[k, depth_idx]) if r is not None and not np.isnan(r[k, depth_idx]) else None)
-    z_arr = np.array([np.nan if v is None else v for v in z_vals], dtype=float)
-    finite = z_arr[np.isfinite(z_arr)]
-
-    if zmin_fixed is not None:
-        zmin = zmin_fixed
-    elif diverging:
-        zmin = -(np.nanpercentile(np.abs(finite), 97) if finite.size else 1.0)
-    else:
-        zmin = float(np.nanpercentile(finite, 2)) if finite.size else 0.0
-    if zmax_fixed is not None:
-        zmax = zmax_fixed
-    elif diverging:
-        zmax = -zmin
-    else:
-        zmax = float(np.nanpercentile(finite, 98)) if finite.size else 1.0
+    hi = _color_range(res, src, k, depth_idx if rescale else None)
+    zmin, zmax = (-hi, hi) if diverging else (0.0, hi)
     return z_vals, _cs(colorscale), zmin, zmax, label, float(depth[depth_idx])
 
 
-def _bin_arrays(source_sel, n_threshold, basis, cmode, depth_idx, res=RES_FINE):
+def _bin_arrays(source_sel, n_threshold, basis, cmode, depth_idx, res=RES_FINE, rescale=False):
     b_dict, c_dict, _, _ = _grid(res)
     ids_clean  = _visible_ids(source_sel, res)
     prob_label = next(k for k, v in PROB_KEYS.items() if v == n_threshold)
@@ -432,7 +512,7 @@ def _bin_arrays(source_sel, n_threshold, basis, cmode, depth_idx, res=RES_FINE):
                     cb_title=f'P({prob_label}<br>prof/month)')        # same wording as the hover
 
     z_vals, colorscale, zmin, zmax, label, depth_m = _anom_arrays_for_display(
-        ids_clean, cmode, depth_idx, res, source_sel)
+        ids_clean, cmode, depth_idx, res, source_sel, rescale)
     counts = _anom_counts(res, source_sel)
     kv = 0 if cmode in (CMODE_T_MEAN, CMODE_T_STD) else 1
     hover = [f'Bin {b} — {src_note}<br>lon={c_dict[b][0]:.2f}, lat={c_dict[b][1]:.2f}'
@@ -506,7 +586,7 @@ _INSET_GEOJSON = {RES_FINE:   _inset_geojson(CELL_RINGS, bin_centers),
                   RES_COARSE: _inset_geojson(COARSE_RINGS, bin_centers_coarse)}
 
 
-def _edges(ids, cmode, depth_idx, res, bucket=1, uniform=False, src=SOURCE_ALL):
+def _edges(ids, cmode, depth_idx, res, bucket=1, uniform=False, src=SOURCE_ALL, rescale=False):
     """Outline colors / widths for the bins in ids, or None when not drawn (probability)."""
     if cmode == CMODE_PROB:
         return None
@@ -530,9 +610,7 @@ def _edges(ids, cmode, depth_idx, res, bucket=1, uniform=False, src=SOURCE_ALL):
         rows = _anom_rows(res, src)
         k = 1 if t_var else 3
         std = np.array([float(rows[b][k, depth_idx]) if rows.get(b) is not None else np.nan for b in ids])
-        finite = std[np.isfinite(std)]
-        cmax = float(np.percentile(finite, 98)) if finite.size else 1.0
-        cmax = cmax if cmax > 1e-6 else 1.0                    # one or no bins: keep a usable scale
+        cmax = _color_range(res, src, k, depth_idx if rescale else None)
         frac = np.clip(np.nan_to_num(std, nan=0.0) / cmax, 0, 1)
         colors = pcolors.sample_colorscale(_STD_CS, frac.tolist())
         out.update(cmax=cmax, title=('edge color<br>' + ('T' if t_var else 'S') + ' anom std<br>'
@@ -556,9 +634,9 @@ def _edge_note(e):
                    + color_note)
 
 
-def _edge_traces(ids, cmode, depth_idx, res, show_edges, bucket=1, src=SOURCE_ALL):
+def _edge_traces(ids, cmode, depth_idx, res, show_edges, bucket=1, src=SOURCE_ALL, rescale=False):
     """[inset outline choropleth, edge color-bar carrier]; hidden when not drawn."""
-    e = _edges(ids, cmode, depth_idx, res, bucket, src=src) if show_edges else None
+    e = _edges(ids, cmode, depth_idx, res, bucket, src=src, rescale=rescale) if show_edges else None
     outline = go.Choropleth(
         geojson=_INSET_GEOJSON[res], locations=ids, z=[0] * len(ids), featureidkey='id',
         colorscale=[[0, 'rgba(0,0,0,0)'], [1, 'rgba(0,0,0,0)']], showscale=False,
@@ -637,7 +715,7 @@ def _bins_in_view(ids, state, res):
     return [b for b, k in zip(ids, keep) if k]
 
 
-def _subpoly_layer(state, source_sel, cmode, depth_idx, res):
+def _subpoly_layer(state, source_sel, cmode, depth_idx, res, rescale=False):
     """(geojson, ids, z, hover, zmin, zmax, colorscale, note) for the sub-polygon trace."""
     empty = ({'type': 'FeatureCollection', 'features': []}, [], [], [], 0.0, 1.0, _cs('RdBu_r'), '')
     if cmode not in (CMODE_T_MEAN, CMODE_S_MEAN) or not state or _view_height_deg(state) > SUBPOLY_VIEW_DEG:
@@ -675,9 +753,9 @@ def _subpoly_layer(state, source_sel, cmode, depth_idx, res):
                 what = f'Percentile {100 * (i + 0.5) / k:.1f} of {n:,} profiles'
             hover.append(f'Bin {bid} · {depth_m:.0f} m · {src_note}<br>{what}<br>'
                          f'{letter} − climatology = {vals[i]:+.3f} {units}')
-    # Single profiles vary far more than bin means, so the cells get their own
-    # symmetric range (97th percentile of |value| over the cells in view).
-    zabs = float(np.nanpercentile(np.abs(z), 97)) if z else 1.0
+    # Single profiles vary far more than bin means, so the cells get their own range,
+    # fixed like the bins' (all bins and depths, or this depth when rescaled).
+    zabs = _subpoly_range(res, source_sel, 0 if letter == 'T' else 1, depth_idx if rescale else None)
     return ({'type': 'FeatureCollection', 'features': feats}, locs, z, hover, -zabs, zabs, _cs('RdBu_r'),
             f'sub-polygons: {len(ids)} bins' if locs else '')
 
@@ -698,13 +776,16 @@ def _subpoly_trace(layer=None):
 
 
 def bins_traces(source_sel, selected_bin_id, n_threshold, basis, res, cmode, depth_idx,
-                show_edges=True, state=None):
+                show_edges=True, state=None, rescale=False):
     """[0] bins, [1] selected-bin ring, [2] coastline, [3] sub-polygons,
     [4] inset outlines, [5] their color bar."""
-    a = _bin_arrays(source_sel, n_threshold, basis, cmode, depth_idx, res)
+    a = _bin_arrays(source_sel, n_threshold, basis, cmode, depth_idx, res, rescale)
     return ([_make_choropleth(a, _grid(res)[2]), _selected_trace(selected_bin_id, res), _COAST_TRACE,
              _subpoly_trace()]
-            + _edge_traces(a['ids'], cmode, depth_idx, res, show_edges, mc.zoom_bucket(state), src=source_sel))
+            + _edge_traces(a['ids'], cmode, depth_idx, res, show_edges, mc.zoom_bucket(state), src=source_sel,
+                           rescale=rescale))
+
+threading.Thread(target=_preload_subpoly_ranges, daemon=True, name='subpoly-range-preload').start()
 
 # ==============================================================================
 # Profiles view: dots
@@ -846,14 +927,15 @@ def profiles_traces(data, source_sel, sel_lonlat, res):
 
 def make_map(proj, show, res, source_sel, uirevision, *, selected_bin=None, sel_lonlat=None,
              n_threshold=1, basis=BASIS_DAY0, cmode=CMODE_PROB, depth_idx=0, dots=None,
-             show_edges=True, state=None):
+             show_edges=True, state=None, rescale=False):
     if show == SHOW_PROFILES:
         fig = go.Figure(profiles_traces(dots, source_sel, sel_lonlat, res))
         fig.update_layout(legend=_LEGEND_STYLE)
     else:
         fig = go.Figure(bins_traces(source_sel, selected_bin, n_threshold, basis, res, cmode, depth_idx,
-                                    show_edges=show_edges, state=state))
-        e = _edges(_visible_ids(source_sel, res), cmode, depth_idx, res, src=source_sel) if show_edges else None
+                                    show_edges=show_edges, state=state, rescale=rescale))
+        e = (_edges(_visible_ids(source_sel, res), cmode, depth_idx, res, src=source_sel, rescale=rescale)
+             if show_edges else None)
         fig.add_annotation(text=_edge_note(e), x=MAP_DOMAIN_X[0], y=0.0, xref='paper', yref='paper', align='left',
                            xanchor='left', yanchor='bottom', showarrow=False,
                            font=dict(size=11, color='#ccc'), bgcolor='rgba(20,20,20,0.7)')
@@ -1064,6 +1146,12 @@ app.layout = html.Div(
                         html.Button('▶', id='depth-down', title='One level deeper', style=_STEP_BTN),
                     ]),
                     html.Div('depth (m)', style={'fontSize': '9px', 'color': DIM, 'textAlign': 'right'}),
+                    dcc.Checklist(id='rescale-depth', value=[],
+                                  options=[{'label': ' Rescale colors to this depth', 'value': 'on'}],
+                                  labelStyle={'fontSize': '12px', 'cursor': 'pointer', 'color': TEXT},
+                                  inputStyle={'marginRight': '6px'}, style={'marginTop': '6px'}),
+                    html.Div(f'(switches off at {RESCALE_RESET_DEPTH:.0f} m and above, and with Reset view)',
+                             style={'fontSize': '10px', 'color': DIM}),
                 ], cid='depth-slider-container', show=False),
                 dcc.Checklist(id='edge-std', value=['on'],
                               options=[{'label': ' Edges: anomaly std', 'value': 'on'}],
@@ -1192,6 +1280,23 @@ def step_depth(_up, _down, depth_idx):
 
 
 @app.callback(
+    Output('rescale-depth', 'value'),
+    Input('depth-slider', 'value'),
+    Input('home-btn', 'n_clicks'),
+    State('rescale-depth', 'value'),
+    prevent_initial_call=True,
+)
+def reset_rescale(depth_idx, _home, value):
+    """'Rescale colors to this depth' switches itself off with Reset view, and when the
+    depth comes back up to RESCALE_RESET_DEPTH or shallower."""
+    if 'on' not in (value or []):
+        return no_update
+    if ctx.triggered_id == 'home-btn' or float(depth[depth_idx or 0]) <= RESCALE_RESET_DEPTH:
+        return []
+    return no_update
+
+
+@app.callback(
     Output('map',          'figure'),
     Output('map-state',    'data'),
     Output('grid-res',     'data'),
@@ -1214,10 +1319,11 @@ def step_depth(_up, _down, depth_idx):
     State('grid-res',      'data'),
     State('edge-std',      'value'),
     State('map-built',     'data'),
+    State('rescale-depth', 'value'),
     prevent_initial_call=True,
 )
 def rebuild_map(proj, show, res, home_clicks, source_sel, years, prob_label, basis, cmode, depth_idx,
-                selected_bin, sel_lonlat, map_state, prev_res, edge_std, built):
+                selected_bin, sel_lonlat, map_state, prev_res, edge_std, built, rescale_v):
     """Full redraw: projection, view, grid, home button; and, in Profiles view, the
     source or year window (the dots change). In Bins view a source change is a
     cheap patch instead (on_bin_controls)."""
@@ -1245,15 +1351,17 @@ def rebuild_map(proj, show, res, home_clicks, source_sel, years, prob_label, bas
         count = ''
         fig = make_map(proj, show, res, source_sel, uirev, selected_bin=selected_bin,
                        show_edges='on' in (edge_std or []),
+                       rescale=('on' in (rescale_v or [])) and trig != 'home-btn',
                        state=map_state if state is no_update else state, **common)
     # The user's zoom / pan survives this redraw because uirevision is unchanged
     # (it changes only with the projection and the home button).
     return fig, state, res, selected_bin, count, (built or 0) + 1
 
 
-def _patch_edges(patched, ids, cmode, depth_idx, res, edge_on, bucket, uniform=False, src=SOURCE_ALL):
+def _patch_edges(patched, ids, cmode, depth_idx, res, edge_on, bucket, uniform=False, src=SOURCE_ALL,
+                 rescale=False):
     """Outline colors / widths (trace 4), their color bar (5) and the note (annotation 0)."""
-    e = _edges(ids, cmode, depth_idx, res, bucket, uniform, src) if edge_on else None
+    e = _edges(ids, cmode, depth_idx, res, bucket, uniform, src, rescale) if edge_on else None
     patched['data'][4]['visible'] = e is not None
     patched['data'][5]['visible'] = bool(e and e['cmax'] is not None)
     if e is not None:                       # geometry unchanged: only ids, colors, widths
@@ -1274,18 +1382,19 @@ def _patch_edges(patched, ids, cmode, depth_idx, res, edge_on, bucket, uniform=F
     Input('basis-radio',   'value'),
     Input('cmode-select',  'value'),
     Input('depth-slider',  'value'),
+    Input('rescale-depth', 'value'),
     State('show-radio',    'value'),
     State('grid-res',      'data'),
     prevent_initial_call=True,
 )
-def on_bin_controls(source_sel, prob_label, basis, cmode, depth_idx, show, res):
+def on_bin_controls(source_sel, prob_label, basis, cmode, depth_idx, rescale_v, show, res):
     """Bins view: recolor the bins (trace 0) in place. (The outlines belong to
     on_subpolygons, which sees the zoom.)"""
     if show == SHOW_PROFILES:
         return no_update
     res = res or RES_FINE
     a = _bin_arrays(source_sel, PROB_KEYS[prob_label], basis, cmode or CMODE_PROB,
-                    depth_idx or 0, res)
+                    depth_idx or 0, res, 'on' in (rescale_v or []))
     patched = Patch()
     for key in ('z', 'colorscale', 'zmin', 'zmax'):
         patched['data'][0][key] = a[key]
@@ -1306,12 +1415,13 @@ def on_bin_controls(source_sel, prob_label, basis, cmode, depth_idx, show, res):
     Input('depth-slider',  'value'),
     Input('source-select', 'value'),
     Input('edge-std',      'value'),
+    Input('rescale-depth', 'value'),
     State('show-radio',    'value'),
     State('grid-res',      'data'),
     State('subpoly-sig',   'data'),
     prevent_initial_call=True,
 )
-def on_subpolygons(state, built, cmode, depth_idx, source_sel, edge_std, show, res, prev_sig):
+def on_subpolygons(state, built, cmode, depth_idx, source_sel, edge_std, rescale_v, show, res, prev_sig):
     """Bins view: fill / clear the sub-polygon trace (3) for the bins in view, and set
     the outlines (4, 5): density widths stepping with zoom, or uniform while sub-polygons
     show. Sends nothing when neither changed, so panning and zooming don't make Plotly
@@ -1319,12 +1429,13 @@ def on_subpolygons(state, built, cmode, depth_idx, source_sel, edge_std, show, r
     if show == SHOW_PROFILES or not state:
         return no_update, no_update, no_update
     res, cmode, depth_idx = res or RES_FINE, cmode or CMODE_PROB, depth_idx or 0
-    layer = _subpoly_layer(state, source_sel, cmode, depth_idx, res)
+    rescale = 'on' in (rescale_v or [])
+    layer = _subpoly_layer(state, source_sel, cmode, depth_idx, res, rescale)
     gj, locs, z, hover, zmin, zmax, cs, note = layer
     bucket = mc.zoom_bucket(state)
     edge_on = 'on' in (edge_std or [])
     sig = [built, res, cmode, depth_idx, source_sel, bucket, len(locs), locs[0] if locs else '',
-           locs[-1] if locs else '', note, edge_on]
+           locs[-1] if locs else '', note, edge_on, rescale]
     if sig == prev_sig:
         return no_update, no_update, no_update
     patched = Patch()
@@ -1341,7 +1452,7 @@ def on_subpolygons(state, built, cmode, depth_idx, source_sel, edge_std, show, r
     patched['data'][3]['colorbar']['title']['text'] = _subpoly_cbar_title(cmode)
     patched['data'][0]['showscale'] = not locs
     _patch_edges(patched, _visible_ids(source_sel, res), cmode, depth_idx, res, edge_on, bucket,
-                 uniform=bool(locs), src=source_sel)
+                 uniform=bool(locs), src=source_sel, rescale=rescale)
     return patched, note, sig
 
 

@@ -43,6 +43,24 @@ It replaces the three earlier globe apps (`app_allsource_globe.py`,
   belong to their top folder's source. "All (combined)" pools the sources, weighting
   each by its number of profiles.
 
+### Color ranges
+
+The colors mean the same everywhere: each color range is **fixed** for the current
+selection (grid, source, T or S, mean or std), not rescaled to what's on screen.
+- **How it's set:** from all bins and all depths, each bin-and-depth weighted by its
+  number of profiles (so sparsely sampled depths don't dominate).
+  - **Mean modes:** ±P95 of |anomaly|, so zero stays white.
+  - **Std modes and the std outlines:** 0 to P95.
+- **Sub-polygons:** they get their own fixed range, P95 of the single-profile anomalies,
+  since single profiles vary far more than bin means.
+- **Rescale colors to this depth** (under the depth slider): uses the same statistic at the
+  chosen depth only, for more detail where anomalies are small (deep ocean, salinity).
+  It switches itself off with **Reset view**, and when the depth comes back to 200 m or
+  shallower (`RESCALE_RESET_DEPTH`).
+- **Preload:** the sub-polygon range for all sources is read in the background at
+  start-up (about a minute); a single source's range is read when first needed
+  (seconds).
+
 ### Visit probability
 
 P(≥N) is the fraction of months in which a bin had at least N profiles:
@@ -74,7 +92,7 @@ share an outline. The note at the bottom left of the map says what they show:
   so densely sampled areas stand out. Widths grow by √2 per zoom doubling.
 - **Width (sub-polygons showing):** a uniform 1.5 px, since only the color matters then.
 - **Color:** in the anomaly-mean modes, the bin's anomaly **std** at that depth (cividis,
-  0 to the 98th percentile; its color bar is on the left of the map, the fill's on the right). In the
+  0 to the 95th percentile, fixed (see Color ranges); its color bar is on the left of the map, the fill's on the right). In the
   std modes the fill already is the std, so the outlines are light gray.
 - **No data at this depth:** bins where the selected source has profiles, but none at
   the chosen depth, are left unfilled with a thin gray outline, so the source's footprint
@@ -105,8 +123,8 @@ profiles at the chosen depth, as in the original `geodesic_binning/` tool:
   its value as T (or S) − climatology.
 
 **Color scale:** single profiles vary far more than bin means, so the cells get their
-own symmetric range from the cells in view. Their color bar ("single profiles") replaces
-the bins' bar while they show.
+own fixed range (see Color ranges). Their color bar ("single profiles") replaces the
+bins' bar while they show.
 
 **Geometry:** Voronoi cells with Lloyd relaxation (`subpolygons.py`), computed in a
 tangent-plane projection around each bin, so polar and dateline bins work too. They are

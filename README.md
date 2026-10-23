@@ -81,7 +81,7 @@ Processes each input NetCDF file through 10 sequential steps:
 | 02 | `update_spatial_bin_index` | Assigns geodesic bin IDs (`prof_bin_id_a` at 10242-bin, `prof_bin_id_b` at 2562-bin) |
 | 03 | `update_monthly_mean_TS_clim` | Interpolates WOA23 T/S climatology to each profile's location, depth, and day-of-year |
 | 04 | `update_sigmaTS` | Assigns T/S uncertainty σ (weight = 1/σ²) from the CTD sigma files; north of 60°N from the high-latitude uncertainty files (`high_latitude_sigma.py`), south of 60°S a constant σ_T = 10 °C, σ_S = 5 psu; records `prof_Vuncertainty_source` (0 CTD, 1 Arctic file, 2 southern constant) |
-| 05 | `update_prof_insitu_T_to_potential_T` | Converts in-situ temperature to potential temperature; optionally fills missing S with climatology |
+| 05 | `update_prof_insitu_T_to_potential_T` | Converts in-situ to potential temperature when needed. Decided per file: the `prof_T` metadata (long_name / standard_name) decides if present (all of `Interp_Profiles` is labelled potential); with no label, a check against the climatology decides (below 1000 m in-situ T sits above the potential climatology, growing with depth); if that is unclear too, T is converted. The check never overrides a label (it warns instead). Label-less decisions and disagreements are flagged in the log in a `!!!` box, and every output file records the decision in `prof_T:T_conversion` |
 | 06 | `update_zero_weight_points` | Zeros weights on profiles failing quality criteria; optionally excludes high-latitude profiles from climatology cost. Runs before γ, so its cost tests use (ΔV/σ)² |
 | 07 | `update_remove_zero_weighted_profiles` | Removes profiles with all-zero T and S weights |
 | 08 | `update_remove_extraneous_depth_levels` | Removes trailing depth levels with no valid data (off by default: `remove_extraneous_depth_levels = False`) |
@@ -265,7 +265,8 @@ Parameters set in `NCEI.py` under the `NEED PATHS / PARAMETERS` block:
 | `respect_existing_zero_weights` | False | Preserve pre-existing zero weights |
 | `new_floor_dict` | T=0, S=0.005 | Minimum weight floors |
 | `apply_gamma_factor` | True | Apply area-based gamma correction to sigma |
-| `replace_missing_S_with_clim_S` | True | Fill missing salinity with WOA23 climatology |
+| `replace_missing_S_with_clim_S` | True | Fill missing salinity with WOA23 climatology (only for the potential-T calculation; prof_S is not changed) |
+| `convert_insitu_T_to_potential` | `'auto'` | Step 05: `'auto'` = metadata decides, then the climatology check, then convert (see step 05 above); `True` / `False` force it. Converting an already-potential T cools it a second time (≈0.4 °C at 4800 m; the bug fixed 2026-10-21) |
 | `exclude_high_latitude_profiles_from_clim_cost` | True | Exclude profiles poleward of `dubious_clim_lat_threshold` from climatology cost |
 | `dubious_clim_lat_threshold` | 60 | Latitude threshold for the above |
 | `clim_cost_qc_with_high_lat_sigma` | True | Step 06: still apply the climatology-cost tests poleward of the threshold to profiles with a high-latitude σ (Arctic file or southern constant) |

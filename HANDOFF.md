@@ -1,8 +1,8 @@
 # Handoff Context — ECCO-Insitu-Python
 
 **Branch:** `devel_v3`
-**Last commit:** `1aa5bd1` (much of the work below is not yet committed — see the end)
-**Date:** 2026-10-12
+**Last commit:** see `git log` (all work below is committed as of 2026-10-23)
+**Date:** 2026-10-23
 
 ---
 
@@ -20,7 +20,7 @@ three (2012, 2014, 2017) have bad salinity; the chain rejects all five.
 | Step | What | Notes |
 |---|---|---|
 | 01–04 | grid/tile points, geodesic bins, WOA23 climatology, σ | step 01 assigns LLC90 cells and 30×30 tiles |
-| 05 | potential T | |
+| 05 | potential T | converts only when needed (2026-10-21 fix, below); checks every file against the climatology |
 | 06 | QC (zero weights) | runs **before** γ since 2026-10-12, so its cost tests use (ΔV/σ)²; skips the cost tests poleward of 60° |
 | 07 | drop all-zero-weight profiles | |
 | 08 | trim empty depth levels | **off** by default (`remove_extraneous_depth_levels = False`) → every file on the 97-level grid |
@@ -48,6 +48,33 @@ High-latitude uncertainties (2026-10-14), set in `NCEI.py`, step 04:
   the rest). Southern weights drop to ~1/100 (T) and ~1/25 (S) of a σ = 1 profile.
 - Not yet in a full run with the southern constant (the 2026-10-14 10:44 run has the Arctic σ only).
 
+### Temperature double conversion: found and fixed (2026-10-21)
+**All runs before 2026-10-21 have T too cold at depth and must not be used.** The raw
+files (`Interp_Profiles`) already hold *potential* temperature (`prof_T` long_name says
+so); step 05 converted it again. Effect: −0.005 °C at 40 m, −0.04 °C at 400 m, −0.2 °C at
+2800 m, −0.4 °C at 4800 m. Salinity was never affected. It showed up as a large
+ECCO v4r6 time-mean T cost (good per-profile "wiggles", bad bin means).
+- **Fix (`step05.py`, `NCEI.py`):** `convert_insitu_T_to_potential = 'auto'`. The file's
+  metadata decides (potential → leave; in-situ → convert). With no label, a check against
+  the climatology decides; if that is unclear too, T is converted.
+- **The check never overrides a label.** Label-less decisions and disagreements print a
+  `!!!` box under `step: 5` in the log. Every output file records the decision in
+  `prof_T:T_conversion`.
+- **How the check works:** below 1000 m, in-situ T sits above the (potential) WOA23
+  climatology by an amount growing with depth. Tested on CTD, Argo and gliders (potential)
+  and on synthetic in-situ versions (in-situ); XBT and MEOP 2010 are "unclear" (too few
+  deep data).
+- **Verified:** run 20261021_100417 — every profile's T equals the raw T in all 7 sources
+  (5.93 M profiles, largest difference < 0.0001 °C); `check_run_files.py` and
+  `check_ecco_arrays.py` PASS. QC kept 826 more profiles than before (less deep bias).
+- **ECCO v4r6 cost check** (`/Users/brucel/ecco/yip/cost_comparisons/ecco_v4r6_old_vs_new_20261021/`):
+  `cost_profiles.F` re-implemented offline with the iteration-47 model equivalents
+  (`profile_data/from_OU_for_comparison/`). On profiles both pipelines share, our corrected
+  T reproduces the old pipeline's deep CTD time-mean cost within 2.7% at every depth; the
+  double conversion files were up to 40× higher. Slides (PNG / PDF) are in that folder.
+- **Not explained:** XBT T differs from the old pipeline's XBT files by ~0.03–0.1 °C (our T
+  matches our raw files; likely a different XBT input version).
+
 Date/time clean-up (in `NCEI.py`, before step 01): out-of-range `HHMMSS` /
 `YYYYMMDD` values from WOD rounding (seconds or minutes = 60, 24:00:00, day past
 month end) are rolled forward with real date arithmetic, so they agree with
@@ -67,20 +94,17 @@ the `data.profiles` file list. **Plain-language guide:
 `docs/profile_file_optimization.md`.** Validate with
 `diagnostics/check_ecco_arrays.py <run>`.
 
-Result for the 2026-10-12 data: 18 files, `NOBSGLOB` 43,469 (product 782,442;
-minimum 762,750 at 27 files; lower bound 599,691). Argo gets 3 files
-(1997–2013, 2014–2021, 2022–2026), close to the colleague's own split.
+Result for the 2026-10-21 run: 18 files, `NOBSGLOB` 43,355, `NFILESPROFMAX` 18 (fits the
+v4r6 build: 100,000 and 35). Argo gets 3 files (1997–2013, 2014–2021, 2022–2026).
 
 ### Runs
-- **`profile_files_NCEI_processed_20261012_172848`** — newest; new step order,
-  new layout. `ecco_arrays/` re-made with the current step 13 on 2026-10-12
-  (summary files moved to `documentation/`):
-  **18 files, set `NOBSGLOB = 43351`, `NFILESPROFMAX = 18`** (5,941,130
-  profiles; `check_ecco_arrays.py` PASS, log `z_logs/check_ecco_arrays_20261012_172848.log`).
-  `check_run_files.py` not yet run on it.
-- `..._20261012_103552` — old step order (γ before QC), old flat layout; passed
-  `check_run_files.py`. Used for the cost reports.
-- `..._20261009_151941` — first run from the cleaned-up inputs; old step order.
+- **`profile_files_NCEI_processed_20261021_100417`** — **the one to use**: step 05 fix,
+  high-latitude σ (Arctic file + southern constant), new layout. 5.94 M profiles, 7
+  sources, 241 files. `check_run_files.py` and `check_ecco_arrays.py` PASS
+  (`z_logs/check_ecco_arrays_20261021_100417.log`).
+- `..._20261014_170404` — the **double conversion files** (T too cold at depth; given to
+  the team for the first cost comparison). Kept only for that comparison; do not use.
+- All older runs were deleted.
 
 ### Diagnostics (`diagnostics/`, see `diagnostics/README.md`)
 `check_run_files.py` (structure, ~15 s), `check_run_qc.py` (science QC, ~1 h —
@@ -106,35 +130,26 @@ All accept either run layout and read each run's step order from its log.
 
 ## Pending
 
-1. **Check the yearly files** of `..._20261012_172848`:
-   `python diagnostics/check_run_files.py <run> --input_dir …/Interp_Profiles --log z_logs/ncei_log_20261012_172848.log`
-   (its `ecco_arrays/` already passed `check_ecco_arrays.py`).
-2. **Confirm with the model team**: the `PROFILES_SIZE.h` values step 13 prints;
+1. **Hand the 2026-10-21 files to the model team**, and tell them that all earlier runs
+   (including the double conversion files) have the cold-T bias.
+2. **XBT temperature offset** against the old pipeline (~0.1 °C): compare our raw XBT
+   files with theirs (version, fall-rate correction).
+3. **Confirm with the model team**: the `PROFILES_SIZE.h` values step 13 prints;
    `NLEVELMAX` could drop from 140 to 97 (our depth grid), shrinking every tile's
    arrays by ~30%.
-3. **To-do next time — drop profiles with no geodesic bin** (approved idea, not
+4. **To-do next time — drop profiles with no geodesic bin** (approved idea, not
    applied). Tested patch: `patches/step06_code12_drop_unbinned_profiles.patch`
    adds QC code 12, toggled by `zero_weights_of_unbinned_profiles` in `NCEI.py`.
    `git apply --check patches/step06_code12_drop_unbinned_profiles.patch`, then
    `git apply …`.
-4. **Possible QC change for the team**: switch the cost tests back on poleward of
-   60° with looser thresholds (would catch the bad seal / XBT data); the bad
-   Laptev climatology needs its own fix.
-5. **Map app** (`profile_analysis/app_profile_map.py`, replaced the three globe apps
-   on 2026-10-19; globe versions at tag `globe-apps-2026-10-19`): its store is built
-   from the 20261014_170404 run. After a new chain run, rebuild with
-   `profile_analysis/build_allsource_bin_timeseries_with_anomalies.py --source_root <run>`
-   (the only build script now; `yearly/` is found automatically). See
-   `profile_analysis/README_maps.md`.
-
----
-
-## Uncommitted work (as of 2026-10-12)
-`NCEI.py`, `step01`–`step10` (renumbering, step 08 switch), `run_ncei.sh` (layout,
-step 13), `optimize_profile_files.py`, `step13_pack_ecco_arrays.py`,
-`diagnostics/` (all), `docs/`, `patches/`, `README.md`, this file, and earlier
-edits to `csv_to_nc.py`, `tools.py`, the `profile_analysis/` apps and build
-scripts.
+5. **Southern Ocean uncertainty field**, when the team has one (replaces the constant
+   σ south of 60°S, `southern_sigma_const_dict`).
+6. **Map app** (`profile_analysis/app_profile_map.py`): its store is built from the
+   2026-10-21 run (`z_profile_file_analysis/allsource_bin_timeseries_with_anomalies_20261021_100417`).
+   The older stores (20260930, 20261014) can be deleted. Rebuild after each chain run with
+   `profile_analysis/build_allsource_bin_timeseries_with_anomalies.py --source_root <run>`.
+   Possible later feature (paused): model-cost color modes from the `prof_Testim` values.
+7. **Does step 13 keep `prof_T:T_conversion`** in the model-ready files? Not checked.
 
 ---
 
@@ -147,20 +162,20 @@ scripts.
 | File-packing program | `optimize_profile_files.py` (guide: `docs/profile_file_optimization.md`) |
 | Checks & reports | `diagnostics/` (see `diagnostics/README.md`) |
 | Saved, tested patches | `patches/` |
-| Globe apps and their build scripts | `profile_analysis/` |
+| Map app (World / Arctic / Southern Ocean) and its store build | `profile_analysis/` (see `README_maps.md`) |
 | Input profiles | `/Users/brucel/ecco/yip/profile_data/Interp_Profiles/` |
 | Unused inputs | `/Users/brucel/ecco/yip/profile_data/Raw_Profile_Data_Unused_By_Ecco/` |
 | Chain output | `/Users/brucel/ecco/yip/processed_by_NCEI_profile_data/` |
-| Reports | `/Users/brucel/ecco/yip/cost_reports/`, `/Users/brucel/ecco/yip/insitu_reports/` |
+| Reports | `/Users/brucel/ecco/yip/cost_reports/`, `/Users/brucel/ecco/yip/insitu_reports/`, `/Users/brucel/ecco/yip/cost_comparisons/` |
 | Logs | `z_logs/` |
 | WOA23 climatology | `/Users/brucel/ecco/yip/woa23_climatology/` |
 | ECCO v4r6 config (tiles, PROFILES_SIZE.h, data.profiles) | github.com/ECCO-GROUP/ECCO-v4-Configurations, `ECCOv4 Release 6/` |
 
-## Architecture notes (globe apps)
+## Architecture notes (map app store)
 - Zarr layout: 2-D `(n_months, 97)` arrays per source per bin, with a shared
   `ym_index` (YYYYMM int32).
 - Profile records are in SQLite (`_profiles.db`), not the JSON, to keep start-up
   memory manageable.
-- Apps auto-select the most recent timestamped store; `--data <path>` overrides.
+- The app auto-selects the most recent timestamped store; `--data <path>` overrides.
 - `aggregate_bins` uses `ProcessPoolExecutor(fork)`; if it deadlocks, run with
   `OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1`.

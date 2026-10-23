@@ -6,6 +6,57 @@ git history with human-readable rationale.)
 
 ---
 
+## 2026-10-21 to 2026-10-23 — Temperature double conversion found and fixed; climatology check
+
+### What was wrong
+The team reported that our NCEI profiles fit the ECCO v4r6 model well profile by
+profile, but had a large time-mean T cost (bin means vs the model). Cause: the raw
+`Interp_Profiles` files already hold **potential temperature** (`prof_T` long_name
+"potential temperature", MATLAB-toolbox MITprof files), and step 05 always converted
+in-situ → potential, so T was converted twice and came out too cold, increasingly with
+depth: −0.005 °C at 40 m, −0.04 °C at 400 m, −0.2 °C at 2800 m, −0.4 °C at 4800 m.
+Salinity was unaffected. Every run before 2026-10-21 has this bias.
+
+### Fix
+- `step05.py` / `NCEI.py`: `convert_insitu_T_to_potential = 'auto'`. The prof_T metadata
+  decides (potential → not converted, in-situ → converted). With no label, a new check
+  against the climatology decides (`check_T_against_climatology`: below 1000 m, compare
+  median(T − Tclim) as is and if converted; in-situ T sits above the potential WOA23
+  climatology by an amount growing with depth). If that is unclear, T is converted.
+- **The check never overrides metadata.** Label-less decisions and disagreements print a
+  `!!!` box in the log; every output file records the decision in `prof_T:T_conversion`.
+- `NCEI.py` also writes `prof_T` long_name / units back before saving (the steps dropped
+  the attributes).
+
+### Verification
+- New run 20261021_100417: every processed profile's T equals the raw T in all 7 sources
+  (5.93 M profiles; largest difference < 0.0001 °C). `check_run_files.py` and
+  `check_ecco_arrays.py` PASS; step 13: 18 files, NOBSGLOB 43,355.
+- ECCO v4r6 cost terms re-implemented offline from `cost_profiles.F` (sample-split
+  mean and anomaly terms, `profiles_mean_indsamples = 9`) with the iteration-47 model
+  equivalents. On the profiles both pipelines share, the corrected T reproduces the old
+  pipeline's deep CTD time-mean cost within 2.7% at every depth; the double conversion
+  files were up to 40× higher. Work and slides: `/Users/brucel/ecco/yip/cost_comparisons/ecco_v4r6_old_vs_new_20261021/`.
+- Climatology check: correct verdicts on CTD, Argo and gliders (potential) and on
+  synthetic in-situ versions; "unclear" on XBT (no deep data) and MEOP 2010 (few, noisy
+  deep data); all four metadata cases tested through the chain.
+
+### Map app (same period)
+- Store rebuilt from the 2026-10-21 run.
+- Fixed color ranges per selection (all bins and depths, count-weighted P95; ±P95 for
+  means so zero stays white), with "Rescale colors to this depth" (off at ≤ 200 m and with
+  Reset view). Sub-polygons get their own fixed range from the single-profile anomalies.
+
+### Open
+- XBT T differs from the old pipeline's XBT files by ~0.03–0.1 °C (our T matches our raw
+  files); likely a different XBT input version.
+
+### Files
+- Changed: `step05.py`, `NCEI.py`, `README.md`, `HANDOFF.md`, `profile_analysis/app_profile_map.py`,
+  `profile_analysis/README_maps.md`.
+
+---
+
 ## 2026-10-05 — Globe/flat-map app overhaul: performance, provenance, UX
 
 ### Build scripts (`build_allsource_bin_timeseries.py`, `build_allsource_bin_timeseries_with_anomalies.py`)

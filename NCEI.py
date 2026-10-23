@@ -205,7 +205,8 @@ def _process_one_file(args):
                         high_lat_sigma_max_dist_km=kw['high_lat_sigma_max_dist_km'],
                         southern_sigma_const_dict=kw['southern_sigma_const_dict'],
                         new_floor_dict=kw['new_floor_dict']),
-                partial(step05.main, replace_missing_S_with_clim_S=kw['replace_missing_S_with_clim_S']),
+                partial(step05.main, replace_missing_S_with_clim_S=kw['replace_missing_S_with_clim_S'],
+                        convert_insitu_T_to_potential=kw['convert_insitu_T_to_potential']),
                 partial(step06.main, profile_var_key_set=profile_var_key_set,
                         exclude_high_latitude_profiles_from_clim_cost=kw['exclude_high_latitude_profiles_from_clim_cost'],
                         dubious_clim_lat_threshold=kw['dubious_clim_lat_threshold'],
@@ -221,11 +222,14 @@ def _process_one_file(args):
             ]
 
             step_counter = 0
+            t_conversion = None              # step05's decision, kept for the output file
             for ii, fn in enumerate(ncei_function_list):
                 step_counter += 1
                 print(f"\nstep: {step_counter}")
                 try:
                     MITprof_ds = fn(MITprof_ds)
+                    if 'prof_T' in MITprof_ds and 'T_conversion' in MITprof_ds['prof_T'].attrs:
+                        t_conversion = MITprof_ds['prof_T'].attrs['T_conversion']
                 except Exception as e:
                     print(f"\n-------- FILE FAILURE --------")
                     print(f"NCEI chain CRASHED at step: {step_counter:02d} (of {len(ncei_function_list)})")
@@ -276,6 +280,13 @@ def _process_one_file(args):
                 if 'prof_lon' in MITprof_ds:
                     lon = MITprof_ds['prof_lon']
                     MITprof_ds['prof_lon'] = xr.where(lon <= 360, ((lon + 180) % 360) - 180, lon)
+
+                # The steps drop variable attributes; say what prof_T is (potential
+                # temperature: step05 converts in-situ T, and leaves potential T alone).
+                if 'prof_T' in MITprof_ds:
+                    MITprof_ds['prof_T'].attrs.update(long_name='potential temperature', units='degree C')
+                    if t_conversion:          # how step05 decided (metadata, climatology check, default, forced)
+                        MITprof_ds['prof_T'].attrs['T_conversion'] = t_conversion
 
                 # Chain-internal only (steps 01 and 10 use it to look up grid-cell values); not saved.
                 MITprof_ds = MITprof_ds.drop_vars('profile_flattened_monotonic_grid_indices', errors='ignore')
@@ -339,6 +350,13 @@ def NCEI_pipeline(dest_dir, input_dir, n_workers=None):
     new_floor_dict = {'prof_T': 0, 'prof_S': 0.005}
     apply_gamma_factor = True
     replace_missing_S_with_clim_S = True
+    # step05: convert in-situ T to potential T. 'auto' = the file's metadata decides
+    # (prof_T labelled potential -> not converted, in-situ -> converted); with no label,
+    # a check against the climatology decides (loudly flagged in the log), and if that
+    # is unclear too, T is converted. The check never overrides a label. All of
+    # Interp_Profiles is labelled potential (converting again made deep T too cold,
+    # ~0.4 °C at 4800 m). True / False to force.
+    convert_insitu_T_to_potential = 'auto'
     exclude_high_latitude_profiles_from_clim_cost = True
     dubious_clim_lat_threshold = 60
     # step06: apply the clim-cost tests poleward of dubious_clim_lat_threshold to
@@ -372,6 +390,7 @@ def NCEI_pipeline(dest_dir, input_dir, n_workers=None):
         new_floor_dict=new_floor_dict,
         apply_gamma_factor=apply_gamma_factor,
         replace_missing_S_with_clim_S=replace_missing_S_with_clim_S,
+        convert_insitu_T_to_potential=convert_insitu_T_to_potential,
         exclude_high_latitude_profiles_from_clim_cost=exclude_high_latitude_profiles_from_clim_cost,
         dubious_clim_lat_threshold=dubious_clim_lat_threshold,
         clim_cost_qc_with_high_lat_sigma=clim_cost_qc_with_high_lat_sigma,
