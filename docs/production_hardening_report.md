@@ -597,7 +597,22 @@ are made?" It now is:
 
 **No step's processing (steps 01–13) was changed**, so all the science stays as it was.
 
-### 3.8 Not done in this phase
+### 3.8 Follow-up: making the climatology options obvious
+
+At the user's request, the two climatology options ("use your own file" or "build the standard
+one with `setup_climatology.py --build`") are now stated where a new user looks first:
+
+- **The settings files.** A comment box directly above `paths.climatology_file` in
+  `config/defaults.yaml`, `config/local.example.yaml` and `config/local.yaml` explains:
+  - that a climatology doesn't have to exist already;
+  - what a user-supplied file must contain;
+  - the build, pre-bake and check commands.
+- **The README.** A new **Quick start** section near the top. Its step 2 is "Get a climatology:
+  you don't need one already", with both options and the commands.
+- **The API documentation (Phase 5).** Its front page and quick start will carry the same text.
+  This is recorded in the plan as a requirement.
+
+### 3.9 Not done in this phase
 
 - **`print` → `logging`.** This is moved to Phase 4. The cost report reads the chain's log text
   (`step: N`, `valid prof_T profile count ...`), so the log format has to stay the same. And

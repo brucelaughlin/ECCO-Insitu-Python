@@ -41,6 +41,10 @@ The full write-up for readers (what was done, why, and how it was checked, in pl
 5. **Docs**
    - NumPy-style docstrings everywhere.
    - Sphinx (autodoc + napoleon): a user guide plus the API reference.
+   - **Requirement from the user:** the docs' front page and Quick start must make it
+     abundantly clear that a climatology need not exist already: either "use your own file" or
+     "`setup_climatology.py --build` makes the standard one". Reuse the README's Quick start and the
+     `defaults.yaml` box.
 6. **Keep in step**
    - GitHub Actions: tests, a docs build with warnings as errors, a docstring-coverage check, and
      publishing to Pages.
@@ -120,6 +124,12 @@ The full write-up for readers (what was done, why, and how it was checked, in pl
     - the regression test still matches the Phase 1 reference (`run_summary.txt` added).
   - **Deferred to Phase 4:** print → logging. The log format is parsed by
     `diagnostics/lib/costs_scaling.py`, so keep its lines.
+- 2026-10-23, follow-up to Phase 3 (from the user)
+  - A comment box above `paths.climatology_file` in `config/defaults.yaml`, `local.example.yaml` and
+    `local.yaml`: use your own file, or `setup_climatology.py --build`.
+  - A new **Quick start** near the top of `README.md`, with "you don't need a climatology already" as
+    step 2.
+  - The Sphinx front page must repeat this (see Phase 5).
 - **Next: Phase 4 (package).**
   - Move into `ecco_insitu/` (`steps/`, `config`, `validate`, `io`, `climatology`, ...), with a
     `pyproject.toml` and an `ecco-insitu` command line (run / check / setup-climatology).

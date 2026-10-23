@@ -24,9 +24,25 @@ paths:
   grid_dir: null
   # geodesic bin files llc090_sphere_point_n_*_ids.bin (step 02)
   sphere_bin_dir: null
-  # WOA23 full-depth T/S climatology, potential T (step 03; build_woa23_climatology.py makes it)
+  # ---------------------------------------------------------------------------------
+  # CLIMATOLOGY (step 03). You do NOT need to have one already:
+  #   * Have your own?  Point climatology_file at it. Any NetCDF with potential_T_monthly
+  #     and S_monthly on (month=12, depth, lat, lon), regular lon/lat, potential T in deg C,
+  #     works (full rules: docs/input_contract.md, section 2).
+  #   * Don't have one?  Set climatology_file to where it should go (the file need not
+  #     exist), then run:   python setup_climatology.py --build
+  #     That downloads WOA23 (~1.4 GB) and builds the standard climatology this project
+  #     uses: monthly fields to 1500 m stitched onto seasonal fields to 5500 m, in-situ T
+  #     converted to potential T with the chain's own routine.
+  #   * Optional, faster:  python setup_climatology.py --prebake  (writes into prebaked_clim_dir)
+  #   * Check either way:  python setup_climatology.py
+  # The chain checks the climatology before every run and stops with these instructions if
+  # it is missing or unusable.
+  # ---------------------------------------------------------------------------------
+  # monthly potential-T / S climatology, full depth (see the box above)
   climatology_file: null
-  # folder of *_prebaked.nc climatologies, one per input depth grid (step 03; optional, faster)
+  # folder of *_prebaked.nc copies, one per input depth grid (optional, faster; made by --prebake;
+  # only those made from climatology_file are used)
   prebaked_clim_dir: null
   # CTD-based T and S uncertainty (sigma) on the LLC90 grid, big-endian float32 (step 04)
   sigma_files:

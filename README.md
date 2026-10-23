@@ -26,6 +26,36 @@ A support data package (LLC90 grid, WOA23 climatology, sigma files, geodesic
 bin files) is required and is available on the project Google Drive:
 https://drive.google.com/drive/folders/17h0qMS7vVimet8FXieGP1mWhnqnY0ljr
 
+## Quick start
+
+1. **Point the chain at your data.**
+   ```bash
+   cp config/local.example.yaml config/local.yaml
+   ```
+   Then set `data_root` (and any paths that differ) in `config/local.yaml`.
+2. **Get a climatology: you don't need one already.** The chain compares every profile with a
+   monthly climatology (`paths.climatology_file`). Either:
+   - **use your own:** point `paths.climatology_file` at it. Any NetCDF file with
+     `potential_T_monthly` and `S_monthly` on (12 months, depth, lat, lon) and a regular lon/lat
+     grid works (rules: [`docs/input_contract.md`](docs/input_contract.md), section 2); or
+   - **build the standard one:** this project's WOA23 climatology, made on the fly:
+     ```bash
+     python setup_climatology.py --build      # downloads WOA23 (~1.4 GB), builds it where paths.climatology_file points
+     python setup_climatology.py --prebake    # optional: faster step 03
+     python setup_climatology.py              # check the setup
+     ```
+   If the climatology is missing or unusable, a run stops before processing and says so.
+3. **Check your input files** (optional; the chain does this anyway):
+   ```bash
+   python validate_inputs.py /path/to/inputs
+   ```
+4. **Run:**
+   ```bash
+   ./run_ncei.sh
+   ```
+   The output, the settings used (`documentation/run_config.yaml`) and a per-file summary
+   (`documentation/run_summary.txt`) go in a new timestamped folder.
+
 ---
 
 ## Repository structure

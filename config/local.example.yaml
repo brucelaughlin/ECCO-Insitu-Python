@@ -6,6 +6,21 @@ data_root: /path/to/your/data
 paths:
   grid_dir: sample_data/ecco-insitu/sweet_gdrive/grid_llc90
   sphere_bin_dir: sample_data/ecco-insitu/sweet_gdrive/grid_llc90/sphere_point_distribution
+  # ---------------------------------------------------------------------------------
+  # CLIMATOLOGY (step 03). You do NOT need to have one already:
+  #   * Have your own?  Point climatology_file at it. Any NetCDF with potential_T_monthly
+  #     and S_monthly on (month=12, depth, lat, lon), regular lon/lat, potential T in deg C,
+  #     works (full rules: docs/input_contract.md, section 2).
+  #   * Don't have one?  Set climatology_file to where it should go (the file need not
+  #     exist), then run:   python setup_climatology.py --build
+  #     That downloads WOA23 (~1.4 GB) and builds the standard climatology this project
+  #     uses: monthly fields to 1500 m stitched onto seasonal fields to 5500 m, in-situ T
+  #     converted to potential T with the chain's own routine.
+  #   * Optional, faster:  python setup_climatology.py --prebake  (writes into prebaked_clim_dir)
+  #   * Check either way:  python setup_climatology.py
+  # The chain checks the climatology before every run and stops with these instructions if
+  # it is missing or unusable.
+  # ---------------------------------------------------------------------------------
   climatology_file: woa23_climatology/woa23_decav91C0_TS_clim_potential_T_1deg_fulldepth.nc
   prebaked_clim_dir: woa23_climatology
   sigma_files:
