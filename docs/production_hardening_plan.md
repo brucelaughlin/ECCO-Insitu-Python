@@ -3,6 +3,9 @@
 **Resume here.** This file is the single source of truth for this project. Update the progress log
 at the bottom after each working step, and commit it with the work.
 
+The full write-up for readers (what was done, why, and how it was checked, in plain language) is
+`docs/production_hardening_report.md`. **Add a section to it at the end of every phase.**
+
 - Branch: `production_hardening` (from `devel_v3` at 7fa2cb5)
 - Started: 2026-10-23
 
