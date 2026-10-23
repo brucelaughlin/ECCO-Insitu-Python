@@ -1,4 +1,3 @@
-import pdb
 import xarray as xr
 import numpy as np
 import cartopy
@@ -12,6 +11,7 @@ import io
 import contextlib
 import copy
 import tempfile
+import traceback
 import concurrent.futures
 from pathlib import Path
 import argparse
@@ -21,7 +21,9 @@ from functools import partial
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import config_loader
+import netCDF4
 import tools
+import validate_inputs
 import step01
 import step02
 import step03
@@ -131,6 +133,82 @@ def _redirect_fd(target_fd):
 _redirect_fd = contextlib.contextmanager(_redirect_fd)
 
 
+def check_climatologies(climatology_file, prebaked_clim_dir):
+    """Check the climatology and choose the pre-baked files to use; return their paths.
+
+    The full-depth climatology must pass :func:`validate_inputs.check_climatology_file`
+    (raises ``config_loader.ConfigError`` otherwise, before any file is processed).
+    A pre-baked file is used only if it passes its own check **and** its ``source_file``
+    attribute names this climatology; pre-baked files made from another climatology are
+    ignored with a message, so changing ``paths.climatology_file`` can't silently mix two
+    climatologies.
+    """
+    rep = validate_inputs.check_climatology_file(climatology_file)
+    if not rep.ok:
+        raise config_loader.ConfigError(
+            f'paths.climatology_file is not usable: {climatology_file}\n  ' + '\n  '.join(rep.lines()) +
+            '\nSee docs/input_contract.md, or build one with: python build_woa23_climatology.py')
+    for w in rep.warnings:
+        print(f"[NCEI] climatology WARNING: {w}")
+    print(f"[NCEI] climatology: {climatology_file}")
+    found = sorted(Path(prebaked_clim_dir).glob('*_prebaked.nc')) if prebaked_clim_dir else []
+    use = []
+    for pb in found:
+        prep = validate_inputs.check_climatology_file(pb, prebaked=True)
+        with netCDF4.Dataset(pb) as d:
+            src = d.getncattr('source_file') if 'source_file' in d.ncattrs() else None
+        if not prep.ok:
+            print(f"[NCEI] pre-baked climatology IGNORED (not usable): {pb.name}: {'; '.join(prep.errors)}")
+        elif src is None or Path(src).resolve() != Path(climatology_file).resolve():
+            print(f"[NCEI] pre-baked climatology IGNORED (made from a different climatology, {src}): {pb.name}")
+        else:
+            use.append(pb)
+    print(f"[NCEI] {len(use)} pre-baked climatology file(s) in {prebaked_clim_dir}")
+    for pb in use:
+        print(f"         {pb.name}")
+    return use
+
+
+def _validate_input_files(files, input_dir, variables):
+    """Check every input file (validate_inputs.check_profile_file); return (files to process, reports)."""
+    reports = [validate_inputs.check_profile_file(f, sorted(variables)) for f in files]
+    print()
+    print("[NCEI] input file check (see docs/input_contract.md):")
+    for line in validate_inputs.summarize(reports, input_dir):
+        print(f"  {line}")
+    return [Path(r.path) for r in reports if r.ok], reports
+
+
+def _write_run_summary(run_root, input_dir, input_reports, results):
+    """Write <run>/documentation/run_summary.txt: per input file, what happened to it."""
+    status = {r[0]: r for r in results}
+    lines = ['NCEI chain run summary (steps 01-10)', f'input folder: {input_dir}', '']
+    n_skip = sum(not r.ok for r in input_reports)
+    n_fail = sum(1 for r in results if r[1] == 'failed')
+    n_empty = sum(1 for r in results if r[1] == 'no data left')
+    n_ok = sum(1 for r in results if r[1] == 'written')
+    lines += [f'files found:                  {len(input_reports)}',
+              f'skipped by the input check:   {n_skip}',
+              f'written:                      {n_ok}',
+              f'no data left after the steps: {n_empty}',
+              f'failed:                       {n_fail}', '']
+    for rep in input_reports:
+        rel = str(Path(rep.path).relative_to(input_dir))
+        if not rep.ok:
+            lines.append(f'SKIPPED  {rel}')
+            lines += [f'           {x}' for x in rep.lines()]
+            continue
+        _, state, detail = status.get(rep.path, (rep.path, 'not run', ''))
+        lines.append(f'{state.upper():8s} {rel}' + (f'  ({detail})' if detail else ''))
+        lines += [f'           WARNING {w}' for w in rep.warnings]
+    path = Path(run_root) / 'documentation' / 'run_summary.txt'
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text('\n'.join(lines) + '\n')
+    print(f"\n[NCEI] {n_ok} written, {n_empty} with no data left, {n_fail} failed, {n_skip} skipped by the input check;"
+          f" details in {path}")
+    return n_fail
+
+
 def _process_one_file(args):
     """Process a single input file through the full NCEI chain.
 
@@ -138,7 +216,9 @@ def _process_one_file(args):
     fd 1.  Returns the temp file path; the main process reads and prints it
     atomically so the log stays clean even with multiple workers running.
 
-    Returns (file_index, n_total, tmp_log_path, bad_flag).
+    Returns (file_index, n_total, tmp_log_path, state, detail): state is 'written',
+    'no data left' (QC removed every profile; not an error) or 'failed' (an exception;
+    ``detail`` says at which step and why).
     """
     (file_dex, n_total, original_file, dest_dir, input_dir,
      ncei_function_kwargs, profile_var_key_set) = args
@@ -150,6 +230,7 @@ def _process_one_file(args):
     tmp.close()
 
     bad_flag = False
+    state, detail = 'failed', ''
 
     with open(tmp_path, 'w') as log_fh:
         with _redirect_fd(log_fh.fileno()):
@@ -168,7 +249,7 @@ def _process_one_file(args):
                 print(f"Exception: {e}")
                 print(f"NO OUTPUT FILE WRITTEN for: {original_file.name}")
                 print("-----------------------------\n")
-                return file_dex, n_total, tmp_path, True
+                return file_dex, n_total, tmp_path, 'failed', f'could not be opened: {e}'
 
             # Normalize out-of-range dates/times (WOD rounding artefacts, the
             # 24:00:00 midnight convention) by rolling forward, so YYYYMMDD/HHMMSS
@@ -190,7 +271,7 @@ def _process_one_file(args):
 
             if not MITprof_ds or MITprof_ds.sizes['iPROF'] == 0:
                 print("Your profile file may have no valid data; exiting without finishing\n")
-                return file_dex, n_total, tmp_path, True
+                return file_dex, n_total, tmp_path, 'no data left', 'no profiles in the file'
 
             kw = ncei_function_kwargs
             ncei_function_list = [
@@ -236,11 +317,13 @@ def _process_one_file(args):
                     print(f"\n-------- FILE FAILURE --------")
                     print(f"NCEI chain CRASHED at step: {step_counter:02d} (of {len(ncei_function_list)})")
                     print(f"File: {original_file.name}")
-                    print(f"Exception:\n{e}")
+                    print(f"Exception ({type(e).__name__}):\n{e}")
+                    print(traceback.format_exc())
                     print(f"NO OUTPUT FILE WRITTEN for: {original_file.name}")
                     print("continuing to next file")
                     print("-----------------------------\n")
                     bad_flag = True
+                    state, detail = 'failed', f'step {step_counter:02d}: {type(e).__name__}: {e}'
                     break
 
                 if not MITprof_ds or MITprof_ds.sizes['iPROF'] == 0:
@@ -251,6 +334,7 @@ def _process_one_file(args):
                     print("continuing to next file")
                     print("-----------------------------\n")
                     bad_flag = True
+                    state, detail = 'no data left', f'all profiles removed by step {step_counter:02d}'
                     break
 
                 valid_data_dict_list.append(tools.collect_valid_data_stats(MITprof_ds, profile_var_key_set))
@@ -272,7 +356,8 @@ def _process_one_file(args):
             if bad_flag or not MITprof_ds or MITprof_ds.sizes['iPROF'] == 0:
                 if not bad_flag:
                     print(f"NO OUTPUT FILE WRITTEN for: {original_file.name} (no valid data after all steps)\n")
-                return file_dex, n_total, tmp_path, True
+                    state, detail = 'no data left', 'no valid data after all steps'
+                return file_dex, n_total, tmp_path, state, detail
 
             if tools.count_total_survivors_TS(MITprof_ds, profile_var_key_set) > 0:
                 for prof_key in profile_var_key_set:
@@ -295,10 +380,12 @@ def _process_one_file(args):
 
                 print()
                 tools.MITprof_write_to_nc(dest_dir, MITprof_ds, len(ncei_function_list), original_file, input_dir)
+                state, detail = 'written', f'{MITprof_ds.sizes["iPROF"]} profiles'
             else:
                 print(f"NO OUTPUT FILE WRITTEN for: {original_file.name} (0 surviving T/S profiles after all steps)\n\n")
+                state, detail = 'no data left', '0 surviving T/S data after all steps'
 
-    return file_dex, n_total, tmp_path, bad_flag
+    return file_dex, n_total, tmp_path, state, detail
 
 
 def NCEI_pipeline(dest_dir, input_dir, n_workers=None, cfg=None):
@@ -316,6 +403,13 @@ def NCEI_pipeline(dest_dir, input_dir, n_workers=None, cfg=None):
     cfg : dict, optional
         Settings from :func:`config_loader.load`; default: the standard files
         (``config/defaults.yaml`` + ``config/local.yaml``).
+
+    Returns
+    -------
+    int
+        Number of input files that failed with an error (0 for a clean run). Files skipped by the
+        input check and files with no data left after QC are not counted; all are listed in
+        ``<run>/documentation/run_summary.txt``.
     """
     if cfg is None:
         cfg = config_loader.load()
@@ -373,10 +467,11 @@ def NCEI_pipeline(dest_dir, input_dir, n_workers=None, cfg=None):
     used['run']['input_dir'] = str(Path(input_dir).resolve())
     config_loader.dump(used, run_root / 'documentation' / 'run_config.yaml')
 
-    prebaked_clim_paths = sorted(Path(prebaked_clim_dir).glob('*_prebaked.nc')) if prebaked_clim_dir else []
-    print(f"[NCEI] {len(prebaked_clim_paths)} pre-baked climatology file(s) in {prebaked_clim_dir}")
-    for _pb in prebaked_clim_paths:
-        print(f"         {_pb.name}")
+    prebaked_clim_paths = check_climatologies(climatology_file, prebaked_clim_dir)
+
+    # Check every input file before processing any (see docs/input_contract.md): files that
+    # can't be processed are skipped with the reason; warnings are listed but don't stop a file.
+    input_profile_files, input_reports = _validate_input_files(input_profile_files, input_dir, profile_var_key_set)
 
     ncei_function_kwargs = dict(
         grid_dir=grid_dir,
@@ -417,6 +512,8 @@ def NCEI_pipeline(dest_dir, input_dir, n_workers=None, cfg=None):
         (file_dex, n_total, str(f), dest_dir, input_dir, ncei_function_kwargs, profile_var_key_set)
         for file_dex, f in enumerate(input_profile_files)
     ]
+    if not work_items:
+        print("[NCEI] no input file passed the input check; nothing to process")
 
     def _flush_log(tmp_path):
         """Read a worker's temp log file, print it, and delete it."""
@@ -429,11 +526,13 @@ def NCEI_pipeline(dest_dir, input_dir, n_workers=None, cfg=None):
             except OSError:
                 pass
 
+    results = []                     # (input path, state, detail) per processed file
     if n_workers == 1:
         # Sequential: run initializer inline so worker globals are populated.
         _worker_init(prebaked_clim_paths)
         for item in work_items:
-            _, _, tmp_path, _ = _process_one_file(item)
+            _, _, tmp_path, state, detail = _process_one_file(item)
+            results.append((item[2], state, detail))
             _flush_log(tmp_path)
     else:
         with concurrent.futures.ProcessPoolExecutor(
@@ -443,17 +542,23 @@ def NCEI_pipeline(dest_dir, input_dir, n_workers=None, cfg=None):
         ) as executor:
             futures = {executor.submit(_process_one_file, item): item[0] for item in work_items}
             for fut in concurrent.futures.as_completed(futures):
+                path = work_items[futures[fut]][2]
                 try:
-                    _, _, tmp_path, _ = fut.result()
+                    _, _, tmp_path, state, detail = fut.result()
                 except Exception as e:
                     print(f"\n[NCEI] Unexpected worker exception: {e}\n")
+                    results.append((path, 'failed', f'worker crashed: {type(e).__name__}: {e}'))
                     continue
+                results.append((path, state, detail))
                 _flush_log(tmp_path)
+
+    n_failed = _write_run_summary(run_root, input_dir, input_reports, results)
+    return n_failed
 
 
 def main(dest_dir, input_dir, n_workers=None, cfg=None):
-    """Run steps 01-10; see :func:`NCEI_pipeline`."""
-    NCEI_pipeline(dest_dir, input_dir, n_workers=n_workers, cfg=cfg)
+    """Run steps 01-10; see :func:`NCEI_pipeline`. Returns the number of files that failed."""
+    return NCEI_pipeline(dest_dir, input_dir, n_workers=n_workers, cfg=cfg)
 
 
 if __name__ == '__main__':
@@ -482,4 +587,9 @@ if __name__ == '__main__':
             raise config_loader.ConfigError('no input folder: give -i or set run.input_dir')
     except config_loader.ConfigError as e:
         sys.exit(f"config error: {e}")
-    main(args.dest_dir, input_dir, n_workers=args.n_workers, cfg=cfg)
+    try:
+        n_failed = main(args.dest_dir, input_dir, n_workers=args.n_workers, cfg=cfg)
+    except config_loader.ConfigError as e:
+        sys.exit(f"config error: {e}")
+    # Exit code 3 = the run finished, but some files failed (see documentation/run_summary.txt).
+    sys.exit(3 if n_failed else 0)

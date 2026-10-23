@@ -96,10 +96,33 @@ The full write-up for readers (what was done, why, and how it was checked, in pl
       only `run_config.yaml` was added to the reference.
     - A `-s` override shows up in the outputs.
     - 13 new loader tests; 45 tests in total.
-- **Next: Phase 3 (robustness).**
-  - An input-file contract and an up-front checker (required and optional variables, dimensions,
-    dtypes, fill values, date/lat/lon/depth ranges, T label), with per-file reasons in a run summary.
-  - Replace the try/except around the whole chain with clear errors.
-  - Switch to `logging`.
-  - Remove the pdb imports.
-  - Each new check gets a unit test and a fixture of a bad file.
+- 2026-10-23, **Phase 3 done** (details in the report, Phase 3 section)
+  - **Input checks:** `validate_inputs.py` holds the profile and climatology contracts
+    (`docs/input_contract.md`).
+    - `NCEI.py` checks the climatology, then all input files, before processing; failing files are
+      skipped with reasons.
+    - Each worker returns written / no data left / failed, with the step and error.
+    - `<run>/documentation/run_summary.txt`; exit code 3 when files failed (`run_ncei.sh` still runs
+      steps 11–13 on the good files).
+  - **Climatologies:**
+    - Any file meeting the contract can be used; `setup_climatology.py` checks, builds (`--build`) or
+      pre-bakes (`--prebake`).
+    - A missing climatology stops the run with instructions.
+    - Pre-baked files are used only if their `source_file` matches the current climatology. Before,
+      a stale pre-baked file could silently be used.
+  - **Cleanup:** pdb removed; tracebacks logged.
+  - **Found in the real inputs:** about 18,000 CTD profiles (1992–2002) with month-only dates
+    `YYYYMM00`, zero-weighted by step 06 as before. Flagged for the team; not changed.
+  - **Tests:** 76 in total.
+    - 27 contract tests;
+    - 3 climatology-guard tests;
+    - a bad-file end-to-end test;
+    - the regression test still matches the Phase 1 reference (`run_summary.txt` added).
+  - **Deferred to Phase 4:** print → logging. The log format is parsed by
+    `diagnostics/lib/costs_scaling.py`, so keep its lines.
+- **Next: Phase 4 (package).**
+  - Move into `ecco_insitu/` (`steps/`, `config`, `validate`, `io`, `climatology`, ...), with a
+    `pyproject.toml` and an `ecco-insitu` command line (run / check / setup-climatology).
+  - Keep `run_ncei.sh` and the old script names working as thin wrappers for now.
+  - Switch to `logging` while keeping the log lines the diagnostics parse.
+  - The regression test must pass unchanged.

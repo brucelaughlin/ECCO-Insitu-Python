@@ -44,7 +44,8 @@
 #
 # The settings used are saved in <output>/documentation/run_config.yaml.
 #
-# The exit code of NCEI.py is preserved (via PIPESTATUS).
+# Exit code: 0 = all good; 3 = finished, but some input files failed (listed in
+# <output>/documentation/run_summary.txt); 2 = bad options or settings; other = a step failed.
 
 set -euo pipefail
 
@@ -141,6 +142,14 @@ if [[ -n "${N_WORKERS}" ]]; then N_WORKERS_ARG="-n ${N_WORKERS}"; fi
 python3 -u "${SCRIPT_DIR}/NCEI.py" -i "${INPUT_DIR}" -d "${YEARLY_DIR}" ${N_WORKERS_ARG} \
   ${CONFIG_ARGS[@]+"${CONFIG_ARGS[@]}"} 2>&1 | tee -a "${LOG_FILE}"
 STATUS="${PIPESTATUS[0]}"
+# NCEI.py exit 3 = finished, but some input files failed (listed in documentation/run_summary.txt).
+# The other files are fine, so the post-steps still run; the script exits 3 at the end.
+FILES_FAILED=0
+if [[ "${STATUS}" -eq 3 ]]; then
+  FILES_FAILED=1
+  STATUS=0
+  echo "WARNING: some input files failed in steps 01-10; see ${DEST_DIR}/documentation/run_summary.txt" | tee -a "${LOG_FILE}"
+fi
 
 {
 echo ""
@@ -250,4 +259,8 @@ if [[ "${RUN_PACK}" -eq 1 && "${STATUS}" -eq 0 ]]; then
   } | tee -a "${LOG_FILE}"
 fi
 
+if [[ "${STATUS}" -eq 0 && "${FILES_FAILED}" -eq 1 ]]; then
+  echo "Run finished, but some input files failed: see ${DEST_DIR}/documentation/run_summary.txt" | tee -a "${LOG_FILE}"
+  STATUS=3
+fi
 exit "${STATUS}"

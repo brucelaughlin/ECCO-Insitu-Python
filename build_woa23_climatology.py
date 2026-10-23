@@ -245,17 +245,9 @@ def _set_out_dir(out_dir):
     OUT_FILE = OUT_DIR / OUT_NAME
 
 
-def main():
-    ap = argparse.ArgumentParser(description='Build the WOA23 monthly T/S climatology for the NCEI chain.')
-    ap.add_argument('--out_dir', default=None,
-                    help='output folder (default: the folder of paths.climatology_file in the settings)')
-    a = ap.parse_args()
-    if a.out_dir is None:
-        clim = config_loader.load()['paths']['climatology_file']
-        if not clim:
-            ap.error('give --out_dir, or set paths.climatology_file in config/local.yaml')
-        a.out_dir = Path(clim).parent
-    _set_out_dir(a.out_dir)
+def build(out_dir):
+    """Download WOA23 and write the full-depth climatology to ``out_dir``; return its path."""
+    _set_out_dir(out_dir)
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     print("1/5 downloading WOA23 decav91C0 1-deg monthly + seasonal T and S ...")
     download_all()
@@ -312,6 +304,20 @@ def main():
     out.to_netcdf(OUT_FILE, encoding=enc)
     print(f"    wrote {OUT_FILE}  ({OUT_FILE.stat().st_size/1e6:.1f} MB)")
     print("done.")
+    return OUT_FILE
+
+
+def main():
+    ap = argparse.ArgumentParser(description='Build the WOA23 monthly T/S climatology for the NCEI chain.')
+    ap.add_argument('--out_dir', default=None,
+                    help='output folder (default: the folder of paths.climatology_file in the settings)')
+    a = ap.parse_args()
+    if a.out_dir is None:
+        clim = config_loader.load()['paths']['climatology_file']
+        if not clim:
+            ap.error('give --out_dir, or set paths.climatology_file in config/local.yaml')
+        a.out_dir = Path(clim).parent
+    build(a.out_dir)
 
 
 if __name__ == '__main__':

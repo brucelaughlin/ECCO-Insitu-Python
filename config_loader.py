@@ -213,8 +213,12 @@ def check_required_paths(cfg, keys=CHAIN_REQUIRED_PATHS):
         elif not Path(v).exists():
             problems.append(f'  {k}: does not exist: {v}')
     if problems:
+        hint = ''
+        if any(p.startswith('  paths.climatology_file') for p in problems):
+            hint = ('\nFor the climatology: point paths.climatology_file at your own file, or build the standard '
+                    'WOA23 one with:  python setup_climatology.py --build')
         raise ConfigError('missing input data; set these in config/local.yaml or a --config file '
-                          '(see config/local.example.yaml):\n' + '\n'.join(problems))
+                          '(see config/local.example.yaml):\n' + '\n'.join(problems) + hint)
 
 
 def dump(cfg, path):

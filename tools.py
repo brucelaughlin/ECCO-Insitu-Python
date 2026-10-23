@@ -1,4 +1,3 @@
-import pdb
 from pathlib import Path
 import os
 import numpy as np
@@ -767,8 +766,7 @@ def interp_check(xyz, flattened_monotonic_grid_indices, X, Y, Z, lat_vals, lon_v
             #test_ind = griddata(xyz, flattened_monotonic_grid_indices, np.column_stack([test_x, test_y, test_z]), 'nearest').astype(int)
             #test_ind = griddata(xyz, flattened_monotonic_grid_indices, np.asarray([test_x, test_y, test_z]), 'nearest').astype(int)
         except:
-            pdb.set_trace()
-            pdb.set_trace()
+            raise
         '''
         
         if step == 2:

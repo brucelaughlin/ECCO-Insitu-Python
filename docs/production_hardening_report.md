@@ -28,8 +28,8 @@ processed profiles stay exactly the same.
 |---|---|---|
 | 1 | Safety net: test data and automatic tests | **Done** (2026-10-23) |
 | 2 | Configuration file instead of editing code | **Done** (2026-10-23) |
-| 3 | Input checks and clear error reporting | Next |
-| 4 | Reorganize into an installable Python package | Planned |
+| 3 | Input checks and clear error reporting | **Done** (2026-10-23) |
+| 4 | Reorganize into an installable Python package | Next |
 | 5 | Docstrings and Sphinx documentation | Planned |
 | 6 | Automatic checks on every change (CI), changelog, versioning | Planned |
 
@@ -408,6 +408,207 @@ The existing climatology file is not affected; it was built before the renumberi
 
 ---
 
+## Phase 3: input checks and clear error reporting (done 2026-10-23)
+
+### Purpose
+
+This phase is the core of "no tinkering for new datasets". As section 0 showed, most past
+iteration came from **input files that differed from what the code assumed**: a missing variable,
+odd times, unlabeled temperature. The chain found out only when a step crashed partway through,
+with an error that described the symptom, not the cause.
+
+Phase 3 makes the chain:
+
+1. **Write down what it needs** from its inputs: the *input contract*, `docs/input_contract.md`.
+2. **Check every input file against it before processing anything.** That takes about 12 seconds
+   for all 246 input files, since only the small variables are read.
+3. **Skip a file that can't be processed, with the reason**, and carry on with the rest, instead
+   of failing partway through.
+4. **Say what happened to every file** in a run summary.
+
+It also addresses the user's question about climatologies: the chain now accepts any climatology
+that meets a written contract, checks it, and offers to build the standard one when none is set.
+
+### 3.1 The input contract
+
+`docs/input_contract.md` lists, for profile files:
+
+- **Required:** what must be there for a file to be processed. A missing item is an *error*, and
+  the file is skipped:
+  - the `iPROF` / `iDEPTH` dimensions;
+  - positions, dates and times;
+  - a usable depth grid (meters, increasing);
+  - at least one of T and S, each with its weight variable.
+- **Conventions** the chain assumes: fill value −9999 or NaN, potential temperature, psu.
+- **Warnings:** things the chain handles, but a user should know about. The file is processed and
+  the affected profiles are zero-weighted or corrected:
+  - bad positions;
+  - dates before 1950, impossible or month-only;
+  - times like `24:00:00`;
+  - values outside plausible ranges (often a unit problem);
+  - empty variables;
+  - unlabeled T.
+
+The checks are in a new module, `validate_inputs.py`. They can also be run alone on a folder,
+without running the chain: `python validate_inputs.py <input_dir>`.
+
+### 3.2 What the check found in the real inputs
+
+On all 246 files of `Interp_Profiles`, **every file passes**; 120 have warnings:
+
+| Warning | Files |
+|---|---|
+| `prof_S` exists but has no valid values (T-only data in a file with an S variable) | 77 |
+| Times rolled forward (`SS = 60`, `24:00:00`, ...) | 28 |
+| **Month but no day** (`YYYYMM00`): about **18,000 profiles**, almost all CTD 1992–2002 | 12 |
+| No position (`lon = 99999`) | 7 |
+| Latitude outside −90–90 | 7 |
+| T values outside −3–40 °C (a handful per file, up to 61 °C) | 6 |
+| Longitude out of range | 1 |
+
+**The month-only dates are a finding worth noting.** About 18,000 CTD profiles have a month but
+no day (e.g. `19920300`). Step 06 already zeroes their weights as "bad dates", so they never reach
+the model. That was true before this project too; the new check just makes it visible. If those
+profiles are wanted, a day could be assigned (e.g. the 15th) in a future change. That is a science
+decision, so I haven't made it.
+
+### 3.3 What happens to each file, and the run summary
+
+Each input file now ends in one of four states, recorded in the new
+**`<run>/documentation/run_summary.txt`**:
+
+| State | Meaning |
+|---|---|
+| `WRITTEN` | processed; number of profiles written |
+| `SKIPPED` | failed the input check; the reasons are listed |
+| `NO DATA LEFT` | processed, but QC removed every profile (not an error), and the step where it happened |
+| `FAILED` | an error during processing, with the step number and the error message (the full traceback is in the log) |
+
+Each file's warnings are listed under it. The summary starts with the counts, for example
+`files found: 8 / skipped by the input check: 0 / written: 8 / ...`.
+
+**Exit codes**, so scripts and schedulers can tell what happened:
+
+| Code | Meaning |
+|---|---|
+| 0 | all good |
+| 3 | the run finished, but some files failed (see the summary). Steps 11–13 still run on the files that succeeded. |
+| 2 | bad options or settings (nothing processed) |
+
+Before, a failed file was just a message in the long log, and the run reported success.
+
+### 3.4 Climatologies: your own file, or the standard one built for you
+
+This answers the question raised during this phase: "is the design flexible in how climatologies
+are made?" It now is:
+
+- **A climatology contract** (`docs/input_contract.md`, section 2). The chain needs monthly
+  potential temperature and salinity on a regular lon/lat grid, with named variables and
+  coordinates. **Any file meeting it can be used**, whether built by our script, made by a user, or
+  from another atlas. The file is checked before the run. It is rejected with the reason if, for
+  example:
+  - the variable names are wrong;
+  - it isn't 12 months;
+  - the grid is irregular;
+  - it is labeled in-situ temperature;
+  - the values are in kelvin;
+  - it has undeclared fill values such as −9999 that would be read as real temperatures.
+- **The standard one built for you.** As the user suggested: if `paths.climatology_file` points
+  to a file that doesn't exist, the run stops before processing and says:
+  ```
+  For the climatology: point paths.climatology_file at your own file, or build the standard
+  WOA23 one with:  python setup_climatology.py --build
+  ```
+  The new `setup_climatology.py`:
+  - checks the current climatology and its pre-baked copies (`python setup_climatology.py`);
+  - downloads and builds the standard WOA23 climatology exactly as this project did (`--build`):
+    monthly fields to 1500 m stitched onto seasonal fields to 5500 m, and in-situ T converted to
+    potential T with the chain's own routine;
+  - makes the pre-baked copies (`--prebake`).
+
+  I chose an explicit command over building automatically inside a run, because the build
+  downloads 1.4 GB. A run shouldn't start a large download without being asked.
+- **A safeguard against mixing climatologies.** The pre-baked files (the climatology
+  pre-interpolated to each depth grid, for speed) are used *instead of* the climatology file. Before
+  this phase, the chain used every pre-baked file in the folder regardless of which climatology it
+  came from. So **switching to a new climatology would have silently kept using the old one's
+  pre-baked values** for most files. Each pre-baked file records its source, and the chain now
+  uses only those made from the current climatology, listing any it ignores.
+
+### 3.5 Smaller robustness fixes
+
+- **Debugging leftovers removed:** `import pdb` in four files, and two `pdb.set_trace()` calls in
+  `tools.py` (inside disabled code, but they could have paused a run if re-enabled).
+- **Clearer failure messages:** a crash in a step now logs the error type and the full traceback,
+  not just the message.
+- **No input files pass the check:** the run says so, instead of silently doing nothing.
+
+### 3.6 How it was checked
+
+1. **The regression test passes; science output unchanged.** The step 01–13 outputs of the 8
+   fixture files are bit-identical to the Phase 1 reference. The only new reference file is
+   `run_summary.txt`.
+2. **One unit test per contract rule** (`tests/unit/test_validate_inputs.py`, 27 tests). Each takes
+   a valid fixture file and breaks one thing:
+   - drops a required variable (5 variables);
+   - drops a weight;
+   - drops all observed variables;
+   - renames a dimension;
+   - reverses or negates the depths;
+   - adds bad positions and dates;
+   - converts T to kelvin;
+   - removes the T label;
+   - feeds a file that isn't NetCDF.
+
+   It checks the right error or warning is raised. Also checked: a T-only file is accepted, and all
+   real fixtures pass. For climatologies: synthetic files with wrong names, 4 months, an irregular
+   grid, in-situ labels, kelvin, and undeclared and declared fill values; plus the real WOA23 file.
+3. **A broken file in a real run** (`tests/regression/test_bad_input_handling.py`). The 8 fixtures
+   plus a ninth file with `prof_lat` removed go through `run_ncei.sh`. The test checks that:
+   - the broken file is skipped;
+   - the summary names it with the reason (`"prof_lat" is missing`);
+   - **the other 8 files' outputs are identical to the reference**, so one bad file affects nothing
+     else.
+4. **The pre-baked safeguard** (`tests/unit/test_climatology_guard.py`). A pre-baked file whose
+   source is a different climatology is ignored, a matching one is used, and an unusable
+   climatology stops the run.
+5. **The missing-climatology message.** Running with a nonexistent climatology path stopped before
+   creating any output and printed the build instructions.
+6. **Tools that read the log still work.** The cost report's parser of the chain log
+   (`costs_scaling.parse_step_counts`) reads the new log correctly.
+
+**Total: 76 tests, all passing (about 75 s, two of them full chain runs).**
+
+### 3.7 What changed, file by file
+
+| File | Change |
+|---|---|
+| `validate_inputs.py` (new) | The profile and climatology contracts as checks; command line for checking a folder or a climatology |
+| `setup_climatology.py` (new) | Check / build / pre-bake the climatology |
+| `docs/input_contract.md` (new) | The written contract, and what the check found in the real inputs |
+| `NCEI.py` | Checks the climatology and pre-baked files, then every input file, before processing; skips files that fail; workers report written / no data left / failed with the step and error; writes `run_summary.txt`; exit code 3 when files failed; logs tracebacks; `import pdb` removed |
+| `run_ncei.sh` | Exit code 3 from steps 01–10 lets steps 11–13 run and is passed on at the end; exit codes documented |
+| `build_woa23_climatology.py` | Its main work is now a `build()` function, so `setup_climatology.py` can call it |
+| `config_loader.py` | The missing-climatology message points to `setup_climatology.py` |
+| `step06.py`, `step09.py`, `tools.py` | `import pdb` / `pdb.set_trace()` removed |
+| `README.md` | New sections: input checks and the run summary; the climatology |
+| `tests/unit/test_validate_inputs.py`, `test_climatology_guard.py`, `tests/regression/test_bad_input_handling.py` (new) | The tests above |
+| `tests/fixtures/reference/documentation/run_summary.txt` (new) | The reference run's summary |
+
+**No step's processing (steps 01–13) was changed**, so all the science stays as it was.
+
+### 3.8 Not done in this phase
+
+- **`print` → `logging`.** This is moved to Phase 4. The cost report reads the chain's log text
+  (`step: N`, `valid prof_T profile count ...`), so the log format has to stay the same. And
+  Phase 4 rewrites every module's imports anyway, so doing it there touches each file once.
+- **Month-only dates** (section 3.2): flagged, not changed. Whether to keep those profiles is a
+  science decision for the team.
+- **Checks inside steps 01–10** (e.g. step 04's σ file covering the grid) still rely on each
+  step's own code. The up-front check covers the input files, which is where the past problems were.
+
+---
+
 ## Glossary
 
 | Term | Meaning |
@@ -421,3 +622,6 @@ The existing climatology file is not affected; it was built before the renumberi
 | Sphinx | The standard tool for Python documentation websites; it builds the API reference from the docstrings. |
 | Docstring | The description written at the top of a function: what it does, its inputs and outputs. |
 | Package | Code organized so it can be installed with `pip install` and imported anywhere, instead of loose scripts. |
+| Input contract | The written list of what an input file must contain for the chain to process it. |
+| Pre-baked climatology | A copy of the climatology already interpolated onto one input depth grid, so step 03 doesn't have to do it per file. |
+| Exit code | A number a program returns when it ends; scripts use it to tell success (0) from failure. |

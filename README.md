@@ -202,6 +202,42 @@ naming it, so a typo can't be silently ignored. Each run saves the merged settin
 
 To see the merged settings: `python config_loader.py [--config FILE] [--set key=value]`.
 
+### Input checks and the run summary
+
+Before processing anything, the chain checks:
+
+- the settings and data paths;
+- the climatology;
+- **every input file**, against the input contract in `docs/input_contract.md`: required
+  variables and dimensions, depth grid, positions, dates, value ranges, and the T label.
+
+A file that can't be processed is **skipped** with the reason, and the rest of the run continues.
+Each run writes `<run>/documentation/run_summary.txt`: per input file, whether it was written,
+skipped (and why), lost all its data in QC, or failed (at which step, with the error), plus any
+warnings.
+
+`run_ncei.sh` exit codes:
+
+- `0`: all good;
+- `3`: the run finished, but some files failed (see the summary);
+- `2`: bad options or settings.
+
+To check a folder of inputs without running the chain: `python validate_inputs.py <input_dir>`.
+
+### Climatology
+
+Step 03 needs a monthly potential-T / S climatology: `paths.climatology_file`. Use your own file
+(any file meeting the contract in `docs/input_contract.md`, section 2) or build the standard WOA23
+one:
+
+```bash
+python setup_climatology.py            # check the climatology in the settings and say what to do
+python setup_climatology.py --build    # download WOA23 (~1.4 GB) and build it where paths.climatology_file points
+python setup_climatology.py --prebake  # optional: pre-baked copies per input depth grid (faster step 03)
+```
+
+The chain uses only the pre-baked files that were made from the current climatology.
+
 ### Required support files
 
 Set in `config/local.yaml` (`paths` section):
