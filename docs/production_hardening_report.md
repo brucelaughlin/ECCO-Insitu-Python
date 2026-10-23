@@ -27,8 +27,8 @@ processed profiles stay exactly the same.
 | Phase | What | Status |
 |---|---|---|
 | 1 | Safety net: test data and automatic tests | **Done** (2026-10-23) |
-| 2 | Configuration file instead of editing code | Next |
-| 3 | Input checks and clear error reporting | Planned |
+| 2 | Configuration file instead of editing code | **Done** (2026-10-23) |
+| 3 | Input checks and clear error reporting | Next |
 | 4 | Reorganize into an installable Python package | Planned |
 | 5 | Docstrings and Sphinx documentation | Planned |
 | 6 | Automatic checks on every change (CI), changelog, versioning | Planned |
@@ -259,6 +259,152 @@ documented, never accidental.
 No chain code was changed in Phase 1.
 
 **Commit:** `b78995a` on `production_hardening`, pushed to GitHub.
+
+---
+
+## Phase 2: configuration (done 2026-10-23)
+
+### Purpose
+
+Before this phase, running the chain on another computer, with other data, or with a different
+setting meant **editing the Python code**:
+
+- 8 file paths in `NCEI.py`;
+- the default folders in `run_ncei.sh`;
+- the step 13 settings in `step13_pack_ecco_arrays.py`;
+- more paths in the diagnostics and the climatology builders.
+
+That has three problems:
+
+- Every user's copy of the code differs.
+- A typo in a setting gives no warning.
+- The output doesn't record which settings produced it.
+
+Phase 2 moves **every path and every option** into settings files. The code no longer contains any
+machine-specific path, and no setting has to be changed in the code.
+
+### 2.1 How the settings work
+
+The settings are YAML files (a plain-text "name: value" format) in a new `config/` folder. They
+are read in layers; each later layer overrides the ones before it:
+
+| Order | Where | What it holds | Stored in git? |
+|---|---|---|---|
+| 1 | `config/defaults.yaml` | **Every** setting, with its default value and a comment explaining it. This is also the reference list of what can be set. | Yes |
+| 2 | `config/local.yaml` | This computer's data locations: where the grid, climatology, σ files, inputs and outputs are. Each user writes their own once, starting from `config/local.example.yaml`. | **No** (it's personal) |
+| 3 | `$ECCO_INSITU_CONFIG` | Optional: a settings file named by an environment variable, e.g. for a shared server. | — |
+| 4 | `--config my_run.yaml` (`run_ncei.sh -C`) | Settings for one run: any subset, e.g. a different σ floor. | Up to the user |
+| 5 | `--set key=value` (`run_ncei.sh -s`) | One setting changed from the command line, e.g. `-s chain.new_floor.prof_S=0.006`. | — |
+
+Paths in `local.yaml` can be relative to one folder, `data_root`, so a new user usually only needs
+to change that one line if their data is laid out the same way.
+
+The defaults are **exactly the values the code had before**, so a run with no extra settings
+behaves exactly as before. That is what the regression test checks (section 2.4).
+
+### 2.2 Protection against mistakes
+
+| Mistake | What happens now |
+|---|---|
+| Misspelled setting, e.g. `new_flor` | The run stops before processing: `unknown setting "chain.new_flor" (see config/defaults.yaml for the valid ones)`. Before, a misspelled variable in the code was silently ignored. |
+| Wrong kind of value, e.g. `apply_gamma_factor: 3` | The run stops: `"chain.apply_gamma_factor" = 3 has the wrong type (expected bool, like the default True)`. |
+| A data file or folder is missing or the path is wrong | The run stops **before processing any file** and lists every missing item, e.g. `paths.grid_dir: does not exist: /...`. Before, this showed up as a crash inside a step, once per file. |
+| Relative path but no `data_root` | The run stops with a message saying so. |
+
+### 2.3 A record of the settings with every run
+
+Every run now writes the complete merged settings it used to
+**`<run folder>/documentation/run_config.yaml`**. The file starts with the list of settings files
+that were merged, in order.
+
+Any output folder therefore records exactly how it was made: which climatology, which σ files,
+which floors and thresholds. This matters for comparing runs, and for answering "what settings
+produced the files we gave the modelers?" months later.
+
+To see the merged settings without running anything:
+`python config_loader.py [--config FILE] [--set key=value]`.
+
+### 2.4 How it was checked
+
+1. **The regression test from Phase 1 passes against the original Phase 1 reference outputs,
+   unchanged.** I checked the new outputs against the reference files committed at the end of
+   Phase 1 (commit b78995a), not against a newly made copy. Every variable in every output file is
+   bit-for-bit identical. The only new file is `documentation/run_config.yaml`, which the reference
+   now includes. This is the main proof that moving the settings changed no results.
+2. **The test now drives the real entry point.** In Phase 1 the test called the three Python steps
+   itself. It now runs `run_ncei.sh`, the same script used for production runs, so the shell
+   script and the way settings pass through it are tested too.
+3. **Settings really reach the chain.** I ran the chain with
+   `-s chain.new_floor.prof_S=0.0051` (a 2% change). The test reported 19 differences (the S
+   uncertainties, weights and costs, plus the changed `chain` section in `run_config.yaml`), and the
+   saved `run_config.yaml` showed `prof_S: 0.0051` with the `--set` listed as a source. So an
+   override isn't silently dropped.
+4. **13 new unit tests for the settings loader**
+   (`tests/unit/test_config_loader.py`):
+   - the defaults load;
+   - later layers win, and unchanged values are kept;
+   - a misspelled key is rejected;
+   - wrong types are rejected (four kinds);
+   - `convert_insitu_T_to_potential` accepts `auto`/true/false;
+   - relative paths are resolved, or rejected when there is no `data_root`;
+   - missing data files are all listed;
+   - the saved `run_config.yaml` reads back the same;
+   - the example `local.yaml` only uses valid settings.
+5. **Every script still starts** (`-h` works for all 10 command-line tools). The two run checkers,
+   `check_run_files.py` and `check_ecco_arrays.py`, pass on the test run's output. The diagnostics
+   find the same default folders as before.
+
+**Total: 45 tests, all passing (about 21 s).**
+
+### 2.5 A bug found on the way
+
+`build_woa23_climatology.py` (which builds the WOA23 climatology) called
+`step06.calculate_potential_T`, but that function lives in **step05**. The script would have
+crashed the next time anyone rebuilt the climatology. The reference must be left over from an
+earlier renumbering of the steps. It is fixed: the script now calls step05's function, which is the
+same UNESCO routine the chain applies to the observations, as the script's description says.
+The existing climatology file is not affected; it was built before the renumbering.
+
+### 2.6 What changed, file by file
+
+| File | Change |
+|---|---|
+| `config/defaults.yaml` (new) | Every setting with its default and an explanation |
+| `config/local.example.yaml` (new) | Template for a machine's data locations |
+| `config/local.yaml` (new, not in git) | This machine's data locations (`data_root: /Users/brucel/ecco/yip`) |
+| `config_loader.py` (new) | Reads, merges, checks and saves the settings; `--get` gives single values to shell scripts |
+| `NCEI.py` | The 70-line block of hard-coded paths and options is replaced by reading the settings. Checks the data files exist before starting. Saves `run_config.yaml`. New `--config` / `--set` options; `-i` is now optional (default `run.input_dir`). The `sys.path` line with a fixed path is replaced by the script's own folder. |
+| `run_ncei.sh` | Defaults come from the settings instead of fixed paths. New `-C` (settings file) and `-s` (one setting) options, passed to every step. The worker count is now passed to step 11 too. |
+| `step11_spatial_scaling.py` | Window and worker defaults from the settings; `--config` / `--set` |
+| `step13_pack_ecco_arrays.py` | Packing settings from the `pack` section instead of constants in the file; `--config` / `--set` |
+| `optimize_profile_files.py` | No fixed grid path; `--grid_dir` defaults to the settings |
+| `build_woa23_climatology.py` | Output folder from the settings or `--out_dir`; the step05 fix above |
+| `prebake_woa23_climatology.py` | Defaults from the settings |
+| `diagnostics/lib/common.py`, `costs_compute.py`, `costs_scaling.py`, `report_spatial_scaling.py`, `check_run_qc.py`, `report_costs.py` | Default folders and files from the settings |
+| `README.md`, `diagnostics/README.md` | New "Settings" section; the parameter table now gives setting names; no machine-specific paths |
+| `tests/regression/run_chain.py` | Runs `run_ncei.sh`; can pass extra settings |
+| `tests/regression/compare.py` | Compares `run_config.yaml` setting by setting, ignoring machine-specific paths |
+| `tests/unit/test_config_loader.py` (new) | The 13 loader tests |
+| `tests/fixtures/reference/documentation/run_config.yaml` (new) | The settings of the reference run |
+| `.gitignore` | `config/local.yaml` is not committed |
+
+**No step's processing code (steps 01–10) was changed.**
+
+### 2.7 For a new user, after Phase 2
+
+1. Copy `config/local.example.yaml` to `config/local.yaml` and set `data_root` (and any paths that
+   differ).
+2. Run `./run_ncei.sh`. If anything is missing, the message names it.
+
+### 2.8 Not done yet (later phases)
+
+- **Input checks (Phase 3).** The settings and data paths are checked up front, but the
+  **input profile files** are not yet. A file missing a variable can still fail inside a step.
+- **Interactive tools.** `profile_analysis/` (the map app and its store builder) and
+  `geodesic_binning/` still take their paths as command-line options or constants; they aren't part
+  of the chain and will be handled with the packaging (Phase 4).
+- **Running the full regression test on GitHub's servers** needs copies of the grid and
+  climatology files there (Phase 6).
 
 ---
 

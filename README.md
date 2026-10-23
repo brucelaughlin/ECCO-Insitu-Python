@@ -176,36 +176,56 @@ in [`diagnostics/README.md`](diagnostics/README.md)); both print PASS / FAIL and
   `PROFILES_SIZE.h` values in `documentation/` match the files. About a minute per GB.
 
 ```bash
-RUN=/Users/brucel/ecco/yip/processed_by_NCEI_profile_data/profile_files_NCEI_processed_<ts>
-python diagnostics/check_run_files.py $RUN --input_dir /Users/brucel/ecco/yip/profile_data/Interp_Profiles --log z_logs/ncei_log_<ts>.log
+RUN=<run.output_base>_<ts>          # the run folder
+python diagnostics/check_run_files.py $RUN --input_dir <run.input_dir> --log z_logs/ncei_log_<ts>.log
 python diagnostics/check_ecco_arrays.py $RUN
 ```
 
 A slower scientific check (`check_run_qc.py`, ~1 h) and the reports (profile
 counts, costs, step 11 figures) are described in `diagnostics/README.md`.
 
+### Settings: `config/`
+
+All paths and options live in YAML files, not in the code:
+
+| File | What it is |
+|------|-----------|
+| `config/defaults.yaml` | Every setting, with its default and a comment explaining it. Don't edit it for one machine or one run. |
+| `config/local.yaml` | This machine's data locations. Not committed: copy `config/local.example.yaml` and set `data_root` (relative paths are taken from it). |
+| `--config my_run.yaml` (`run_ncei.sh -C`) | Settings for one run: any subset of the keys. |
+| `--set key=value` (`run_ncei.sh -s`) | Change one setting, e.g. `-s chain.new_floor.prof_S=0.006`. |
+
+They are merged in that order (later wins), with `$ECCO_INSITU_CONFIG` (a file path) between
+`local.yaml` and `--config`. An unknown key or a value of the wrong type stops the run with a message
+naming it, so a typo can't be silently ignored. Each run saves the merged settings it used to
+`<run>/documentation/run_config.yaml`.
+
+To see the merged settings: `python config_loader.py [--config FILE] [--set key=value]`.
+
 ### Required support files
 
-All paths are set in `NCEI.py` under the `NEED PATHS / PARAMETERS` block:
+Set in `config/local.yaml` (`paths` section):
 
-| Variable | Description | Location in support package |
+| Setting | Description | Location in support package |
 |----------|-------------|---------------------------|
-| `grid_dir` | LLC90 grid directory | `grid_llc90/` |
-| `sphere_bin_dir` | Geodesic bin assignment files | `grid_llc90/sphere_point_distribution/` |
-| `climatology_file` | WOA23 full-depth T/S climatology (NetCDF) | `woa23_climatology/woa23_decav91C0_TS_clim_potential_T_1deg_fulldepth.nc` |
-| `sigma_file_dict` | CTD T/S uncertainty fields (binary) | `CTD_sigma_TS/` |
+| `paths.grid_dir` | LLC90 grid directory | `grid_llc90/` |
+| `paths.sphere_bin_dir` | Geodesic bin assignment files | `grid_llc90/sphere_point_distribution/` |
+| `paths.climatology_file` | WOA23 full-depth T/S climatology (NetCDF) | `woa23_climatology/woa23_decav91C0_TS_clim_potential_T_1deg_fulldepth.nc` |
+| `paths.prebaked_clim_dir` | Folder of pre-baked climatologies (optional, faster) | `woa23_climatology/` |
+| `paths.sigma_files` | CTD T/S uncertainty fields (binary) | `CTD_sigma_TS/` |
+| `paths.high_lat_sigma_files` | Arctic T/S uncertainty files (when `high_latitude_sigma.enabled`) | `high_latitude_uncertanties/` |
+
+The chain checks these exist before processing anything, and lists any that are missing.
 
 Pre-baked climatology files (optional but strongly recommended for performance)
-are picked up automatically: every `*_prebaked.nc` in `prebaked_clim_dir`
-(set in `NCEI.py`) is loaded and matched to input files by the depth grid
+are picked up automatically: every `*_prebaked.nc` in `paths.prebaked_clim_dir`
+is loaded and matched to input files by the depth grid
 stored in the file (`obs_depth`), so adding a new grid needs no code change.
 Generate them once with:
 
 ```bash
-python prebake_woa23_climatology.py \
-    --input_dir <path_to_Interp_Profiles> \
-    --source    <path_to_woa23_fulldepth.nc> \
-    --out_dir   <path_to_woa23_climatology_dir>
+python prebake_woa23_climatology.py        # defaults: run.input_dir and paths.climatology_file
+python prebake_woa23_climatology.py --input_dir <dir> --source <woa23_fulldepth.nc> --out_dir <dir>
 ```
 
 This pre-interpolates the WOA23 climatology onto each distinct observation depth
@@ -219,7 +239,9 @@ The recommended entry point is `run_ncei.sh`, which timestamps the output
 directory and tees all output to a log file:
 
 ```bash
-./run_ncei.sh                              # default input/output paths
+./run_ncei.sh                              # input run.input_dir, output run.output_base_<timestamp>
+./run_ncei.sh -C my_run.yaml              # settings for this run from a file
+./run_ncei.sh -s chain.new_floor.prof_S=0.006   # change one setting for this run
 ./run_ncei.sh -i /path/to/input           # override input directory
 ./run_ncei.sh -n 8                        # use 8 parallel workers
 ./run_ncei.sh -i /path/to/input -n 8 -d /path/to/output
@@ -237,8 +259,10 @@ with 8 workers.
 Alternatively, call `NCEI.py` directly:
 
 ```bash
-python NCEI.py -i <input_dir> -d <output_dir> [-n <n_workers>]
+python NCEI.py -i <input_dir> -d <output_dir> [-n <n_workers>] [--config FILE] [--set key=value]
 ```
+
+This runs steps 01–10 only; `run_ncei.sh` also runs steps 11–13.
 
 ### Output
 
@@ -256,10 +280,31 @@ fields including:
 
 ### Parameter reference
 
-Parameters set in `NCEI.py` under the `NEED PATHS / PARAMETERS` block:
+Every setting, with its default and an explanation, is in `config/defaults.yaml`. The main ones:
 
-| Parameter | Default | Description |
+| Setting | Default | Description |
 |-----------|---------|-------------|
+| `chain.llcN` | 90 | LLC grid resolution (90 or 270) for step 01's grid / tile assignment |
+| `chain.wet_or_all` | 1 | Step 01 grid placement: 1 = wet points only, 0 = all points |
+| `chain.respect_existing_zero_weights` | false | Keep weights that are already zero in the input |
+| `chain.new_floor` | T 0, S 0.005 | Minimum σ per variable |
+| `chain.apply_gamma_factor` | true | Step 10: multiply weights by the LLC90 area factor γ |
+| `chain.replace_missing_S_with_clim_S` | true | Fill missing salinity with WOA23 climatology (only for the potential-T calculation; prof_S is not changed) |
+| `chain.convert_insitu_T_to_potential` | `auto` | Step 05: `auto` = metadata decides, then the climatology check, then convert (see step 05 above); `true` / `false` force it. Converting an already-potential T cools it a second time (≈0.4 °C at 4800 m; the bug fixed 2026-10-21) |
+| `chain.exclude_high_latitude_profiles_from_clim_cost` | true | Exclude profiles poleward of `dubious_clim_lat_threshold` from the climatology-cost tests |
+| `chain.dubious_clim_lat_threshold` | 60 | Latitude threshold for the above |
+| `chain.clim_cost_qc_with_high_lat_sigma` | true | Step 06: still apply the climatology-cost tests poleward of the threshold to profiles with a high-latitude σ (Arctic file or southern constant) |
+| `high_latitude_sigma.enabled` | true | Step 04: use the high-latitude σ for \|lat\| > `min_lat` (60): north, the Arctic files (`Theta_rmse_se`, `S_rmse_se`); south, `south_constant` |
+| `high_latitude_sigma.max_dist_km` | 300 | North: use the nearest file cell with a value within this distance, else the CTD σ |
+| `high_latitude_sigma.south_constant` | T 10.0, S 5.0 | South of −60 (no southern file yet): constant σ at all depths (°C, psu); null = CTD σ and no cost tests |
+| `chain.remove_extraneous_depth_levels` | false | Step 08: true = trim trailing depth levels with no data; false = keep all files on the full 97-level input depth grid |
+| `chain.distance_tolerance` | 5000 m | Step 09: radius for the sub-daily co-location test |
+| `chain.closest_time` | 120000 (noon) | Step 09: preferred sampling time for daily decimation (HHMMSS) |
+| `chain.method` | 1 | Step 09: decimation method |
+| `spatial_scaling.window` | monthly | Step 11: profile-density windows (monthly or 10day) |
+| `pack.*` | v4r6 values | Step 13: grid, tile size, year rule, NOBSGLOB choice |
+
+-----------|---------|-------------|
 | `llcN` | 90 | LLC grid resolution (90 or 270) for step 01's grid / tile assignment |
 | `wet_or_all` | 1 | Grid interpolation: 0 = nearest wet point, 1 = all points |
 | `respect_existing_zero_weights` | False | Preserve pre-existing zero weights |

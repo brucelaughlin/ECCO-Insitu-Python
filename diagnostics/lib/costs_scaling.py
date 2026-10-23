@@ -388,7 +388,7 @@ def plot_decimation(dec_sy, fig_dir, order):
 # ---------------------------------------------------------------------------
 
 def html_sections(prof, fig_dir, run_dir, table_fn, log_path=None,
-                  input_root='/Users/brucel/ecco/yip/profile_data/Interp_Profiles'):
+                  input_root=None):
     log_path = Path(log_path) if log_path else find_log(run_dir)
     order = chain_order(log_path)
     out = [f"<h2>Scaling factors: γ (step {order['gamma']:02d}) and spatial scaling (step 11)</h2>",
@@ -412,7 +412,10 @@ def html_sections(prof, fig_dir, run_dir, table_fn, log_path=None,
         out.append('<p class="note">Chain log not found (looked for '
                    f'z_logs/ncei_log_&lt;run timestamp&gt;.log); pass --log to include this section.</p>')
         return out
-    counts = parse_step_counts(log_path, Path(input_root))
+    if input_root is None:
+        import common   # same folder (diagnostics/lib); default input folder from the chain settings
+        input_root = common.RAW_ROOT
+    counts = parse_step_counts(log_path, Path(input_root) if input_root else None)
     out.append(f'<p class="note">From the chain log <code>{log_path}</code>: profiles with valid T / S at '
                f"input and after each step. <b>Step {order['qc']:02d}</b> zero-weights points failing QC and "
                f"<b>step {order['removal']:02d}</b> removes profiles left with all-zero weights. "

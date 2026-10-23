@@ -15,16 +15,26 @@ from scipy.spatial import cKDTree
 _REPO = Path(__file__).resolve().parents[2]   # diagnostics/lib/ -> repo root
 sys.path.insert(0, str(_REPO))
 import tools  # noqa: E402  (repo-level tools.py: LLC90 grid loader, sph2cart)
+import config_loader  # noqa: E402
 
 # ---------------------------------------------------------------------------
-# Default locations (same grid/bin files as NCEI.py step 02)
+# Default locations, from the chain settings (config/defaults.yaml + config/local.yaml):
+# the same grid/bin files as NCEI.py step 02. A setting that isn't set gives None here;
+# the scripts then need the matching command-line option.
 # ---------------------------------------------------------------------------
 
-RAW_ROOT         = Path('/Users/brucel/ecco/yip/profile_data/Interp_Profiles')
-PROCESSED_PARENT = Path('/Users/brucel/ecco/yip/processed_by_NCEI_profile_data')
-REPORT_PARENT    = Path('/Users/brucel/ecco/yip/insitu_reports')
-GRID_DIR         = Path('/Users/brucel/ecco/yip/sample_data/ecco-insitu/sweet_gdrive/grid_llc90')
-SPHERE_BIN_DIR   = GRID_DIR / 'sphere_point_distribution'
+_CFG = config_loader.load()
+
+
+def _p(v):
+    return Path(v) if v else None
+
+
+RAW_ROOT         = _p(_CFG['run']['input_dir'])
+PROCESSED_PARENT = _p(Path(_CFG['run']['output_base']).parent if _CFG['run']['output_base'] else None)
+REPORT_PARENT    = _p(_CFG['diagnostics']['report_dir'])
+GRID_DIR         = _p(_CFG['paths']['grid_dir'])
+SPHERE_BIN_DIR   = _p(_CFG['paths']['sphere_bin_dir'])
 
 # grid key -> (bin-id variable in processed files, number of bins, LLC90 id file)
 GRIDS = {

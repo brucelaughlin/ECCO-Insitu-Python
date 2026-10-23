@@ -21,3 +21,6 @@ binned_output/
 # --- tests: the small fixture files are tracked despite *.nc above ---
 !tests/fixtures/**/*.nc
 .pytest_cache/
+
+# --- this machine's data locations (copy config/local.example.yaml) ---
+config/local.yaml

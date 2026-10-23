@@ -66,7 +66,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import common  # noqa: E402  (run selection, source/subtype parsing)
 
 VARS = ('T', 'S')
-REPORT_PARENT = Path('/Users/brucel/ecco/yip/cost_reports')
+REPORT_PARENT = Path(common._CFG['diagnostics']['cost_report_dir'] or '.')   # from the chain settings
 N_OUTLIERS = 200
 _FILL_9S = np.array([999, 9999, 99999, 999999, 9999999], dtype=np.float64)
 

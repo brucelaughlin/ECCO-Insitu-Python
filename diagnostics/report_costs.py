@@ -6,7 +6,7 @@ the final chain files, store it per profile, and write an HTML + PDF report.
     python diagnostics/report_costs.py --processed <run_dir>
     python diagnostics/report_costs.py --report_only [<cost_dir>]   # re-make report from existing costs
 
-Output: /Users/brucel/ecco/yip/cost_reports/cost_<run_ts>__<YYYYMMDD_HHMMSS>/
+Output: <diagnostics.cost_report_dir>/cost_<run_ts>__<YYYYMMDD_HHMMSS>/ (from the chain settings)
 See diagnostics/lib/costs_compute.py for definitions (fill rules, final vs
 true unscaled cost) and the stored files.
 """

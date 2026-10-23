@@ -1,0 +1,25 @@
+# Copy to config/local.yaml (not committed) and edit for this machine.
+# Relative paths are taken from data_root. See config/defaults.yaml for what each file is.
+
+data_root: /path/to/your/data
+
+paths:
+  grid_dir: sample_data/ecco-insitu/sweet_gdrive/grid_llc90
+  sphere_bin_dir: sample_data/ecco-insitu/sweet_gdrive/grid_llc90/sphere_point_distribution
+  climatology_file: woa23_climatology/woa23_decav91C0_TS_clim_potential_T_1deg_fulldepth.nc
+  prebaked_clim_dir: woa23_climatology
+  sigma_files:
+    prof_T: sample_data/ecco-insitu/sweet_gdrive/CTD_sigma_TS/Theta_sigma_smoothed_method_02_masked_merged_capped_extrapolated.bin
+    prof_S: sample_data/ecco-insitu/sweet_gdrive/CTD_sigma_TS/Salt_sigma_smoothed_method_02_masked_merged_capped_extrapolated.bin
+  high_lat_sigma_files:
+    prof_T: profile_data/high_latitude_uncertanties/expected_rmse_from_woa23_and_aotd_potential_temperature_ease2_100km.nc
+    prof_S: profile_data/high_latitude_uncertanties/expected_rmse_from_woa23_and_aotd_salinity_ease2_100km.nc
+  geodesic_bin_csv: sample_data/ecco-insitu/sweet_gdrive/geodesic/10242_bin_locations.csv
+
+run:
+  input_dir: profile_data/Interp_Profiles
+  output_base: processed_by_NCEI_profile_data/profile_files_NCEI_processed
+
+diagnostics:
+  report_dir: insitu_reports
+  cost_report_dir: cost_reports

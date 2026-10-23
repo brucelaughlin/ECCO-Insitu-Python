@@ -4,7 +4,9 @@ regression test.
 
 NetCDF files must have the same set of files, dimensions, variables, dtypes, attributes and
 values (exactly; NaN equals NaN). Attributes and JSON/text content that legitimately change
-from run to run (creation time, absolute paths) are listed in VOLATILE and ignored.
+from run to run (creation time, absolute paths) are listed in the VOLATILE_* sets and ignored.
+``documentation/run_config.yaml`` is compared as settings (the processing sections must match;
+paths and run options, which depend on the machine and the test, are ignored).
 """
 import json
 import os
@@ -15,6 +17,8 @@ import numpy as np
 
 VOLATILE_ATTRS = {'created'}                       # global attributes that hold the run time
 VOLATILE_JSON_KEYS = {'profiles_dir', 'arrays_dir', 'grid_dir'}   # absolute paths in the manifest
+# run_config.yaml: compared as settings, ignoring machine-specific paths and the list of merged files
+VOLATILE_CONFIG_KEYS = {'data_root', 'paths', 'run', 'diagnostics', '_sources'}
 
 
 def _files(root):
@@ -66,6 +70,12 @@ def _strip_json(o):
     return o
 
 
+def _load_settings(path):
+    import yaml
+    d = yaml.safe_load(open(path)) or {}
+    return {k: v for k, v in d.items() if k not in VOLATILE_CONFIG_KEYS}
+
+
 def compare_runs(new, ref):
     """Return a list of differences between output folders ``new`` and ``ref`` (empty if identical)."""
     problems = []
@@ -77,6 +87,11 @@ def compare_runs(new, ref):
         a, b = os.path.join(new, rel), os.path.join(ref, rel)
         if rel.endswith('.nc'):
             _compare_nc(a, b, rel, problems)
+        elif rel.endswith('run_config.yaml'):
+            ca, cb = (_load_settings(p) for p in (a, b))
+            if ca != cb:
+                diff = sorted(k for k in set(ca) | set(cb) if ca.get(k) != cb.get(k))
+                problems.append(f'{rel}: settings differ in sections {diff}')
         elif rel.endswith('.json'):
             if _strip_json(json.load(open(a))) != _strip_json(json.load(open(b))):
                 problems.append(f'{rel}: content differs')

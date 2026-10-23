@@ -14,7 +14,9 @@ unless you pass a run directory.
 | `report_costs.py` | How big are the T/S costs vs climatology, per source / year? | ~1 min + report | `cost_reports/cost_<run>__<ts>/` (HTML + PDF, per-profile costs) |
 | `report_spatial_scaling.py` | What did step 11 do (counts, occupancy, mean scaling factor, per T/S)? | minutes | `processed_by_NCEI_profile_data/figures/figures_<ts>/` (PNGs) |
 
-Report output folders are under `/Users/brucel/ecco/yip/`. Run folders hold
+Default locations (input files, run folders, report folders, grid, climatology) come from
+the chain settings: `config/local.yaml` (`run.*`, `diagnostics.*`, `paths.*`; see the main
+README). Run folders hold
 `yearly/`, `ecco_arrays/` (model-ready files only) and `documentation/` (step 13
 summary files); every tool accepts the run folder and reads the per-year files from
 `yearly/` (older runs, with source folders at the top level, still work).
@@ -24,10 +26,10 @@ non-profile file left in `ecco_arrays/`.
 ## After every chain run
 
 ```bash
-RUN=/Users/brucel/ecco/yip/processed_by_NCEI_profile_data/profile_files_NCEI_processed_<ts>
+RUN=<run.output_base>_<ts>          # the run folder
 
 python diagnostics/check_run_files.py $RUN \
-    --input_dir /Users/brucel/ecco/yip/profile_data/Interp_Profiles \
+    --input_dir <run.input_dir> \
     --log z_logs/ncei_log_<ts>.log
 
 python diagnostics/check_ecco_arrays.py $RUN          # the step 13 model-ready files

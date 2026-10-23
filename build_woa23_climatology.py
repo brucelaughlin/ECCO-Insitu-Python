@@ -12,15 +12,18 @@ Boss's spec (Sept 2026):
 Output variable names (potential_T_monthly, S_monthly, lon, lat, depth) match
 what step03.py already reads, so the built file drops into the existing chain.
 
-Potential-temperature conversion reuses step06.calculate_potential_T verbatim
+Potential-temperature conversion reuses step05.calculate_potential_T verbatim
 (by reshaping each WOA (lat,lon) cell into a pseudo-profile), so the climatology
 is converted with the EXACT same UNESCO algorithm as the observations.
 
 Downloads ~24 files (~1.4 GB) to woa23_climatology/raw/ (kept for provenance;
 delete manually if you want the space back).
 
+Output folder: the folder of paths.climatology_file in the chain settings (config/local.yaml),
+or --out_dir.
+
 Run:
-    python build_woa23_climatology.py
+    python build_woa23_climatology.py [--out_dir DIR]
 """
 
 import numpy as np
@@ -30,7 +33,10 @@ import urllib.request
 import urllib.error
 import time
 
-import step06  # reuse calculate_potential_T verbatim
+import argparse
+
+import config_loader
+import step05  # reuse calculate_potential_T verbatim
 
 # ==============================================================================
 # Config
@@ -39,9 +45,11 @@ import step06  # reuse calculate_potential_T verbatim
 DECADE     = 'decav91C0'      # 1991-2020 climate normal
 RES        = '1.00'           # 1-degree grid
 GRID_CODE  = '01'             # filename suffix for 1-degree
-OUT_DIR    = Path('/Users/brucel/ecco/yip/woa23_climatology')
-RAW_DIR    = OUT_DIR / 'raw'
-OUT_FILE   = OUT_DIR / f'woa23_{DECADE}_TS_clim_potential_T_1deg_fulldepth.nc'
+OUT_NAME   = f'woa23_{DECADE}_TS_clim_potential_T_1deg_fulldepth.nc'
+# Output folder; set in main() from --out_dir or the chain settings.
+OUT_DIR    = None
+RAW_DIR    = None
+OUT_FILE   = None
 
 BASE = 'https://www.ncei.noaa.gov/data/oceans/woa/WOA23/DATA'
 
@@ -186,7 +194,7 @@ def seasonal_to_monthly(seasonal_stack):
 
 def to_potential_T(T_insitu, S, depth, lat, lon):
     """Convert in-situ T (12, nd, nlat, nlon) to potential T using the SAME
-    UNESCO routine the chain applies to observations (step06.calculate_potential_T).
+    UNESCO routine the chain applies to observations (step05.calculate_potential_T).
 
     Each (lat, lon) cell is treated as a pseudo-profile: iPROF = nlat*nlon,
     iDEPTH = nd. calculate_potential_T needs prof_depth (1-D over iDEPTH),
@@ -209,7 +217,7 @@ def to_potential_T(T_insitu, S, depth, lat, lon):
             }
         )
         S_da = xr.DataArray(S_prof, dims=['iPROF', 'iDEPTH'])
-        pot_prof = step06.calculate_potential_T(ds, S_da)          # (iPROF, iDEPTH)
+        pot_prof = step05.calculate_potential_T(ds, S_da)          # (iPROF, iDEPTH)
         pot[m] = np.moveaxis(np.asarray(pot_prof).reshape(nlat, nlon, nd), -1, 0)
     return pot
 
@@ -230,7 +238,24 @@ def _splice_full_depth(monthly, seas_monthly, depth_m, depth_full):
     return full
 
 
+def _set_out_dir(out_dir):
+    global OUT_DIR, RAW_DIR, OUT_FILE
+    OUT_DIR = Path(out_dir)
+    RAW_DIR = OUT_DIR / 'raw'
+    OUT_FILE = OUT_DIR / OUT_NAME
+
+
 def main():
+    ap = argparse.ArgumentParser(description='Build the WOA23 monthly T/S climatology for the NCEI chain.')
+    ap.add_argument('--out_dir', default=None,
+                    help='output folder (default: the folder of paths.climatology_file in the settings)')
+    a = ap.parse_args()
+    if a.out_dir is None:
+        clim = config_loader.load()['paths']['climatology_file']
+        if not clim:
+            ap.error('give --out_dir, or set paths.climatology_file in config/local.yaml')
+        a.out_dir = Path(clim).parent
+    _set_out_dir(a.out_dir)
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     print("1/5 downloading WOA23 decav91C0 1-deg monthly + seasonal T and S ...")
     download_all()
@@ -279,7 +304,7 @@ def main():
             'depth_note': 'monthly fields 0-1500 m; below 1500 m, seasonal fields '
                           '(JFM/AMJ/JAS/OND) interpolated to monthly by day-of-year',
             'potential_T_note': 'in-situ t_an converted to potential temperature via '
-                                'UNESCO 1983 (step06.calculate_potential_T)',
+                                'UNESCO 1983 (step05.calculate_potential_T)',
             'salinity_note': 's_an, PSS-78',
         },
     )

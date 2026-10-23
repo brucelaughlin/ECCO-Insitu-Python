@@ -37,6 +37,9 @@ import warnings
 import numpy as np
 import netCDF4
 
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))   # repo root
+import config_loader  # noqa: E402
+
 warnings.filterwarnings('ignore', category=RuntimeWarning)
 
 # ---------------------------------------------------------------------------
@@ -510,9 +513,9 @@ def main():
     p.add_argument('--baseline', metavar='DIR',
                    help='prior output directory for cross-run regression (check 3)')
     p.add_argument('--woa23', metavar='FILE',
-                   default='/Users/brucel/ecco/yip/woa23_climatology/'
-                           'woa23_decav91C0_TS_clim_potential_T_1deg_fulldepth.nc',
-                   help='WOA23 full-depth climatology file for check 4')
+                   default=None,
+                   help='WOA23 full-depth climatology file for check 4 '
+                        '(default: paths.climatology_file in the settings)')
     p.add_argument('--no-woa', action='store_true',
                    help='skip check 4 (external WOA23 reference)')
     p.add_argument('--summary', action='store_true',
@@ -534,6 +537,8 @@ def main():
             p.error(f'baseline not a directory: {args.baseline}')
         check_regression(args.output_dir, args.baseline, summary=args.summary)
 
+    if args.woa23 is None:
+        args.woa23 = config_loader.load()['paths']['climatology_file'] or ''
     if not args.no_woa:
         if not os.path.isfile(args.woa23):
             print(f'\nSkipping check 4: WOA23 file not found: {args.woa23}')

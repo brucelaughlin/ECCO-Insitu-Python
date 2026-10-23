@@ -79,8 +79,27 @@ The full write-up for readers (what was done, why, and how it was checked, in pl
     tests.
   - **To regenerate the reference after an intended change:** `python tests/regression/make_reference.py`.
   - pytest was installed into `ecco_env1`.
-- **Next: Phase 2 (configuration).**
-  - Move every path and option out of `NCEI.py` and `run_ncei.sh` into one YAML file, with defaults
-    equal to today's values, so the regression test still passes unchanged.
-  - Save the config used into each run's output.
-  - Make the data paths environment-overridable, so CI and other users can point them elsewhere.
+- 2026-10-23, **Phase 2 done** (details in the report, Phase 2 section)
+  - **Settings:** `config/defaults.yaml` (every setting, with today's values), `config/local.yaml`
+    (machine paths, gitignored; the template is `local.example.yaml`), `--config` / `--set`
+    (`run_ncei.sh -C` / `-s`).
+    - `config_loader.py` merges and validates them (unknown key or wrong type → error), checks the data
+      paths, and saves `<run>/documentation/run_config.yaml`.
+  - **Code changes:** `NCEI.py`, `run_ncei.sh`, steps 11 and 13, optimize, both climatology builders,
+    and the diagnostics all read the settings.
+    - No hard-coded `/Users` paths remain in the chain or the diagnostics.
+  - **Bug fixed:** `build_woa23_climatology.py` called `step06.calculate_potential_T`, which is now in
+    step05.
+  - **Tests:**
+    - The regression test now runs `run_ncei.sh` itself.
+    - The outputs are bit-identical to the Phase 1 reference (checked against the committed files);
+      only `run_config.yaml` was added to the reference.
+    - A `-s` override shows up in the outputs.
+    - 13 new loader tests; 45 tests in total.
+- **Next: Phase 3 (robustness).**
+  - An input-file contract and an up-front checker (required and optional variables, dimensions,
+    dtypes, fill values, date/lat/lon/depth ranges, T label), with per-file reasons in a run summary.
+  - Replace the try/except around the whole chain with clear errors.
+  - Switch to `logging`.
+  - Remove the pdb imports.
+  - Each new check gets a unit test and a fixture of a bad file.

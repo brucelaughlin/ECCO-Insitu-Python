@@ -10,15 +10,17 @@ import logging
 import glob
 import io
 import contextlib
+import copy
 import tempfile
 import concurrent.futures
 from pathlib import Path
 import argparse
 from functools import partial
 
-# Add the directory containing the package to the search path
-sys.path.append(os.path.abspath("/Users/brucel/ecco/yip/ECCO-Insitu-Python"))
+# Make the chain's modules importable wherever this is run from
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
+import config_loader
 import tools
 import step01
 import step02
@@ -299,82 +301,79 @@ def _process_one_file(args):
     return file_dex, n_total, tmp_path, bad_flag
 
 
-def NCEI_pipeline(dest_dir, input_dir, n_workers=None):
+def NCEI_pipeline(dest_dir, input_dir, n_workers=None, cfg=None):
+    """Run steps 01-10 on every ``*.nc`` file under ``input_dir``, writing to ``dest_dir``.
+
+    Parameters
+    ----------
+    dest_dir : str or Path
+        Output folder; files keep their sub-folder layout from ``input_dir``.
+    input_dir : str or Path
+        Folder of input profile files, searched recursively.
+    n_workers : int, optional
+        Parallel worker processes; default ``run.n_workers`` from the settings, else
+        min(8, CPUs - 1).
+    cfg : dict, optional
+        Settings from :func:`config_loader.load`; default: the standard files
+        (``config/defaults.yaml`` + ``config/local.yaml``).
+    """
+    if cfg is None:
+        cfg = config_loader.load()
+    config_loader.check_required_paths(cfg)
 
     input_profile_files = list(Path(input_dir).rglob("*.nc"))
     input_profile_files.sort()
 
-    # ==========================================================================================
-    # ========================== START OF NEED PATHS/ PARAMETERS ==============================
-    # ==========================================================================================
+    paths, ch, hl = cfg['paths'], cfg['chain'], cfg['high_latitude_sigma']
+    profile_var_key_set = set(ch['variables'])
 
-    profile_var_key_set = {'prof_T', 'prof_S'}
+    grid_dir = paths['grid_dir']
+    sphere_bin_dir = paths['sphere_bin_dir']
+    climatology_file = paths['climatology_file']
+    # Pre-baked climatologies (optional): every *_prebaked.nc in this folder is used, keyed
+    # by its obs_depth grid; an input grid without a match falls back to full-depth
+    # interpolation. Regenerate with:  python prebake_woa23_climatology.py
+    prebaked_clim_dir = paths['prebaked_clim_dir']
+    sigma_file_dict = dict(paths['sigma_files'])
 
-    grid_dir = '/Users/brucel/ecco/yip/sample_data/ecco-insitu/sweet_gdrive/grid_llc90'
-    sphere_bin_dir = '/Users/brucel/ecco/yip/sample_data/ecco-insitu/sweet_gdrive/grid_llc90/sphere_point_distribution'
-    climatology_file = "/Users/brucel/ecco/yip/woa23_climatology/woa23_decav91C0_TS_clim_potential_T_1deg_fulldepth.nc"
+    # High-latitude uncertainties (step 04), used instead of the CTD sigma poleward of
+    # min_lat (prof_Vuncertainty_source: 0 = CTD sigma, 1 = Arctic file, 2 = southern constant).
+    use_high_lat_sigma = hl['enabled']
+    high_lat_sigma_file_dict = (
+        {v: (paths['high_lat_sigma_files'][v], hl['north_file_vars'][v]) for v in ('prof_T', 'prof_S')}
+        if use_high_lat_sigma else None)
+    if use_high_lat_sigma:
+        config_loader.check_required_paths(cfg, ('paths.high_lat_sigma_files.prof_T',
+                                                 'paths.high_lat_sigma_files.prof_S'))
+    high_lat_sigma_min_lat = hl['min_lat']
+    high_lat_sigma_max_dist_km = hl['max_dist_km']
+    southern_sigma_const_dict = dict(hl['south_constant']) if use_high_lat_sigma and hl['south_constant'] else None
 
-    # Pre-baked climatologies: depth-interpolation done offline per grid, so step03
-    # only needs time-blend + lat/lon lookup at runtime.  Every *_prebaked.nc in
-    # this directory is used, keyed by the obs_depth grid stored in the file; any
-    # input grid without a match falls back to full-depth interpolation (with a
-    # log line saying so).  Regenerate with:  python prebake_woa23_climatology.py
-    prebaked_clim_dir = '/Users/brucel/ecco/yip/woa23_climatology'
+    llcN = ch['llcN']
+    wet_or_all = ch['wet_or_all']
+    respect_existing_zero_weights = ch['respect_existing_zero_weights']
+    new_floor_dict = dict(ch['new_floor'])
+    apply_gamma_factor = ch['apply_gamma_factor']
+    replace_missing_S_with_clim_S = ch['replace_missing_S_with_clim_S']
+    convert_insitu_T_to_potential = ch['convert_insitu_T_to_potential']
+    exclude_high_latitude_profiles_from_clim_cost = ch['exclude_high_latitude_profiles_from_clim_cost']
+    dubious_clim_lat_threshold = ch['dubious_clim_lat_threshold']
+    clim_cost_qc_with_high_lat_sigma = ch['clim_cost_qc_with_high_lat_sigma']
+    remove_extraneous_depth_levels = ch['remove_extraneous_depth_levels']
+    distance_tolerance = ch['distance_tolerance']
+    closest_time = ch['closest_time']
+    method = ch['method']
+    if n_workers is None:
+        n_workers = cfg['run']['n_workers']
 
-    sigma_file_dict = {
-            'prof_T': '/Users/brucel/ecco/yip/sample_data/ecco-insitu/sweet_gdrive/CTD_sigma_TS/Theta_sigma_smoothed_method_02_masked_merged_capped_extrapolated.bin',
-            'prof_S': '/Users/brucel/ecco/yip/sample_data/ecco-insitu/sweet_gdrive/CTD_sigma_TS/Salt_sigma_smoothed_method_02_masked_merged_capped_extrapolated.bin',
-    }
+    # Record the settings used with the run: <run>/documentation/run_config.yaml
+    # (<run> is the parent of dest_dir when dest_dir is <run>/yearly).
+    run_root = Path(dest_dir).parent if Path(dest_dir).name == 'yearly' else Path(dest_dir)
+    used = copy.deepcopy(cfg)
+    used['run']['input_dir'] = str(Path(input_dir).resolve())
+    config_loader.dump(used, run_root / 'documentation' / 'run_config.yaml')
 
-    # High-latitude T / S uncertainties, used instead of sigma_file_dict poleward
-    # of high_lat_sigma_min_lat; those profiles then get the step 06 climatology-cost
-    # tests (prof_Vuncertainty_source: 0 = CTD sigma, 1 = Arctic file, 2 = southern constant).
-    # North: Arctic files (EASE2 100 km grid, 59.4-89.4 N; see high_latitude_sigma.py),
-    #   nearest cell with a value within high_lat_sigma_max_dist_km.
-    # South: no file yet; a constant sigma per variable at all depths
-    #   (southern_sigma_const_dict, deg C / psu).  None = CTD sigma, cost tests skipped.
-    # Set use_high_lat_sigma = False to go back to the CTD sigma everywhere.
-    use_high_lat_sigma = True
-    _hl_dir = '/Users/brucel/ecco/yip/profile_data/high_latitude_uncertanties'
-    high_lat_sigma_file_dict = {
-            'prof_T': (f'{_hl_dir}/expected_rmse_from_woa23_and_aotd_potential_temperature_ease2_100km.nc', 'Theta_rmse_se'),
-            'prof_S': (f'{_hl_dir}/expected_rmse_from_woa23_and_aotd_salinity_ease2_100km.nc', 'S_rmse_se'),
-    } if use_high_lat_sigma else None
-    high_lat_sigma_min_lat = 60
-    high_lat_sigma_max_dist_km = 300
-    southern_sigma_const_dict = {'prof_T': 10.0, 'prof_S': 5.0} if use_high_lat_sigma else None
-
-    llcN = 90
-    wet_or_all = 1
-    respect_existing_zero_weights = False
-    new_floor_dict = {'prof_T': 0, 'prof_S': 0.005}
-    apply_gamma_factor = True
-    replace_missing_S_with_clim_S = True
-    # step05: convert in-situ T to potential T. 'auto' = the file's metadata decides
-    # (prof_T labelled potential -> not converted, in-situ -> converted); with no label,
-    # a check against the climatology decides (loudly flagged in the log), and if that
-    # is unclear too, T is converted. The check never overrides a label. All of
-    # Interp_Profiles is labelled potential (converting again made deep T too cold,
-    # ~0.4 °C at 4800 m). True / False to force.
-    convert_insitu_T_to_potential = 'auto'
-    exclude_high_latitude_profiles_from_clim_cost = True
-    dubious_clim_lat_threshold = 60
-    # step06: apply the clim-cost tests poleward of dubious_clim_lat_threshold to
-    # profiles with a high-latitude sigma (Arctic file or southern constant; False = skip them all, as before)
-    clim_cost_qc_with_high_lat_sigma = True
-    # step08: True = trim trailing depth levels with no data (each file ends at its
-    # deepest data).  False = keep every file on the full input depth grid
-    # (97 levels, 2-6000 m); empty levels are fill with zero weight.
-    remove_extraneous_depth_levels = False
-    distance_tolerance = 5e3
-    closest_time = 120000
-    method = 1
-
-    # ==========================================================================================
-    # ========================== END OF NEED PATHS/ PARAMETERS ================================
-    # ==========================================================================================
-
-    prebaked_clim_paths = sorted(Path(prebaked_clim_dir).glob('*_prebaked.nc'))
+    prebaked_clim_paths = sorted(Path(prebaked_clim_dir).glob('*_prebaked.nc')) if prebaked_clim_dir else []
     print(f"[NCEI] {len(prebaked_clim_paths)} pre-baked climatology file(s) in {prebaked_clim_dir}")
     for _pb in prebaked_clim_paths:
         print(f"         {_pb.name}")
@@ -452,8 +451,9 @@ def NCEI_pipeline(dest_dir, input_dir, n_workers=None):
                 _flush_log(tmp_path)
 
 
-def main(dest_dir, input_dir, n_workers=None):
-    NCEI_pipeline(dest_dir, input_dir, n_workers=n_workers)
+def main(dest_dir, input_dir, n_workers=None, cfg=None):
+    """Run steps 01-10; see :func:`NCEI_pipeline`."""
+    NCEI_pipeline(dest_dir, input_dir, n_workers=n_workers, cfg=cfg)
 
 
 if __name__ == '__main__':
@@ -461,8 +461,8 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
 
     parser.add_argument("-i", "--input_dir", action="store",
-                    help="File path to NETCDF files containing MITprofs info.",
-                    dest="input_dir", type=str, required=True)
+                    help="Folder of input profile files (default: run.input_dir in the settings).",
+                    dest="input_dir", type=str, default=None)
 
     parser.add_argument("-d", "--dest_dir", action="store",
                 help="File path where you would like to store generated NETCDF file.",
@@ -472,6 +472,14 @@ if __name__ == '__main__':
                 help="Number of parallel worker processes (default: min(8, cpu_count-1)).",
                 dest="n_workers", type=int, default=None)
 
-    args = parser.parse_args()
+    config_loader.add_arguments(parser)
 
-    main(args.dest_dir, args.input_dir, n_workers=args.n_workers)
+    args = parser.parse_args()
+    try:
+        cfg = config_loader.from_args(args)
+        input_dir = args.input_dir or cfg['run']['input_dir']
+        if not input_dir:
+            raise config_loader.ConfigError('no input folder: give -i or set run.input_dir')
+    except config_loader.ConfigError as e:
+        sys.exit(f"config error: {e}")
+    main(args.dest_dir, input_dir, n_workers=args.n_workers, cfg=cfg)

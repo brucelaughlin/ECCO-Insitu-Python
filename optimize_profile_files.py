@@ -79,7 +79,7 @@ from scipy.spatial import cKDTree
 DEFAULTS = {
     'llc': 90,
     'tile': 30,
-    'grid_dir': '/Users/brucel/ecco/yip/sample_data/ecco-insitu/sweet_gdrive/grid_llc90',
+    'grid_dir': None,                         # required: run() and --grid_dir (default: paths.grid_dir in the settings)
     'split_by_subdir': ['ITP'],               # these sources split by sub-folder (ITP_L2, ITP_L3)
     'year_rule': 'whole_years',
     'nobsglob': 'auto',
@@ -357,6 +357,8 @@ def run(profiles_dir, out_dir=None, llc=DEFAULTS['llc'], tile=DEFAULTS['tile'], 
         n_workers=None, docs_dir=None):
     profiles_dir = Path(profiles_dir)
     split_by_subdir = set(DEFAULTS['split_by_subdir'] if split_by_subdir is None else split_by_subdir)
+    if grid_dir is None:
+        raise ValueError('grid_dir is required (the folder with XC.data, YC.data)')
     grid = Grid(grid_dir, llc, tile)
     if position == 'auto':
         position = 'interp' if llc == 90 else 'obs'
@@ -464,7 +466,8 @@ def main():
                     help="summary files (manifest, sweep, PROFILES_SIZE text); default: 'documentation' beside OUT_DIR")
     ap.add_argument('--llc', type=int, default=DEFAULTS['llc'], help='LLC grid size N')
     ap.add_argument('--tile', type=int, default=DEFAULTS['tile'], help='per-rank tile size (cells per side, sNx = sNy)')
-    ap.add_argument('--grid_dir', default=DEFAULTS['grid_dir'], help='folder with [no_blank/]XC.data, YC.data')
+    ap.add_argument('--grid_dir', default=None,
+                    help='folder with [no_blank/]XC.data, YC.data (default: paths.grid_dir in config/local.yaml)')
     ap.add_argument('--position', choices=['auto', 'interp', 'obs'], default='auto')
     ap.add_argument('--split_by_subdir', default=','.join(DEFAULTS['split_by_subdir']),
                     help='sources whose sub-folders are separate provenances (comma list, empty for none)')
@@ -476,6 +479,11 @@ def main():
     ap.add_argument('--step', type=int, default=DEFAULTS['step'], help='auto: NOBSGLOB sweep step')
     ap.add_argument('-n', '--n_workers', type=int, default=None)
     a = ap.parse_args()
+    if a.grid_dir is None:
+        import config_loader
+        a.grid_dir = config_loader.load()['paths']['grid_dir']
+        if a.grid_dir is None:
+            ap.error('give --grid_dir, or set paths.grid_dir in config/local.yaml')
     run(a.profiles_dir, a.write, a.llc, a.tile, a.grid_dir, a.position,
         [s for s in a.split_by_subdir.split(',') if s], a.year_rule, a.nobsglob, a.tolerance,
         a.max_files, a.step, a.n_workers, a.docs_dir)

@@ -40,11 +40,12 @@ import xarray as xr
 
 import clim_interp
 
-_DEFAULT_SOURCE = (
-    "/Users/brucel/ecco/yip/woa23_climatology/"
-    "woa23_decav91C0_TS_clim_potential_T_1deg_fulldepth.nc"
-)
-_DEFAULT_INPUT_DIR = "/Users/brucel/ecco/yip/profile_data/Interp_Profiles"
+import config_loader
+
+# Defaults from the chain settings (config/defaults.yaml + config/local.yaml)
+_CFG = config_loader.load()
+_DEFAULT_SOURCE = _CFG['paths']['climatology_file']
+_DEFAULT_INPUT_DIR = _CFG['run']['input_dir']
 
 
 def discover_grids(input_dir, min_levels=2):
@@ -198,6 +199,9 @@ def main():
                         help='Skip grids with fewer than this many levels (default: 2)')
     args = parser.parse_args()
 
+    if not args.source or not args.input_dir:
+        parser.error('give --source and --input_dir, or set paths.climatology_file and run.input_dir '
+                     'in config/local.yaml')
     source = Path(args.source)
     if not source.exists():
         print(f"ERROR: source file not found: {source}", file=sys.stderr)

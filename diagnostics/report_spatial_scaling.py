@@ -37,13 +37,13 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))   # repo root, for 
 from step11_spatial_scaling import (  # noqa: E402
     _count_profiles, _has_obs, _WINDOW_FN, N_BINS, SCALED_VARS
 )
+import config_loader  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # Geodesic bin centers
 # ---------------------------------------------------------------------------
 
-_GEO_CSV = Path('/Users/brucel/ecco/yip/sample_data/ecco-insitu/sweet_gdrive/'
-                'geodesic/10242_bin_locations.csv')
+_GEO_CSV = Path(config_loader.load()['paths']['geodesic_bin_csv'] or 'paths.geodesic_bin_csv-not-set')
 
 
 def _load_bin_centers():

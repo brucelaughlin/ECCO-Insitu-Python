@@ -52,10 +52,14 @@ import concurrent.futures
 import datetime
 import os
 import re
+import sys
 from pathlib import Path
 
 import numpy as np
 import xarray as xr
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import config_loader  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -355,13 +359,19 @@ if __name__ == '__main__':
         description='Apply per-variable spatial density scaling to processed profile NC files.')
     parser.add_argument('run_dir',
                         help='Root directory of a completed NCEI run (searched recursively for *.nc)')
-    parser.add_argument('--window', default='monthly',
+    parser.add_argument('--window', default=None,
                         choices=list(_WINDOW_FN),
                         help='Window mode for counting profile density '
-                             '(default: monthly; 10day for 10-day windows)')
+                             '(default: spatial_scaling.window in the settings, normally monthly)')
     parser.add_argument('--dry_run', action='store_true',
                         help='Print what would be done without modifying any files')
     parser.add_argument('-n', '--n_workers', type=int, default=None,
                         help='Worker processes for pass 2 (default: min(8, cpu_count-1))')
+    config_loader.add_arguments(parser)
     args = parser.parse_args()
-    main(args.run_dir, window_mode=args.window, dry_run=args.dry_run, n_workers=args.n_workers)
+    try:
+        cfg = config_loader.from_args(args)
+    except config_loader.ConfigError as e:
+        sys.exit(f"config error: {e}")
+    main(args.run_dir, window_mode=args.window or cfg['spatial_scaling']['window'], dry_run=args.dry_run,
+         n_workers=args.n_workers if args.n_workers is not None else cfg['run']['n_workers'])
