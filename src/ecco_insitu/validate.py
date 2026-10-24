@@ -60,7 +60,19 @@ FIRST_YEAR = 1950               # step 06 rejects earlier dates
 
 @dataclass
 class FileReport:
-    """Result of checking one file."""
+    """Result of checking one file.
+
+    Attributes
+    ----------
+    path : str
+        The file checked.
+    errors : list of str
+        Problems that stop the file being processed.
+    warnings : list of str
+        Unusual things that don't stop it.
+    n_profiles : int
+        Number of profiles (``iPROF`` length), when it could be read.
+    """
     path: str
     errors: list = field(default_factory=list)
     warnings: list = field(default_factory=list)
@@ -72,7 +84,12 @@ class FileReport:
         return not self.errors
 
     def lines(self):
-        """Human-readable lines, errors first."""
+        """Human-readable lines, errors first: ``ERROR   ...`` / ``WARNING ...``.
+
+        Returns
+        -------
+        list of str
+        """
         return [f'ERROR   {e}' for e in self.errors] + [f'WARNING {w}' for w in self.warnings]
 
 
@@ -210,7 +227,19 @@ def check_profile_file(path, variables=OBS_VARS):
 
 
 def check_input_dir(input_dir, variables=OBS_VARS):
-    """Check every ``*.nc`` file under ``input_dir`` (recursively). Returns a list of FileReport."""
+    """Check every ``*.nc`` file under ``input_dir`` (recursively) with :func:`check_profile_file`.
+
+    Parameters
+    ----------
+    input_dir : str or Path
+    variables : sequence of str
+        The observed variables the chain processes.
+
+    Returns
+    -------
+    list of FileReport
+        In sorted path order.
+    """
     return [check_profile_file(f, variables) for f in sorted(Path(input_dir).rglob('*.nc'))]
 
 
@@ -318,7 +347,18 @@ def check_climatology_file(path, prebaked=False):
 # ---------------------------------------------------------------------------------------------
 
 def summarize(reports, root=None):
-    """Lines summarizing a list of FileReport: counts, then each file with problems."""
+    """Lines summarizing a list of reports: the counts, then each file with problems and its lines.
+
+    Parameters
+    ----------
+    reports : list of FileReport
+    root : str or Path, optional
+        If given, file names are shown relative to it.
+
+    Returns
+    -------
+    list of str
+    """
     n_err = sum(not r.ok for r in reports)
     n_warn = sum(r.ok and bool(r.warnings) for r in reports)
     out = [f'{len(reports)} files checked: {len(reports) - n_err} can be processed '
@@ -332,6 +372,19 @@ def summarize(reports, root=None):
 
 
 def cli(argv=None):
+    """Command-line entry point (``ecco-insitu validate``): check a folder of input files, or one
+    climatology file with ``--climatology FILE`` (``--prebaked`` for a pre-baked one).
+
+    Parameters
+    ----------
+    argv : list of str, optional
+        Arguments (default: ``sys.argv[1:]``).
+
+    Returns
+    -------
+    int
+        0 if every file can be used, 1 otherwise.
+    """
     ap = argparse.ArgumentParser(description='Check NCEI chain input files (see docs/input_contract.md).')
     ap.add_argument('input_dir', nargs='?', help='folder of input profile files (searched recursively)')
     ap.add_argument('--climatology', metavar='FILE', help='check a climatology file instead')

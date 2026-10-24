@@ -1,3 +1,25 @@
+"""Convert World Ocean Database (WOD) CSV exports to MITprof-format NetCDF (``ecco-insitu csv-to-nc``).
+
+This is the chain's optional step 0, for data that arrives as WOD CSV rather than as MITprof
+NetCDF. Every ``*.csv`` file in the input folder is read profile by profile:
+
+- a line of dashes starts a profile, and ``END OF VARIABLES SECTION`` ends it;
+- the header gives the cast, cruise, country, probe, institute and database origin
+  (``prof_descr``), the date and decimal time, and the position;
+- the data rows give depth, T and S with their WOD and originator flags.
+
+A profile is dropped, with a line in a per-file log (``log_<name>_<timestamp>.txt`` in the output
+folder), if its date/time is invalid, its position is out of range, or its originator flags mark the
+data bad.
+
+Profiles are written one NetCDF file per year, ``<csv name>_<year>.nc``, on the depth grid of
+:func:`make_prof_depth`, with the extra MITprof variables the chain expects created and filled with
+zeros (weights, estimates, errors, flags, interpolation fields).
+
+Main functions: :func:`csv_processing` (the conversion), :func:`createNETCDF` (writes one file),
+:func:`parse_row_info` (parses one CSV row).
+"""
+
 import argparse
 import sys
 import os
@@ -9,7 +31,21 @@ import numpy as np
 import itertools
 
 def make_prof_depth(levels):
+    """The fixed depth grid of the CSV-converted files.
 
+    Levels 0-20: 0-100 m every 5 m; 21-36: 125-500 m every 25 m; 37-66: 600-2000 m every 50 m;
+    67 and below: every 100 m from 2100 m.
+
+    Parameters
+    ----------
+    levels : int
+        Number of levels.
+
+    Returns
+    -------
+    numpy.ndarray
+        Depths (m).
+    """
     val = 0
     depth = []
 
@@ -32,6 +68,31 @@ def createNETCDF(file, dest_dir, prof_desc, prof_HHMMSS, prof_lat, prof_lon, pro
     
 
     # create new netCDF file for each year
+    """Write one year of parsed profiles to ``<dest_dir>/<csv name>_<year>.nc``.
+
+    The per-profile lists (ragged across profiles) are padded with NaN into ``(iPROF, iDEPTH)`` arrays.
+    ``prof_date`` is computed from ``prof_YYYYMMDD`` and ``prof_HHMMSS`` as a MATLAB datenum. The other
+    MITprof variables the chain expects (``prof_Tweight``, ``prof_Sweight``, estimates, errors, flags,
+    ``prof_basin``, ``prof_interp_*``, ``profile_flattened_monotonic_grid_indices``) are created and
+    filled with zeros.
+
+    Parameters
+    ----------
+    file : str
+        The CSV file the profiles came from (for the output name and attributes).
+    dest_dir : str
+        Output folder.
+    prof_desc : list of list of str
+        Description strings per profile.
+    prof_HHMMSS, prof_YYMMDD : list
+        Time (HHMMSS) and date (YYYYMMDD) per profile; the year of the first profile names the file.
+    prof_lat, prof_lon : list of float
+        Position per profile (degrees).
+    prof_S, prof_T : list of list of float
+        Salinity (psu) and temperature (deg C) per profile and level.
+    prof_depth_f_flag, prof_depth_o_flag, prof_T_f_flag, prof_T_o_flag, prof_S_f_flag, prof_S_o_flag : list of list
+        WOD (``f``) and originator (``o``) quality flags per profile and level.
+    """
     filename = os.path.basename(file).split('.csv')
     year = str(prof_YYMMDD[0])[:4]
     output_filename = "{}_{}.nc".format(filename[0], year)
@@ -226,6 +287,33 @@ def parse_row_info(row, profflag_found, unique_years, foundNewYear, foundFirstPr
                    one_prof_T_f_flag, one_prof_T_o_flag, one_prof_S_f_flag, one_prof_S_o_flag):
     
     # Parse description parem
+    """Parse one row of a WOD CSV profile into the current profile's fields.
+
+    Header rows set the description, time (decimal hours to HHMMSS), date and position; once the
+    ``Prof-Flag`` row has been seen (``profflag_found``), each row is a data level and its depth flags,
+    T, S and their flags are appended (NaN where a value can't be read).
+
+    Parameters
+    ----------
+    row : list of str
+        The CSV row.
+    profflag_found : bool
+        True once the data rows have started.
+    unique_years : set of int
+        Years seen so far; a new year is added here.
+    foundNewYear, foundFirstProfile : bool
+        Current state of the year tracking.
+    one_prof_desc, one_prof_S, one_prof_T, one_prof_depth_f_flag, one_prof_depth_o_flag, one_prof_T_f_flag, one_prof_T_o_flag, one_prof_S_f_flag, one_prof_S_o_flag : list
+        The current profile's lists, appended to in place.
+    one_prof_HHMMSS, one_prof_lat, one_prof_lon, one_prof_YYMMDD
+        The current profile's scalar fields.
+
+    Returns
+    -------
+    tuple
+        ``(foundNewYear, foundFirstProfile, one_prof_lon, one_prof_lat, one_prof_HHMMSS, one_prof_YYMMDD)``:
+        the updated scalar fields. ``foundNewYear`` is True when the row's year was not seen before.
+    """
     if(row[0].strip() == 'CAST'):
         one_prof_desc.append("CAST: {}".format(row[2].strip()))
     if(row[0].strip() == 'NODC Cruise ID'):
@@ -330,6 +418,17 @@ def parse_row_info(row, profflag_found, unique_years, foundNewYear, foundFirstPr
 def csv_processing(dest_dir, input_dir):
 
     # Get list of .csv files to process
+    """Convert every ``*.csv`` file in ``input_dir`` to yearly NetCDF files in ``dest_dir``.
+
+    See the module description for the rules.
+
+    Parameters
+    ----------
+    dest_dir : str
+        Output folder (must exist); the NetCDF files and per-file logs are written here.
+    input_dir : str
+        Folder of WOD CSV files.
+    """
     csv_files_to_process = glob.glob(os.path.join(input_dir,'*.csv'))
 
     # Get set of unique years
@@ -694,11 +793,17 @@ def csv_processing(dest_dir, input_dir):
                 prof_S_f_flag, prof_S_o_flag)
 
 def main(dest_dir, input_dir):
-    
+    """Convert the CSV files in ``input_dir``; see :func:`csv_processing`."""
     csv_processing(dest_dir, input_dir)
 
 def cli(argv=None):
-    """Command-line entry point (``ecco-insitu`` subcommand)."""
+    """Command-line entry point (``ecco-insitu csv-to-nc -i <csv folder> -d <output folder>``).
+
+    Parameters
+    ----------
+    argv : list of str, optional
+        Arguments (default: ``sys.argv[1:]``).
+    """
 
     parser = argparse.ArgumentParser()
 

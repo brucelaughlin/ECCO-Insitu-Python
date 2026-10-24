@@ -25,9 +25,21 @@ class _StdoutHandler(logging.StreamHandler):
 
 
 def get_logger(name=None):
-    """The package logger (or a child, e.g. ``get_logger('pipeline')``), set up on first use:
-    level INFO, plain ``%(message)s`` lines on stdout. Nothing is added if the application has
-    already configured a handler for it."""
+    """The package logger, or a child of it (e.g. ``get_logger('pipeline')``).
+
+    On first use the ``ecco_insitu`` logger is set up with level INFO and plain ``%(message)s`` lines
+    on stdout, not propagated to the root logger. Nothing is added if it already has a handler, so an
+    application can configure it first.
+
+    Parameters
+    ----------
+    name : str, optional
+        Child logger name.
+
+    Returns
+    -------
+    logging.Logger
+    """
     root = logging.getLogger(LOGGER_NAME)
     if not root.handlers:
         h = _StdoutHandler()

@@ -1,32 +1,26 @@
 """
-Pre-bake WOA23 climatology onto observation depth grids found in an input directory.
+Pre-bake the climatology onto each observation depth grid found in an input folder (optional; makes
+step 03 faster).
 
-Rather than hardcoding the depth grids, this script scans an input directory,
-discovers all distinct prof_depth grids present, and pre-bakes the WOA23
-climatology onto each one.  This makes the tool self-adapting: if Scripps sends
-new data on a third depth grid, re-running the script with the new input directory
-will produce a matching pre-baked file automatically.
+The input folder is scanned for all distinct ``prof_depth`` grids, and the climatology is
+interpolated in depth onto each, once per climatology grid cell
+(``clim_interp._depth_interp`` + ``clim_interp._fallback_fill``). That gives one
+``<climatology stem>_<N>depths_prebaked.nc`` per grid. A new depth grid in new data just needs a
+re-run.
 
-For each grid found, the vertical interpolation (clim_interp._depth_interp +
-clim_interp._fallback_fill) is run once per WOA23 grid cell, producing one output
-.nc file per distinct obs grid.  At runtime, step03 can then skip per-profile
-vertical interpolation entirely and do only time-blend + lat/lon lookup.
+At run time, step 03 then only blends in time and interpolates in lon/lat. The chain loads every
+``*_prebaked.nc`` in ``paths.prebaked_clim_dir`` automatically, keyed by its depth grid, but only
+those whose ``source_file`` attribute is the current ``paths.climatology_file`` (see
+:func:`ecco_insitu.pipeline.check_climatologies`). Nothing needs to be registered by hand.
 
-The script also prints a ready-to-paste Python dict showing the {tuple(depths): path}
-entries needed to activate pre-baked mode in ecco_insitu/pipeline.py.
+Usage::
 
-Usage:
-    # scan default input dir, write files alongside source climatology:
-    python -m ecco_insitu.climatology.prebake
+    ecco-insitu climatology --prebake        # run.input_dir and paths.climatology_file from the settings
 
-    # scan a specific input dir:
+    # or directly, with explicit options:
     python -m ecco_insitu.climatology.prebake --input_dir /path/to/Interp_Profiles
-
-    # override climatology source or output dir:
     python -m ecco_insitu.climatology.prebake --source /path/to/fulldepth.nc --out_dir /path/to/out
-
-    # skip grids with fewer than N levels (e.g. skip 1-level SOCAT files):
-    python -m ecco_insitu.climatology.prebake --min_levels 5
+    python -m ecco_insitu.climatology.prebake --min_levels 5     # skip grids with fewer levels
 """
 
 import argparse
@@ -42,17 +36,27 @@ import ecco_insitu.clim_interp as clim_interp
 
 import ecco_insitu.config as config_loader
 
-# Defaults from the chain settings (ecco_insitu/defaults.yaml + config/local.yaml)
+# Defaults from the chain settings (src/ecco_insitu/defaults.yaml + config/local.yaml)
 _CFG = config_loader.load()
 _DEFAULT_SOURCE = _CFG['paths']['climatology_file']
 _DEFAULT_INPUT_DIR = _CFG['run']['input_dir']
 
 
 def discover_grids(input_dir, min_levels=2):
-    """Scan input_dir recursively for all distinct prof_depth grids.
+    """Scan ``input_dir`` recursively for all distinct ``prof_depth`` grids.
 
-    Returns a dict: {depth_tuple: [list of example filenames]}.
-    Grids with fewer than min_levels are skipped (e.g. 1-level SOCAT files).
+    Parameters
+    ----------
+    input_dir : str or Path
+        Folder of profile files.
+    min_levels : int
+        Grids with fewer levels are skipped (e.g. 1-level SOCAT files). Unreadable files are
+        skipped too.
+
+    Returns
+    -------
+    dict
+        ``{depth tuple: [file names using it]}``.
     """
     grids = collections.defaultdict(list)
     for f in sorted(Path(input_dir).rglob("*.nc")):
@@ -70,9 +74,27 @@ def discover_grids(input_dir, min_levels=2):
 
 def prebake_one_grid(obs_depths, T_all, S_all, clim_depths, lat, lon,
                      source_path, out_dir, stem):
-    """Pre-bake T and S onto a single obs depth grid and write one .nc file.
+    """Pre-bake T and S onto one observation depth grid and write one ``.nc`` file.
 
-    Returns the output path.
+    Parameters
+    ----------
+    obs_depths : sequence of float
+        The depth grid (meters).
+    T_all, S_all : numpy.ndarray
+        Climatology potential T and S, shape (12, depth, lat, lon).
+    clim_depths, lat, lon : numpy.ndarray
+        Climatology coordinates.
+    source_path : Path
+        The climatology file, recorded as the ``source_file`` attribute.
+    out_dir : Path
+        Output folder.
+    stem : str
+        Output name stem (``fulldepth`` in it is replaced by ``<N>depths_prebaked``).
+
+    Returns
+    -------
+    Path
+        The written file.
     """
     obs_depths = np.asarray(obs_depths, dtype=float)
     ndepth_obs = obs_depths.size
@@ -138,7 +160,20 @@ def prebake_one_grid(obs_depths, T_all, S_all, clim_depths, lat, lon,
 
 
 def prebake(source_path, input_dir, out_dir, min_levels=2):
-    """Discover grids in input_dir and pre-bake each one."""
+    """Discover the depth grids in ``input_dir`` and pre-bake the climatology onto each.
+
+    Parameters
+    ----------
+    source_path : str or Path
+        The full-depth climatology (``potential_T_monthly``, ``S_monthly`` on month, depth,
+        lat, lon).
+    input_dir : str or Path
+        Folder of profile files to take the depth grids from.
+    out_dir : str or Path
+        Output folder (created if needed).
+    min_levels : int
+        See :func:`discover_grids`.
+    """
     source_path = Path(source_path)
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -187,6 +222,7 @@ def prebake(source_path, input_dir, out_dir, min_levels=2):
 
 
 def cli(argv=None):
+    """Command-line entry point (``python -m ecco_insitu.climatology.prebake``); ``ecco-insitu climatology --prebake`` runs :func:`prebake` with the settings' paths."""
     parser = argparse.ArgumentParser(description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument('--source', default=_DEFAULT_SOURCE,

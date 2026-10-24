@@ -5,6 +5,8 @@ and netCDF-4 (HDF5) zlib compression, with sanity checks before and after.
 
 Steps for each input file
 -------------------------
+::
+
   1. Scan every variable (counts, fill values, min/max/mean, integer-ness).
   2. Print the type plan: input type -> output type for every variable.
   3. Pre-conversion sanity check (table of ERRORs and WARNings).
@@ -16,6 +18,8 @@ Steps for each input file
 
 Type rules
 ----------
+::
+
   prof_YYYYMMDD, prof_HHMMSS, prof_bin_id_a  -> int32   (read by MITgcm)
   prof_point, prof_basin, prof_bin_id_*,
   prof_*flag, prof_*_code                    -> int32
@@ -31,6 +35,8 @@ Type rules
 
 Sanity checks (ERROR aborts the conversion, WARN is reported only)
 ------------------------------------------------------------------
+::
+
   ERROR  int32 variables and prof_interp_i/j: NaN/Inf, fractional values,
          or values outside int32 range
   ERROR  prof_YYYYMMDD, prof_HHMMSS, prof_lon, prof_lat: NaN/Inf or fill
@@ -64,6 +70,8 @@ Requires numpy and netCDF4 (conda install -c conda-forge netcdf4).
 
 Examples
 --------
+::
+
   ecco-insitu compact argo_2010.nc                 # -> argo_2010_compact.nc
   ecco-insitu compact argo_2010.nc --check-only    # plan + checks only
   ecco-insitu compact *.nc --suffix _z --complevel 4
@@ -121,10 +129,26 @@ BLOCK_ELEMS = 50_000_000
 # ----------------------------------------------------------------------------
 
 def is_int_var(name):
+    """True if variable ``name`` is stored as int32 in the output (dates, times, bin ids, flags, codes)."""
     return name in INT_VARS or bool(INT_PATTERN.match(name))
 
 
 def open_nc(path, mode='r', **kw):
+    """Open a NetCDF file with automatic masking, scaling and char-to-string conversion off,
+    so raw stored values are read and written.
+
+    Parameters
+    ----------
+    path : str
+    mode : str
+        As for :class:`netCDF4.Dataset`.
+    **kw
+        Passed to :class:`netCDF4.Dataset` (e.g. ``format``).
+
+    Returns
+    -------
+    netCDF4.Dataset
+    """
     ds = netCDF4.Dataset(path, mode, **kw)
     ds.set_auto_maskandscale(False)
     ds.set_auto_chartostring(False)
@@ -153,6 +177,7 @@ def fill_values(var):
 
 
 def valid_mask(a, fills):
+    """Boolean mask of values in ``a`` that are finite and not one of the fill values ``fills``."""
     ok = np.isfinite(a)
     for f in fills:
         ok &= (a != f)
@@ -171,11 +196,13 @@ def datenum(yyyymmdd, hhmmss):
 
 
 def fits_int32(x):
+    """True if ``x`` is a finite whole number within the int32 range."""
     x = float(x)
     return np.isfinite(x) and x == np.trunc(x) and I32_MIN <= x <= I32_MAX
 
 
 def fmt_num(x, digits=6):
+    """Format a number for the tables: whole numbers without decimals, others with ``digits`` significant digits; ``None`` as ``-``."""
     if x is None:
         return '-'
     if float(x) == np.trunc(x) and abs(x) < 1e15:
@@ -184,10 +211,21 @@ def fmt_num(x, digits=6):
 
 
 def examples(vals, n=3):
+    """The first ``n`` values of ``vals``, formatted and comma-separated, for messages."""
     return ', '.join(fmt_num(v, 12) for v in list(vals)[:n])
 
 
 def print_table(title, headers, rows, right=()):
+    """Print a titled table with aligned columns.
+
+    Parameters
+    ----------
+    title : str
+    headers : list of str
+    rows : list of list of str
+    right : collection of int
+        Indexes of the columns to right-align.
+    """
     print(f'\n  {title}')
     if not rows:
         print('    (none)')
@@ -195,6 +233,7 @@ def print_table(title, headers, rows, right=()):
     w = [max(len(h), *(len(r[i]) for r in rows)) for i, h in enumerate(headers)]
 
     def line(cells):
+        """One table row, padded to the column widths."""
         return '    ' + '  '.join(c.rjust(w[i]) if i in right else c.ljust(w[i])
                                   for i, c in enumerate(cells)).rstrip()
     print(line(headers))
@@ -319,6 +358,23 @@ def plan_variable(name, var, st):
 
 
 def convert_block(a, spec, key):
+    """Convert one block of a variable's values to its output type, as planned by
+    :func:`plan_variable`.
+
+    Parameters
+    ----------
+    a : numpy.ndarray
+        The block's stored values.
+    spec : dict
+        The variable's plan (``mode``: ``int``, ``cast``, ``replace`` or copy; output ``dtype``,
+        fill remapping).
+    key : index
+        The block's position in the variable (used by ``replace`` mode).
+
+    Returns
+    -------
+    numpy.ndarray
+    """
     if spec['mode'] == 'int':
         a = np.asarray(a, dtype=np.float64)
         for f in spec['remap']:
@@ -352,9 +408,11 @@ def check_file(ds, stats, chunk_prof, phase='input'):
     issues = []
 
     def err(v, m):
+        """Record an ERROR for variable ``v``."""
         issues.append(('ERROR', v, m))
 
     def warn(v, m):
+        """Record a WARN for variable ``v``."""
         issues.append(('WARN', v, m))
 
     V = ds.variables
@@ -399,6 +457,7 @@ def check_file(ds, stats, chunk_prof, phase='input'):
 
     # dates, times, positions (1-D, read whole)
     def valid_1d(n):
+        """The valid (finite, non-fill) values of 1-D variable ``n``, as float64."""
         a = np.asarray(V[n][:], dtype=np.float64).ravel()
         return a[valid_mask(a, fill_values(V[n]))]
 
@@ -533,6 +592,18 @@ def check_file(ds, stats, chunk_prof, phase='input'):
 
 
 def print_issues(title, issues):
+    """Print a table of check results, errors first, and return the number of errors.
+
+    Parameters
+    ----------
+    title : str
+    issues : list of (str, str, str)
+        ``(level, variable, message)`` with level ``ERROR`` or ``WARN``.
+
+    Returns
+    -------
+    int
+    """
     order = {'ERROR': 0, 'WARN': 1}
     rows = [[s, v, m] for s, v, m in sorted(issues, key=lambda i: order[i[0]])]
     print_table(title, ['level', 'variable', 'issue'], rows)
@@ -547,6 +618,30 @@ def print_issues(title, issues):
 
 def write_output(src, dst_path, specs, complevel, chunk_prof, shuffle, fmt,
                  src_path):
+    """Write the compacted copy of ``src`` to ``dst_path``, streaming each variable in blocks.
+
+    Global attributes are copied and a line is added to ``history``; each variable gets its planned
+    type, zlib compression and iPROF chunking.
+
+    Parameters
+    ----------
+    src : netCDF4.Dataset
+        The open input file.
+    dst_path : str
+        Output path (the caller writes to a temporary name and renames after verifying).
+    specs : dict
+        Per variable, the plan from :func:`plan_variable`.
+    complevel : int
+        zlib level.
+    chunk_prof : int
+        Chunk length along iPROF.
+    shuffle : bool
+        HDF5 shuffle filter.
+    fmt : str
+        NetCDF format, e.g. ``NETCDF4``.
+    src_path : str
+        Input path, for the history line.
+    """
     dst = open_nc(dst_path, 'w', format=fmt)
     gattrs = {a: src.getncattr(a) for a in src.ncattrs()}
     stamp = (f'{datetime.date.today().isoformat()}: {os.path.basename(src_path)}'
@@ -640,6 +735,21 @@ def verify(src, dst, specs, in_stats, chunk_prof):
 
 
 def process_file(src_path, dst_path, args):
+    """Plan, check, convert and verify one file (steps 1-5 of the module description).
+
+    Parameters
+    ----------
+    src_path, dst_path : str
+        Input and output paths.
+    args : argparse.Namespace
+        The command-line options (``check_only``, ``complevel``, ``chunk_prof``, ...).
+
+    Returns
+    -------
+    bool
+        True if the file passed (for ``--check-only``: the input checks passed; otherwise the
+        output was written and verified).
+    """
     print('=' * 78)
     print(f'{src_path}')
     try:
@@ -736,6 +846,10 @@ def expand_inputs(args, suffix):
 
 
 def cli(argv=None):
+    """Command-line entry point (``ecco-insitu compact``); see the module description.
+
+    Exits with status 1 if any file failed its checks or verification, else 0.
+    """
     p = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument('inputs', nargs='+', help='pkg/profiles netCDF file(s)')

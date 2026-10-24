@@ -1,6 +1,6 @@
 """
 Bin-count maps for the in situ report, on both geodesic grids
-(a = 10242 bins, b = 2562 bins), for ALL sources combined and per source.
+(a = 10242 bins, b = 2562 bins), for ALL sources combined and per source::
 
   maps/total_<scope>_<grid>.png        all years: rows UCSD / processed,
                                        columns T / S (shared log scale)
@@ -68,6 +68,7 @@ class _Painter:
         return self._cache[view]
 
     def draw(self, ax, per_bin, grid, norm, view='global', cmap=_CMAP, zero_is_blank=True):
+        """Draw per-bin values on ``ax`` for the given view; returns the image (for a colorbar)."""
         bins, land, ocean, extent = self._raster(view)
         img = per_bin[bins[grid]].astype(float)
         img[bins[grid] == 0] = np.nan
@@ -85,6 +86,9 @@ class _Painter:
 
 
 def choose_view(*dfs):
+    """Map view for a source: ``'NH'`` or ``'SH'`` if over 70% of its profiles are poleward of
+    60° in that hemisphere, else ``'global'``.
+    """
     lat = np.concatenate([df['lat'].to_numpy() for df in dfs if len(df)])
     lat = lat[np.isfinite(lat)]
     if not lat.size:
@@ -119,6 +123,9 @@ def _grid_label(grid):
 
 
 def plot_totals(painter, data, scope, grid, out_dir, view='global', suffix=''):
+    """Maps of the number of profiles per bin, input and processed, T and S; writes
+    ``total_<scope>_<grid><suffix>.png``.
+    """
     c = {(st, v): _counts(data[st], grid, v) for st, _ in _STAGES for v in common.VARS}
     if not any(a.any() for a in c.values()):
         return
@@ -140,6 +147,9 @@ def plot_totals(painter, data, scope, grid, out_dir, view='global', suffix=''):
 
 
 def plot_kept(painter, data, scope, grid, out_dir, view='global'):
+    """Maps of the share of input profiles still used after processing, per bin; writes
+    ``kept_<scope>_<grid>.png``.
+    """
     fig, axes = plt.subplots(1, 2, figsize=(15, 4) if view == 'global' else (11, 5))
     drew = False
     for j, v in enumerate(common.VARS):
@@ -162,6 +172,9 @@ def plot_kept(painter, data, scope, grid, out_dir, view='global'):
 
 
 def plot_per_year(painter, data, scope, grid, years, out_dir, per_year_pngs, view='global'):
+    """Small-multiple maps of profiles per bin for each year (and, with ``per_year_pngs``, one PNG
+    per year under ``peryear/``).
+    """
     for st, label in _STAGES:
         for v in common.VARS:
             per = {y: _counts(data[st], grid, v, y) for y in years}
@@ -198,6 +211,9 @@ def plot_per_year(painter, data, scope, grid, years, out_dir, per_year_pngs, vie
 
 
 def main(report_dir, per_year_pngs=False):
+    """Make all the counts-report maps in ``<report_dir>/maps`` from the report's index: for all
+    sources together (global and both polar views) and for each source.
+    """
     report_dir = Path(report_dir)
     raw, proc = common.load_index(report_dir)
     out_dir = report_dir / 'maps'

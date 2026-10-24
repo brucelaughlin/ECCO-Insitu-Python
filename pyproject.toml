@@ -28,7 +28,7 @@ dependencies = [
 # diagnostics maps and reports
 diagnostics = ["cartopy>=0.22", "pyarrow>=12"]
 test = ["pytest>=7"]
-docs = ["sphinx>=7"]
+docs = ["sphinx>=7", "sphinx-rtd-theme>=2", "myst-parser>=2"]
 
 [project.scripts]
 ecco-insitu = "ecco_insitu.cli:main"

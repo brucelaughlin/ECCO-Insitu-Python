@@ -1,3 +1,32 @@
+"""
+Step 04: uncertainties (sigma) and weights.
+
+For each variable, sigma comes from the CTD-based uncertainty field on the LLC90 grid
+(``paths.sigma_files``; big-endian float32, 50 levels), interpolated linearly in depth to the
+profile's levels (constant above the top level and below the bottom one) at the profile's nearest
+wet cell. Then, if enabled:
+
+- **north of** ``high_latitude_sigma.min_lat``: the Arctic uncertainty file
+  (``paths.high_lat_sigma_files``, variable ``high_latitude_sigma.north_file_vars``), from the
+  nearest file cell with a value within ``high_latitude_sigma.max_dist_km``
+  (:mod:`ecco_insitu.high_latitude_sigma`);
+- **south of** ``-min_lat``: the constant ``high_latitude_sigma.south_constant`` at all depths.
+
+Each sigma is raised to at least ``chain.new_floor`` (deg C, psu) when the floor is above 0.
+
+Adds or replaces, per variable V:
+
+- ``prof_Vweight`` = 1 / sigma**2;
+- ``prof_Vuncertainty`` = sigma;
+- ``prof_Vuncertainty_source`` (iPROF): 0 = CTD sigma files, 1 = high-latitude file,
+  2 = southern constant. Step 06 applies its climatology-cost tests to sources 1 and 2.
+
+If ``chain.respect_existing_zero_weights`` is true, weights that were 0 in the input stay 0.
+If ``prof_Verr`` exists and the floor is above 0, it is set to the floor.
+
+Variables with no valid data in the file are skipped. Profiles whose lon/lat can't be placed on the
+sphere are dropped.
+"""
 import numpy.ma as ma
 import xarray as xr
 import argparse
@@ -14,19 +43,43 @@ from scipy.interpolate import interp1d
 def update_sigmaTS_on_prepared_profiles(MITprof_ds, profile_var_key_set, grid_dir, sigma_file_dict, respect_existing_zero_weights, new_floor_dict, llcN=90,
                                         high_lat_sigma_file_dict=None, high_lat_sigma_min_lat=60.0, high_lat_sigma_max_dist_km=300.0,
                                         southern_sigma_const_dict=None):
-    """
-    Update MITprof objects with new T and S uncertainty fields
+    """Set each profile's uncertainty (sigma) and weight (1 / sigma**2).
 
-    sigma comes from the CTD sigma files (sigma_file_dict, LLC90).  Where
-    high_lat_sigma_file_dict is given ({prof_key: (path, variable)}), profiles
-    with |lat| > high_lat_sigma_min_lat that have a high-latitude sigma value
-    within high_lat_sigma_max_dist_km use that instead (see
-    high_latitude_sigma.py; the files used today are Arctic only).  Where
-    southern_sigma_const_dict is given ({prof_key: sigma}), profiles with
-    lat < -high_lat_sigma_min_lat use that constant at all depths.
-    prof_Tuncertainty_source / prof_Suncertainty_source record which was used per
-    profile (0 = CTD sigma files, 1 = high-latitude file, 2 = southern constant);
-    step 06 applies its climatology-cost tests to 1 and 2.
+    Parameters
+    ----------
+    MITprof_ds : xarray.Dataset
+        The profiles, with ``prof_V`` and ``prof_Vweight`` for each variable.
+    profile_var_key_set : set of str
+        Variables to process (``prof_T``, ``prof_S``).
+    grid_dir : str
+        LLC90 grid folder (``paths.grid_dir``).
+    sigma_file_dict : dict
+        ``{prof_key: path}`` of the CTD sigma fields (``paths.sigma_files``).
+    respect_existing_zero_weights : bool
+        Keep weights that are 0 in the input at 0 (``chain.respect_existing_zero_weights``).
+    new_floor_dict : dict
+        ``{prof_key: floor}``; sigma is raised to at least this when it is above 0
+        (``chain.new_floor``; deg C, psu).
+    llcN : int
+        Grid size (90).
+    high_lat_sigma_file_dict : dict, optional
+        ``{prof_key: (path, variable)}`` of the high-latitude sigma files. Profiles with
+        ``|lat|`` > ``high_lat_sigma_min_lat`` that have a value within ``high_lat_sigma_max_dist_km``
+        use it instead of the CTD sigma. The files used today cover the Arctic only.
+    high_lat_sigma_min_lat : float
+        Latitude (degrees) poleward of which the high-latitude rules apply.
+    high_lat_sigma_max_dist_km : float
+        Largest distance (km) to the nearest high-latitude file cell with a value.
+    southern_sigma_const_dict : dict, optional
+        ``{prof_key: sigma}``; profiles with lat < -``high_lat_sigma_min_lat`` use this constant at
+        all depths (raised to the floor).
+
+    Returns
+    -------
+    xarray.Dataset
+        With ``prof_Vweight``, ``prof_Vuncertainty`` and ``prof_Vuncertainty_source``
+        (0 = CTD sigma files, 1 = high-latitude file, 2 = southern constant), as described in the
+        module docstring.
     """
     deg2rad = np.pi/180
     mform = '>f4'
@@ -153,6 +206,7 @@ def update_sigmaTS_on_prepared_profiles(MITprof_ds, profile_var_key_set, grid_di
 def main(MITprof_ds, profile_var_key_set, grid_dir, sigma_file_dict, respect_existing_zero_weights, new_floor_dict, llcN=90,
          high_lat_sigma_file_dict=None, high_lat_sigma_min_lat=60.0, high_lat_sigma_max_dist_km=300.0,
          southern_sigma_const_dict=None):
+    """Run step 04; see :func:`update_sigmaTS_on_prepared_profiles`."""
     MITprof_ds = update_sigmaTS_on_prepared_profiles(MITprof_ds, profile_var_key_set, grid_dir, sigma_file_dict, respect_existing_zero_weights, new_floor_dict, llcN=llcN,
                                                      high_lat_sigma_file_dict=high_lat_sigma_file_dict,
                                                      high_lat_sigma_min_lat=high_lat_sigma_min_lat,

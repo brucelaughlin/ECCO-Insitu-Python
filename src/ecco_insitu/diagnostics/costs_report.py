@@ -4,10 +4,12 @@ Cost report (HTML + PDF) from a costs_compute.py output directory.
     ecco-insitu report-costs --report_only [<cost_dir>]   # default: newest under cost_reports/
 
 Every statistic and figure is shown for three versions of the cost, so the
-effect of each weight factor can be read off directly (see costs_compute.KINDS):
+effect of each weight factor can be read off directly (see costs_compute.KINDS)::
+
   a) final  nothing removed            = gamma * sf_V * (dV/sigma)^2  (what ECCO sees)
   b) nosf   step 11 sf_V removed       = gamma * (dV/sigma)^2         (what step 07 tests)
   c) true   gamma and sf_V removed     = (dV/sigma)^2                 (normalized misfit)
+
 a -> b shows the effect of the step 11 spatial factor; b -> c the effect of
 the area factor gamma.  sf_V is the variable's own factor (sf_T, sf_S).
 
@@ -45,6 +47,7 @@ _FORMULA = {'final': 'γ · {sf} · (ΔV/σ)²', 'nosf': 'γ · (ΔV/σ)²', 'tr
 
 
 def formula(k, V='V', fmt='html'):
+    """The formula of cost version ``k`` for variable ``V``, e.g. ``γ · sf_V · (ΔV/σ)²``."""
     return _FORMULA[k].format(sf=sf_name(V, fmt))
 
 
@@ -80,6 +83,9 @@ def _hist_abc(ax, data, title, V):
 
 
 def plot_summary_hist(samples, V, fig_dir):
+    """Histogram of cost per point, all sources, for the three cost versions of ``V``; writes
+    ``summary_hist_<V>.png`` in ``fig_dir``. Returns False if there is nothing to plot.
+    """
     pooled = {k: np.concatenate([samples[f] for f in samples.files if f.endswith(f'__{V}__{k}')] or [[]])
               for k in KINDS}
     if not _pos_log(pooled['final']).size:
@@ -95,6 +101,9 @@ def plot_summary_hist(samples, V, fig_dir):
 
 
 def plot_hist_by_source(samples, V, fig_dir):
+    """Histograms of cost per point by source (three cost versions); writes
+    ``hist_by_source_<V>.png``. Returns False if there is nothing to plot.
+    """
     srcs = sorted({f.split('__')[0] for f in samples.files
                    if f.endswith(f'__{V}__final') and (samples[f] > 0).any()})
     if not srcs:
@@ -116,6 +125,9 @@ def plot_hist_by_source(samples, V, fig_dir):
 
 
 def plot_by_year(sy, V, fig_dir):
+    """Median and maximum cost per point by year, per source, from the source-year table ``sy``;
+    writes ``by_year_<V>.png``. Returns False if there is nothing to plot.
+    """
     d = sy[(sy['var'] == V) & (sy['final_n'] > 0)]
     sources = sorted(d.source.unique())
     if not sources:
@@ -143,6 +155,9 @@ def plot_by_year(sy, V, fig_dir):
 
 
 def plot_high_share(prof, V, fig_dir):
+    """Percentage of profiles with at least one point of cost >= ``HIGH``, by source and year;
+    writes ``high_share_<V>.png``. Returns False if there is nothing to plot.
+    """
     d = prof[prof[f'{V}_n'] > 0]
     if not len(d):
         return False
@@ -170,6 +185,9 @@ def plot_high_share(prof, V, fig_dir):
 
 
 def plot_map_high(prof, V, fig_dir):
+    """Map of the profiles with a point of cost >= ``HIGH`` (one panel per cost version); writes
+    ``map_high_<V>.png``. Returns False if there is nothing to plot.
+    """
     import cartopy.crs as ccrs
     import cartopy.feature as cfeature
     fig = plt.figure(figsize=(14, 4.3 * len(KINDS)))
@@ -296,6 +314,25 @@ code { background: #f4f4f4; padding: 0 3px; }
 # ---------------------------------------------------------------------------
 
 def write_report(cost_dir, log_path=None):
+    """Write the HTML cost report for a folder made by :func:`costs_compute.build`.
+
+    Makes the figures (in ``<cost_dir>/figures``) and ``<cost_dir>/cost_report.html``: summaries per
+    source, histograms, by-year plots, maps of high costs, the scaling-factor and decimation sections
+    (:func:`costs_scaling.html_sections`), per-source-year tables, the 40 largest costs and the fill
+    counts.
+
+    Parameters
+    ----------
+    cost_dir : str or Path
+        Output folder of :func:`costs_compute.build`.
+    log_path : str or Path, optional
+        The chain's run log, for the decimation section (default: found from the run stamp).
+
+    Returns
+    -------
+    Path
+        The HTML file.
+    """
     import pyarrow.parquet as pq
     cost_dir = Path(cost_dir)
     fig_dir = cost_dir / 'figures'
@@ -461,6 +498,9 @@ def write_report(cost_dir, log_path=None):
 
 
 def to_pdf(html_path):
+    """Print an HTML report to PDF (same name, ``.pdf``) with headless Google Chrome; returns the
+    PDF path. Needs Chrome at the macOS default location.
+    """
     pdf = html_path.with_suffix('.pdf')
     subprocess.run([_CHROME, '--headless=new', '--disable-gpu', '--no-pdf-header-footer',
                     '--virtual-time-budget=20000', f'--print-to-pdf={pdf}', f'file://{html_path}'],

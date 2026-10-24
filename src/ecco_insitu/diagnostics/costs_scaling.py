@@ -6,14 +6,17 @@ chain_order): since 2026-10-12 QC is step 06, zero-weight removal step 07,
 decimation step 09 and gamma step 10; earlier runs had gamma at step 05, QC 07,
 removal 08, decimation 10.
 
-Scaling factors (per profile, from profiles.parquet):
+Scaling factors (per profile, from profiles.parquet)::
+
   gamma  area factor prof_area_gamma (cell area / max cell area), 0-1
   sf_T, sf_S  step 11 spatial scaling factor 1/n per (bin, month), computed
               separately for T and S
-  The final weight is gamma / sigma^2 * sf_V.
+
+The final weight is gamma / sigma^2 * sf_V.
 
 Decimation (from the run log, which prints the number of profiles with
-valid T / S after every step of every file):
+valid T / S after every step of every file)::
+
   zero-weight removal: profiles whose weights are all zero after QC
   decimation: sub-daily repeats at the same place reduced to once a day
 """
@@ -73,6 +76,9 @@ def _html(label):
 
 
 def scaling_table(prof, by=('source',)):
+    """Quantiles of γ and the step 11 factors (``sf_T``, ``sf_S``) per group of ``by`` columns
+    (default per source), from the per-profile table; column names are HTML.
+    """
     rows = []
     for key, g in prof.groupby(list(by)):
         key = key if isinstance(key, tuple) else (key,)
@@ -85,6 +91,9 @@ def scaling_table(prof, by=('source',)):
 
 
 def plot_scaling(prof, fig_dir):
+    """Figures of γ and the step 11 factors: median by year per source
+    (``scaling_by_year.png``) and histograms (``scaling_hist.png``). Returns the figure file names.
+    """
     facs = _factor_columns(prof)
     if not facs:
         return []
@@ -222,6 +231,9 @@ def _sub(df):
 
 
 def plot_sf_difference(both, fig_dir):
+    """Figures for profiles with both T and S where ``sf_T != sf_S``: share by source and year
+    (``sf_differ_share.png``) and a map (``sf_differ_map.png``). Returns the figure file names.
+    """
     import cartopy.crs as ccrs
     import cartopy.feature as cfeature
     from matplotlib.colors import TwoSlopeNorm
@@ -360,6 +372,10 @@ def decimation_table(counts, order, by=('source',)):
 
 
 def plot_decimation(dec_sy, fig_dir, order):
+    """Heat map, per variable, of the percentage of profiles removed by the decimation step
+    (sub-daily repeats to once daily) by source and year; writes ``decimation_<V>.png``. Returns the
+    figure file names.
+    """
     figs = []
     for V in VARS:
         d = dec_sy[dec_sy['var'] == V]
@@ -392,6 +408,28 @@ def plot_decimation(dec_sy, fig_dir, order):
 
 def html_sections(prof, fig_dir, run_dir, table_fn, log_path=None,
                   input_root=None):
+    """HTML sections of the cost report about the weight factors and decimation.
+
+    Parameters
+    ----------
+    prof : pandas.DataFrame
+        Per-profile table from :func:`costs_compute.build`.
+    fig_dir : Path
+        Where the figures are written.
+    run_dir : str or Path
+        The run folder (used to find the run log).
+    table_fn : callable
+        Turns a DataFrame into an HTML table.
+    log_path : str or Path, optional
+        The run log (default: :func:`find_log`); without it the decimation section is a note.
+    input_root : str or Path, optional
+        The input folder, to name sources in the log (default: ``run.input_dir``).
+
+    Returns
+    -------
+    list of str
+        HTML fragments.
+    """
     log_path = Path(log_path) if log_path else find_log(run_dir)
     order = chain_order(log_path)
     out = [f"<h2>Scaling factors: γ (step {order['gamma']:02d}) and spatial scaling (step 11)</h2>",

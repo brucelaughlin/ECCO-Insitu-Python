@@ -1,29 +1,30 @@
 """
-Build a WOA23 monthly T/S climatology for the NCEI chain.
+Build the standard climatology for the NCEI chain: WOA23 monthly potential temperature and salinity.
 
-Boss's spec (Sept 2026):
-  - Source: World Ocean Atlas 2023, 1991-2020 normal ('decav91C0'), 1-degree,
-    monthly, temperature + salinity.
-  - WOA23 't_an' is IN-SITU temperature; the chain compares against POTENTIAL
-    temperature, so step one is converting T to potential temperature.
-  - Output: a single dataset with two variables, monthly potential temperature
-    and salinity, on the WOA grid.
+This is the climatology the project uses. Users can also supply their own file instead (see
+:mod:`ecco_insitu.climatology.setup` and ``docs/input_contract.md``, section 2).
 
-Output variable names (potential_T_monthly, S_monthly, lon, lat, depth) match
-what step03.py already reads, so the built file drops into the existing chain.
+What it builds:
 
-Potential-temperature conversion reuses step05.calculate_potential_T verbatim
-(by reshaping each WOA (lat,lon) cell into a pseudo-profile), so the climatology
-is converted with the EXACT same UNESCO algorithm as the observations.
+- **Source:** World Ocean Atlas 2023, 1991-2020 normal (``decav91C0``), 1-degree, temperature
+  and salinity objectively analyzed means (``t_an``, ``s_an``).
+- **Full depth:** WOA23's monthly fields only reach 1500 m (57 levels), and its seasonal fields
+  reach 5500 m (102 levels). The seasons are interpolated to months by day of year, and the
+  monthly fields replace them in the top 1500 m (the two share their first 57 depth levels).
+- **Potential temperature:** WOA23 ``t_an`` is in-situ temperature, and the chain compares
+  against potential temperature. It is converted with :func:`ecco_insitu.steps.step05.calculate_potential_T`,
+  the same UNESCO 1983 routine the chain applies to observations, by treating each (lat, lon)
+  cell as a pseudo-profile.
+- **Output:** one NetCDF file with ``potential_T_monthly`` and ``S_monthly`` on
+  (month, depth, lat, lon), the names step 03 reads.
 
-Downloads ~24 files (~1.4 GB) to woa23_climatology/raw/ (kept for provenance;
-delete manually if you want the space back).
+It downloads about 24 files (about 1.4 GB) into ``raw/`` in the output folder; they are kept for
+provenance and can be deleted afterwards. The output folder is the folder of
+``paths.climatology_file`` in the settings, or ``--out_dir``.
 
-Output folder: the folder of paths.climatology_file in the chain settings (config/local.yaml),
-or --out_dir.
+Run::
 
-Run:
-    ecco-insitu climatology --build   # or: python -m ecco_insitu.climatology.build_woa23 [--out_dir DIR]
+    ecco-insitu climatology --build      # or: python -m ecco_insitu.climatology.build_woa23 [--out_dir DIR]
 """
 
 import numpy as np
@@ -115,6 +116,11 @@ def _download_one(url, dest, tries=4):
 
 
 def download_all():
+    """Download the 24 WOA23 files (T and S; 12 months and 4 seasons) into ``RAW_DIR``.
+
+    Files already complete (matching the server's size) are kept. Each download is retried and
+    checked against the server's size, and must open as NetCDF.
+    """
     RAW_DIR.mkdir(parents=True, exist_ok=True)
     for var in ('t', 's'):
         for code in list(range(1, 13)) + SEASON_CODES:   # months + seasons
@@ -139,7 +145,22 @@ def _load_field(var_letter, code, an_name):
 
 
 def load_monthly_stack(var_letter, an_name):
-    """Return (12, depth, lat, lon) monthly stack + depth/lat/lon (from month 1)."""
+    """Stack the 12 monthly WOA23 fields of one variable (0-1500 m).
+
+    Parameters
+    ----------
+    var_letter : {'t', 's'}
+        WOA variable letter.
+    an_name : str
+        Variable in the files, e.g. ``'t_an'``.
+
+    Returns
+    -------
+    stack : numpy.ndarray
+        Shape (12, depth, lat, lon).
+    depth, lat, lon : numpy.ndarray
+        Coordinates (from month 1).
+    """
     months, depth, lat, lon = [], None, None, None
     for month in range(1, 13):
         arr, d, la, lo = _load_field(var_letter, month, an_name)
@@ -150,8 +171,20 @@ def load_monthly_stack(var_letter, an_name):
 
 
 def load_seasonal_stack(var_letter, an_name):
-    """Return (4, depth_full, lat, lon) seasonal stack (JFM,AMJ,JAS,OND) +
-    the FULL-depth axis (102 levels to 5500 m)."""
+    """Stack the 4 seasonal WOA23 fields (JFM, AMJ, JAS, OND) of one variable (0-5500 m).
+
+    Parameters
+    ----------
+    var_letter, an_name : str
+        As for :func:`load_monthly_stack`.
+
+    Returns
+    -------
+    stack : numpy.ndarray
+        Shape (4, depth, lat, lon).
+    depth : numpy.ndarray
+        The full-depth axis (102 levels to 5500 m).
+    """
     seasons, depth = [], None
     for code in SEASON_CODES:
         arr, d, la, lo = _load_field(var_letter, code, an_name)
@@ -162,9 +195,22 @@ def load_seasonal_stack(var_letter, an_name):
 
 
 def seasonal_to_monthly(seasonal_stack):
-    """Interpolate a (4, depth, lat, lon) seasonal stack to (12, depth, lat, lon)
-    monthly, linearly in day-of-year between season centers, wrapping OND<->JFM.
-    Deep seasonality is weak, so this mostly just smooths season boundaries."""
+    """Interpolate a seasonal stack to months.
+
+    Linear in day of year between season centers (mid-Feb, mid-May, mid-Aug, mid-Nov), wrapping
+    OND to JFM. Where one of the two seasons is missing (NaN), the other is used. Deep seasonality
+    is weak, so this mostly smooths the season boundaries.
+
+    Parameters
+    ----------
+    seasonal_stack : numpy.ndarray
+        Shape (4, depth, lat, lon), seasons JFM, AMJ, JAS, OND.
+
+    Returns
+    -------
+    numpy.ndarray
+        Shape (12, depth, lat, lon).
+    """
     a = _SEASON_CENTER_DOY
     nseas, nd, nlat, nlon = seasonal_stack.shape
     out = np.full((12, nd, nlat, nlon), np.nan)
@@ -190,7 +236,7 @@ def seasonal_to_monthly(seasonal_stack):
     return out
 
 # ==============================================================================
-# Potential-temperature conversion (reuse step06 verbatim)
+# Potential-temperature conversion (reuse step05 verbatim)
 # ==============================================================================
 
 def to_potential_T(T_insitu, S, depth, lat, lon):
@@ -200,6 +246,18 @@ def to_potential_T(T_insitu, S, depth, lat, lon):
     Each (lat, lon) cell is treated as a pseudo-profile: iPROF = nlat*nlon,
     iDEPTH = nd. calculate_potential_T needs prof_depth (1-D over iDEPTH),
     prof_lat (1-D over iPROF), prof_T (iPROF, iDEPTH) and an explicit S arg.
+
+    Parameters
+    ----------
+    T_insitu, S : numpy.ndarray
+        In-situ temperature (deg C) and salinity, shape (12, depth, lat, lon).
+    depth, lat, lon : numpy.ndarray
+        Coordinates (depth in meters).
+
+    Returns
+    -------
+    numpy.ndarray
+        Potential temperature, same shape as ``T_insitu``.
     """
     nmon, nd, nlat, nlon = T_insitu.shape
     lat2d = np.broadcast_to(lat[:, None], (nlat, nlon))
@@ -247,7 +305,18 @@ def _set_out_dir(out_dir):
 
 
 def build(out_dir):
-    """Download WOA23 and write the full-depth climatology to ``out_dir``; return its path."""
+    """Download WOA23 and write the full-depth climatology to ``out_dir`` (see the module description).
+
+    Parameters
+    ----------
+    out_dir : str or Path
+        Output folder; the downloads go to ``<out_dir>/raw/``.
+
+    Returns
+    -------
+    Path
+        The climatology file, ``woa23_decav91C0_TS_clim_potential_T_1deg_fulldepth.nc``.
+    """
     _set_out_dir(out_dir)
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     print("1/5 downloading WOA23 decav91C0 1-deg monthly + seasonal T and S ...")
@@ -309,6 +378,7 @@ def build(out_dir):
 
 
 def cli(argv=None):
+    """Command-line entry point (``python -m ecco_insitu.climatology.build_woa23``); usually run as ``ecco-insitu climatology --build``."""
     ap = argparse.ArgumentParser(description='Build the WOA23 monthly T/S climatology for the NCEI chain.')
     ap.add_argument('--out_dir', default=None,
                     help='output folder (default: the folder of paths.climatology_file in the settings)')

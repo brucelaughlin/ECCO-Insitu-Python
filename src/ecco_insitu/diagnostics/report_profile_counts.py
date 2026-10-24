@@ -55,6 +55,7 @@ def _imgs(report_dir, pattern):
 
 def _table(df):
     def fmt(v):
+        """Format one table cell: thousands separators, blanks for NaN, HTML-escaped text."""
         if isinstance(v, (float, np.floating)):
             return '' if pd.isna(v) else (f'{v:,.1f}' if v % 1 else f'{int(v):,}')
         if isinstance(v, (int, np.integer)) and not isinstance(v, bool):
@@ -67,6 +68,9 @@ def _table(df):
 
 
 def write_html(report_dir, summary):
+    """Write ``<report_dir>/index.html``: the summary table, the time series and the maps (made
+    by the counts modules). Returns the HTML path.
+    """
     report_dir = Path(report_dir)
     meta = json.loads(common.index_paths(report_dir)[2].read_text())
     sources = [s for s in summary['source'] if s != 'TOTAL']
@@ -127,6 +131,14 @@ def write_html(report_dir, summary):
 
 
 def cli(argv=None):
+    """Command-line entry point (``ecco-insitu report-counts``): build the index (or reuse one), make
+    the figures and write the HTML report.
+
+    Parameters
+    ----------
+    argv : list of str, optional
+        Command-line arguments (default: ``sys.argv[1:]``).
+    """
     ap = argparse.ArgumentParser(description='Build the in situ report (index, figures, HTML).')
     ap.add_argument('--raw_root', default=str(common.RAW_ROOT))
     ap.add_argument('--processed', default=None,

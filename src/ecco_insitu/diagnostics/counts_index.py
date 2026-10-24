@@ -1,11 +1,13 @@
 """
 Build the per-profile index that every report plot reads.
 
-One row per profile, for two stages:
+One row per profile, for two stages::
+
   raw        — files as delivered by UCSD (Interp_Profiles/)
   processed  — a finished NCEI run (step 11 output)
 
-Columns:
+Columns::
+
   source, subtype, file      categorical (see common.classify)
   year, month                from prof_YYYYMMDD (file year / month 0 if invalid)
   lat, lon                   float32
@@ -23,7 +25,8 @@ Columns:
 Raw files have no bin ids, so they are binned here with the same
 nearest-LLC90-cell lookup as step 02.
 
-Run standalone:
+Run standalone::
+
     python -m ecco_insitu.diagnostics.counts_index <report_dir> [--processed RUN] [-n 6]
 """
 
@@ -158,6 +161,29 @@ def _scan(stage, root, n_workers, sources=None):
 
 
 def build(report_dir, raw_root=common.RAW_ROOT, processed=None, n_workers=None, sources=None):
+    """Scan the input files and a processed run into a per-profile index for the counts report.
+
+    Writes ``<report_dir>/index/raw.parquet`` (every input profile), ``processed.parquet`` (every
+    profile in the run, with its weights and step 11 factors) and ``meta.json``.
+
+    Parameters
+    ----------
+    report_dir : str or Path
+        The report folder.
+    raw_root : str or Path
+        The input folder (default ``run.input_dir``).
+    processed : str or Path, optional
+        The run folder (default: the newest finished step 11 run).
+    n_workers : int, optional
+        Parallel workers (default: min(6, CPUs - 1)).
+    sources : list of str, optional
+        Only these top-level source folders (for quick tests).
+
+    Returns
+    -------
+    dict
+        The metadata written to ``meta.json`` (file and profile counts, unreadable files).
+    """
     report_dir = Path(report_dir)
     processed = common.yearly_dir(processed) if processed else common.latest_processed_run()
     n_workers = n_workers or min(6, max(1, (os.cpu_count() or 2) - 1))

@@ -1,11 +1,11 @@
 """
 Step 13 — pack the yearly chain output into ECCO-ready profile files.
 
-A thin wrapper around ecco_insitu/packing.py (which explains the problem
-and does the work), with the settings this chain uses. The settings are in the
-``pack`` section of ecco_insitu/defaults.yaml (and ``paths.grid_dir``); override them in
-config/local.yaml, a ``--config`` file or ``--set pack.<key>=<value>``. Any of
-them can also be given to ecco_insitu/packing.py directly on the command line.
+A thin wrapper around :mod:`ecco_insitu.packing` (which explains the problem and does the
+work), with the settings this chain uses. The settings are in the ``pack`` section of
+``src/ecco_insitu/defaults.yaml`` (and ``paths.grid_dir``); override them in
+``config/local.yaml``, a ``--config`` file or ``--set pack.<key>=<value>``. All of the packing
+program's options are also available directly as ``ecco-insitu optimize``.
 
 Run ('ecco-insitu run' does this after steps 11/12):
     ecco-insitu pack <yearly_dir> <out_dir> [-n 4] [--dry_run] [--config FILE]
@@ -31,7 +31,17 @@ def main(yearly_dir, out_dir, n_workers=None, dry_run=False, cfg=None):
     dry_run : bool
         Plan and print, write nothing.
     cfg : dict, optional
-        Settings from :func:`config_loader.load`; default: the standard files.
+        Settings from :func:`ecco_insitu.config.load`; default: the standard files.
+
+    Returns
+    -------
+    list of dict
+        The manifest of the files (see :func:`ecco_insitu.packing.run`).
+
+    Raises
+    ------
+    ecco_insitu.config.ConfigError
+        If ``paths.grid_dir`` is not set or doesn't exist.
     """
     if cfg is None:
         cfg = config_loader.load()
@@ -46,7 +56,7 @@ def main(yearly_dir, out_dir, n_workers=None, dry_run=False, cfg=None):
 
 
 def cli(argv=None):
-    """Command-line entry point (``ecco-insitu`` subcommand)."""
+    """Command-line entry point (``ecco-insitu pack``); see the module description."""
     ap = argparse.ArgumentParser(description='Pack yearly chain output into ECCO-ready profile files.')
     ap.add_argument('yearly_dir')
     ap.add_argument('out_dir')

@@ -113,7 +113,18 @@ def _banner(*lines):
 
 
 def default_log_dir(cfg):
-    """``run.log_dir`` if set, else ``z_logs/`` in the repository checkout (or the current folder)."""
+    """The folder for run logs: ``run.log_dir`` if set, else ``z_logs/`` in the repository checkout (or
+    in the current folder, for a package installed without the repository).
+
+    Parameters
+    ----------
+    cfg : dict
+        Settings from :func:`ecco_insitu.config.load`.
+
+    Returns
+    -------
+    Path
+    """
     if cfg['run'].get('log_dir'):
         return Path(cfg['run']['log_dir'])
     root = config.CONFIG_DIR.parent
@@ -217,7 +228,21 @@ def run_chain(input_dir, dest_dir, cfg, n_workers=None, scaling=None, window=Non
 
 
 def cli(argv=None):
-    """Command-line entry point (``ecco-insitu run``)."""
+    """Command-line entry point (``ecco-insitu run``).
+
+    Checks the options and settings, picks the input and output folders, and runs
+    :func:`run_chain` with all output also written to the run log.
+
+    Parameters
+    ----------
+    argv : list of str, optional
+        Arguments (default: ``sys.argv[1:]``).
+
+    Returns
+    -------
+    int
+        Exit code; see the module description.
+    """
     ap = argparse.ArgumentParser(prog='ecco-insitu run', description=__doc__.split('\n\n')[0],
                                  formatter_class=argparse.RawDescriptionHelpFormatter,
                                  epilog='See the ecco_insitu.run module description for the output layout.')

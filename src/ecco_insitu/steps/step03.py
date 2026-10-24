@@ -1,3 +1,26 @@
+"""
+Step 03: the monthly climatology at each profile.
+
+Interpolates the T and S climatology (WOA23 by default) to each profile's position, day of year
+and depths, with :mod:`ecco_insitu.clim_interp`:
+
+- linear in time between the two bracketing monthly fields (by day of year, mid-month anchors);
+- bilinear in lon/lat;
+- linear in depth;
+- where that gives no value (land, below the bottom), the nearest valid value.
+
+Reads ``prof_lon``, ``prof_lat``, ``prof_YYYYMMDD``, ``prof_depth``. Adds ``prof_Tclim`` and
+``prof_Sclim`` (iPROF, iDEPTH) for each processed variable. Profiles whose lon/lat can't be placed
+on the sphere are dropped.
+
+If a pre-baked climatology (already interpolated onto this file's exact depth grid) was loaded,
+it is used and the depth interpolation is skipped; the log says which mode was used
+(``[step03] CLIM MODE``).
+
+Settings: ``paths.climatology_file``, ``paths.prebaked_clim_dir``. The climatology contract
+(variables ``potential_T_monthly``, ``S_monthly`` on month x depth x lat x lon) is in
+``docs/input_contract.md``. A legacy WOA13 ``.mat`` file is also accepted.
+"""
 import datetime
 import numpy as np
 import ecco_insitu.tools as tools
@@ -6,13 +29,34 @@ import xarray as xr
 from pathlib import Path
 import ecco_insitu.clim_interp as clim_interp
 def update_monthly_mean_clim_WOA13v2_on_prepared_profiles(MITprof_ds, profile_var_key_set, climatology_file, prebaked_clim_files=None):
-    """
-    Assigns monthly T and S climatology values to MITprof objects.
+    """Add the monthly climatology, interpolated to each profile, as ``prof_Vclim``.
 
-    Both loader branches expose the clim as clim_grid_data_dict with
-    potential_T_monthly / S_monthly (keyed 'prof_T' / 'prof_S'), shape
-    (12, ndepth, nlat, nlon), plus 1-D lon/lat/depths. Supports the legacy
-    WOA13 .mat and the WOA23 .nc (see ecco_insitu/climatology/build_woa23.py).
+    Parameters
+    ----------
+    MITprof_ds : xarray.Dataset
+        The profiles (``prof_lon``, ``prof_lat``, ``prof_YYYYMMDD``, ``prof_depth``).
+    profile_var_key_set : set of str
+        Variables to add a climatology for (``prof_T``, ``prof_S``).
+    climatology_file : str
+        Full-depth climatology (``paths.climatology_file``): a NetCDF with
+        ``potential_T_monthly`` / ``S_monthly`` (12, depth, lat, lon) and 1-D ``lon``, ``lat``,
+        ``depth`` (made by :mod:`ecco_insitu.climatology.build_woa23`), or a legacy WOA13
+        ``.mat``.
+    prebaked_clim_files : dict, optional
+        Pre-baked climatologies loaded at start-up, keyed by their depth grid (a tuple of
+        floats). If this file's ``prof_depth`` matches a key, that one is used and the depth
+        interpolation is skipped.
+
+    Returns
+    -------
+    xarray.Dataset
+        With ``prof_Tclim`` / ``prof_Sclim`` (iPROF, iDEPTH), potential temperature (deg C) and
+        salinity (psu). Profiles with unmappable lon/lat are dropped.
+
+    Notes
+    -----
+    Day of year comes from ``prof_YYYYMMDD``; an impossible date (e.g. day 00) is given day 1,
+    and step 06 then zeroes the profile's weights for its date.
     """
 
     prof_depths = np.asarray(MITprof_ds['prof_depth'].values, dtype=float)
@@ -95,6 +139,7 @@ def update_monthly_mean_clim_WOA13v2_on_prepared_profiles(MITprof_ds, profile_va
 
 
 def main(MITprof_ds, profile_var_key_set, climatology_file, prebaked_clim_files=None):
+    """Run step 03; see :func:`update_monthly_mean_clim_WOA13v2_on_prepared_profiles`."""
     MITprof_ds = update_monthly_mean_clim_WOA13v2_on_prepared_profiles(
         MITprof_ds, profile_var_key_set, climatology_file, prebaked_clim_files)
     return MITprof_ds

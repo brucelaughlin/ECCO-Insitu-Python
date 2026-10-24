@@ -1,3 +1,29 @@
+"""
+Step 01: place each profile on the model grid (LLC90) and in an MITgcm tile.
+
+Each profile is matched to its nearest model grid cell (nearest neighbor on the unit sphere),
+and the cell's tile information is stored, which the MITgcm profiles package reads to know where
+to sample the model.
+
+Reads ``prof_lon``, ``prof_lat`` (and ``prof_YYYYMMDD``, only to size a new ``prof_flag``).
+
+Adds
+
+- ``profile_flattened_monotonic_grid_indices`` (iPROF): index of the nearest grid cell in the
+  flattened global ("patchface") grid. Chain-internal: step 10 uses it, and it is dropped before
+  the file is written.
+- ``prof_interp_lon``, ``prof_interp_lat``: the cell center; ``prof_interp_i``, ``prof_interp_j``:
+  the cell's position (1..30) within its 30 x 30 tile; ``prof_interp_XC11``, ``prof_interp_YC11``,
+  ``prof_interp_XCNINJ``, ``prof_interp_YCNINJ``: the centers of the tile's first and last cells;
+  ``prof_interp_weights``: 1 (one cell per profile, so the model does no horizontal interpolation).
+- ``prof_flag`` = 101 for profiles more than two grid spacings (2 x 112 km at LLC90) from their
+  nearest cell (created as 0 if the file has no ``prof_flag``).
+
+Profiles whose lon/lat can't be placed on the sphere are dropped.
+
+Settings: ``paths.grid_dir``, ``chain.llcN`` (90 or 270), ``chain.wet_or_all``
+(0 = nearest wet cell only, otherwise any cell, wet or dry).
+"""
 import xarray as xr
 import numpy as np
 from geopy import distance
@@ -5,13 +31,30 @@ from scipy.interpolate import griddata
 import ecco_insitu.tools as tools
 
 def get_profpoint_llc_ian(lon_llc, lat_llc, mask_llc, MITprof_ds):
-    """
-    Finds the 'profile_flattened_monotonic_grid_indices' of each profile in the MITprof_ds object for a global LLC grid
+    """Find each profile's nearest model grid cell.
 
-    lon_llc, lat_llc: the XC and YC of the llc grid in compact format llc x (13* llc)
-    mask_llc: a mask with 1/0 denoting whether to use a point or not in the search
+    Parameters
+    ----------
+    lon_llc, lat_llc : numpy.ndarray
+        Cell-center longitude and latitude (XC, YC) of the LLC grid, compact format
+        (N, 13 N).
+    mask_llc : numpy.ndarray
+        Same shape; 1 where a cell may be chosen, anything else where not.
+    MITprof_ds : xarray.Dataset
+        The profiles (``prof_lon``, ``prof_lat`` in degrees).
 
-    # Note: "ny" in the signature for "patchface3D" is never used...
+    Returns
+    -------
+    xarray.Dataset
+        With ``profile_flattened_monotonic_grid_indices`` (iPROF), the index of the nearest
+        allowed cell in the flattened patchface grid. Profiles with lon/lat that can't be mapped
+        to the sphere are dropped.
+
+    Notes
+    -----
+    Nearest neighbor in 3-D Cartesian coordinates on the unit sphere
+    (:func:`scipy.interpolate.griddata`, method ``'nearest'``). The ``ny`` argument of
+    ``tools.patchface3D`` is never used.
     """
 
     deg2rad = np.pi/180.0
@@ -45,11 +88,26 @@ def get_profpoint_llc_ian(lon_llc, lat_llc, mask_llc, MITprof_ds):
 
 
 def get_tile_point_llc_ian(lon_llc, lat_llc, ni, nj, MITprof_ds):
-    """
-    Finds the tile coordinates for the MITgcm profile package for a profile point on a llc grid
-    
-    lon_llc, lat_llc: lon and lat dimensions [llc x (13 * llc)]
-    ni, nj: the tile size for the model
+    """Store the MITgcm tile information of each profile's grid cell.
+
+    Parameters
+    ----------
+    lon_llc, lat_llc : numpy.ndarray
+        Cell-center longitude and latitude of the LLC grid, compact format (N, 13 N).
+    ni, nj : int
+        Model tile size in cells (30 x 30 for ECCO v4).
+    MITprof_ds : xarray.Dataset
+        Profiles with ``profile_flattened_monotonic_grid_indices`` (from
+        :func:`get_profpoint_llc_ian`).
+
+    Returns
+    -------
+    xarray.Dataset
+        With ``prof_interp_lon``, ``prof_interp_lat`` (cell center), ``prof_interp_i``,
+        ``prof_interp_j`` (1-based position of the cell in its tile), ``prof_interp_XC11``,
+        ``prof_interp_YC11``, ``prof_interp_XCNINJ``, ``prof_interp_YCNINJ`` (centers of the
+        tile's first and last cells, which the profiles package uses to identify the tile) and
+        ``prof_interp_weights`` = 1.
     """
 
     llc_horizontal_resolution = lon_llc.shape[0]
@@ -150,18 +208,30 @@ def get_tile_point_llc_ian(lon_llc, lat_llc, ni, nj, MITprof_ds):
 
 
 def update_prof_and_tile_points_on_profiles(MITprof_ds, grid_dir, llcN, wet_or_all):
-    """
-    This script updates the profile_flattened_monotonic_grid_indicess and tile interpolation points
-    so that the MITgcm knows which grid points to use for the cost function
+    """Assign each profile its model grid cell and tile, and flag profiles far from any cell.
 
-    Input Parameters:
-        llcN: which grid to use, 90 or 270
-        wet_or_all: 0 = interpolated to nearest wet point, 1 = interpolated all points, regardless of wet or dry
-        MITprof_ds: a single MITprof_ds object
-        grid_dir: directory path of grid to be read in
+    Parameters
+    ----------
+    MITprof_ds : xarray.Dataset
+        The profiles of one input file.
+    grid_dir : str
+        Folder of the LLC grid files (``paths.grid_dir``).
+    llcN : int
+        Grid size: 90 or 270 (``chain.llcN``).
+    wet_or_all : int
+        0 = choose only wet cells (surface level); any other value = any cell, wet or dry
+        (``chain.wet_or_all``).
 
-    Output:
-        Operates on MITprof_dss directly 
+    Returns
+    -------
+    xarray.Dataset or None
+        The dataset with the variables listed in the module description, or None if the profiles
+        couldn't be placed (e.g. no valid positions); the pipeline then treats the file as empty.
+
+    Notes
+    -----
+    Distances to the nearest cell center are geodesic (WGS84, :class:`pyproj.Geod`). A profile
+    more than ``2 * dx`` away, with ``dx = 112 km * 90 / llcN``, gets ``prof_flag = 101``.
     """
    
     ##  Read in llc grid 
@@ -252,6 +322,7 @@ def update_prof_and_tile_points_on_profiles(MITprof_ds, grid_dir, llcN, wet_or_a
 
 
 def main(MITprof_ds, grid_dir, llcN, wet_or_all):
+    """Run step 01; see :func:`update_prof_and_tile_points_on_profiles`."""
     MITprof_ds = update_prof_and_tile_points_on_profiles(MITprof_ds, grid_dir, llcN, wet_or_all)
     return MITprof_ds
 

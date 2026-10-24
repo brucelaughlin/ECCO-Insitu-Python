@@ -11,19 +11,24 @@ profiles any one file puts in any one tile) x NLEVELMAX.  Profiles are a fixed
 number, so minimizing NFILESPROFMAX x NOBSGLOB is minimizing empty space.
 
 Rules for the files:
-  * one provenance per file (data.profiles weights are per file),
-  * chronological, each file one continuous time span,
-  * year rule (--year_rule):
-      whole_years (default) files are labeled in whole calendar years (1 Jan to
-                            31 Dec of the same or a later year): a file holds
-                            several whole years, or, if one year alone has more
-                            than NOBSGLOB profiles in some tile, one part of that
-                            year (parts share the year's label, e.g.
-                            XBT_WOD_001_19920101_19921231, XBT_WOD_002_19920101_19921231);
-                            a file never mixes part of a year with other years
-      none                  files may start and end anywhere in time
-      one_year              no file spans two calendar years
-  * no file puts more than NOBSGLOB profiles in any model tile.
+
+- one provenance per file (data.profiles weights are per file);
+- chronological, each file one continuous time span;
+- year rule (``--year_rule``):
+
+  ``whole_years`` (default)
+      Files are labeled in whole calendar years (1 Jan to 31 Dec of the same or a later
+      year): a file holds several whole years, or, if one year alone has more than NOBSGLOB
+      profiles in some tile, one part of that year. Parts share the year's label, e.g.
+      ``XBT_WOD_001_19920101_19921231``, ``XBT_WOD_002_19920101_19921231``. A file never
+      mixes part of a year with other years.
+  ``none``
+      Files may start and end anywhere in time.
+  ``one_year``
+      No file spans two calendar years.
+
+- no file puts more than NOBSGLOB profiles in any model tile.
+
 For a given NOBSGLOB the split is greedy in time, which gives the fewest files.
 
 Tiles: the LLC grid's 13 N x N faces, cut into t x t tiles (the per-rank array
@@ -38,13 +43,12 @@ each profile on (prof_interp_lon / lat — right when the chain ran on this same
 grid); 'obs' uses prof_lon / lat and the nearest cell of this grid.  'auto'
 (default) = interp for LLC90 (the chain's grid), obs otherwise.
 
-Choosing NOBSGLOB (--nobsglob):
-  an integer, or
-  auto  sweep every value (steps of --step) and take the fewest files whose
-        NFILESPROFMAX x NOBSGLOB is within --tolerance of the smallest found
-        (--tolerance 0 = the minimum itself); --max_files caps the file count.
+Choosing NOBSGLOB (``--nobsglob``): an integer, or ``auto``: sweep every value (steps of
+``--step``) and take the fewest files whose NFILESPROFMAX x NOBSGLOB is within ``--tolerance`` of
+the smallest found (``--tolerance 0`` = the minimum itself); ``--max_files`` caps the file count.
 
-Usage:
+Usage::
+
     ecco-insitu optimize <profiles_dir>                      # report only
     ecco-insitu optimize <profiles_dir> --write <out_dir>    # and write the files
     ecco-insitu optimize <dir> --llc 270 --grid_dir <llc270 grid>
@@ -96,14 +100,48 @@ _YEAR = 10_000_000_000                        # time key = YYYYMMDDhhmmss
 # ---------------------------------------------------------------------------
 
 def read_llc_field(path, n=None):
-    """A compact (n, 13n) big-endian float32 LLC field (e.g. XC.data)."""
+    """Read a compact LLC field (e.g. ``XC.data``) as a float64 array of shape (n, 13n).
+
+    Parameters
+    ----------
+    path : str or Path
+        Big-endian float32 MITgcm binary in the compact (n, 13n) layout.
+    n : int, optional
+        LLC size N; inferred from the file size if not given.
+
+    Returns
+    -------
+    numpy.ndarray
+        Shape (n, 13n), Fortran order as MITgcm writes it.
+    """
     a = np.fromfile(path, dtype='>f4')
     n = n or int(round(np.sqrt(a.size / 13)))
     return a[: 13 * n * n].reshape((n, 13 * n), order='F').astype(np.float64)
 
 
 def exch2_tile_numbers(n, t):
-    """1-based exch2 tile number of every cell of the compact (n, 13n) grid."""
+    """1-based MITgcm exch2 tile number of every cell of the compact (n, 13n) LLC grid.
+
+    The five facets are cut into t x t tiles and numbered facet by facet, x fastest, as exch2
+    does; 13 (n/t)^2 tiles in total.
+
+    Parameters
+    ----------
+    n : int
+        LLC size N.
+    t : int
+        Tile size (cells per side, sNx = sNy). Must divide ``n``.
+
+    Returns
+    -------
+    numpy.ndarray of int
+        Shape (n, 13n).
+
+    Raises
+    ------
+    SystemExit
+        If ``t`` does not divide ``n``.
+    """
     if n % t:
         raise SystemExit(f'tile size {t} does not divide LLC size {n}')
     tile = np.zeros((n, 13 * n), int)
@@ -119,6 +157,32 @@ def exch2_tile_numbers(n, t):
 
 
 class Grid:
+    """An LLC model grid cut into tiles: cell coordinates and the tile of each cell.
+
+    Parameters
+    ----------
+    grid_dir : str or Path
+        Folder with ``XC.data`` and ``YC.data`` (``no_blank/`` versions are used if present).
+    llc : int
+        LLC size N.
+    tile : int
+        Tile size (cells per side).
+
+    Attributes
+    ----------
+    n : int
+        LLC size N.
+    t : int
+        Tile size.
+    lon : numpy.ndarray
+        Cell-center longitudes, shape (n, 13n).
+    lat : numpy.ndarray
+        Cell-center latitudes, shape (n, 13n).
+    tile : numpy.ndarray of int
+        exch2 tile number of each cell (see :func:`exch2_tile_numbers`).
+    n_tiles : int
+        Number of tiles.
+    """
     def __init__(self, grid_dir, llc, tile):
         g = Path(grid_dir)
         xc = next(p for p in (g / 'no_blank' / 'XC.data', g / 'XC.data') if p.exists())
@@ -133,6 +197,17 @@ class Grid:
         self._tile_flat = self.tile.ravel(order='F')
 
     def tiles_of(self, lon, lat):
+        """Tile number of the grid cell nearest each position.
+
+        Parameters
+        ----------
+        lon, lat : array_like
+            Positions in degrees.
+
+        Returns
+        -------
+        numpy.ndarray of int
+        """
         d2r = np.pi / 180
         lo, la = np.asarray(lon, float) * d2r, np.asarray(lat, float) * d2r
         _, cell = self._tree.query(np.column_stack((np.cos(la) * np.cos(lo), np.cos(la) * np.sin(lo), np.sin(la))))
@@ -145,12 +220,50 @@ class Grid:
 # ---------------------------------------------------------------------------
 
 def provenance(path, root, split_by_subdir):
+    """Provenance (output-file group) of an input file: its top-level source folder under ``root``.
+
+    Sources listed in ``split_by_subdir`` are split by their next sub-folder, e.g.
+    ``ITP/L2/x.nc`` -> ``ITP_L2``.
+
+    Parameters
+    ----------
+    path, root : str or Path
+        The file, and the folder the sources are in.
+    split_by_subdir : set of str
+        Sources whose sub-folders are separate provenances.
+
+    Returns
+    -------
+    str
+    """
     rel = Path(path).relative_to(root)
     src = rel.parts[0]
     return f'{src}_{rel.parts[1]}' if src in split_by_subdir and len(rel.parts) > 2 else src
 
 
 def build_index(profiles_dir, grid, position, split_by_subdir):
+    """Index every profile under ``profiles_dir``: its file, position in the file, time and tile.
+
+    Parameters
+    ----------
+    profiles_dir : str or Path
+        Folder of profile files (searched recursively for ``*.nc``).
+    grid : Grid
+        The model grid.
+    position : {'interp', 'obs'}
+        Use the chain's grid cell (``prof_interp_lon/lat``) or the observed position
+        (``prof_lon/lat``) to find each profile's tile.
+    split_by_subdir : set of str
+        See :func:`provenance`.
+
+    Returns
+    -------
+    files : list of Path
+        The input files, sorted.
+    index : dict
+        Per provenance, a dict of arrays ``file`` (index into ``files``), ``local`` (iPROF in that
+        file), ``time`` (YYYYMMDDhhmmss as an integer) and ``tile``, sorted by time.
+    """
     files = sorted(Path(profiles_dir).rglob('*.nc'))
     rows = defaultdict(list)
     for fi, f in enumerate(files):
@@ -181,7 +294,24 @@ def _occ(tile):
 
 
 def split_cap(tile, cap, occ=None):
-    """Time-contiguous chunks with <= cap profiles per tile (greedy)."""
+    """Split a time-ordered run of profiles into contiguous chunks with at most ``cap`` per tile.
+
+    Greedy: each chunk is extended as far as possible, which gives the fewest chunks.
+
+    Parameters
+    ----------
+    tile : numpy.ndarray of int
+        Tile number of each profile, in time order.
+    cap : int
+        Maximum number of profiles of one chunk in any one tile (NOBSGLOB).
+    occ : list of numpy.ndarray, optional
+        For each tile, the (sorted) positions of its profiles; computed if not given.
+
+    Returns
+    -------
+    list of (int, int)
+        ``(start, stop)`` index ranges, covering all profiles in order.
+    """
     occ = [o for o in (occ if occ is not None else _occ(tile)) if len(o) > cap]
     n, s, out = len(tile), 0, []
     while s < n:
@@ -196,7 +326,20 @@ def split_cap(tile, cap, occ=None):
 
 
 class Splitter:
-    """Precomputes per-year counts so a sweep over caps is fast."""
+    """Splits one provenance's profiles into files for any NOBSGLOB cap, under a year rule.
+
+    Per-year tile counts and per-tile occurrence lists are computed once, so a sweep over many
+    caps (:func:`sweep`) is fast.
+
+    Parameters
+    ----------
+    d : dict of numpy.ndarray
+        The provenance's index from :func:`build_index` (``time``, ``tile``, ...), in time order.
+    n_tiles : int
+        Number of model tiles.
+    year_rule : {'whole_years', 'one_year', 'none'}
+        How files may span calendar years (see the module description).
+    """
 
     def __init__(self, d, n_tiles, year_rule):
         self.tile, self.rule = d['tile'], year_rule
@@ -211,6 +354,19 @@ class Splitter:
                           if year_rule in ('one_year', 'whole_years') else None)
 
     def chunks(self, cap):
+        """The files for one cap: contiguous ``(start, stop)`` ranges into the provenance's index.
+
+        Parameters
+        ----------
+        cap : int
+            NOBSGLOB: the most profiles any file may put in one tile.
+
+        Returns
+        -------
+        list of (int, int)
+            Under ``whole_years``, each range is several whole years, or one part of a year too dense
+            to fit; under ``one_year``, no range crosses a year; under ``none``, ranges split anywhere.
+        """
         if self.rule == 'none':
             return split_cap(self.tile, cap, self._occ_all)
         if self.rule == 'one_year':
@@ -239,6 +395,25 @@ class Splitter:
 
 
 def sweep(splitters, step, n_used, n_tiles):
+    """Try every NOBSGLOB cap (in steps of ``step``) and count the files each needs.
+
+    Parameters
+    ----------
+    splitters : dict of str -> Splitter
+        One per provenance.
+    step : int
+        Cap step of the sweep.
+    n_used : int
+        Number of profiles, for the empty-space percentage.
+    n_tiles : int
+        Number of model tiles.
+
+    Returns
+    -------
+    list of dict
+        Per cap: ``nobsglob``, ``files`` (NFILESPROFMAX), ``product`` (files x NOBSGLOB) and
+        ``empty_pct`` (share of the per-tile arrays left empty).
+    """
     lo = max(step, max(s.min_cap for s in splitters.values()))
     hi = max(max(int(c.max()) for c in s.year_counts) if s.rule == 'one_year' else
              int(max(np.sum(s.year_counts, axis=0).max(), 1)) for s in splitters.values())
@@ -253,6 +428,29 @@ def sweep(splitters, step, n_used, n_tiles):
 
 
 def choose(rows, nobsglob, tolerance, max_files):
+    """Pick the NOBSGLOB to use from the sweep.
+
+    Parameters
+    ----------
+    rows : list of dict
+        Output of :func:`sweep`.
+    nobsglob : int, str
+        An integer cap, or ``'auto'``.
+    tolerance : float
+        ``auto``: the fewest files whose product is within this fraction of the smallest product.
+    max_files : int or None
+        ``auto``: at most this many files.
+
+    Returns
+    -------
+    dict
+        The chosen row (for an integer cap not in the sweep, just ``{'nobsglob': cap}``).
+
+    Raises
+    ------
+    SystemExit
+        If no cap gives at most ``max_files`` files.
+    """
     if nobsglob != 'auto':
         cap = int(nobsglob)
         return next((r for r in rows if r['nobsglob'] == cap), None) or {'nobsglob': cap}
@@ -297,6 +495,24 @@ def _schema(files, file_ids):
 
 
 def write_file(args):
+    """Write one model-ready profile file from rows of several yearly files.
+
+    Used as a worker function (one tuple argument, for ``ProcessPoolExecutor.map``). Every variable
+    of the inputs is copied, with missing variables or shorter dimensions filled (weights with 0).
+    Adds ``prof_yearly_file`` / ``prof_yearly_index`` and the global attribute ``yearly_files`` so
+    each profile can be traced back. Written to a temporary name, then renamed.
+
+    Parameters
+    ----------
+    args : tuple
+        ``(path, files, prov, k, rows, extra_attrs)``: output path, the input file list, provenance,
+        part number, the rows (``file`` / ``local`` arrays) and extra global attributes.
+
+    Returns
+    -------
+    str
+        The written file's name.
+    """
     path, files, prov, k, rows, extra_attrs = args
     fi, li = rows['file'], rows['local']
     n = len(fi)
@@ -356,6 +572,51 @@ def run(profiles_dir, out_dir=None, llc=DEFAULTS['llc'], tile=DEFAULTS['tile'], 
         position='auto', split_by_subdir=None, year_rule=DEFAULTS['year_rule'],
         nobsglob=DEFAULTS['nobsglob'], tolerance=DEFAULTS['tolerance'], max_files=None, step=DEFAULTS['step'],
         n_workers=None, docs_dir=None):
+    """Plan the model-ready files for a folder of profile files, report the trade-off, and
+    optionally write them.
+
+    Parameters
+    ----------
+    profiles_dir : str or Path
+        Folder of profile files (searched recursively), e.g. a run's ``yearly/``.
+    out_dir : str or Path, optional
+        Where to write the files; ``None`` = report only.
+    llc, tile : int
+        LLC size N and tile size.
+    grid_dir : str or Path
+        Folder with the grid's ``XC.data`` / ``YC.data``. Required.
+    position : {'auto', 'interp', 'obs'}
+        How to find each profile's tile (see the module description).
+    split_by_subdir : sequence of str, optional
+        Sources split by sub-folder (default ``['ITP']``).
+    year_rule : {'whole_years', 'one_year', 'none'}
+        See the module description.
+    nobsglob : int or 'auto'
+        The cap, or choose it (see :func:`choose`).
+    tolerance : float
+        For ``auto``.
+    max_files : int, optional
+        For ``auto``.
+    step : int
+        Sweep step.
+    n_workers : int, optional
+        Parallel writers (default min(4, CPUs - 1)).
+    docs_dir : str or Path, optional
+        Where the summary files go (default ``documentation/`` beside ``out_dir``).
+
+    Returns
+    -------
+    list of dict
+        The manifest: per file ``file``, ``provenance``, ``part``, ``time_start``, ``time_end``,
+        ``n_profiles``, ``busiest_tile``.
+
+    Raises
+    ------
+    ValueError
+        If ``grid_dir`` is not given.
+    SystemExit
+        If no profiles are found.
+    """
     profiles_dir = Path(profiles_dir)
     split_by_subdir = set(DEFAULTS['split_by_subdir'] if split_by_subdir is None else split_by_subdir)
     if grid_dir is None:
@@ -459,6 +720,7 @@ def run(profiles_dir, out_dir=None, llc=DEFAULTS['llc'], tile=DEFAULTS['tile'], 
 
 
 def cli(argv=None):
+    """Command-line entry point (``ecco-insitu optimize``); see the module description."""
     ap = argparse.ArgumentParser(description='Arrange profile files to minimize NFILESPROFMAX x NOBSGLOB.',
                                  formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     ap.add_argument('profiles_dir', help='folder of input profile files (searched recursively)')

@@ -61,7 +61,20 @@ def _usage():
 
 
 def main(argv=None):
-    """Dispatch ``ecco-insitu <command> ...`` to the command's ``cli(argv)``; return its exit code."""
+    """Entry point of the ``ecco-insitu`` command: dispatch ``ecco-insitu <command> ...`` to that
+    command's ``cli(argv)``.
+
+    Parameters
+    ----------
+    argv : list of str, optional
+        ``[command, *options]`` (default: ``sys.argv[1:]``). No command, ``-h``, ``--help`` or
+        ``help`` prints the list of commands; ``--version`` prints the version.
+
+    Returns
+    -------
+    int
+        The command's exit code (2 for an unknown command).
+    """
     argv = list(sys.argv[1:] if argv is None else argv)
     if not argv or argv[0] in ('-h', '--help', 'help'):
         print(_usage())

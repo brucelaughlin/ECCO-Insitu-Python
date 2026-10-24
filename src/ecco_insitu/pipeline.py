@@ -1,3 +1,30 @@
+"""Steps 01-10 of the NCEI chain on a folder of input profile files (``ecco-insitu steps``).
+
+:func:`NCEI_pipeline` is the controller. Before processing anything it:
+
+1. reads the settings (:func:`ecco_insitu.config.load`) and checks the data paths exist;
+2. checks the climatology and chooses the pre-baked copies to use (:func:`check_climatologies`);
+3. checks every input file against the input contract (:mod:`ecco_insitu.validate`); files that
+   fail are skipped, with the reason;
+4. saves the merged settings to ``<run>/documentation/run_config.yaml``.
+
+It then runs each remaining file through steps 01-10 (:mod:`ecco_insitu.steps`) in parallel worker
+processes, writes one output file per input file (same sub-folder layout, ``__ncei_step_10`` added
+to the name), and writes ``<run>/documentation/run_summary.txt``, saying for each input file whether
+it was written, skipped, lost all its data in QC, or failed (and at which step).
+
+Each worker captures everything a file's steps print (including C-library output) and the
+controller prints it as one block, so the log reads file by file. The diagnostics parse these
+blocks (``step: N`` and ``valid prof_T profile count ...`` lines), so their format is fixed.
+
+Before step 01, out-of-range dates and times (``SS = 60``, ``24:00:00``, day 31 of a 30-day month)
+are rolled forward to valid ones. After step 10, ``prof_Tcost`` / ``prof_Scost`` (misfit to the
+climatology times the weight) are added, longitudes are wrapped to -180..180, and ``prof_T`` is
+labeled potential temperature, with step 05's decision in its ``T_conversion`` attribute.
+
+Steps 11-13 run on the whole output folder afterwards; :mod:`ecco_insitu.run` runs everything.
+"""
+
 import xarray as xr
 import numpy as np
 import cartopy
@@ -137,14 +164,29 @@ _redirect_fd = contextlib.contextmanager(_redirect_fd)
 
 
 def check_climatologies(climatology_file, prebaked_clim_dir):
-    """Check the climatology and choose the pre-baked files to use; return their paths.
+    """Check the climatology and choose the pre-baked files to use.
 
-    The full-depth climatology must pass :func:`validate_inputs.check_climatology_file`
-    (raises ``config_loader.ConfigError`` otherwise, before any file is processed).
-    A pre-baked file is used only if it passes its own check **and** its ``source_file``
-    attribute names this climatology; pre-baked files made from another climatology are
-    ignored with a message, so changing ``paths.climatology_file`` can't silently mix two
-    climatologies.
+    The full-depth climatology must pass :func:`ecco_insitu.validate.check_climatology_file`. A
+    pre-baked file is used only if it passes its own check **and** its ``source_file`` attribute names
+    this climatology. Pre-baked files made from another climatology are ignored with a message, so
+    changing ``paths.climatology_file`` can't silently mix two climatologies.
+
+    Parameters
+    ----------
+    climatology_file : str or Path
+        The full-depth climatology (``paths.climatology_file``).
+    prebaked_clim_dir : str or Path or None
+        Folder searched for ``*_prebaked.nc`` (``paths.prebaked_clim_dir``); None for none.
+
+    Returns
+    -------
+    list of Path
+        The pre-baked files to use.
+
+    Raises
+    ------
+    ecco_insitu.config.ConfigError
+        If the climatology is not usable (before any file is processed).
     """
     rep = validate_inputs.check_climatology_file(climatology_file)
     if not rep.ok:
@@ -394,18 +436,21 @@ def _process_one_file(args):
 def NCEI_pipeline(dest_dir, input_dir, n_workers=None, cfg=None):
     """Run steps 01-10 on every ``*.nc`` file under ``input_dir``, writing to ``dest_dir``.
 
+    See the module description for what happens before, during and after the steps.
+
     Parameters
     ----------
     dest_dir : str or Path
-        Output folder; files keep their sub-folder layout from ``input_dir``.
+        Output folder; files keep their sub-folder layout from ``input_dir``. If it is named
+        ``yearly``, the run's ``documentation/`` folder goes beside it, otherwise inside it.
     input_dir : str or Path
         Folder of input profile files, searched recursively.
     n_workers : int, optional
         Parallel worker processes; default ``run.n_workers`` from the settings, else
-        min(8, CPUs - 1).
+        min(8, CPUs - 1). 1 runs the files one after another in this process.
     cfg : dict, optional
-        Settings from :func:`config_loader.load`; default: the standard files
-        (``ecco_insitu/defaults.yaml`` + ``config/local.yaml``).
+        Settings from :func:`ecco_insitu.config.load`; default: the standard files
+        (``src/ecco_insitu/defaults.yaml`` + ``config/local.yaml``).
 
     Returns
     -------
@@ -413,6 +458,11 @@ def NCEI_pipeline(dest_dir, input_dir, n_workers=None, cfg=None):
         Number of input files that failed with an error (0 for a clean run). Files skipped by the
         input check and files with no data left after QC are not counted; all are listed in
         ``<run>/documentation/run_summary.txt``.
+
+    Raises
+    ------
+    ecco_insitu.config.ConfigError
+        If a required data path is missing, or the climatology is not usable.
     """
     if cfg is None:
         cfg = config_loader.load()
@@ -563,12 +613,29 @@ def NCEI_pipeline(dest_dir, input_dir, n_workers=None, cfg=None):
 
 
 def main(dest_dir, input_dir, n_workers=None, cfg=None):
-    """Run steps 01-10; see :func:`NCEI_pipeline`. Returns the number of files that failed."""
+    """Run steps 01-10; the same as :func:`NCEI_pipeline`.
+
+    Returns
+    -------
+    int
+        Number of input files that failed.
+    """
     return NCEI_pipeline(dest_dir, input_dir, n_workers=n_workers, cfg=cfg)
 
 
 def cli(argv=None):
-    """Command-line entry point (``ecco-insitu`` subcommand)."""
+    """Command-line entry point (``ecco-insitu steps``).
+
+    Parameters
+    ----------
+    argv : list of str, optional
+        Arguments (default: ``sys.argv[1:]``).
+
+    Notes
+    -----
+    Exits with code 0 if all files were processed (or skipped by the input check), 3 if some files
+    failed, and with a message for a settings error.
+    """
 
     parser = argparse.ArgumentParser()
 

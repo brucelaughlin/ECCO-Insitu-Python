@@ -1,3 +1,43 @@
+"""
+Step 06: quality control. Zero the weights of data that fail a test.
+
+Each variable V (``prof_T``, ``prof_S``) is tested point by point. A point that fails a test gets
+``prof_Vweight = 0``, and the test's bit, ``2**(code - 1)``, is added to ``prof_Vweight_code``
+(created here, 0 = passed everything), so the code records every test a point failed:
+
+====  ==============================================================================
+code  test (a point fails if ...)
+====  ==============================================================================
+1     the weight is already 0 or missing
+2     ``prof_Vflag`` > 0 (only if the file has ``prof_Vflag``)
+3     the value is missing
+4     the value is exactly 0 (the value is also set to missing)
+5     outside the legal range: T -2..40 deg C, S 20..40 psu
+6     no climatology value (missing, 0, or below -9000)
+7     invalid date or time: year before 1950 or after the current year, month not 1-12,
+      day not 1-31 (so a day of 00 fails), ``prof_HHMMSS`` outside 0..235959 (whole profile)
+8     latitude outside -90..90, longitude outside -180..180 after wrapping 0..360, or exactly
+      (0 N, 0 E); ``lon = 99999`` (no position) fails here (whole profile)
+9     whole-profile cost vs. climatology: mean over the profile's weighted points of
+      (V - Vclim)**2 * weight >= 16 (whole profile)
+10    single-point cost vs. climatology: (V - Vclim)**2 * weight >= 100
+11    likely bad conductivity cell (salinity only, but it zeroes T and S): the median over the
+      levels below 50 m of "S < 30" is true, or below 250 m of "S < 34" (whole profile)
+====  ==============================================================================
+
+The weight here is still 1 / sigma**2 (gamma is applied later, in step 10), so the cost tests
+compare (dV / sigma)**2 with fixed thresholds.
+
+**Climatology-cost tests poleward of the threshold.** If
+``chain.exclude_high_latitude_profiles_from_clim_cost`` is true, codes 9 and 10 are not applied
+to profiles with ``|lat|`` > ``chain.dubious_clim_lat_threshold`` (the climatology is unreliable
+there). If ``chain.clim_cost_qc_with_high_lat_sigma`` is true too, they still apply to those
+profiles with a high-latitude sigma from step 04 (``prof_Vuncertainty_source`` 1 or 2); only
+profiles on the CTD sigma are excluded.
+
+Adds ``prof_Vweight_code``; changes ``prof_Vweight`` (and ``prof_V`` for code 4). Prints the
+count of surviving points after each test.
+"""
 import warnings
 import xarray as xr
 import numpy as np
@@ -6,8 +46,37 @@ import datetime
 
 def update_zero_weight_points_on_prepared_profiles(MITprof_ds, profile_var_key_set, exclude_high_latitude_profiles_from_clim_cost, dubious_clim_lat_threshold,
                                                     clim_cost_qc_with_high_lat_sigma=True):
-    """
-    This script zeros-out profTweight and profSweight at points that match some criteria
+    """Zero the weights of points that fail the QC tests (codes 1-11, see the module docstring).
+
+    Parameters
+    ----------
+    MITprof_ds : xarray.Dataset
+        Profiles with ``prof_V``, ``prof_Vweight``, ``prof_Vclim``, positions and dates.
+    profile_var_key_set : set of str
+        Variables to test (``prof_T``, ``prof_S``).
+    exclude_high_latitude_profiles_from_clim_cost : bool
+        Skip the climatology-cost tests (codes 9, 10) poleward of ``dubious_clim_lat_threshold``
+        (``chain.exclude_high_latitude_profiles_from_clim_cost``).
+    dubious_clim_lat_threshold : float
+        Latitude (degrees) for the above (``chain.dubious_clim_lat_threshold``).
+    clim_cost_qc_with_high_lat_sigma : bool
+        Still apply codes 9 and 10 poleward of the threshold to profiles with a high-latitude
+        sigma (``prof_Vuncertainty_source`` 1 or 2) (``chain.clim_cost_qc_with_high_lat_sigma``).
+
+    Returns
+    -------
+    xarray.Dataset
+        With ``prof_Vweight`` zeroed where tests failed and ``prof_Vweight_code`` (sum of
+        ``2**(code - 1)`` over failed tests).
+
+    Raises
+    ------
+    Exception
+        If ``prof_Vweight_code`` ends up with missing values (should never happen).
+
+    Notes
+    -----
+    Original description of the tests (from the MATLAB version):
 
     %% MORE DETAILS
     %% TEST 4
@@ -279,6 +348,7 @@ def update_zero_weight_points_on_prepared_profiles(MITprof_ds, profile_var_key_s
 
 def main(MITprof_ds, profile_var_key_set, exclude_high_latitude_profiles_from_clim_cost, dubious_clim_lat_threshold,
          clim_cost_qc_with_high_lat_sigma=True):
+    """Run step 06; see :func:`update_zero_weight_points_on_prepared_profiles`."""
     MITprof_ds = update_zero_weight_points_on_prepared_profiles(MITprof_ds, profile_var_key_set, exclude_high_latitude_profiles_from_clim_cost, dubious_clim_lat_threshold,
                                                                 clim_cost_qc_with_high_lat_sigma)
     return MITprof_ds

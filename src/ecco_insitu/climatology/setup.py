@@ -3,23 +3,28 @@ Set up the climatology the NCEI chain compares profiles with (step 03): check th
 settings, or make one.
 
 The chain needs a monthly potential-temperature and salinity climatology on a regular lon/lat
-grid (the contract is in docs/input_contract.md). There are two ways to provide it:
+grid (the contract is in ``docs/input_contract.md``, section 2). **You don't need to have one
+already.** There are two ways to provide it:
 
 1. **Use your own file.** Any NetCDF file that meets the contract works: set
    ``paths.climatology_file`` in config/local.yaml (or a --config file) and run
    ``ecco-insitu climatology --check``.
 2. **Build the standard one** (what this project uses): WOA23 1991-2020, 1-degree, monthly
    fields to 1500 m spliced onto seasonal fields to 5500 m, in-situ T converted to potential T
-   with the chain's own UNESCO routine. ``ecco-insitu climatology --build`` downloads about
-   1.4 GB from NOAA and writes it to the folder of ``paths.climatology_file``.
+   with the chain's own UNESCO routine (see :mod:`ecco_insitu.climatology.build_woa23`). Set
+   ``paths.climatology_file`` to where it should go (the file need not exist yet), then
+   ``ecco-insitu climatology --build`` downloads about 1.4 GB from NOAA and writes it there.
 
 Either way, pre-baked copies (the climatology already interpolated onto each input depth grid,
 which makes step 03 much faster) can then be made with ``--prebake``. The chain only uses
 pre-baked files made from the climatology currently set, so they can't get out of step.
 
-With no option, this checks the current setup and says what to do.
+With no option, this checks the current setup and says what to do. A chain run also checks the
+climatology before processing anything, and stops with these instructions if it is missing or
+unusable.
 
-Usage:
+Usage::
+
     ecco-insitu climatology [--check | --build | --prebake] [--config FILE] [--set key=value]
 """
 import argparse
@@ -67,6 +72,14 @@ def _status(cfg):
 
 
 def cli(argv=None):
+    """Command-line entry point (``ecco-insitu climatology``); see the module description.
+
+    Returns
+    -------
+    int
+        0 if the climatology in the settings is usable (after building or pre-baking, if asked),
+        else 1.
+    """
     ap = argparse.ArgumentParser(description=__doc__.split('\n\n')[0],
                                  formatter_class=argparse.RawDescriptionHelpFormatter, epilog=__doc__)
     g = ap.add_mutually_exclusive_group()

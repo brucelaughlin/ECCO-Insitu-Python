@@ -62,6 +62,9 @@ def yearly_dir(path):
 
 
 def run_timestamp(run_dir):
+    """The ``YYYYMMDD_HHMMSS`` stamp of a run folder ``profile_files_NCEI_processed_<stamp>``
+    (given it or its ``yearly/`` subfolder); the folder name itself if it doesn't follow that pattern.
+    """
     name = run_root(run_dir).name
     m = _RUN_RE.match(name)
     return m.group(1) if m else name
@@ -94,10 +97,9 @@ _DEFAULT_SUBTYPE = {'XBT_WOD': 'flag'}
 def classify(path, root):
     """Return (source, subtype) for a profile file.
 
-    source  = top-level directory under root (CTD_WOD, PFL, ...)
-    subtype = nested subdirectory if any (ITP/L2), else the filename tokens
-              after the year and instrument code (PFL 'D', XBT 'noflag',
-              CTD 'OSD'), else a per-source default.
+    - **source**: the top-level directory under ``root`` (CTD_WOD, PFL, ...).
+    - **subtype**: the nested subdirectory if any (ITP/L2); else the filename tokens after the year
+      and instrument code (PFL ``D``, XBT ``noflag``, CTD ``OSD``); else a per-source default.
     """
     rel = Path(path).relative_to(root)
     source = rel.parts[0]
@@ -111,6 +113,7 @@ def classify(path, root):
 
 
 def file_year(path):
+    """The year in a file name (``..._1992_...``, ignoring the ``__ncei_step_N`` suffix), or -1."""
     m = re.search(r'_((?:19|20)\d\d)(?:_|$)', _STEP_RE.sub('', Path(path).stem))
     return int(m.group(1)) if m else -1
 
@@ -207,14 +210,19 @@ class BinLookup:
 # ---------------------------------------------------------------------------
 
 def index_paths(report_dir):
+    """Paths of a profile-counts report's index files:
+    ``(<report_dir>/index/raw.parquet, processed.parquet, meta.json)``.
+    """
     d = Path(report_dir) / 'index'
     return d / 'raw.parquet', d / 'processed.parquet', d / 'meta.json'
 
 
 def load_index(report_dir):
+    """Read a report's per-profile index; returns ``(raw, processed)`` DataFrames."""
     raw_p, proc_p, _ = index_paths(report_dir)
     return pd.read_parquet(raw_p), pd.read_parquet(proc_p)
 
 
 def sources_in(*dfs):
+    """Sorted list of the ``source`` values found in any of the given DataFrames."""
     return sorted(set().union(*(set(df['source'].unique()) for df in dfs)))

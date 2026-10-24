@@ -78,6 +78,7 @@ WOA23_ANCHORS = [
 # ---------------------------------------------------------------------------
 
 def open_nc(path):
+    """Open a NetCDF file read-only with automatic masking and scaling off (raw values)."""
     ds = netCDF4.Dataset(path, 'r')
     ds.set_auto_maskandscale(False)
     return ds
@@ -90,6 +91,9 @@ def valid(a, fill=-9999.0, tol=1e-3):
 
 
 def source_year(path):
+    """Comparison key for a file: its name without the ``__ncei_step_10[_compact]`` suffix
+    and extension, used to pair files between two runs in :func:`check_regression`.
+    """
     stem = os.path.basename(path).replace('__ncei_step_10_compact', '').replace('__ncei_step_10', '')
     return os.path.splitext(stem)[0]
 
@@ -197,6 +201,24 @@ def check_internal(path, verbose=True):
 # ---------------------------------------------------------------------------
 
 def check_cross_field(path, verbose=True):
+    """Check 2 for one file: cross-field consistency.
+
+    Flags weighted T and S values outside plausible ranges, profiles with an S weight but no T
+    weight, interpolation points far from the profile position, and interpolation weights that
+    don't sum to 1.
+
+    Parameters
+    ----------
+    path : str
+        The NetCDF file.
+    verbose : bool
+        Unused; kept for the call signature.
+
+    Returns
+    -------
+    list of str
+        Issues, each starting ``WARN:`` or ``ERROR:``.
+    """
     issues = []
     ds = open_nc(path)
     nprof = ds.dimensions['iPROF'].size
@@ -321,6 +343,19 @@ def _file_stats(path):
 
 
 def check_regression(new_dir, base_dir, summary=False):
+    """Check 3: compare per-file statistics of a run with a baseline run.
+
+    Pairs files by :func:`source_year`, lists files present in only one run, and prints, for each
+    pair, the statistics (profile counts, means, weights, ...) that changed by more than their
+    threshold.
+
+    Parameters
+    ----------
+    new_dir, base_dir : str
+        The run folder to check and the baseline run folder.
+    summary : bool
+        Print only files with changes.
+    """
     _banner(f'CHECK 3: Cross-run regression\n  new:      {new_dir}\n  baseline: {base_dir}')
 
     new_files  = {source_year(f): f for f in
@@ -399,6 +434,21 @@ def check_regression(new_dir, base_dir, summary=False):
 # ---------------------------------------------------------------------------
 
 def check_woa23_reference(output_dir, woa23_path, summary=False):
+    """Check 4: spot-check ``prof_Tclim`` against the WOA23 climatology itself.
+
+    For each anchor point in ``WOA23_ANCHORS`` (location, depth, month), finds up to 20 profiles
+    within 2 degrees in that month and compares their ``prof_Tclim`` at the nearest depth with the
+    WOA23 value; prints whether each is within ``CLIM_TOL_T``.
+
+    Parameters
+    ----------
+    output_dir : str
+        The run folder.
+    woa23_path : str
+        The full-depth WOA23 climatology file.
+    summary : bool
+        Print less.
+    """
     _banner(f'CHECK 4: External reference (WOA23)\n  {woa23_path}')
 
     woa = open_nc(woa23_path)
@@ -477,6 +527,16 @@ def check_woa23_reference(output_dir, woa23_path, summary=False):
 # ---------------------------------------------------------------------------
 
 def run_checks_1_2(output_dir, summary=False):
+    """Checks 1 (internal consistency) and 2 (cross-field) on every file under ``output_dir``;
+    prints each file's issues and a count of errors and warnings.
+
+    Parameters
+    ----------
+    output_dir : str
+        The run folder (searched recursively for ``*.nc``).
+    summary : bool
+        Don't print a line for files without issues.
+    """
     _banner(f'CHECKS 1+2: Internal consistency & cross-field\n  {output_dir}')
 
     all_files = sorted(glob.glob(os.path.join(output_dir, '**', '*.nc'), recursive=True))
@@ -505,6 +565,16 @@ def run_checks_1_2(output_dir, summary=False):
 
 
 def cli(argv=None):
+    """Command-line entry point (``ecco-insitu check-qc``): run checks 1-4 on a run folder.
+
+    Checks 1-2 always; check 3 with ``--baseline``; check 4 against the WOA23 file
+    (``--woa23``, default ``paths.climatology_file``) unless ``--no-woa``.
+
+    Parameters
+    ----------
+    argv : list of str, optional
+        Command-line arguments (default: ``sys.argv[1:]``).
+    """
     p = argparse.ArgumentParser(
         description=__doc__,
         formatter_class=argparse.RawDescriptionHelpFormatter)

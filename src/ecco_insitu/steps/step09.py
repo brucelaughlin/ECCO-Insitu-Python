@@ -1,3 +1,21 @@
+"""
+Step 09: reduce sub-daily profiles at one place to one per day.
+
+For each calendar day (``prof_YYYYMMDD``), the profiles of that day are taken in order of how
+close their time ``prof_HHMMSS`` is to ``chain.closest_time`` (120000 = noon). A profile is kept
+unless an already-kept profile of the same day is within ``chain.distance_tolerance`` meters
+(straight-line distance on a sphere of radius 6371 km). So among close-together profiles of one
+day, the one nearest noon is kept, and no two kept profiles of a day are within the tolerance.
+
+The other profiles get zero weight for every variable and are then removed (as in step 07).
+Profiles whose lon/lat can't be placed on the sphere are dropped.
+
+Settings: ``chain.distance_tolerance`` (m), ``chain.closest_time`` (HHMMSS), ``chain.method``
+(only method 1 exists; the value is not used).
+
+This removes most repeated profiles from gliders and ITPs (about 92% and 61% of their profiles in
+the 2026-10 runs).
+"""
 import glob
 import os
 import numpy as np
@@ -11,16 +29,33 @@ earth_radius = 6371000
 deg2rad = np.pi/180    
 
 def update_decimate_profiles_subdaily_to_once_daily(MITprof_ds, profile_var_key_set, distance_tolerance, closest_time, method):
-    """
-    This script decimates profiles with subdaily sampling at the same
-    location to once-daily sampling.
+    """Keep at most one profile per day at each location.
 
-    Input Parameters:
+    Parameters
+    ----------
+    MITprof_ds : xarray.Dataset
+        Profiles with ``prof_lon``, ``prof_lat``, ``prof_YYYYMMDD``, ``prof_HHMMSS`` and weights.
+    profile_var_key_set : set of str
+        Variables whose weights are zeroed for removed profiles (``prof_T``, ``prof_S``).
+    distance_tolerance : float
+        Profiles of one day closer than this (m) count as the same location
+        (``chain.distance_tolerance``, 5000).
+    closest_time : float
+        Preferred time of day, HHMMSS (``chain.closest_time``, 120000 = noon).
+    method : int
+        Ignored; the one algorithm implemented is the original "method 1" (``chain.method``).
 
-        distance_tolerance = 5e3        # radius within which profiles are considered to be at the same location [in meters]
-        closest_time = 120000           # HHMMSS: if there is more than one profile per day in a location, choose the one
-                                        # that is closest in time to 'closest time' default is noon 
-        method = 1                      # method 0 or 1
+    Returns
+    -------
+    xarray.Dataset
+        With the removed profiles gone.
+
+    Notes
+    -----
+    Greedy, per day: candidates are visited in order of ``|HHMMSS - closest_time|`` and kept if no
+    kept profile is within ``distance_tolerance``. The time difference is taken on the HHMMSS
+    numbers, not in seconds. Distances are chord lengths on a sphere of radius 6371 km, which for
+    5 km equal the great-circle distance to well under a meter.
     """
 
     # -----------------------------------------------------------------------------------------------------------------------------
@@ -85,6 +120,7 @@ def update_decimate_profiles_subdaily_to_once_daily(MITprof_ds, profile_var_key_
 
 
 def main(MITprof_ds, profile_var_key_set, distance_tolerance, closest_time, method):
+    """Run step 09; see :func:`update_decimate_profiles_subdaily_to_once_daily`."""
     MITprof_ds = update_decimate_profiles_subdaily_to_once_daily(MITprof_ds, profile_var_key_set, distance_tolerance, closest_time, method)
     return MITprof_ds
     

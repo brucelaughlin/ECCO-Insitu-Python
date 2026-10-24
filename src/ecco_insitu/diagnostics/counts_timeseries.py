@@ -6,7 +6,8 @@ Per source (timeseries_<source>.png):
   right bar  profiles kept after our processing (any nonzero T or S weight)
   lines      non-empty T / S profiles, UCSD (black) and processed (teal)
 
-Also:
+Also::
+
   timeseries_ALL.png       all sources: stacked by source, UCSD vs processed
   kept_fraction_<V>.png    % of UCSD V profiles still used after processing,
                            source x year heatmap
@@ -56,6 +57,9 @@ def _save(fig, path):
 
 
 def plot_source(raw, proc, source, years, out_dir):
+    """Bar chart of one source's profiles per year, input (stacked by subtype) next to processed;
+    writes ``timeseries_<source>.png``.
+    """
     r, p = raw[raw.source == source], proc[proc.source == source]
     years = _year_range(r, p)      # this source's own span
     x = years.astype(float)
@@ -100,6 +104,9 @@ def plot_source(raw, proc, source, years, out_dir):
 
 
 def plot_all(raw, proc, sources, years, out_dir):
+    """Bar chart of all sources' profiles per year, input next to processed (hatched); writes
+    ``timeseries_ALL.png``.
+    """
     x = years.astype(float)
     w = 0.4
     fig, ax = plt.subplots(figsize=(13, 6))
@@ -124,6 +131,9 @@ def plot_all(raw, proc, sources, years, out_dir):
 
 
 def plot_kept_fraction(raw, proc, sources, years, out_dir):
+    """Line chart, per variable, of the percentage of input profiles still used after processing,
+    by source and year; writes ``kept_fraction_<V>.png``.
+    """
     for var in common.VARS:
         frac = np.full((len(sources), len(years)), np.nan)
         for i, s in enumerate(sources):
@@ -149,6 +159,9 @@ def plot_kept_fraction(raw, proc, sources, years, out_dir):
 
 
 def summary_table(raw, proc, sources):
+    """Per-source summary table (subtypes, years, input and processed counts, % kept, effective
+    count = sum of step 11 factors), with a TOTAL row.
+    """
     rows = []
     for s in sources:
         r, p = raw[raw.source == s], proc[proc.source == s]
@@ -176,6 +189,9 @@ def summary_table(raw, proc, sources):
 
 
 def main(report_dir):
+    """Make the counts-report time series in ``<report_dir>/timeseries`` and ``summary.csv``;
+    returns the summary table.
+    """
     report_dir = Path(report_dir)
     raw, proc = common.load_index(report_dir)
     out_dir = report_dir / 'timeseries'

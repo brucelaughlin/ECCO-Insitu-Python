@@ -154,10 +154,20 @@ The full write-up for readers (what was done, why, and how it was checked, in pl
   - **Fixed:** a hang when the run finished (the resource tracker held the tee pipe), now an end marker.
   - **Tests:** 95 pass, still bit-identical to the Phase 1 reference.
   - **Stale:** `patches/step06_code12...` no longer applies (noted in `HANDOFF.md`).
-- **Next: Phase 5 (docs).**
-  - NumPy-style docstrings for every public function, starting with `pipeline`, `steps`, `config`,
-    `validate`, `climatology`, `packing`.
-  - Sphinx in `docs/sphinx/` (autodoc + napoleon), with pages: front page + Quick start (must say a
-    climatology need not exist already), installing, settings, input contract, running, outputs,
-    diagnostics, the steps, and the API reference.
-  - Build locally with warnings as errors.
+- 2026-10-23, **Phase 5 done** (details in the report, Phase 5 section)
+  - **Docstrings:** every module, public function and class (4 parallel workers). Verified docstring-only
+    with `tests/tools/same_code.py docstrings-base` (39 files, 0 code changes).
+  - **Sphinx:** in `docs/sphinx/`, rtd theme, napoleon, myst.
+    - The front page has the "you don't need a climatology" box.
+    - The user guide, plus an API reference of 43 module pages.
+    - Builds with 0 warnings.
+  - **New:** `CHANGELOG.md`; `tests/unit/test_docs_build.py` (docstring coverage + strict build). 97 tests.
+  - **Issues found:** listed in report section 5.4, none fixed. Safe fixes: `np.NaN` (csv_to_nc,
+    LLC270 loaders), the `logical_and` bug, stale texts, unused imports. Team decisions: csv_to_nc
+    T label and years, step06 T ≥ −2 °C and (0,0), step09 HHMMSS distance.
+- **Next: Phase 6 (CI and publishing).**
+  - **GitHub Actions** on push/PR:
+    - install, unit tests (the regression tests skip without data, unless trimmed data files are added);
+    - the strict docs build;
+    - publish the docs to GitHub Pages.
+  - **Versioning:** a PR template (changelog/docs checklist), and the version stamped into output files.

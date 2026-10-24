@@ -30,8 +30,8 @@ processed profiles stay exactly the same.
 | 2 | Configuration file instead of editing code | **Done** (2026-10-23) |
 | 3 | Input checks and clear error reporting | **Done** (2026-10-23) |
 | 4 | Reorganize into an installable Python package | **Done** (2026-10-23) |
-| 5 | Docstrings and Sphinx documentation | Next |
-| 6 | Automatic checks on every change (CI), changelog, versioning | Planned |
+| 5 | Docstrings and Sphinx documentation | **Done** (2026-10-23) |
+| 6 | Automatic checks on every change (CI), changelog, versioning | Next |
 
 ---
 
@@ -876,6 +876,180 @@ takes about 32 s. Console and log have the same 1,771 lines.
 
 ---
 
+## Phase 5: docstrings and the documentation website (done 2026-10-23)
+
+### Purpose
+
+The team asked for an API document: a website describing every module and function, generated
+from the code so it can't drift from it. Two things are needed:
+
+- every public function described in its **docstring**, the text block at the top of a function;
+- a documentation build, using **Sphinx**, the standard tool for Python, that turns those
+  docstrings and a written user guide into a website.
+
+### 5.1 Docstrings
+
+Before this phase, 92 of the package's 210 public functions and classes had a docstring. Steps
+01–10, `tools.py` and `pipeline.py` had no module description at all, and many existing
+docstrings were in the old MATLAB comment style (`% DESCRIPTION: ...`).
+
+**Now every module, public function and class has one** in the NumPy style:
+
+- a summary;
+- *Parameters*, with types and units;
+- *Returns*;
+- *Raises*;
+- *Notes* for the science.
+
+Each step's module description says what the step does, which variables it reads and adds, which
+settings control it, and what a scientist should know. Examples:
+
+- step 05's potential-temperature decision rule;
+- step 06's table of QC codes 1–11 and how they combine in `prof_Vweight_code`;
+- step 09 keeping, at each place and day, the profile closest to noon.
+
+Old-style comments were rewritten without losing their scientific content (e.g. the UNESCO 1983
+references and the check value for the adiabatic gradient).
+
+This was split across four parallel workers by module group: steps 01–10; the core modules; the
+packing, steps 11–13 and the climatology; the diagnostics. Each worker was told to change **only
+docstrings**.
+
+**How "only docstrings" was checked.** A new tool, `tests/tools/same_code.py`, parses each file
+before and after, strips every docstring from the parsed program, and compares what is left.
+Comments and formatting never reach the parsed program. So "same" means the code that runs is
+identical. Result: **39 files compared, 0 with code changes.** The regression test also still
+passes, bit-identical to the Phase 1 reference.
+
+### 5.2 The documentation website
+
+The source is in `docs/sphinx/`. It is built with:
+
+```
+python -m sphinx -b html docs/sphinx docs/sphinx/_build/html
+```
+
+then open `docs/sphinx/_build/html/index.html`. The build output is not committed; Phase 6
+publishes it to GitHub Pages automatically.
+
+Contents:
+
+| Page | What it covers |
+|---|---|
+| Front page | What the package does, and a highlighted box: **"You don't need a climatology already"**: use your own file, or `ecco-insitu climatology --build` makes the standard one. This is the user's requirement from Phase 3. |
+| Quick start | Install, point at your data, get a climatology (both options), check inputs, run |
+| Installing | `pip install -e .`, extras, the data the chain needs, the tests |
+| Settings | How the settings files merge, and **every setting**, shown straight from `defaults.yaml` with its comments, so this page can't go out of date |
+| Running the chain | `ecco-insitu run` and its options, exit codes, and a table of every command |
+| Input contract | `docs/input_contract.md`, included as is |
+| Outputs | The run folder layout and every variable the chain adds |
+| Diagnostics | `docs/diagnostics.md`, included as is |
+| The steps | Overview of steps 01–13, with links to each step's API page |
+| API reference | One page per module (43), generated from the docstrings, grouped as: running, settings / checks / logging, the steps, step 13 packing, climatology, utilities, diagnostics. Each page has a "[source]" link to the code. |
+| Changelog | The new `CHANGELOG.md` |
+
+The theme is Read the Docs, the familiar look of most scientific Python documentation.
+`pyproject.toml`'s `docs` extra installs what the build needs (sphinx, sphinx-rtd-theme,
+myst-parser for the Markdown pages).
+
+### 5.3 Keeping the docs correct
+
+Two new tests (`tests/unit/test_docs_build.py`) make the docs part of the test suite:
+
+- **Every public function and class must have a docstring.** A new function without one fails
+  the tests.
+- **The documentation must build with no warnings or errors** (Sphinx's strict mode). A broken
+  cross-reference, a malformed docstring or a module that no longer imports fails the tests.
+  Getting there meant fixing about 60 formatting problems in the docstrings: column layouts that
+  needed to be marked as literal blocks, `|lat|` (which reST reads as a substitution), and so on.
+
+Phase 6 will run these on every change, on GitHub's servers.
+
+**`CHANGELOG.md`** (new) records changes in the standard "Keep a Changelog" format. Each entry
+says whether it changes the processed profiles (**Science:**). The hardening work is recorded
+there, with "Science: none".
+
+### 5.4 Issues found while documenting (not fixed)
+
+Reading every function closely to describe it turned up the issues below. **None was changed**:
+this phase changed only documentation, and several are science decisions. They're listed for the
+team, in rough order of importance.
+
+**Would crash if used** (these code paths aren't used in current runs):
+
+1. **`np.NaN` no longer exists in numpy 2** (installed here: 2.4).
+   - `csv_to_nc.py` uses it, so `ecco-insitu csv-to-nc` would crash.
+   - The LLC270 grid loaders in `tools.py` use it too. LLC90 is unaffected.
+2. **`tools.py`, LLC270 loaders:** `np.logical_and(a, b, c)` passes the third array as the output
+   argument, so the blank-cell test ignores it and overwrites the bathymetry.
+3. **`step01.py`, `step02.py`, `step04.py`:** only LLC90 is fully supported; another `llcN` fails
+   or silently uses the LLC90 grid.
+
+**Could change results:**
+
+4. **`csv_to_nc.py`:**
+   - **Writes:** `unique_years` is shared across all CSV files, and each file's last year is
+     written after the loop, so a multi-file conversion may lose years.
+   - **Labels:** it labels CSV temperature "potential", but WOD CSV temperature is normally
+     in-situ. Step 05 trusts that label and wouldn't convert. Worth checking before the CSV path is
+     used again.
+5. **`step06.py`:**
+   - **Temperature range:** the legal T range starts at −2 °C. Seawater near freezing can reach
+     about −2.1 °C, so the coldest polar water may be rejected.
+   - **Exact (0° N, 0° E):** rejected (as the code's own comment questions).
+   - **Day `00`:** fails the date test. These are the 18,374 missing-day CTD profiles (section 3.2).
+6. **`step09.py`:** "closest to noon" is measured on the HHMMSS number, not in seconds. For
+   example, 11:59:59 and 12:00:00 count as 4041 apart, so the choice among near-noon profiles can
+   be slightly off. The `method` option is ignored.
+7. **`step01.py`:** an unexpected error is caught and reported as "you may have no valid data", so
+   a real bug would look like an empty file. Phase 3's run summary would show it as "no data
+   left".
+
+**Cosmetic or minor:**
+
+8. **`step06.py`:** a printed percentage for the conductivity test is computed against the wrong
+   variable's original weights.
+9. **`check_run_qc.py`:** its cross-run comparison (check 3) only pairs files named
+   `__ncei_step_10`, so it can't compare two current runs (`__ncei_step_11`).
+10. **Stale text:**
+    - `prebake.py` prints old instructions (activation is automatic now).
+    - Step 12 stamps "converted by profiles_compact.py".
+    - `csv_to_nc.py` has misspellings and `units` written as `unit`.
+11. **Small inconsistencies:**
+    - `pipeline.py` imports cartopy and matplotlib without using them, which makes cartopy a hard
+      dependency.
+    - `ecco-insitu pack` always exits 0.
+    - A few commands end with `sys.exit` rather than returning a code.
+    - Two modules read the settings when imported, so a broken `config/local.yaml` stops them
+      importing.
+    - The cost report's PDF step uses a macOS-only Chrome path.
+
+Items 1, 2, 10 and 11 are safe code fixes that the regression test can guard; they could be done
+in a short follow-up. Items 4–6 need a decision from the team. Item 5's day `00` is the
+mid-month question already recorded.
+
+### 5.5 How it was checked
+
+- **No code changed:** `same_code.py`, 39 files, 0 with code changes.
+- **Regression test:** bit-identical to the Phase 1 reference.
+- **Docs:** they build with **zero warnings** in strict mode; the front page and a step page were
+  rendered and inspected.
+- **97 tests, all passing** (about 80 s).
+
+### 5.6 What changed, file by file
+
+| File | Change |
+|---|---|
+| 39 files in `src/ecco_insitu/` | docstrings only (verified) |
+| `docs/sphinx/` (new) | `conf.py`, the user-guide pages, the API index, the module template |
+| `CHANGELOG.md` (new) | changelog |
+| `tests/tools/same_code.py` (new) | the "only docstrings changed" checker |
+| `tests/unit/test_docs_build.py` (new) | docstring coverage and the strict docs build |
+| `pyproject.toml` | `docs` extra: sphinx, sphinx-rtd-theme, myst-parser |
+| `.gitignore` | the docs build output |
+
+---
+
 ## Glossary
 
 | Term | Meaning |
@@ -888,6 +1062,7 @@ takes about 32 s. Console and log have the same 1,771 lines.
 | CI (continuous integration) | GitHub runs the tests automatically on every change and marks the change red or green. |
 | Sphinx | The standard tool for Python documentation websites; it builds the API reference from the docstrings. |
 | Docstring | The description written at the top of a function: what it does, its inputs and outputs. |
+| reST (reStructuredText) | The text markup Sphinx reads; docstrings are written in it, which is why indentation and blank lines matter. |
 | Package | Code organized so it can be installed with `pip install` and imported anywhere, instead of loose scripts. |
 | Input contract | The written list of what an input file must contain for the chain to process it. |
 | Pre-baked climatology | A copy of the climatology already interpolated onto one input depth grid, so step 03 doesn't have to do it per file. |

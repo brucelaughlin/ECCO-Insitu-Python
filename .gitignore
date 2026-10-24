@@ -29,3 +29,7 @@ config/local.yaml
 *.egg-info/
 build/
 dist/
+
+# --- Sphinx build output ---
+docs/sphinx/_build/
+docs/sphinx/api/generated/

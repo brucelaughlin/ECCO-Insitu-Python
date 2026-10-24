@@ -26,8 +26,10 @@ that the files are complete and internally consistent:
     - optionally (--input_dir) every input file has an output or a logged
       failure
 
-Usage:
+Usage::
+
     ecco-insitu check-files <run_dir> [--input_dir <Interp_Profiles>] [--log <ncei_log>]
+
 Exit code 0 if no errors.
 """
 
@@ -62,6 +64,31 @@ def _datenum(ymd, hms):
 
 
 def check_file(path, sums, errors, warnings, grids):
+    """Check one yearly output file; append problems to ``errors`` / ``warnings``.
+
+    Checks: the file opens and has profiles; required variables are present; ``prof_interp_*``
+    dimensions; weights finite, non-negative and never on fill values; every profile has a nonzero
+    T or S weight; geodesic bin ids in range; dates and times valid and consistent with
+    ``prof_date``; step 11 scaling factors present and in (0, 1].
+
+    Parameters
+    ----------
+    path : Path
+        The NetCDF file.
+    sums : dict
+        Per variable, a ``defaultdict(float)`` keyed by (bin, YYYYMM); the step 11 factors of the
+        file's profiles are added to it, so the caller can check that each bin-month sums to 1.
+    errors, warnings : list of str
+        Messages are appended here, prefixed with the file name.
+    grids : dict
+        Depth grid (tuple) -> list of file names; the file's grid is added, so the caller can check
+        that all files share one grid.
+
+    Returns
+    -------
+    int
+        Number of profiles in the file (0 if it can't be read).
+    """
     name = path.name
     err = lambda msg: errors.append(f'{name}: {msg}')
     try:
@@ -160,6 +187,20 @@ def check_file(path, sums, errors, warnings, grids):
 
 
 def cli(argv=None):
+    """Command-line entry point (``ecco-insitu check-files``): structural check of a run folder.
+
+    Runs :func:`check_file` on every yearly file, then checks across files: one depth grid
+    (unless ``--allow_mixed_grids``), one step number, step 11 factors summing to 1 in every
+    bin-month, and, with ``--input_dir``, that every input file has an output (or a failure in the
+    ``--log``). Prints the problems and ``RESULT: PASS`` or ``FAIL``.
+
+    The process exits with status 0 on PASS and 1 on FAIL (``sys.exit``).
+
+    Parameters
+    ----------
+    argv : list of str, optional
+        Command-line arguments (default: ``sys.argv[1:]``).
+    """
     ap = argparse.ArgumentParser(description='Structural validation of an NCEI run directory.')
     ap.add_argument('run_dir')
     ap.add_argument('--input_dir', default=None, help='Check every input file has an output or failure')

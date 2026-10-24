@@ -13,32 +13,31 @@ counted on its own: a T-only profile (e.g. a Samoa mooring) raises the T count
 in its bin but does not dilute the S weights of CTDs sharing that bin.
 
 Algorithm:
-  1. Pass 1 — for each variable V in SCALED_VARS, count how many profiles
-     with at least one nonzero prof_Vweight land in each (bin, window) cell.
-  2. Compute scaling_factor_V(bin, window) = 1 / count_V  (or 1.0 if empty).
-  3. Pass 2 — for each file and each V it carries, look up each profile's
-     factor, write prof_Vspatial_scaling_factor, and overwrite prof_Vweight
-     with the scaled values. Files carrying only some of SCALED_VARS (e.g.
-     T-only) are scaled for what they have.
+
+1. Pass 1: for each variable V in ``SCALED_VARS``, count how many profiles with at least one
+   nonzero ``prof_Vweight`` land in each (bin, window) cell.
+2. Compute ``scaling_factor_V(bin, window) = 1 / count_V`` (or 1.0 if empty).
+3. Pass 2: for each file and each V it carries, look up each profile's factor, write
+   ``prof_Vspatial_scaling_factor``, and overwrite ``prof_Vweight`` with the scaled values.
+   Files carrying only some of ``SCALED_VARS`` (e.g. T-only) are scaled for what they have.
 
 A profile with no nonzero V weight is not counted for V and gets factor 1.0
 (its V weights are all zero, so the factor has no effect).
 
 Window modes
 ------------
-WINDOW_MODE = 'monthly'   (default, matches MATLAB)
-    One window per calendar month.  Key = (year, month).
-
-WINDOW_MODE = '10day'     (set via --window 10day)
-    10-day windows anchored to day 1 of each year:
-      window_index = floor((day_of_year - 1) / 10)
-    Key = (year, window_index).  Approximately matches the team's stated
-    Argo reference of "one profile per 3°×3° box per 10-day window".
+``monthly`` (default, matches MATLAB)
+    One window per calendar month. Key = (year, month).
+``10day`` (``--window 10day``)
+    10-day windows anchored to day 1 of each year,
+    ``window_index = floor((day_of_year - 1) / 10)``. Key = (year, window_index). Approximately
+    matches the team's stated Argo reference of "one profile per 3°×3° box per 10-day window".
 
 Pass 2 rewrites every file, which is nearly all of the run time, so it runs
 in parallel (one file per worker; -n to set the number of workers).
 
-Run standalone:
+Run standalone::
+
     ecco-insitu scale /path/to/run_dir
     ecco-insitu scale /path/to/run_dir -n 4
     ecco-insitu scale /path/to/run_dir --window 10day
@@ -304,6 +303,28 @@ def _apply_scaling(nc_files, counts, window_mode, dry_run=False, n_workers=None)
 # ---------------------------------------------------------------------------
 
 def main(run_dir, window_mode='monthly', dry_run=False, n_workers=None):
+    """Scale the T and S weights of every file under ``run_dir`` by profile density, in place.
+
+    See the module description for the method. Files are renamed ``..._ncei_step_11.nc``.
+
+    Parameters
+    ----------
+    run_dir : str or Path
+        A run's ``yearly/`` folder (or any folder of chain output; searched recursively).
+    window_mode : {'monthly', '10day'}
+        Time windows for counting profiles.
+    dry_run : bool
+        Count and report, but don't change any file.
+    n_workers : int, optional
+        Parallel workers for the rewrite (default min(8, CPUs - 1)).
+
+    Raises
+    ------
+    ValueError
+        If ``run_dir`` doesn't exist or ``window_mode`` is unknown.
+    RuntimeError
+        If any file is already scaled (step 11 must run on unscaled step 10 output).
+    """
     run_dir = Path(run_dir)
     if not run_dir.is_dir():
         raise ValueError(f"run_dir does not exist: {run_dir}")
@@ -354,7 +375,7 @@ def main(run_dir, window_mode='monthly', dry_run=False, n_workers=None):
 
 
 def cli(argv=None):
-    """Command-line entry point (``ecco-insitu`` subcommand)."""
+    """Command-line entry point (``ecco-insitu scale``); see the module description."""
     parser = argparse.ArgumentParser(
         description='Apply per-variable spatial density scaling to processed profile NC files.')
     parser.add_argument('run_dir',

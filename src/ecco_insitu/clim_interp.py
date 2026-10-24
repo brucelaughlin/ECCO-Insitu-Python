@@ -17,7 +17,8 @@ Edge-case FALLBACK (config):
   land/NaN — fall back to the NEAREST valid climatology value. Set
   FALLBACK = 'none' to leave such points NaN (which zeros their weight later).
 
-Public entry point:
+Public entry point::
+
   interpolate_climatology(field_months, lon_grid, lat_grid, clim_depths,
                           plon, plat, pdoy, prof_depths, *, prebaked=False)
   -> (nprof, ndepth)
@@ -280,18 +281,38 @@ def _fallback_nearest_cell(blended_cols, field3d, lon_grid, lat_grid, plon, plat
 
 def interpolate_climatology(field_months, lon_grid, lat_grid, clim_depths,
                             plon, plat, pdoy, prof_depths, *, prebaked=False):
-    """
-    field_months : (12, ndepth_clim, nlat, nlon) monthly climatology.
-                   In prebaked mode: (12, ndepth_obs, nlat, nlon) — depth interp
-                   already applied; ndepth_clim == ndepth_obs.
-    lon_grid, lat_grid, clim_depths : 1-D grid coordinate vectors.
-                   clim_depths is unused when prebaked=True.
-    plon, plat   : (nprof,) profile longitudes/latitudes (deg)
-    pdoy         : (nprof,) profile day-of-year (1..365/366)
-    prof_depths  : (ndepth_prof,) shared profile depth axis (unused when prebaked=True)
-    prebaked     : if True, skip _depth_interp and _fallback_fill (depth axis
-                   of field_months already matches the observation grid)
-    returns      : (nprof, ndepth_prof) interpolated climatology
+    """Interpolate a monthly climatology to profile positions, dates and depths (step 03).
+
+    Time: linear between the two monthly fields bracketing each profile's day of year (months
+    centered mid-month, wrapping December to January). Space: bilinear on the regular lon/lat grid,
+    renormalized over the valid corners; a profile whose surrounding cells are all land takes the
+    nearest valid cell. Depth: linear onto the profile depths, then the nearest valid depth of the same
+    column where that leaves NaN (e.g. below the climatology's deepest level). The methods are set by
+    the module constants ``TIME_METHOD``, ``SPACE_METHOD``, ``DEPTH_METHOD`` and ``FALLBACK``.
+
+    Parameters
+    ----------
+    field_months : numpy.ndarray, (12, ndepth, nlat, nlon)
+        The monthly climatology. In pre-baked mode ``ndepth`` is the profile depth grid.
+    lon_grid, lat_grid : numpy.ndarray
+        1-D, evenly spaced grid coordinates (degrees).
+    clim_depths : numpy.ndarray
+        1-D climatology depths (m); unused when ``prebaked`` is True.
+    plon, plat : array_like, (nprof,)
+        Profile longitudes and latitudes (degrees).
+    pdoy : array_like, (nprof,)
+        Profile day of year (1-366).
+    prof_depths : array_like, (ndepth_prof,)
+        The profiles' shared depth axis (m); unused when ``prebaked`` is True.
+    prebaked : bool, keyword-only
+        True if ``field_months`` is already on the profile depth grid (a pre-baked climatology, made by
+        :mod:`ecco_insitu.climatology.prebake`): the depth interpolation and depth fallback are skipped.
+
+    Returns
+    -------
+    numpy.ndarray, (nprof, ndepth_prof)
+        The climatology at each profile and depth; NaN where no value could be found (with
+        ``FALLBACK = 'none'``).
     """
     plon = np.asarray(plon, float); plat = np.asarray(plat, float)
     pdoy = np.asarray(pdoy, float); prof_depths = np.asarray(prof_depths, float)

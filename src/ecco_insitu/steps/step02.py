@@ -1,3 +1,17 @@
+"""
+Step 02: geodesic bin of each profile.
+
+Each profile gets the ids of the geodesic bins its nearest LLC90 grid cell belongs to, at two
+resolutions. The bins group profiles for the spatial scaling (step 11) and for the model's
+bin-mean cost.
+
+Reads ``prof_lon``, ``prof_lat``. Adds ``prof_bin_id_a`` (10,242 bins) and ``prof_bin_id_b``
+(2,562 bins), read from the bin-id files ``llc090_sphere_point_n_10242_ids.bin`` and
+``..._02562_ids.bin`` (big-endian float32 on the LLC90 grid). Profiles whose lon/lat can't be placed
+on the sphere are dropped.
+
+Settings: ``paths.sphere_bin_dir``, ``paths.grid_dir``. The bin files exist for LLC90 only.
+"""
 import xarray as xr
 import os
 import numpy as np
@@ -5,10 +19,27 @@ import ecco_insitu.tools as tools
 from scipy.interpolate import griddata
 
 def update_spatial_bin_index_on_prepared_profiles(MITprof_ds, sphere_bin_dir, grid_dir):
-    """
-    This script updates each profile with a bin index that is specified from
-    some file.  To date this has been used for geodesic bins but any bin
-    could be used in practice.
+    """Add the geodesic bin ids of each profile's nearest LLC90 cell.
+
+    Parameters
+    ----------
+    MITprof_ds : xarray.Dataset
+        The profiles (``prof_lon``, ``prof_lat`` in degrees).
+    sphere_bin_dir : str
+        Folder of the bin-id files (``paths.sphere_bin_dir``).
+    grid_dir : str
+        Folder of the LLC90 grid files (``paths.grid_dir``).
+
+    Returns
+    -------
+    xarray.Dataset
+        With ``prof_bin_id_a`` (10,242-bin grid) and ``prof_bin_id_b`` (2,562-bin grid).
+
+    Notes
+    -----
+    Any per-cell bin assignment could be used; to date these are geodesic bins. Before mapping,
+    a nearest-neighbor round-trip check on the grid (``tools.interp_check``) confirms the lookup
+    works.
     """
 
     bin_file_1 = os.path.join(sphere_bin_dir, 'llc090_sphere_point_n_10242_ids.bin')
@@ -68,6 +99,7 @@ def update_spatial_bin_index_on_prepared_profiles(MITprof_ds, sphere_bin_dir, gr
 
 
 def main(MITprof_ds, sphere_bin_dir, grid_dir):
+    """Run step 02; see :func:`update_spatial_bin_index_on_prepared_profiles`."""
     MITprof_ds = update_spatial_bin_index_on_prepared_profiles(MITprof_ds, sphere_bin_dir, grid_dir)
     return MITprof_ds
 

@@ -1,3 +1,21 @@
+"""Shared helpers for the NCEI chain's steps.
+
+- **Profile datasets** (MITprof layout, ``xarray.Dataset`` with dimensions ``iPROF`` and ``iDEPTH``):
+  counting valid data (:func:`collect_valid_data_stats`, :func:`count_total_survivors_TS`),
+  keeping a subset of profiles or depth levels (:func:`extract_profile_subset_from_MITprof_iPROF_mask`,
+  :func:`extract_profile_subset_from_MITprof_iDEPTH_mask`), dropping profiles with no non-zero
+  weight (:func:`update_remove_zero_T_S_weighted_profiles_from_MITprof`), and writing a dataset to
+  NetCDF (:func:`MITprof_write_to_nc`).
+- **LLC grids**: reading the LLC90 / LLC270 grid files (``load_llc90_grid_step*`` and
+  ``load_llc270_grid_step*``; one loader per chain step, each returning what that step needs),
+  the model's vertical levels (:func:`make_llc90_cell_centers`), and rearranging LLC fields between
+  the model's "compact" layout and a face / patched layout (:func:`patchface3D`).
+- **Geometry**: :func:`sph2cart` and :func:`sph2cart_returnValidMaskOnly`.
+
+LLC binary files are big-endian float32, read in Fortran order into ``(N, 13 N, nz)`` arrays, the
+model's compact layout (five faces side by side along the second axis).
+"""
+
 from pathlib import Path
 import os
 import numpy as np
@@ -7,6 +25,17 @@ from scipy.interpolate import griddata
 
 
 def print_survivors(MITprof_ds, profile_var_key_set, step_counter):
+    """Print how many data values of each variable are still valid (not NaN), for the log.
+
+    Parameters
+    ----------
+    MITprof_ds : xarray.Dataset
+        Profile dataset; must hold ``<prof_key>_original_total_count`` for each variable present.
+    profile_var_key_set : iterable of str
+        Variables to count, e.g. ``{'prof_T', 'prof_S'}``.
+    step_counter : int
+        Step number, printed as ``step: N``.
+    """
     print(f"step: {step_counter}")
     survivors = 0
     total_final_count = 0
@@ -32,6 +61,21 @@ def print_survivors(MITprof_ds, profile_var_key_set, step_counter):
 
 
 def collect_valid_data_stats(MITprof_ds, profile_var_key_set):
+    """Count valid (non-NaN) values and profiles per variable.
+
+    Parameters
+    ----------
+    MITprof_ds : xarray.Dataset
+        Profile dataset (dimensions ``iPROF``, ``iDEPTH``).
+    profile_var_key_set : iterable of str
+        Variables to count, e.g. ``{'prof_T', 'prof_S'}``; absent ones are skipped.
+
+    Returns
+    -------
+    dict
+        ``{prof_key: {'valid_data_count': int, 'valid_profile_count': int}}``: the number of non-NaN
+        values, and the number of profiles with at least one non-NaN value.
+    """
     valid_data_dict = {}
     for prof_key in profile_var_key_set:
         if prof_key in MITprof_ds:
@@ -43,6 +87,19 @@ def collect_valid_data_stats(MITprof_ds, profile_var_key_set):
 
 
 def count_total_survivors_TS(MITprof_ds, profile_var_key_set):
+    """Total number of non-NaN values over the given variables.
+
+    Parameters
+    ----------
+    MITprof_ds : xarray.Dataset
+        Profile dataset.
+    profile_var_key_set : iterable of str
+        Variables to count; absent ones are skipped.
+
+    Returns
+    -------
+    int
+    """
     survivor_count = 0
     for prof_key in profile_var_key_set:
         if prof_key in MITprof_ds:
@@ -51,6 +108,22 @@ def count_total_survivors_TS(MITprof_ds, profile_var_key_set):
 
 
 def update_remove_extraneous_depth_levels(MITprof_ds, profile_var_key_set):
+    """Drop trailing depth levels that have no valid data in any profile (step 08).
+
+    The deepest level with a non-NaN value in any of the variables is kept, with every level above it.
+
+    Parameters
+    ----------
+    MITprof_ds : xarray.Dataset
+        Profile dataset.
+    profile_var_key_set : iterable of str
+        Variables that count as data; at least one must be present.
+
+    Returns
+    -------
+    xarray.Dataset
+        The dataset with the trailing empty levels removed (unchanged if there are none).
+    """
     depth_level_max_list = []
     for prof_key in profile_var_key_set:
         if prof_key in MITprof_ds:
@@ -68,7 +141,22 @@ def update_remove_extraneous_depth_levels(MITprof_ds, profile_var_key_set):
 
 
 def extract_profile_subset_from_MITprof_iDEPTH_mask(MITprof_ds, bool_mask):
-    """Keep the depth levels where bool_mask (1-D numpy bool, length iDEPTH) is True."""
+    """Keep the depth levels where ``bool_mask`` is True.
+
+    Variables without an ``iDEPTH`` dimension are copied unchanged.
+
+    Parameters
+    ----------
+    MITprof_ds : xarray.Dataset
+        Profile dataset; variables are 1-D ``(iDEPTH,)`` or 2-D ``(iPROF, iDEPTH)``.
+    bool_mask : array_like of bool, length iDEPTH
+        Levels to keep.
+
+    Returns
+    -------
+    xarray.Dataset
+        A new dataset (variable attributes are not carried over).
+    """
     bool_mask = np.asarray(bool_mask, dtype=bool)
     new_ds_dict = {}
     for data_var in MITprof_ds.data_vars:
@@ -91,6 +179,28 @@ def extract_profile_subset_from_MITprof_iDEPTH_mask(MITprof_ds, bool_mask):
 
 
 def update_remove_zero_T_S_weighted_profiles_from_MITprof(MITprof_ds, profile_var_key_set):
+    """Remove profiles whose weights are zero at every level for every variable (step 07, and after
+    step 09).
+
+    A profile is kept if any variable has a positive sum of weights over depth. Prints the fraction
+    of profiles kept, relative to the profiles with any valid data.
+
+    Parameters
+    ----------
+    MITprof_ds : xarray.Dataset
+        Profile dataset with ``<prof_key>weight`` for each variable present.
+    profile_var_key_set : iterable of str
+        Variables whose weights count.
+
+    Returns
+    -------
+    xarray.Dataset
+
+    Raises
+    ------
+    Exception
+        If any weight is NaN (weights must always be numbers).
+    """
     num_nan_weights = 0
     for prof_key in profile_var_key_set:
         if prof_key in MITprof_ds.data_vars:
@@ -112,7 +222,22 @@ def update_remove_zero_T_S_weighted_profiles_from_MITprof(MITprof_ds, profile_va
 
 
 def extract_profile_subset_from_MITprof_iPROF_mask(MITprof_ds, bool_mask):
-    """Keep the profiles where bool_mask (1-D numpy bool, length iPROF) is True."""
+    """Keep the profiles where ``bool_mask`` is True.
+
+    Variables without an ``iPROF`` dimension are copied unchanged.
+
+    Parameters
+    ----------
+    MITprof_ds : xarray.Dataset
+        Profile dataset; variables are 1-D ``(iPROF,)`` or 2-D ``(iPROF, iDEPTH)``.
+    bool_mask : array_like of bool, length iPROF
+        Profiles to keep.
+
+    Returns
+    -------
+    xarray.Dataset
+        A new dataset (variable attributes are not carried over).
+    """
     bool_mask = np.asarray(bool_mask, dtype=bool)
     new_ds_dict = {}
     for data_var in MITprof_ds.data_vars:
@@ -135,7 +260,22 @@ def extract_profile_subset_from_MITprof_iPROF_mask(MITprof_ds, bool_mask):
 
 
 def MITprof_dataset_from_dict(MITprof_dict: dict):
+    """Build a profile dataset from a dict of arrays (used by :mod:`ecco_insitu.csv_to_nc`).
 
+    Each array's dimensions are inferred from its shape: 1-D arrays as long as ``prof_depth`` get
+    ``iDEPTH``, those as long as ``prof_lat`` get ``iPROF`` (``iPROF`` wins if both match), and 2-D
+    arrays of shape ``(n_profiles, n_levels)`` get ``(iPROF, iDEPTH)``. Arrays of any other shape are
+    skipped with a message.
+
+    Parameters
+    ----------
+    MITprof_dict : dict of str to numpy.ndarray
+        Must contain ``prof_depth`` and ``prof_lat``.
+
+    Returns
+    -------
+    xarray.Dataset
+    """
     num_depth_levels = len(MITprof_dict['prof_depth'])
     num_profs = len(MITprof_dict['prof_lat'])
     dim_dict = {'iPROF': num_profs, 'iDEPTH': num_depth_levels}
@@ -164,7 +304,27 @@ def MITprof_dataset_from_dict(MITprof_dict: dict):
 
 
 def MITprof_write_to_nc(dest_dir, MITprof_ds, step, original_file, input_dir):
+    """Write a processed profile dataset to NetCDF, keeping the input folder layout.
 
+    The file goes to ``dest_dir / <path of original_file relative to input_dir>``, with
+    ``__ncei_step_<step>`` added to the file name. 1-D ``prof_interp_*`` variables (except the tile
+    corner coordinates ``prof_interp_XC11``, ``YC11``, ``XCNINJ``, ``YCNINJ``) get a length-1 ``iINTERP``
+    dimension, as the model's profiles package expects. Every variable is compressed and uses -9999 as
+    its fill value (:func:`make_encoding`).
+
+    Parameters
+    ----------
+    dest_dir : str or Path
+        Output root folder (created if needed).
+    MITprof_ds : xarray.Dataset
+        The dataset to write; ``prof_interp_*`` variables are modified in place as described.
+    step : int
+        Last step applied, used in the file name.
+    original_file : Path
+        The input file this dataset came from.
+    input_dir : str or Path
+        The input root folder ``original_file`` is under.
+    """
     Path(dest_dir).mkdir(parents=True, exist_ok=True)
 
     # Fortran code expects prof_interp_* to have dims (iPROF, iINTERP) where
@@ -189,7 +349,18 @@ def MITprof_write_to_nc(dest_dir, MITprof_ds, step, original_file, input_dir):
 
     
 def make_encoding(DS, fill_value = -9999):
+    """NetCDF encoding for every data variable: zlib level 5 with shuffle, and ``fill_value``.
 
+    Parameters
+    ----------
+    DS : xarray.Dataset
+    fill_value : float, default -9999
+
+    Returns
+    -------
+    dict
+        For the ``encoding`` argument of ``xarray.Dataset.to_netcdf``.
+    """
     dv_encoding = dict()
     for dv in DS.data_vars:
         dv_encoding[dv] =  {'zlib':True, \
@@ -199,7 +370,52 @@ def make_encoding(DS, fill_value = -9999):
     return dv_encoding
 
 def patchface3D(nx, ny, nz, array_in=None, direction=None):
+    """Rearrange an LLC field between the model's layouts (a port of the MATLAB ``patchface3D``).
 
+    The LLC grid has five faces of ``nx`` cells per side: faces 1 and 2 are ``nx x 3nx``, face 3
+    (the Arctic) is ``nx x nx``, and faces 4 and 5 are ``3nx x nx``. MITgcm writes them in a "compact"
+    array of shape ``(nx, 13 nx[, nz])`` with the faces side by side; faces 4 and 5 are stored rotated,
+    interleaved every third column. The "patched" layout is a ``(4 nx, 4 nx[, nz])`` square with faces
+    1, 2, 4, 5 rotated into a band and face 3 in a corner, convenient for indexing and plotting.
+
+    ``direction`` selects the conversion:
+
+    ====  ==========================================================================================
+    2     compact ``(nx, 13nx, nz)`` -> patched ``(4nx, 4nx, nz)`` (3-D)
+    2.5   the same for a 2-D compact field ``(nx, 13nx)``
+    3.5   the same as 2.5, with faces 4 and 5 taken as plain transposed blocks (the layout of the grid
+          fields used by step 01)
+    0.5   patched ``(4nx, 4nx, 1)`` -> compact ``(nx, 13nx)`` (2-D); pass ``nx`` as the patched size
+          ``4 N``
+    0, 1  3-D patched -> compact: not finished (raises)
+    3     not implemented (raises)
+    ====  ==========================================================================================
+
+    Parameters
+    ----------
+    nx : int
+        Face size ``N`` (``4 N`` for direction 0.5).
+    ny : int
+        Unused (kept for the MATLAB signature).
+    nz : int
+        Number of vertical levels (1 for 2-D fields).
+    array_in : numpy.ndarray
+        The field in the input layout.
+    direction : float
+        See the table.
+
+    Returns
+    -------
+    array_out : numpy.ndarray
+        The field in the output layout.
+    faces : list of numpy.ndarray
+        The five faces as separate arrays.
+
+    Raises
+    ------
+    Exception
+        For the unfinished directions 0, 1 and 3.
+    """
     faces = [] 
 
     if direction == 3.5: # 3 but for 2D
@@ -427,7 +643,13 @@ def patchface3D(nx, ny, nz, array_in=None, direction=None):
     return array_out, faces
 
 def make_llc90_cell_centers():
+    """The model's 50 vertical levels (ECCO v4 LLC90): thicknesses, top, bottom and center depths.
 
+    Returns
+    -------
+    delR, z_top, z_bot, z_cen : numpy.ndarray, each length 50
+        Level thickness and the depths (m, positive down) of each level's top, bottom and center.
+    """
     delR = np.array([10.00, 10.00, 10.00, 10.00, 10.00, 10.00, 10.00, 10.01,
      10.03, 10.11, 10.32, 10.80, 11.76, 13.42, 16.04, 19.82, 24.85,
      31.10, 38.42, 46.50, 55.00, 63.50, 71.58, 78.90, 85.15, 90.18,
@@ -442,7 +664,13 @@ def make_llc90_cell_centers():
     return delR, z_top, z_bot, z_cen
 
 def make_llc270_cell_centers():
+    """The 50 vertical levels for LLC270; the same levels as :func:`make_llc90_cell_centers`.
 
+    Returns
+    -------
+    delR, z_top, z_bot, z_cen : numpy.ndarray, each length 50
+        Level thickness and the depths (m, positive down) of each level's top, bottom and center.
+    """
     delR = np.array([10.00, 10.00, 10.00, 10.00, 10.00, 10.00, 10.00, 10.01,
                      10.03, 10.11, 10.32, 10.80, 11.76, 13.42, 16.04, 19.82, 24.85,
                      31.10, 38.42, 46.50, 55.00, 63.50, 71.58, 78.90, 85.15, 90.18,
@@ -457,6 +685,24 @@ def make_llc270_cell_centers():
     return delR, z_top, z_bot, z_cen
 
 def load_llc270_grid_step1(llc270_grid_dir):
+    """LLC270 grid fields for step 01 (``bathy_llc270``, ``XC.data``, ``YC.data``, ``hFacC.data``).
+
+    Cells with lon = lat = 0 are set to NaN (blank tiles).
+
+    Parameters
+    ----------
+    llc270_grid_dir : str
+        Folder with the LLC270 grid files.
+
+    Returns
+    -------
+    lon_270, lat_270 : numpy.ndarray, (270, 3510, 1)
+        Cell-center longitude and latitude (degrees).
+    blank_270 : numpy.ndarray
+        All-NaN array of the same shape.
+    wet_ins_270_k : list of numpy.ndarray
+        For each of the 50 levels, the flat indices of wet cells (``hFacC > 0``).
+    """
     llcN = 270
     siz = [llcN, 13*llcN, 1]
     mform = '>f4'
@@ -496,6 +742,24 @@ def load_llc270_grid_step1(llc270_grid_dir):
 
 
 def load_llc270_grid_step2(llc270_grid_dir):
+    """LLC270 grid fields for step 02: positions on the unit sphere and the valid cells.
+
+    Parameters
+    ----------
+    llc270_grid_dir : str
+        Folder with the LLC270 grid files.
+
+    Returns
+    -------
+    lon_270, lat_270 : numpy.ndarray, (270, 3510, 1)
+        Cell centers (degrees), NaN at blank cells (lon = lat = 0).
+    X_270, Y_270, Z_270 : numpy.ndarray
+        Unit-sphere coordinates of the cell centers, NaN at blank cells.
+    bathy_270 : numpy.ndarray
+        Bathymetry.
+    good_ins_270 : numpy.ndarray of int
+        Flat indices of the non-blank cells.
+    """
     llcN = 270
     deg2rad = np.pi / 180.0
     siz = [llcN, 13*llcN, 1]
@@ -532,6 +796,26 @@ def load_llc270_grid_step2(llc270_grid_dir):
 
 
 def load_llc270_grid_step4(llc270_grid_dir):
+    """LLC270 grid fields for step 04 (sigma lookup).
+
+    Parameters
+    ----------
+    llc270_grid_dir : str
+        Folder with the LLC270 grid files.
+
+    Returns
+    -------
+    wet_ins_270_k : list of numpy.ndarray
+        For each of the 50 levels, flat indices of wet cells.
+    X_270, Y_270, Z_270 : numpy.ndarray
+        Unit-sphere coordinates of the cell centers, NaN at blank cells.
+    flattened_monotonic_grid_indices_270 : numpy.ndarray
+        Each cell's flat index (as float), NaN at blank cells.
+    z_cen_270 : numpy.ndarray
+        Level center depths (m).
+    lat_270, lon_270 : numpy.ndarray
+        Cell centers (degrees), NaN at blank cells.
+    """
     llcN = 270
     deg2rad = np.pi / 180.0
     siz = [llcN, 13*llcN, 1]
@@ -580,6 +864,17 @@ def load_llc270_grid_step4(llc270_grid_dir):
 
 
 def load_llc270_grid_step5(llc270_grid_dir):
+    """LLC270 cell areas (``RAC.data``, m^2) in the patched layout (:func:`patchface3D`, direction 2).
+
+    Parameters
+    ----------
+    llc270_grid_dir : str
+        Folder with the LLC270 grid files.
+
+    Returns
+    -------
+    numpy.ndarray, (1080, 1080, 1)
+    """
     llcN = 270
     siz = [llcN, 13*llcN, 1]
     mform = '>f4'
@@ -594,6 +889,20 @@ def load_llc270_grid_step5(llc270_grid_dir):
 
 
 def sph2cart_returnValidMaskOnly(az, elev, r):
+    """Which points have a valid position: True where :func:`sph2cart` gives finite x, y and z.
+
+    Parameters
+    ----------
+    az, elev : array_like or xarray.DataArray
+        Longitude and latitude in radians.
+    r : float
+        Radius.
+
+    Returns
+    -------
+    numpy.ndarray or xarray.DataArray of bool
+        Same type as the inputs.
+    """
     xyz_threetuple = sph2cart(az, elev, r)
     if isinstance(xyz_threetuple[0], xr.DataArray):
         valid_mask = xyz_threetuple[0].notnull()
@@ -607,6 +916,22 @@ def sph2cart_returnValidMaskOnly(az, elev, r):
 
 
 def sph2cart(az, elev, r):
+    """Spherical to Cartesian coordinates (as MATLAB's ``sph2cart``).
+
+    Parameters
+    ----------
+    az : array_like
+        Azimuth (longitude), radians.
+    elev : array_like
+        Elevation (latitude), radians.
+    r : float or array_like
+        Radius.
+
+    Returns
+    -------
+    x, y, z : array_like
+        ``x = r cos(elev) cos(az)``, ``y = r cos(elev) sin(az)``, ``z = r sin(elev)``.
+    """
     rcoselev = r * np.cos(elev)
     x = rcoselev * np.cos(az)
     y = rcoselev* np.sin(az)
@@ -615,6 +940,25 @@ def sph2cart(az, elev, r):
 
 
 def load_llc90_grid_step1(grootdir):
+    """LLC90 grid fields for step 01.
+
+    Reads ``bathy_eccollc_90x50_min2pts.bin``, ``no_blank/XC.data``, ``no_blank/YC.data`` and
+    ``hFacC.data`` from ``grootdir``.
+
+    Parameters
+    ----------
+    grootdir : str
+        The LLC90 grid folder (``paths.grid_dir``).
+
+    Returns
+    -------
+    lon_90, lat_90 : numpy.ndarray, (90, 1170, 1)
+        Cell-center longitude and latitude (degrees), compact layout.
+    blank_90 : numpy.ndarray
+        All-NaN array of the same shape.
+    wet_ins_90_k : list of numpy.ndarray
+        For each of the 50 levels, the flat indices of wet cells (``hFacC > 0``).
+    """
     llcN = 90
     siz = [llcN, 13*llcN, 1]
     mform = '>f4'
@@ -650,6 +994,22 @@ def load_llc90_grid_step1(grootdir):
 
 
 def load_llc90_grid_step2(grootdir):
+    """LLC90 grid fields for step 02: cell centers, bathymetry and unit-sphere positions.
+
+    Parameters
+    ----------
+    grootdir : str
+        The LLC90 grid folder (``paths.grid_dir``).
+
+    Returns
+    -------
+    lon_90, lat_90 : numpy.ndarray, (90, 1170, 1)
+        Cell centers (degrees, float32).
+    bathy_90 : numpy.ndarray
+        Bathymetry.
+    X_90, Y_90, Z_90 : numpy.ndarray
+        Unit-sphere coordinates of the cell centers (float64).
+    """
     llcN = 90
     siz = [llcN, 13*llcN, 1]
     mform = '>f4'
@@ -677,6 +1037,26 @@ def load_llc90_grid_step2(grootdir):
 
 
 def load_llc90_grid_step4(grootdir):
+    """LLC90 grid fields for step 04 (sigma lookup).
+
+    Parameters
+    ----------
+    grootdir : str
+        The LLC90 grid folder (``paths.grid_dir``).
+
+    Returns
+    -------
+    wet_ins_90_k : list of numpy.ndarray
+        For each of the 50 levels, flat indices of wet cells (``hFacC > 0``).
+    X_90, Y_90, Z_90 : numpy.ndarray
+        Unit-sphere coordinates of the cell centers.
+    flattened_monotonic_grid_indices_90 : numpy.ndarray of int
+        Each cell's flat index, shaped like the grid.
+    z_cen_90 : numpy.ndarray
+        Level center depths (m).
+    lat_90, lon_90 : numpy.ndarray
+        Cell centers (degrees).
+    """
     llcN = 90
     siz = [llcN, 13*llcN, 1]
     mform = '>f4'
@@ -714,6 +1094,18 @@ def load_llc90_grid_step4(grootdir):
 
 
 def load_llc90_grid_step5(grootdir):
+    """LLC90 cell areas (``no_blank/RAC.data``, m^2) in the patched layout (:func:`patchface3D`,
+    direction 2); used by step 10 for the area factor gamma.
+
+    Parameters
+    ----------
+    grootdir : str
+        The LLC90 grid folder (``paths.grid_dir``).
+
+    Returns
+    -------
+    numpy.ndarray, (360, 360, 1)
+    """
     llcN = 90
     siz = [llcN, 13*llcN, 1]
     mform = '>f4'
@@ -733,6 +1125,29 @@ def interp_check(xyz, flattened_monotonic_grid_indices, X, Y, Z, lat_vals, lon_v
     #Y = xyz[:,1]
     #Z = xyz[:,2]
 
+    """Sanity check of a nearest-neighbor grid lookup: four fixed test positions must map to grid cells
+    within 5 (unit-sphere coordinates, and degrees of lat/lon) of where they are.
+
+    Parameters
+    ----------
+    xyz : numpy.ndarray, (n, 3)
+        Grid-cell positions used for the lookup.
+    flattened_monotonic_grid_indices : numpy.ndarray
+        The value returned for each point of ``xyz`` (the cell's flat index).
+    X, Y, Z : numpy.ndarray
+        Grid-cell unit-sphere coordinates, indexed by the returned index.
+    lat_vals, lon_vals : numpy.ndarray
+        Grid-cell latitude and longitude (degrees).
+    step : int
+        Which step's lookup is checked (2, 3 or 4; they index the grid differently).
+    good_clim : numpy.ndarray, optional
+        Step 3 only: map from lookup index to the climatology cell index.
+
+    Raises
+    ------
+    Exception
+        If a test position maps to a cell that is too far away.
+    """
     good_clim_ins = kwargs.get('good_clim', None)
     
     deg2rad = np.pi/180.0

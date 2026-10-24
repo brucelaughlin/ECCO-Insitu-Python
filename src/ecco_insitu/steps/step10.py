@@ -1,11 +1,43 @@
+"""
+Step 10: multiply the weights by the grid-cell area factor gamma.
+
+gamma = (area of the profile's LLC90 cell) / (largest cell area), from the grid's ``RAC`` field,
+so 0 < gamma <= 1. It reduces the weight of profiles in small grid cells, so that densely
+gridded regions don't count more just because they have more cells.
+
+Adds ``prof_area_gamma`` (iPROF) and multiplies every ``prof_Vweight`` by it (negative results are
+set to 0). With ``chain.apply_gamma_factor: false``, gamma is 1.
+
+Runs after quality control (step 06) since 2026-10-12, so the QC cost tests use 1 / sigma**2
+without gamma.
+
+Settings: ``chain.apply_gamma_factor``, ``chain.llcN``, ``paths.grid_dir``.
+"""
 import xarray as xr
 import numpy as np
 import ecco_insitu.tools as tools
 
 def update_gamma_factor_on_prepared_profiles(MITprof_ds, profile_var_key_set, grid_dir, apply_gamma_factor, llcN):
-    """
-    Updates the MITprof profiles with a new sigma based 
-    on whether we are applying or removing the 'gamma' factor 
+    """Multiply the weights by the cell-area factor gamma.
+
+    Parameters
+    ----------
+    MITprof_ds : xarray.Dataset
+        Profiles with ``profile_flattened_monotonic_grid_indices`` (step 01) and weights.
+    profile_var_key_set : set of str
+        Variables whose weights are scaled (``prof_T``, ``prof_S``).
+    grid_dir : str
+        Grid folder with ``RAC`` (``paths.grid_dir``).
+    apply_gamma_factor : bool
+        Use gamma = cell area / largest cell area; if False, gamma = 1
+        (``chain.apply_gamma_factor``).
+    llcN : int
+        Grid size, 90 or 270 (``chain.llcN``).
+
+    Returns
+    -------
+    xarray.Dataset
+        With ``prof_area_gamma`` and ``prof_Vweight`` multiplied by it (negative values set to 0).
     """
 
     #  Load the RAC field only if we are applying a gamma factor.
@@ -32,6 +64,7 @@ def update_gamma_factor_on_prepared_profiles(MITprof_ds, profile_var_key_set, gr
     return MITprof_ds
 
 def main(MITprof_ds, profile_var_key_set, grid_dir, apply_gamma_factor, llcN):
+    """Run step 10; see :func:`update_gamma_factor_on_prepared_profiles`."""
     MITprof_ds = update_gamma_factor_on_prepared_profiles(MITprof_ds, profile_var_key_set, grid_dir, apply_gamma_factor, llcN)
     return MITprof_ds
     

@@ -285,6 +285,20 @@ def plot_mean_scaling(var, lons_g, lats_g, sf_with, sf_no, fig_dir, run_label, d
 # ---------------------------------------------------------------------------
 
 def main(run_dir, window_mode='monthly', dpi=150):
+    """Make the step 11 diagnostic figures for a run.
+
+    Counts profiles per (bin, window) as step 11 does and writes 28 figures (14 per variable: counts,
+    occupancy, mean scaling factor, ...) to ``<processed parent>/figures/figures_<now>/``.
+
+    Parameters
+    ----------
+    run_dir : str or Path
+        The run folder (or its ``yearly/`` subfolder).
+    window_mode : str
+        ``'monthly'`` or ``'10day'`` (as used for step 11).
+    dpi : int
+        Figure resolution.
+    """
     run_dir = Path(run_dir)
     if not run_dir.is_dir():
         raise ValueError(f"run_dir does not exist: {run_dir}")

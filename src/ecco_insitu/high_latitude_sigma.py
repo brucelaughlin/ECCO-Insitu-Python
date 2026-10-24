@@ -1,20 +1,22 @@
-"""
-High-latitude T / S uncertainties (sigma) for step 04, and the flag step 06
-uses to decide whether to apply its climatology-cost tests poleward of 60.
+"""High-latitude T / S uncertainties (sigma) for step 04.
 
-The fields (e.g. Theta_rmse_se / S_rmse_se, "expected rmse of in situ T / S
-from the larger of the WOA23-based and AOTD-based estimates") are on an EASE2
-100 km polar grid, (depth, y, x) with 2-D lat / lon, and are defined only in
-sampled cells.  For each profile with |lat| > min_lat:
-  * find the nearest grid cell that has data (great-circle distance),
-  * if it is within max_dist_km, interpolate that cell's sigma profile linearly
-    to the profile's depths (constant beyond the cell's shallowest / deepest
-    value, as step 04 does for the CTD sigma files),
-  * otherwise leave the profile on the CTD sigma (not "covered").
-The files used today cover 59.4-89.4 N only, so southern profiles are never
-covered here; step 04 gives them a constant sigma instead (southern_sigma_const_dict
-in ecco_insitu/pipeline.py).  A file with southern values would cover southern profiles near its
-cells the same way as in the north.
+Poleward of ``high_latitude_sigma.min_lat`` (60 degrees), step 04 uses these instead of the CTD
+sigma. Step 06 then applies its climatology-cost tests to those profiles, which it otherwise skips
+poleward of 60 degrees. The fields (e.g. ``Theta_rmse_se`` / ``S_rmse_se``, "expected rmse of in situ
+T / S from the larger of the WOA23-based and AOTD-based estimates") are on an EASE2 100 km polar
+grid, ``(depth, y, x)`` with 2-D lat / lon, and are defined only in sampled cells.
+
+For each profile with ``|lat| > min_lat``:
+
+- find the nearest grid cell that has data (great-circle distance);
+- if it is within ``max_dist_km``, interpolate that cell's sigma profile linearly to the profile's
+  depths (constant beyond the cell's shallowest / deepest value, as step 04 does for the CTD sigma
+  files);
+- otherwise leave the profile on the CTD sigma (not "covered").
+
+The files used today cover 59.4-89.4 N only, so southern profiles are never covered here; step 04
+gives them a constant sigma instead (``high_latitude_sigma.south_constant`` in the settings). A file
+with southern values would cover southern profiles near its cells the same way as in the north.
 """
 
 from pathlib import Path
@@ -33,7 +35,26 @@ def _xyz(lat, lon):
 
 
 class HighLatSigma:
-    """One sigma field (one variable of one file), loaded once."""
+    """One sigma field (one variable of one file), loaded once.
+
+    Parameters
+    ----------
+    path : str or Path
+        NetCDF file with the field on ``(depth, y, x)`` and 2-D ``lat`` / ``lon``.
+    var : str
+        Variable name, e.g. ``Theta_rmse_se``.
+
+    Attributes
+    ----------
+    depth : numpy.ndarray
+        The field's depths (m).
+    profiles : numpy.ndarray, (n_cells, n_depth)
+        Sigma profiles of the cells that have any value.
+    cell_lat : numpy.ndarray
+        Latitude of those cells.
+    name : str
+        ``<file name>:<var>``, for messages.
+    """
 
     def __init__(self, path, var):
         with xr.open_dataset(path) as ds:
@@ -52,7 +73,26 @@ class HighLatSigma:
         return np.interp(prof_depth, self.depth[ok], p[ok])  # constant beyond the ends
 
     def sigma(self, lat, lon, prof_depth, min_lat=60.0, max_dist_km=300.0):
-        """(n_prof, n_depth) sigma (NaN where not covered) and the covered mask."""
+        """Sigma at each profile, from the nearest cell with data.
+
+        Parameters
+        ----------
+        lat, lon : array_like, (n_prof,)
+            Profile positions (degrees).
+        prof_depth : array_like, (n_depth,)
+            Profile depths (m; the sign is ignored).
+        min_lat : float
+            Only profiles with ``|lat| > min_lat`` are considered.
+        max_dist_km : float
+            The nearest cell with data must be within this distance.
+
+        Returns
+        -------
+        sigma : numpy.ndarray, (n_prof, n_depth)
+            Sigma (same units as the file), NaN for profiles not covered.
+        covered : numpy.ndarray of bool, (n_prof,)
+            Which profiles got a value.
+        """
         lat, lon = np.asarray(lat, float), np.asarray(lon, float)
         prof_depth = np.abs(np.asarray(prof_depth, float))
         out = np.full((lat.size, prof_depth.size), np.nan)
@@ -71,7 +111,18 @@ class HighLatSigma:
 
 
 def get(path, var):
-    """Cached per process (each NCEI worker loads a field once)."""
+    """The :class:`HighLatSigma` for ``(path, var)``, loaded once per process and cached (each chain
+    worker process loads a field once).
+
+    Parameters
+    ----------
+    path : str or Path
+    var : str
+
+    Returns
+    -------
+    HighLatSigma
+    """
     key = (str(path), var)
     if key not in _CACHE:
         _CACHE[key] = HighLatSigma(path, var)

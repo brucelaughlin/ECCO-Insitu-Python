@@ -12,7 +12,8 @@ The final weight is  gamma / sigma^2 * sf_V : sigma from the CTD sigma files
 2026-10-12 and step 05 before; shared by T
 and S), sf_V = prof_Vspatial_scaling_factor (step 11, 1/n, computed separately
 for T and S; with a single shared factor sf_T = sf_S and nothing here changes).
-Three versions of the cost (see KINDS):
+Three versions of the cost (see KINDS)::
+
   final  (a)  nothing removed: weight as written — what ECCO sees
               = gamma * sf_V * (dV/sigma)^2
   nosf   (b)  step 11 sf_V removed, gamma kept = gamma * (dV/sigma)^2
@@ -20,14 +21,16 @@ Three versions of the cost (see KINDS):
   true   (c)  gamma and sf_V removed = (dV/sigma)^2, the normalized misfit
               (what QC tests now that it runs before gamma)
 
-Fill handling:
+Fill handling::
+
   T, S, Tclim, Sclim : non-finite or |x| >= 900 (no physical T/S is near that;
                        catches -9999, 9999, 99999, 9.97e36, 999, ...)
   weights            : non-finite, |x| >= 1e30, or |x| exactly 999, 9999,
                        99999, ... (real weights can exceed 9000 when sigma is
                        small, so they are kept; how many is reported)
 
-Outputs (in <out_dir>):
+Outputs (in <out_dir>)::
+
   costs/<source>/<file stem>__cost.nc   per file: cost_T, cost_S (iPROF, iDEPTH,
                                         final weights, NaN where excluded), the
                                         scaling factors, and provenance (descr,
@@ -43,7 +46,8 @@ Outputs (in <out_dir>):
   outliers.csv                          top points by true cost per V, with all
                                         three versions
 
-Run:
+Run::
+
     ecco-insitu report-costs            (computes, then writes the report)
     python -m ecco_insitu.diagnostics.costs_compute [--processed RUN] [--out DIR] [-n 4]   (compute only)
 """
@@ -82,14 +86,19 @@ _SF_FMT = {'text': 'sf_{V}', 'html': 'sf<sub>{V}</sub>', 'mpl': '$sf_{{{V}}}$'}
 
 
 def sf_name(V='V', fmt='text'):
+    """Name of the step 11 scaling factor for variable ``V`` as text, HTML or matplotlib math
+    (``fmt`` = ``'text'``, ``'html'`` or ``'mpl'``).
+    """
     return _SF_FMT[fmt].format(V=V)
 
 
 def kind_label(k, V='V', fmt='text'):
+    """Long label of cost version ``k`` (``'final'``, ``'nosf'``, ``'true'``) for variable ``V``."""
     return _KIND_LABEL[k].format(sf=sf_name(V, fmt))
 
 
 def kind_short(k, V='V', fmt='text'):
+    """Short label (``a) final``, ``b) no sf``, ``c) true``) of cost version ``k`` for variable ``V``."""
     return _KIND_SHORT[k].format(sf=sf_name(V, fmt))
 
 
@@ -218,6 +227,7 @@ def _write_cost_nc(path, src_path, source, subtype, n, depth, descr, lat, lon, y
         nc.createDimension('iPROF', n)
         nc.createDimension('iDEPTH', len(depth))
         def var(name, data, dims, dtype, **attrs):
+            """Create variable ``name`` in the output file with ``data`` and attributes (compressed)."""
             x = nc.createVariable(name, dtype, dims, zlib=True, complevel=4)
             x[:] = data
             x.setncatts(attrs)
@@ -290,6 +300,30 @@ def _process_group(args):
 
 
 def build(run_dir=None, out_dir=None, n_workers=None, sources=None):
+    """Compute the per-point costs of a run and store them for the report.
+
+    For every yearly file and variable (T, S), three cost versions per point: final (as the model
+    sees it), without the step 11 factor, and the "true" cost (ΔV/σ)², with fills excluded. Writes to
+    ``out_dir``: ``profiles.parquet`` (per-profile summary), ``stats_source_year.csv``,
+    ``stats_file.csv``, ``stats_source.csv``, ``fills.csv``, ``outliers.csv``, ``meta.json`` and
+    per-file NetCDF cost files under ``costs/<source>/``.
+
+    Parameters
+    ----------
+    run_dir : str or Path, optional
+        The run folder (default: the newest finished step 11 run).
+    out_dir : str or Path, optional
+        Output folder (default: ``<diagnostics.cost_report_dir>/cost_<run stamp>__<now>``).
+    n_workers : int, optional
+        Parallel workers (default: min(4, CPUs - 1)).
+    sources : list of str, optional
+        Only these sources (for quick tests).
+
+    Returns
+    -------
+    Path
+        The output folder.
+    """
     run_dir = common.yearly_dir(run_dir) if run_dir else common.latest_processed_run()
     stamp = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
     out_dir = Path(out_dir) if out_dir else REPORT_PARENT / f'cost_{common.run_timestamp(run_dir)}__{stamp}'

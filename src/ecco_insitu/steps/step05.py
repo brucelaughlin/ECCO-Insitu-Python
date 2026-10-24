@@ -1,11 +1,61 @@
+"""
+Step 05: in-situ to potential temperature, only when needed.
+
+The chain works in potential temperature (the climatology and the model use it). This step
+decides, per file, whether ``prof_T`` is in-situ temperature and must be converted, and if so
+converts it with the UNESCO 1983 algorithm (Fofonoff and Millard): pressure from depth and
+latitude, then a 4th-order Runge-Kutta integration of the adiabatic lapse rate from the in-situ
+pressure to the surface.
+
+**The decision** (setting ``chain.convert_insitu_T_to_potential``):
+
+- ``auto`` (default): the file's metadata decides. ``prof_T``'s ``long_name`` /
+  ``standard_name`` saying "potential" means not converted; "in situ", "in-situ" or
+  ``sea_water_temperature`` means converted. With **no** label, a check against the climatology
+  decides (:func:`check_T_against_climatology`), and the log says so in a ``!!`` box. If that
+  is unclear too, T is converted. The check never overrides a label; if it disagrees with one, it
+  only warns.
+- ``true`` / ``false``: always / never convert.
+
+Converting temperature that is already potential cools it a second time: about 0.04 deg C at
+400 m and 0.4 deg C at 4800 m. Until 2026-10-21 this step always converted, although all of
+``Interp_Profiles`` is labeled potential temperature.
+
+**Salinity.** The conversion needs salinity. Where ``prof_S`` is missing and
+``chain.replace_missing_S_with_clim_S`` is true, the climatology salinity ``prof_Sclim`` is used,
+and for a file with no salinity at all it always is. That salinity is used **only** in the
+calculation; ``prof_S`` is never changed. A file without a ``prof_S`` variable is not converted.
+
+Reads ``prof_T``, ``prof_S``, ``prof_Tclim``, ``prof_Sclim``, ``prof_depth``, ``prof_lat``.
+Changes ``prof_T`` (when converting; its ``long_name`` becomes "potential temperature") and sets
+the attribute ``prof_T:T_conversion``, which records the decision and why, in every output file.
+"""
 import xarray as xr
 import numpy as np
 
 
 def calculate_adiabatic_T_gradient(S,T,P):
-    """
-    % DESCRIPTION:
-    %    Calculates adiabatic temperature gradient as per UNESCO 1983 routines.
+    """Adiabatic temperature gradient (lapse rate) of seawater, UNESCO 1983.
+
+    Parameters
+    ----------
+    S : array_like
+        Salinity (psu).
+    T : array_like
+        Temperature (deg C).
+    P : array_like
+        Pressure (dbar).
+
+    Returns
+    -------
+    array_like
+        Adiabatic temperature gradient (deg C / dbar).
+
+    Notes
+    -----
+    Bryden (1973) polynomial as given in Fofonoff and Millard (1983), UNESCO Technical Papers in
+    Marine Science 44. Check value: S = 40, T = 40 deg C, P = 10,000 dbar gives
+    3.255976e-4 deg C / dbar.
     """
     
     a0 =  3.5803e-5
@@ -40,14 +90,32 @@ def calculate_adiabatic_T_gradient(S,T,P):
 
 
 def calculate_potential_T(MITprof_ds, prof_S):
-    """
-    % DESCRIPTION:
-    %    Calculates potential temperature as per UNESCO 1983 report.
+    """Potential temperature (reference pressure 0) of ``prof_T``, UNESCO 1983.
 
-    prof_S is passed explicitly (rather than read from MITprof_ds) so the caller
-    can supply a transient, climatology-augmented salinity for the calculation
-    WITHOUT mutating the stored MITprof_ds['prof_S']. See
-    update_prof_insitu_T_to_potential_T for why that matters.
+    Parameters
+    ----------
+    MITprof_ds : xarray.Dataset
+        Profiles with ``prof_T`` (in-situ, deg C), ``prof_depth`` (m) and ``prof_lat`` (degrees).
+    prof_S : xarray.DataArray or numpy.ndarray
+        Salinity (psu), same shape as ``prof_T``. Passed explicitly, rather than read from the
+        dataset, so the caller can supply a transient, climatology-filled salinity **without**
+        changing the stored ``prof_S`` (see :func:`update_prof_insitu_T_to_potential_T`).
+
+    Returns
+    -------
+    xarray.DataArray
+        Potential temperature (deg C), same shape as ``prof_T``.
+
+    Raises
+    ------
+    Exception
+        If ``prof_S``, ``prof_T`` and the pressure grid differ in shape.
+
+    Notes
+    -----
+    Pressure is computed from depth and latitude (Saunders 1981 formula), then
+    :func:`calculate_adiabatic_T_gradient` is integrated to the surface with the 4th-order
+    Runge-Kutta scheme of Fofonoff and Millard (1983).
     """
 
     coord_mesh_depths_as_cols = np.tile(MITprof_ds['prof_depth'], (len(MITprof_ds['prof_lat']), 1))
@@ -100,9 +168,24 @@ def _S_for_calc(MITprof_ds, replace_missing_S_with_clim_S):
 
 
 def update_prof_insitu_T_to_potential_T(MITprof_ds, replace_missing_S_with_clim_S):
-    """
-    Convert in-situ temperature to potential temperature.
+    """Replace ``prof_T`` (in-situ) by potential temperature.
 
+    Parameters
+    ----------
+    MITprof_ds : xarray.Dataset
+        Profiles with ``prof_T``, ``prof_S``, ``prof_Sclim``, ``prof_depth``, ``prof_lat``.
+    replace_missing_S_with_clim_S : bool
+        Use ``prof_Sclim`` where ``prof_S`` is missing but ``prof_T`` isn't
+        (``chain.replace_missing_S_with_clim_S``).
+
+    Returns
+    -------
+    xarray.Dataset
+        With ``prof_T`` converted. Unchanged (with a log message) if there is not a single point
+        with both T and a salinity to use.
+
+    Notes
+    -----
     Potential-T needs salinity, so where salinity is missing we optionally borrow
     climatology salinity — but ONLY as a transient input to the calculation. We
     must NOT persist climatology values into the stored prof_S, or those made-up
@@ -147,7 +230,35 @@ CHECK_MARGIN = 2.0            # the closer option must fit at least this many ti
 
 
 def check_T_against_climatology(MITprof_ds, S_for_calc):
-    """Return (verdict, details): verdict 'potential', 'in-situ' or 'unclear'."""
+    """Decide from the data whether ``prof_T`` looks like in-situ or potential temperature.
+
+    Parameters
+    ----------
+    MITprof_ds : xarray.Dataset
+        Profiles with ``prof_T``, ``prof_Tclim`` (potential temperature, from step 03),
+        ``prof_depth``, ``prof_lat``.
+    S_for_calc : xarray.DataArray or numpy.ndarray
+        Salinity to use for a trial conversion (same shape as ``prof_T``).
+
+    Returns
+    -------
+    verdict : str
+        ``'potential'``, ``'in-situ'`` or ``'unclear'``.
+    details : str
+        The evidence, for the log.
+
+    Notes
+    -----
+    Below about 1000 m, in-situ T is warmer than potential T by an amount that grows with depth
+    (about 0.1 deg C at 2000 m, 0.3 deg C at 4000 m), much more than typical deep anomalies. For
+    each level at or below ``CHECK_MIN_DEPTH`` (1000 m) with at least 20 points, the median of
+    T - Tclim is computed as is and after a trial conversion. The depth- and count-weighted mean
+    of the absolute medians decides:
+
+    - **potential** if leaving T as is fits at least ``CHECK_MARGIN`` (2) times better;
+    - **in-situ** if converting fits 2 times better and T as is sits above the climatology;
+    - **unclear** otherwise, or if there are fewer than ``CHECK_MIN_POINTS`` (200) deep points.
+    """
     T, Tc = MITprof_ds['prof_T'].values, MITprof_ds['prof_Tclim'].values
     z = np.asarray(MITprof_ds['prof_depth'].values, dtype=float)
     deep = z >= CHECK_MIN_DEPTH
@@ -203,22 +314,36 @@ def _loud(*lines):
 
 
 def main(MITprof_ds, replace_missing_S_with_clim_S, convert_insitu_T_to_potential='auto'):
-    """
-    convert_insitu_T_to_potential:
-      'auto' (default) : the file's metadata decides (prof_T long_name / standard_name):
-                           labelled potential -> not converted
-                           labelled in-situ   -> converted
-                         With no usable label, the climatology check decides (see
-                         check_T_against_climatology); if it is unclear too, T is
-                         converted (the original behaviour). The check never overrides a
-                         label: if it disagrees with one, it only warns.
-      True             : always convert (the file holds in-situ temperature)
-      False            : never convert
-    Converting a temperature that is already potential cools it a second time, by
-    ~0.04 °C at 400 m and ~0.4 °C at 4800 m; until 2026-10-21 this step always
-    converted, and all of Interp_Profiles is already potential temperature.
-    Every decision is printed under "step: 5" in the log, and recorded in the output
-    file as prof_T's attribute T_conversion.
+    """Decide whether to convert ``prof_T`` to potential temperature, and do it if so.
+
+    Parameters
+    ----------
+    MITprof_ds : xarray.Dataset
+        The profiles (see the module description for the variables used).
+    replace_missing_S_with_clim_S : bool
+        See :func:`update_prof_insitu_T_to_potential_T` (``chain.replace_missing_S_with_clim_S``).
+    convert_insitu_T_to_potential : {'auto', True, False}
+        How to decide (``chain.convert_insitu_T_to_potential``):
+
+        - ``'auto'``: the file's metadata decides (``prof_T`` ``long_name`` / ``standard_name``):
+          labeled potential, not converted; labeled in-situ, converted. With no usable label,
+          :func:`check_T_against_climatology` decides; if it is unclear too, T is converted (the
+          original behavior). The check never overrides a label; if it disagrees, it only warns.
+        - ``True``: always convert (the file holds in-situ temperature).
+        - ``False``: never convert.
+
+    Returns
+    -------
+    xarray.Dataset
+        ``prof_T`` converted or not, with ``prof_T.attrs['T_conversion']`` saying which and why.
+
+    Notes
+    -----
+    Converting a temperature that is already potential cools it a second time, by about
+    0.04 deg C at 400 m and 0.4 deg C at 4800 m; until 2026-10-21 this step always converted, and
+    all of ``Interp_Profiles`` is already potential temperature. Every decision is printed under
+    ``step: 5`` in the log. Label-less decisions and disagreements with a label are printed in a
+    ``!!`` box.
     """
     have_check = 'prof_S' in MITprof_ds and 'prof_Tclim' in MITprof_ds
     verdict, details = (check_T_against_climatology(MITprof_ds, _S_for_calc(MITprof_ds, True))

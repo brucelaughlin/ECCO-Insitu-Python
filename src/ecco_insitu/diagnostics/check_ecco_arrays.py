@@ -13,9 +13,11 @@ Checks
     variable) is identical to the yearly file
   - the manifest's NOBSGLOB / NFILESPROFMAX match the files
 
-Usage:
+Usage::
+
     ecco-insitu check-arrays <run_dir>     # <run_dir>/yearly, /ecco_arrays, /documentation
     ecco-insitu check-arrays --yearly <dir> --arrays <dir> [--docs <dir>]
+
 The manifest is read from the documentation folder (default: beside the arrays
 folder); older runs that kept it inside the arrays folder still work.
 Exit code 0 if no errors.
@@ -34,6 +36,20 @@ import ecco_insitu.packing as opt  # noqa: E402
 
 
 def cli(argv=None):
+    """Command-line entry point (``ecco-insitu check-arrays``): validate a run's step 13 files.
+
+    Reads the yearly files, the ECCO-ready files and ``ecco_arrays_manifest.json``, and checks that
+    every yearly profile appears exactly once with identical data, that each file holds one
+    provenance in time order with whole-year labels, that no tile exceeds ``NOBSGLOB``, and that
+    the ``PROFILES_SIZE.h`` values match. Prints the errors and ``RESULT: PASS`` or ``FAIL``.
+
+    The process exits with status 0 on PASS and 1 on FAIL (``sys.exit``).
+
+    Parameters
+    ----------
+    argv : list of str, optional
+        Command-line arguments (default: ``sys.argv[1:]``).
+    """
     ap = argparse.ArgumentParser(description='Validate ECCO-ready profile files.')
     ap.add_argument('run_dir', nargs='?', default=None)
     ap.add_argument('--yearly', default=None)

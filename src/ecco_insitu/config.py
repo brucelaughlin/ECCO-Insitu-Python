@@ -69,7 +69,9 @@ CHAIN_REQUIRED_PATHS = (
 
 
 class ConfigError(ValueError):
-    """A config file is missing, unreadable, has an unknown key, or has a value of the wrong type."""
+    """A settings problem: a config file is missing or unreadable, has an unknown key or a value of the
+    wrong type, or a required data path is unset or doesn't exist.
+    """
 
 
 def _read_yaml(path):
@@ -141,7 +143,24 @@ def _parse_override(text):
 
 
 def get(cfg, dotted):
-    """Value at a dotted key, e.g. ``get(cfg, 'paths.sigma_files.prof_T')``."""
+    """Value at a dotted key.
+
+    Parameters
+    ----------
+    cfg : dict
+        Settings from :func:`load`.
+    dotted : str
+        E.g. ``'paths.sigma_files.prof_T'``.
+
+    Returns
+    -------
+    object
+
+    Raises
+    ------
+    KeyError
+        If the key doesn't exist.
+    """
     cur = cfg
     for p in dotted.split('.'):
         cur = cur[p]
@@ -219,7 +238,21 @@ def load(config_files=(), overrides=(), use_local=True, use_env=True):
 
 
 def check_required_paths(cfg, keys=CHAIN_REQUIRED_PATHS):
-    """Raise ConfigError listing every required path that is unset or doesn't exist."""
+    """Check that the given path settings are set and exist.
+
+    Parameters
+    ----------
+    cfg : dict
+        Settings from :func:`load`.
+    keys : sequence of str
+        Dotted path settings to check (default: those steps 01-10 need, ``CHAIN_REQUIRED_PATHS``).
+
+    Raises
+    ------
+    ConfigError
+        Listing every path that is unset or doesn't exist; for a missing climatology the message also
+        says how to build one (``ecco-insitu climatology --build``).
+    """
     problems = []
     for k in keys:
         v = get(cfg, k)
@@ -237,7 +270,15 @@ def check_required_paths(cfg, keys=CHAIN_REQUIRED_PATHS):
 
 
 def dump(cfg, path):
-    """Write the merged settings to ``path`` as YAML, with a header saying where they came from."""
+    """Write the merged settings to ``path`` as YAML, with a header listing the files they came from.
+
+    Parameters
+    ----------
+    cfg : dict
+        Settings from :func:`load`.
+    path : str or Path
+        Output file (its folder is created if needed).
+    """
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     body = {k: v for k, v in cfg.items() if k != '_sources'}
@@ -247,7 +288,13 @@ def dump(cfg, path):
 
 
 def add_arguments(parser):
-    """Add the standard ``--config`` and ``--set`` options to an argparse parser."""
+    """Add the standard ``--config FILE`` and ``--set KEY=VALUE`` options (both repeatable) to an
+    ``argparse`` parser.
+
+    Parameters
+    ----------
+    parser : argparse.ArgumentParser
+    """
     parser.add_argument('--config', action='append', default=[], metavar='FILE',
                         help='YAML settings file (repeatable; later files win). See src/ecco_insitu/defaults.yaml.')
     parser.add_argument('--set', action='append', default=[], metavar='KEY=VALUE', dest='overrides',
@@ -255,7 +302,21 @@ def add_arguments(parser):
 
 
 def from_args(args):
-    """Settings from parsed ``--config`` / ``--set`` options (see add_arguments)."""
+    """Settings from parsed ``--config`` / ``--set`` options (see :func:`add_arguments`).
+
+    Parameters
+    ----------
+    args : argparse.Namespace
+
+    Returns
+    -------
+    dict
+        As :func:`load`.
+
+    Raises
+    ------
+    ConfigError
+    """
     return load(args.config, args.overrides)
 
 
@@ -269,7 +330,19 @@ def _shell_value(v):
 
 
 def cli(argv=None):
-    """Command-line entry point: print the merged settings (or single values with --get)."""
+    """Command-line entry point (``ecco-insitu config``): print the merged settings, or single values with
+    ``--get KEY ...`` (one per line; true/false as 1/0, null as an empty line).
+
+    Parameters
+    ----------
+    argv : list of str, optional
+        Arguments (default: ``sys.argv[1:]``).
+
+    Returns
+    -------
+    int
+        0; exits with a message for a settings error.
+    """
     ap = argparse.ArgumentParser(description='Print the merged NCEI chain settings.')
     add_arguments(ap)
     ap.add_argument('--get', nargs='+', metavar='KEY',
