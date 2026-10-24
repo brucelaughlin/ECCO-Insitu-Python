@@ -16,6 +16,8 @@ import netCDF4
 import numpy as np
 
 VOLATILE_ATTRS = {'created'}                       # global attributes that hold the run time
+# global attributes that name the program, compared loosely (renamed modules are the same program)
+RENAMED_PROGRAM = {'created_by': {'optimize_profile_files.py', 'ecco_insitu.packing'}}
 VOLATILE_JSON_KEYS = {'profiles_dir', 'arrays_dir', 'grid_dir'}   # absolute paths in the manifest
 # run_config.yaml: compared as settings, ignoring machine-specific paths and the list of merged files
 VOLATILE_CONFIG_KEYS = {'data_root', 'paths', 'run', 'diagnostics', '_sources'}
@@ -32,7 +34,8 @@ def _compare_nc(a, b, rel, problems):
             ds.set_auto_maskandscale(False)
         gx = {k: x.getncattr(k) for k in x.ncattrs() if k not in VOLATILE_ATTRS}
         gy = {k: y.getncattr(k) for k in y.ncattrs() if k not in VOLATILE_ATTRS}
-        if gx.keys() != gy.keys() or any(str(gx[k]) != str(gy[k]) for k in gx):
+        same_prog = lambda k: k in RENAMED_PROGRAM and {str(gx[k]), str(gy[k])} <= RENAMED_PROGRAM[k]
+        if gx.keys() != gy.keys() or any(str(gx[k]) != str(gy[k]) and not same_prog(k) for k in gx):
             problems.append(f'{rel}: global attributes differ')
         dx = {k: len(v) for k, v in x.dimensions.items()}
         dy = {k: len(v) for k, v in y.dimensions.items()}
@@ -96,7 +99,8 @@ def compare_runs(new, ref):
             if _strip_json(json.load(open(a))) != _strip_json(json.load(open(b))):
                 problems.append(f'{rel}: content differs')
         else:
-            ta, tb = (re.sub(r'/\S+', '<path>', open(p).read()) for p in (a, b))
+            # absolute or relative paths (e.g. 'input folder: tests/fixtures/inputs') -> <path>
+            ta, tb = (re.sub(r'(?<=: )\S*/\S*|/\S+', '<path>', open(p).read()) for p in (a, b))
             if ta != tb:
                 problems.append(f'{rel}: content differs')
     return problems

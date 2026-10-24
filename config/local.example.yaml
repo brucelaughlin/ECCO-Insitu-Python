@@ -1,5 +1,5 @@
 # Copy to config/local.yaml (not committed) and edit for this machine.
-# Relative paths are taken from data_root. See ecco_insitu/defaults.yaml for what each file is.
+# Relative paths are taken from data_root. See src/ecco_insitu/defaults.yaml for what each file is.
 
 data_root: /path/to/your/data
 

@@ -819,6 +819,61 @@ by step later, with the regression test guarding the output.
   planned yet. Installing from the GitHub repository works:
   `pip install git+https://github.com/brucelaughlin/ECCO-Insitu-Python`.
 
+### 4.8 Follow-up: the final layout, with no compatibility layer (2026-10-23)
+
+The first version of Phase 4 kept every old script name (`NCEI.py`, `step11_spatial_scaling.py`,
+`diagnostics/check_run_files.py`, ...) as a small wrapper, and kept `run_ncei.sh`, so existing
+habits and scripts wouldn't break. The user is currently the package's only user and asked for the
+modern design directly, without that compatibility layer. So:
+
+- **The wrappers are gone.** The 17 top-level and `diagnostics/` wrapper scripts were deleted. The
+  only way to run things is the `ecco-insitu` command.
+- **`run_ncei.sh` is gone; the whole-run logic is now Python** (`src/ecco_insitu/run.py`,
+  `ecco-insitu run`). It does what the shell script did:
+  - picks the input and the timestamped output folder from the settings, and refuses to overwrite
+    an existing folder;
+  - runs steps 01–10, then 11, the optional figures, the optional step 12, and step 13;
+  - continues after files fail in 01–10, and returns exit code 3 at the end;
+  - writes **everything printed, by every step and every worker process,** to
+    `z_logs/ncei_log_<YYYYMMDD_HHMMSS>.log` as well as the screen. This is done at the operating
+    system level, as `| tee` did.
+
+  The run-log folder is now a setting (`run.log_dir`, default `z_logs/`), and the cost report finds
+  the log there. The shell flags became readable options: `-S` → `--no-scaling`, `-p` → `--plots`,
+  `-c` → `--compact`, `-A` → `--no-pack`, `-C` → `--config`, `-s` → `--set`.
+- **`src/` layout.** The package moved from `ecco_insitu/` to `src/ecco_insitu/`, the common modern
+  arrangement. The tests then run against the package as installed, not against loose files that
+  happen to sit in the repository folder, so packaging mistakes are caught.
+- **The top level is now only project files:** `pyproject.toml`, `README.md`, `HANDOFF.md`,
+  `PROJECT_LOG.md`, `config/`, `docs/`, `src/`, `tests/`, `patches/`, `profile_analysis/`, plus the
+  folders git ignores (logs, scratch, old drafts).
+- **Docs updated to describe only the new way:**
+  - `README.md` (structure, quick start, chain, post-steps, running);
+  - `docs/diagnostics.md` (moved from `diagnostics/README.md`);
+  - `HANDOFF.md` (which says how the old names map to the new ones, for reading older notes);
+  - the help texts and docstrings inside the package.
+
+**A problem found and fixed while building `ecco-insitu run`.** The first version copied the output
+to the log until its output pipe closed. A helper process that Python's multiprocessing starts in
+the background (the "resource tracker") inherits that pipe and keeps it open, so a finished run
+**hung instead of exiting**. The regression test caught this: it never finished. The copy now stops
+at an end marker written when the run finishes, and a run exits normally. A full run on the fixtures
+takes about 32 s. Console and log have the same 1,771 lines.
+
+**Checked again after this change:**
+
+- **The regression test passes against the Phase 1 reference.** All outputs are bit-identical. The
+  comparison now treats the program name stamped in the step 13 files (`created_by`:
+  `optimize_profile_files.py` → `ecco_insitu.packing`) as the same program.
+- **The log format is unchanged.** It has 80 `step:` lines, 80 count lines and 8 file headers, and
+  the cost report's parser extracts identical step counts from a log written by `ecco-insitu run`.
+- **No processes are left behind** after a run.
+- **95 tests pass.** That's 16 fewer than before: the wrapper tests went with the wrappers, replaced
+  by one test that the command works from an arbitrary folder.
+- **The saved patch** `patches/step06_code12_drop_unbinned_profiles.patch` (the not-yet-applied
+  "drop profiles with no geodesic bin") targets the old file names, so it no longer applies. This is
+  noted in `HANDOFF.md`; it would be re-made against the new layout if the team wants it.
+
 ---
 
 ## Glossary

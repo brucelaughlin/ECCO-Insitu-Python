@@ -15,7 +15,7 @@ from compare import compare_runs  # noqa: E402
 from run_chain import run_chain  # noqa: E402
 
 FIX = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'fixtures'))
-# Until the config phase, the chain's data paths are fixed in NCEI.py; skip if they are absent.
+# The chain's data (grid, climatology, sigma) lives outside the repository; skip if it is absent.
 GRID_DIR = '/Users/brucel/ecco/yip/sample_data/ecco-insitu/sweet_gdrive/grid_llc90'
 
 

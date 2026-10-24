@@ -1,7 +1,8 @@
 # Handoff Context — ECCO-Insitu-Python
 
-**Branch:** `devel_v3`
-**Last commit:** see `git log` (all work below is committed as of 2026-10-23)
+**Branch:** `devel_v3`; the production-hardening work is on `production_hardening`
+(plan and progress: `docs/production_hardening_plan.md`; full write-up: `docs/production_hardening_report.md`)
+**Last commit:** see `git log`
 **Date:** 2026-10-23
 
 ---
@@ -16,7 +17,14 @@ T/S), SOCAT (no T/S), MRB_WOD `36_depths/` and `97_depths/` (overlapping
 duplicates), Samoa (own deep grid). Two ITP L2 files (2008, 2018) are empty and
 three (2012, 2014, 2017) have bad salinity; the chain rejects all five.
 
-### Chain (`run_ncei.sh` → `NCEI.py`, then post-chain steps)
+### Chain (`ecco-insitu run`: steps 01–10 in `src/ecco_insitu/pipeline.py`, then post-chain steps)
+
+Since the production-hardening work (branch `production_hardening`), the chain is the package
+`src/ecco_insitu/` with the `ecco-insitu` command, and all settings are in
+`src/ecco_insitu/defaults.yaml` + `config/local.yaml`. File and setting names below that predate it
+(`NCEI.py`, `run_ncei.sh`, `-S`, `remove_extraneous_depth_levels = False`) map to: `pipeline.py`,
+`ecco-insitu run`, `--no-scaling`, `chain.remove_extraneous_depth_levels: false`.
+
 | Step | What | Notes |
 |---|---|---|
 | 01–04 | grid/tile points, geodesic bins, WOA23 climatology, σ | step 01 assigns LLC90 cells and 30×30 tiles |
@@ -26,8 +34,8 @@ three (2012, 2014, 2017) have bad salinity; the chain rejects all five.
 | 08 | trim empty depth levels | **off** by default (`remove_extraneous_depth_levels = False`) → every file on the 97-level grid |
 | 09 | decimate sub-daily repeats | removes ~92% of glider and ~61% of ITP profiles |
 | 10 | γ (grid-cell area factor) | moved here from step 05 on 2026-10-12 |
-| 11 | spatial scaling, T and S separately | rewrites files in parallel (8 workers, `-n`; ~3× faster); `-S` to skip |
-| 12 | compaction | off by default (`-c`) |
+| 11 | spatial scaling, T and S separately | rewrites files in parallel (8 workers, `-n`; ~3× faster); `--no-scaling` to skip |
+| 12 | compaction | off by default (`--compact`) |
 | 13 | ECCO-ready profile files | `-A` to skip; see below |
 
 Output: `processed_by_NCEI_profile_data/profile_files_NCEI_processed_<ts>/` with
@@ -106,7 +114,7 @@ v4r6 build: 100,000 and 35). Argo gets 3 files (1997–2013, 2014–2021, 2022�
   the team for the first cost comparison). Kept only for that comparison; do not use.
 - All older runs were deleted.
 
-### Diagnostics (`diagnostics/`, see `diagnostics/README.md`)
+### Diagnostics (`ecco-insitu check-*` / `report-*`, see `docs/diagnostics.md`)
 `check_run_files.py` (structure, ~15 s), `check_run_qc.py` (science QC, ~1 h —
 run with `nohup`), `check_ecco_arrays.py`, `report_profile_counts.py` (UCSD vs
 processed counts, maps), `report_costs.py` (cost vs climatology with/without γ and
@@ -140,6 +148,9 @@ All accept either run layout and read each run's step order from its log.
 4. **To-do next time — drop profiles with no geodesic bin** (approved idea, not
    applied). Tested patch: `patches/step06_code12_drop_unbinned_profiles.patch`
    adds QC code 12, toggled by `zero_weights_of_unbinned_profiles` in `NCEI.py`.
+   **Note (2026-10-23):** the patch predates the package layout (`src/ecco_insitu/`) and the settings
+   file; it no longer applies as is. To use it, re-make it against `src/ecco_insitu/steps/step06.py`,
+   with the switch as a `chain.*` setting in `defaults.yaml`.
    `git apply --check patches/step06_code12_drop_unbinned_profiles.patch`, then
    `git apply …`.
 5. **Southern Ocean uncertainty field**, when the team has one (replaces the constant
@@ -157,10 +168,14 @@ All accept either run layout and read each run's step order from its log.
 
 | What | Path |
 |------|------|
-| Chain controller / run script | `NCEI.py`, `run_ncei.sh` |
-| Steps | `step01.py` … `step10.py`, `step11_spatial_scaling.py`, `step12_profiles_compact.py`, `step13_pack_ecco_arrays.py` |
-| File-packing program | `optimize_profile_files.py` (guide: `docs/profile_file_optimization.md`) |
-| Checks & reports | `diagnostics/` (see `diagnostics/README.md`) |
+| The package | `src/ecco_insitu/` (installed with `pip install -e .`; command `ecco-insitu`) |
+| Whole run / steps 01–10 | `src/ecco_insitu/run.py` (`ecco-insitu run`), `src/ecco_insitu/pipeline.py` (`ecco-insitu steps`) |
+| Steps | `src/ecco_insitu/steps/step01.py` … `step13_pack_ecco_arrays.py` |
+| Settings | `src/ecco_insitu/defaults.yaml` (all, with comments), `config/local.yaml` (this machine) |
+| Input checks / climatology | `src/ecco_insitu/validate.py` (`docs/input_contract.md`), `src/ecco_insitu/climatology/` |
+| File-packing program | `src/ecco_insitu/packing.py` (`ecco-insitu optimize`; guide: `docs/profile_file_optimization.md`) |
+| Checks & reports | `src/ecco_insitu/diagnostics/` (see `docs/diagnostics.md`) |
+| Tests | `tests/` (`python -m pytest`) |
 | Saved, tested patches | `patches/` |
 | Map app (World / Arctic / Southern Ocean) and its store build | `profile_analysis/` (see `README_maps.md`) |
 | Input profiles | `/Users/brucel/ecco/yip/profile_data/Interp_Profiles/` |

@@ -12,13 +12,13 @@ This repository contains a Python pipeline for post-processing in-situ ocean
 profile data (from WOD, Argo, MEOP, mooring, and other sources) into a form
 suitable for assimilation into the ECCO ocean state estimate. The pipeline:
 
-1. Converts raw WOD CSV exports to NetCDF (`csv_to_nc.py`)
-2. Runs a 10-step quality-control and preprocessing chain on each profile file (`NCEI.py`)
+1. Converts raw WOD CSV exports to NetCDF (`ecco-insitu csv-to-nc`)
+2. Runs a 10-step quality-control and preprocessing chain on each profile file (`ecco-insitu steps`)
 3. Applies spatial density scaling to the weights (step 11)
 4. Packs the result into model-ready profile files that minimize the model's
-   memory (step 13, `ecco_insitu/packing.py`; plain-language explanation in
+   memory (step 13, `ecco-insitu pack`; plain-language explanation in
    [`docs/profile_file_optimization.md`](docs/profile_file_optimization.md))
-5. Checks and reports on the output (`diagnostics/`, see `diagnostics/README.md`)
+5. Checks and reports on the output (`ecco-insitu check-*` / `report-*`, see [`docs/diagnostics.md`](docs/diagnostics.md))
 6. Aggregates the processed profiles into geodesic bins for visualization, with an
    interactive globe app (`profile_analysis/`)
 
@@ -52,7 +52,7 @@ https://drive.google.com/drive/folders/17h0qMS7vVimet8FXieGP1mWhnqnY0ljr
    ```
 4. **Run:**
    ```bash
-   ./run_ncei.sh            # or: ecco-insitu run
+   ecco-insitu run
    ```
    The output, the settings used (`documentation/run_config.yaml`) and a per-file summary
    (`documentation/run_summary.txt`) go in a new timestamped folder.
@@ -61,40 +61,35 @@ https://drive.google.com/drive/folders/17h0qMS7vVimet8FXieGP1mWhnqnY0ljr
 
 ## Repository structure
 
-The chain is the Python package `ecco_insitu`, installed with `pip install -e .`, which also
-gives the `ecco-insitu` command:
+The chain is the Python package `ecco_insitu` (in `src/`), run with the `ecco-insitu` command:
 
 ```
 ECCO-Insitu-Python/
-  pyproject.toml                  — package definition and dependencies (pip install -e .)
-  run_ncei.sh                     — runs the whole chain, steps 01–13 (same as: ecco-insitu run)
+  pyproject.toml                  — package definition, dependencies, the ecco-insitu command
   config/
     local.example.yaml            — template for this machine's data locations (copy to local.yaml)
-  ecco_insitu/                    — the package
-    cli.py                        — the ecco-insitu command
+  src/ecco_insitu/                — the package
+    cli.py                        — the ecco-insitu command (one subcommand per tool)
+    run.py                        — ecco-insitu run: the whole chain, steps 01–13, with its log
+    pipeline.py                   — steps 01–10 on a folder of input files (ecco-insitu steps)
+    steps/                        — step01.py … step10.py, step11_spatial_scaling.py,
+                                    step12_profiles_compact.py, step13_pack_ecco_arrays.py
     defaults.yaml                 — every setting, with defaults and explanations
     config.py                     — reads, checks and saves the settings
     validate.py                   — the input-file and climatology contracts (docs/input_contract.md)
-    pipeline.py                   — runs steps 01–10 on a folder of input files
-    steps/                        — step01.py … step10.py, step11_spatial_scaling.py,
-                                    step12_profiles_compact.py, step13_pack_ecco_arrays.py
-    packing.py                    — the step 13 packing program: any LLC grid / tile size; trade-off report
     climatology/                  — setup.py (check / --build / --prebake), build_woa23.py, prebake.py
+    packing.py                    — the step 13 packing program: any LLC grid / tile size; trade-off report
     clim_interp.py                — climatology interpolation (step 03)
     high_latitude_sigma.py        — high-latitude T/S uncertainties (step 04)
     tools.py                      — shared utilities
     csv_to_nc.py                  — convert WOD CSV exports to NetCDF
-    diagnostics/                  — checks and reports on chain output (see diagnostics/README.md)
+    log.py                        — logging set-up
+    diagnostics/                  — checks and reports on chain output (docs/diagnostics.md)
   tests/                          — regression and unit tests (python -m pytest)
-  docs/                           — input contract, file-packing guide, hardening plan and report
-  NCEI.py, step11_…py, …          — old script names, kept as thin wrappers around ecco-insitu commands
-  diagnostics/*.py                — the same, for the diagnostics
+  docs/                           — input contract, diagnostics, file-packing guide, hardening plan and report
   patches/                        — saved, tested changes not yet applied (see HANDOFF.md)
-  profile_analysis/
-    app_profile_map.py            — interactive map app (World / Arctic / Southern Ocean; bins or profiles)
-    map_common.py                 — its projections, bin cells and zoom handling
-    build_allsource_bin_timeseries_with_anomalies.py — builds the data store the app reads
-    README_maps.md                — map app documentation
+  profile_analysis/               — the interactive map app and its data store (not part of the package)
+    app_profile_map.py, map_common.py, build_allsource_bin_timeseries_with_anomalies.py, README_maps.md
 ```
 
 ### Installing
@@ -105,28 +100,25 @@ pip install -e ".[diagnostics,test]"   # also the map/report extras and pytest
 ecco-insitu --help               # all commands
 ```
 
-The old script names (`python NCEI.py ...`, `python diagnostics/check_run_files.py ...`) still work
-and do the same as the matching `ecco-insitu` command.
-
 ---
 
-## Step 0 — Preprocessing: `csv_to_nc.py`
+## Step 0 — Preprocessing: `ecco-insitu csv-to-nc`
 
 Converts a WOD `.csv` export to a set of per-year NetCDF files, with basic
 validation of flags, coordinates, and units. Profiles failing validation are
 excluded and logged.
 
 ```bash
-python csv_to_nc.py -i <input_csv_dir> -d <output_dir>
+ecco-insitu csv-to-nc -i <input_csv_dir> -d <output_dir>
 ```
 
 Output filenames: `[stem]_[year].nc`
 
 ---
 
-## Step 1 — NCEI processing chain: `NCEI.py` / `run_ncei.sh`
+## Step 1 — NCEI processing chain: `ecco-insitu run`
 
-Processes each input NetCDF file through 10 sequential steps:
+Processes each input NetCDF file through 10 sequential steps (`ecco-insitu steps` runs only these):
 
 | Step | Function | Description |
 |------|----------|-------------|
@@ -141,30 +133,38 @@ Processes each input NetCDF file through 10 sequential steps:
 | 09 | `update_decimate_subdaily_profiles` | Decimates sub-daily sampling at the same location to once-daily |
 | 10 | `update_gamma_factor` | Multiplies T/S weights by the grid-cell area factor γ (`prof_area_gamma`); moved after QC (was step 05) on 2026-10-12 |
 
-### Post-chain steps (run by `run_ncei.sh` across the whole run directory)
+### Post-chain steps (run by `ecco-insitu run` across the whole run directory)
 
-| Step | Script | Default | Description |
+| Step | Command alone | In `ecco-insitu run` | Description |
 |------|--------|---------|-------------|
-| 11 | `step11_spatial_scaling.py` | on (`-S` to skip) | Spatial density scaling of T and S weights |
-| — | `diagnostics/report_spatial_scaling.py` | off (`-p` to run) | Step 11 diagnostic figures |
-| 12 | `step12_profiles_compact.py` | off (`-c` to run) | Rewrites files compactly in-place |
-| 13 | `step13_pack_ecco_arrays.py` | on (`-A` to skip) | Packs the yearly files into ECCO-ready profile files (below) |
+| 11 | `ecco-insitu scale` | on (`--no-scaling` to skip) | Spatial density scaling of T and S weights |
+| — | `ecco-insitu report-scaling` | off (`--plots` to run) | Step 11 diagnostic figures |
+| 12 | `ecco-insitu compact` | off (`--compact` to run) | Rewrites files compactly in place |
+| 13 | `ecco-insitu pack` | on (`--no-pack` to skip) | Packs the yearly files into ECCO-ready profile files (below) |
+
+Defaults come from the `run.*` settings.
 
 **Output layout** (inside each timestamped run folder):
 
 ```
 profile_files_NCEI_processed_<YYYYMMDD_HHMMSS>/
-  yearly/          one file per source and year (NCEI.py, steps 11, 12)
+  yearly/          one file per source and year (steps 01–10, 11, 12)
   ecco_arrays/     step 13: the model-ready profile files only
-  documentation/   step 13 summary: ecco_arrays_manifest.json / .csv, optimize_sweep.csv,
+  documentation/   run_config.yaml (the settings used), run_summary.txt (what happened to each input
+                   file), and the step 13 summary: ecco_arrays_manifest.json / .csv, optimize_sweep.csv,
                    PROFILES_SIZE_and_data.profiles.txt (NOBSGLOB / NFILESPROFMAX, data.profiles list)
+```
+
+The log of everything printed goes to `z_logs/ncei_log_<YYYYMMDD_HHMMSS>.log` (setting `run.log_dir`).
+
+```
 ```
 
 **Step 11 — spatial density scaling.** Downweights densely sampled regions so
 each (geodesic bin, window) contributes roughly one profile's worth of forcing.
 For each variable V in `SCALED_VARS` (`T`, `S`), step 11 counts the profiles
 with at least one nonzero `prof_Vweight` in each 10242-bin cell per window
-(calendar month by default; `-w 10day` for 10-day windows), across all sources
+(calendar month by default; `-w 10day` or `spatial_scaling.window: 10day` for 10-day windows), across all sources
 combined, and multiplies each profile's `prof_Vweight` by 1/n_V. T and S are
 counted separately, so T-only profiles (e.g. Samoa moorings) do not reduce the
 S weights of other profiles in the same bin. Files carrying only some of the
@@ -174,23 +174,23 @@ Refuses to run on files that are already scaled — run it on a step-10 copy.
 Rewriting the files is nearly all of its run time, so that part runs in parallel
 (8 workers by default; `-n` to change).
 
-The original MATLAB (`update_weights_based_on_spatial_density_TRYTOIMPLEMENT.m`)
+The original MATLAB (`update_weights_based_on_spatial_density_TRYTOIMPLEMENT.m`, in the git history)
 counts all profiles together and applies one factor to both T and S (a Python
 version of that, `step11_spatial_scaling_combined_LEGACY.py`, is in the git history
 up to commit 1aa5bd1). Unlike the MATLAB, step 11 does not zero weights outside a
 fixed range of scaling years.
 
 ```bash
-python step11_spatial_scaling.py <run_dir> --dry_run   # preview
-python step11_spatial_scaling.py <run_dir>             # apply in-place
-python diagnostics/report_spatial_scaling.py <run_dir>  # 28 figures (14 per T/S)
+ecco-insitu scale <run_dir> --dry_run       # preview
+ecco-insitu scale <run_dir>                 # apply in place
+ecco-insitu report-scaling <run_dir>        # 28 figures (14 per T/S)
 ```
 
 Figures go to `<processed_root>/figures/figures_<YYYYMMDD_HHMMSS>/`, outside
 the run directory.
 
-**Step 13 — ECCO-ready profile files** (`ecco_insitu/packing.py`, called by
-`step13_pack_ecco_arrays.py` with the chain's settings). New to this? Start with
+**Step 13 — ECCO-ready profile files** (`ecco-insitu pack` with the chain's `pack` settings;
+the program itself is `ecco-insitu optimize`, `src/ecco_insitu/packing.py`). New to this? Start with
 [`docs/profile_file_optimization.md`](docs/profile_file_optimization.md). The MITgcm profiles package
 allocates per-tile arrays of `NFILESPROFMAX` × `NOBSGLOB` (× levels), where
 `NOBSGLOB` is the most profiles any one file puts in any one tile; the program
@@ -211,31 +211,31 @@ ecco-insitu optimize <profiles_dir> --write <out_dir>       # write the files
 ecco-insitu optimize <dir> --nobsglob 35000 --year_rule none
 ecco-insitu optimize <dir> --llc 270 --tile 30 --grid_dir <llc270 grid dir>
 ```
-Check with `python diagnostics/check_ecco_arrays.py <run_dir>`.
+Check with `ecco-insitu check-arrays <run_dir>`.
 
 ### Checking a run
 
 Two quick checks should pass on every new run before its output is used (details
-in [`diagnostics/README.md`](diagnostics/README.md)); both print PASS / FAIL and exit 0 on PASS:
+in [`docs/diagnostics.md`](docs/diagnostics.md)); both print PASS / FAIL and exit 0 on PASS:
 
-- **`diagnostics/check_run_files.py`: are the yearly files complete and well-formed?**
+- **`ecco-insitu check-files`: are the yearly files complete and well-formed?**
   Every input has an output or a logged failure; all files at the same step and on
   one depth grid; weights finite, ≥ 0 and never on fill values; every profile used;
   bins and dates valid; and the step 11 factors sum to exactly 1 in every bin-month,
   for T and S. About 15 s.
-- **`diagnostics/check_ecco_arrays.py`: are the model-ready files a faithful repacking?**
+- **`ecco-insitu check-arrays`: are the model-ready files a faithful repacking?**
   Every yearly profile appears exactly once with identical data; one provenance
   per file, in time order, with whole-year labels; no tile over `NOBSGLOB`; the
   `PROFILES_SIZE.h` values in `documentation/` match the files. About a minute per GB.
 
 ```bash
 RUN=<run.output_base>_<ts>          # the run folder
-python diagnostics/check_run_files.py $RUN --input_dir <run.input_dir> --log z_logs/ncei_log_<ts>.log
-python diagnostics/check_ecco_arrays.py $RUN
+ecco-insitu check-files $RUN --input_dir <run.input_dir> --log z_logs/ncei_log_<ts>.log
+ecco-insitu check-arrays $RUN
 ```
 
-A slower scientific check (`check_run_qc.py`, ~1 h) and the reports (profile
-counts, costs, step 11 figures) are described in `diagnostics/README.md`.
+A slower scientific check (`ecco-insitu check-qc`, ~1 h) and the reports (profile
+counts, costs, step 11 figures) are described in [`docs/diagnostics.md`](docs/diagnostics.md).
 
 ### Settings: `config/`
 
@@ -243,10 +243,10 @@ All paths and options live in YAML files, not in the code:
 
 | File | What it is |
 |------|-----------|
-| `ecco_insitu/defaults.yaml` | Every setting, with its default and a comment explaining it. Don't edit it for one machine or one run. |
+| `src/ecco_insitu/defaults.yaml` | Every setting, with its default and a comment explaining it. Don't edit it for one machine or one run. |
 | `config/local.yaml` | This machine's data locations. Not committed: copy `config/local.example.yaml` and set `data_root` (relative paths are taken from it). |
-| `--config my_run.yaml` (`run_ncei.sh -C`) | Settings for one run: any subset of the keys. |
-| `--set key=value` (`run_ncei.sh -s`) | Change one setting, e.g. `-s chain.new_floor.prof_S=0.006`. |
+| `--config my_run.yaml` | Settings for one run: any subset of the keys. |
+| `--set key=value` | Change one setting, e.g. `--set chain.new_floor.prof_S=0.006`. |
 
 They are merged in that order (later wins), with `$ECCO_INSITU_CONFIG` (a file path) between
 `local.yaml` and `--config`. An unknown key or a value of the wrong type stops the run with a message
@@ -269,7 +269,7 @@ Each run writes `<run>/documentation/run_summary.txt`: per input file, whether i
 skipped (and why), lost all its data in QC, or failed (at which step, with the error), plus any
 warnings.
 
-`run_ncei.sh` exit codes:
+`ecco-insitu run` exit codes:
 
 - `0`: all good;
 - `3`: the run finished, but some files failed (see the summary);
@@ -324,34 +324,31 @@ is significantly slower.
 
 ### Running the chain
 
-The recommended entry point is `run_ncei.sh`, which timestamps the output
-directory and tees all output to a log file:
+`ecco-insitu run` timestamps the output folder and writes a log of everything:
 
 ```bash
-./run_ncei.sh                              # input run.input_dir, output run.output_base_<timestamp>
-./run_ncei.sh -C my_run.yaml              # settings for this run from a file
-./run_ncei.sh -s chain.new_floor.prof_S=0.006   # change one setting for this run
-./run_ncei.sh -i /path/to/input           # override input directory
-./run_ncei.sh -n 8                        # use 8 parallel workers
-./run_ncei.sh -i /path/to/input -n 8 -d /path/to/output
-./run_ncei.sh -S                          # skip step 11 spatial scaling
-./run_ncei.sh -w 10day                    # step 11 with 10-day windows
-./run_ncei.sh -p                          # also make step 11 diagnostic figures
-./run_ncei.sh -c                          # also run step 12 compaction
-./run_ncei.sh -A                          # skip step 13 ECCO-ready packing
+ecco-insitu run                              # input run.input_dir, output run.output_base_<timestamp>
+ecco-insitu run --config my_run.yaml         # settings for this run from a file
+ecco-insitu run --set chain.new_floor.prof_S=0.006   # change one setting for this run
+ecco-insitu run -i /path/to/input            # another input folder
+ecco-insitu run -n 8                         # 8 parallel workers
+ecco-insitu run -i /path/to/input -n 8 -d /path/to/output   # an exact output folder (must not exist)
+ecco-insitu run --no-scaling                 # skip step 11 spatial scaling
+ecco-insitu run -w 10day                     # step 11 with 10-day windows
+ecco-insitu run --plots                      # also make the step 11 figures
+ecco-insitu run --compact                    # also run step 12 compaction
+ecco-insitu run --no-pack                    # skip step 13 ECCO-ready packing
 ```
 
 Parallelism default: `min(8, cpu_count - 1)` workers. Sequential mode: `-n 1`.
 On a modern workstation, ~420 files complete in approximately 10–15 minutes
 with 8 workers.
 
-Alternatively, call `NCEI.py` directly:
+Steps 01–10 alone (no steps 11–13, no log file):
 
 ```bash
 ecco-insitu steps -i <input_dir> -d <output_dir> [-n <n_workers>] [--config FILE] [--set key=value]
 ```
-
-This runs steps 01–10 only; `run_ncei.sh` also runs steps 11–13.
 
 ### Output
 
@@ -369,7 +366,7 @@ fields including:
 
 ### Parameter reference
 
-Every setting, with its default and an explanation, is in `ecco_insitu/defaults.yaml`. The main ones:
+Every setting, with its default and an explanation, is in `src/ecco_insitu/defaults.yaml`. The main ones:
 
 | Setting | Default | Description |
 |-----------|---------|-------------|

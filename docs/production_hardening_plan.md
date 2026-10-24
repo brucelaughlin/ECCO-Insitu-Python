@@ -145,6 +145,15 @@ The full write-up for readers (what was done, why, and how it was checked, in pl
   - **Tests:** 111, regression bit-identical to the Phase 1 reference; `ecco-insitu run` from `/tmp`
     is identical too.
   - Installed editable in `ecco_env1`.
+- 2026-10-23, **Phase 4 follow-up** (the user is the sole user and asked for the modern design, no shims)
+  - **Removed:** the 17 wrapper scripts and `run_ncei.sh`.
+  - **New:** `src/ecco_insitu/run.py` (`ecco-insitu run`), with OS-level tee to the
+    `z_logs/ncei_log_<ts>.log` (`run.log_dir`) and the same exit codes; flags renamed (`--no-scaling`,
+    `--plots`, `--compact`, `--no-pack`).
+  - **Moved:** the `src/` layout; `diagnostics/README.md` → `docs/diagnostics.md`.
+  - **Fixed:** a hang when the run finished (the resource tracker held the tee pipe), now an end marker.
+  - **Tests:** 95 pass, still bit-identical to the Phase 1 reference.
+  - **Stale:** `patches/step06_code12...` no longer applies (noted in `HANDOFF.md`).
 - **Next: Phase 5 (docs).**
   - NumPy-style docstrings for every public function, starting with `pipeline`, `steps`, `config`,
     `validate`, `climatology`, `packing`.

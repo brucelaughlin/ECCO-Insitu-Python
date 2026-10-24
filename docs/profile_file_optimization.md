@@ -228,7 +228,7 @@ The summary files go in a `documentation/` folder beside it (`<run>/documentatio
 Each output file also remembers where every profile came from
 (`prof_yearly_file`, `prof_yearly_index`), so nothing is lost or untraceable.
 
-To check the result: `python diagnostics/check_ecco_arrays.py <run_dir>`
+To check the result: `ecco-insitu check-arrays <run_dir>`
 (every profile packed exactly once, data identical, order and labels correct,
 no tile over the limit).
 

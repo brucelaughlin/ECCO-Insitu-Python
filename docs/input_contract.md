@@ -1,7 +1,7 @@
 # Input contract: what the NCEI chain needs from its input files
 
 The chain checks every input file against this contract before processing any of them
-(`ecco_insitu/validate.py`; run it alone with `ecco-insitu validate <input_dir>`).
+(`src/ecco_insitu/validate.py`; run it alone with `ecco-insitu validate <input_dir>`).
 
 - An **error** means the file can't be processed correctly. The file is **skipped**, the rest of
   the run continues, and the reason is listed in `<run>/documentation/run_summary.txt`.
@@ -81,7 +81,7 @@ Check a file with `ecco-insitu validate --climatology <file>`, or `ecco-insitu c
   - in-situ T converted to potential T with the chain's own UNESCO routine (step 05).
 
   The result is written where `paths.climatology_file` points. The method is in
-  `ecco_insitu/climatology/build_woa23.py`; the decade and resolution are constants at its top.
+  `src/ecco_insitu/climatology/build_woa23.py`; the decade and resolution are constants at its top.
 - If the climatology is missing when a run starts, the run stops before processing and names
   both options.
 
