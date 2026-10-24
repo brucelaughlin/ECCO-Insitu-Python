@@ -89,8 +89,11 @@ ECCO-Insitu-Python/
     csv_to_nc.py                  — convert WOD CSV exports to NetCDF
     log.py                        — logging set-up
     diagnostics/                  — checks and reports on chain output (docs/diagnostics.md)
+    model_comparison/             — WORK IN PROGRESS: model equivalents to NetCDF, offline model cost
+                                    (docs/model_comparison.md)
   tests/                          — regression and unit tests (python -m pytest)
   docs/                           — input contract, diagnostics, file-packing guide, hardening plan and report
+  reference/                      — the model's cost code the offline cost follows; old drafts
   patches/                        — saved, tested changes not yet applied (see HANDOFF.md)
   profile_analysis/               — the interactive map app and its data store (not part of the package)
     app_profile_map.py, map_common.py, build_allsource_bin_timeseries_with_anomalies.py, README_maps.md

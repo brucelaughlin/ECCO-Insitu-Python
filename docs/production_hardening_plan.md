@@ -185,3 +185,11 @@ The full write-up for readers (what was done, why, and how it was checked, in pl
   - the safe known-issue fixes (KI-1, 2, 10, 11, 13–17);
   - team decisions on KI-4–9;
   - optionally, trimmed data so the regression tests run in CI.
+- 2026-10-23, **model-comparison tools added** (the user's request; work in progress)
+  - `aa_sub_projects/` became `src/ecco_insitu/model_comparison/`: `mds_to_nc` (`ecco-insitu mds-to-nc`), `cost`
+    (`model-cost`), `cost_bars` (`model-cost-bars`), plus `docs/model_comparison.md` (plan and status) and a
+    docs page.
+  - `reference/` holds the model's Fortran cost code and the unused xmitgcm draft.
+  - Re-checked after the move: still identical to the MATLAB, and the same cost numbers.
+  - 100 tests.
+

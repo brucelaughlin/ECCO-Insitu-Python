@@ -52,4 +52,7 @@ All commands
 ``report-costs``       cost report
 ``report-scaling``     step 11 figures
 ``csv-to-nc``          convert WOD CSV exports to NetCDF
+``mds-to-nc``          *work in progress:* model equivalents (``.equi.data``) to NetCDF
+``model-cost``         *work in progress:* offline profile cost, as ECCO v4r6
+``model-cost-bars``    *work in progress:* cost bar charts
 =====================  =====================================================================

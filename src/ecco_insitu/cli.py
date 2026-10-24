@@ -21,6 +21,9 @@ settings accepts ``--config FILE`` and ``--set key=value``.
 ``report-costs``            diagnostics: cost report
 ``report-scaling``          diagnostics: step 11 figures
 ``csv-to-nc``               convert WOD CSV exports to MITprof NetCDF
+``mds-to-nc``               *work in progress:* model equivalents to NetCDF
+``model-cost``              *work in progress:* offline profile cost (ECCO v4r6)
+``model-cost-bars``         *work in progress:* cost bar charts
 ==========================  =============================================================
 """
 import importlib
@@ -44,6 +47,12 @@ COMMANDS = {
     'report-costs': ('ecco_insitu.diagnostics.report_costs', 'cli', 'diagnostics: cost report'),
     'report-scaling': ('ecco_insitu.diagnostics.report_spatial_scaling', 'cli', 'diagnostics: step 11 figures'),
     'csv-to-nc': ('ecco_insitu.csv_to_nc', 'cli', 'convert WOD CSV exports to NetCDF'),
+    'mds-to-nc': ('ecco_insitu.model_comparison.mds_to_nc', 'cli',
+                  '[work in progress] model equivalents (*.equi.data) to NetCDF'),
+    'model-cost': ('ecco_insitu.model_comparison.cost', 'cli',
+                   '[work in progress] offline profile cost as ECCO v4r6 cost_profiles.F'),
+    'model-cost-bars': ('ecco_insitu.model_comparison.cost_bars', 'cli',
+                        '[work in progress] bar charts of model-cost results'),
 }
 
 

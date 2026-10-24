@@ -21,6 +21,12 @@ since those changes need the regression reference regenerated on purpose
   - the `ecco_insitu` package (`src/` layout, `pip install -e .`) and the `ecco-insitu` command;
   - API documentation (Sphinx, `docs/sphinx/`).
 
+### Added (work in progress)
+- `src/ecco_insitu/model_comparison/` (`docs/model_comparison.md`): `ecco-insitu mds-to-nc` (model
+  equivalents `.equi.data` → NetCDF, bit-identical to MITprof_gcm2nc.m on v4r6 iter47),
+  `ecco-insitu model-cost` (offline cost as ECCO v4r6 `cost_profiles.F`) and `model-cost-bars`.
+  Monthly means → `prof_Vestim` is planned.
+
 ### Changed
 - Every NetCDF file the chain writes (yearly, step 11, step 13) has the global attribute
   `ecco_insitu_version` (e.g. `ecco_insitu 1.0.0.dev0`), and `run_config.yaml` names the version, so

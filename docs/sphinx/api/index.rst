@@ -100,3 +100,14 @@ Diagnostics
    diagnostics.counts_index
    diagnostics.counts_maps
    diagnostics.counts_timeseries
+
+Model comparison (work in progress)
+-----------------------------------
+
+.. autosummary::
+   :toctree: generated
+
+   model_comparison
+   model_comparison.mds_to_nc
+   model_comparison.cost
+   model_comparison.cost_bars

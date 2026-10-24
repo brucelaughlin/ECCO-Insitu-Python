@@ -1231,6 +1231,32 @@ Compared with the start (section 0):
 
 ---
 
+## Addendum: the model-comparison tools join the package (2026-10-23, work in progress)
+
+Three related tools developed earlier the same day, for the team's model-comparison tasks, were
+kept in an untracked `aa_sub_projects/` folder. At the user's request they are now part of the
+package, clearly marked **work in progress**:
+
+| Command | What | Status |
+|---|---|---|
+| `ecco-insitu mds-to-nc` | the model's profile output (`*.equi.data`, one file per tile) to NetCDF `prof_Vestim`; replaces the legacy MATLAB `MITprof_gcm2nc.m` | working; **bit-identical** to the MATLAB output on all 21 ECCO v4r6 datasets (5.9 M profiles) |
+| `ecco-insitu model-cost` | the profile cost computed offline exactly as ECCO v4r6's `cost_profiles.F` | working; reproduces the team's v4r6 cost bars; a final check against a model run's own cost numbers is pending |
+| `ecco-insitu model-cost-bars` | the team's bar charts from one or more cost results | working |
+| (planned) | monthly-mean model fields to `prof_Vestim` | waiting for monthly-mean fields |
+
+- **Code:** `src/ecco_insitu/model_comparison/`.
+- **Plan and status:** `docs/model_comparison.md`, which is also a docs page, "Model comparison
+  (work in progress)".
+- **Reference copies:** `reference/` holds the model's Fortran cost code that the offline cost
+  follows.
+
+The tools carry "[work in progress]" in `ecco-insitu --help`, and their docs pages say so. They meet
+the same documentation standard as the rest: docstrings, and the strict docs build. After the move
+they were re-run: the converter still matches the MATLAB exactly, and the cost gives the same numbers
+as before. They don't yet have regression tests of their own; that's on their to-do list.
+
+---
+
 ## Glossary
 
 | Term | Meaning |

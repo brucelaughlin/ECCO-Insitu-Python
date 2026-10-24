@@ -33,6 +33,7 @@ state estimate (MITgcm ``profiles`` package) reads.
    outputs
    diagnostics
    steps
+   model_comparison
 
 .. toctree::
    :maxdepth: 1
