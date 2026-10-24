@@ -1,0 +1,155 @@
+File: /Users/brucel/ecco/yip/ECCO-Insitu-Python/z_test_output/ARGO_WO_2015_PFL_A__ncei_step_10.nc
+
+
+     angular_precision: 0.5
+     num_geodesic_bins: 10242
+   num_subpolygons_max: 10
+num_samples_for_kmeans: 10000
+
+variable: T; depth level 001/097; time (seconds): 007.44
+variable: T; depth level 002/097; time (seconds): 034.21
+variable: T; depth level 003/097; time (seconds): 025.71
+variable: T; depth level 004/097; time (seconds): 030.21
+variable: T; depth level 005/097; time (seconds): 025.41
+variable: T; depth level 006/097; time (seconds): 030.11
+variable: T; depth level 007/097; time (seconds): 028.73
+
+
+     angular_precision: 0.5
+     num_geodesic_bins: 10242
+   num_subpolygons_max: 100
+num_samples_for_kmeans: 10000
+
+variable: T; depth level 001/097; time (seconds): 008.68
+variable: T; depth level 002/097; time (seconds): 048.95
+variable: T; depth level 003/097; time (seconds): 036.08
+variable: T; depth level 004/097; time (seconds): 056.67
+variable: T; depth level 005/097; time (seconds): 054.35
+variable: T; depth level 006/097; time (seconds): 056.47
+
+
+     angular_precision: 0.5
+     num_geodesic_bins: 10242
+   num_subpolygons_max: 200
+num_samples_for_kmeans: 10000
+
+variable: T; depth level 001/097; time (seconds): 009.80
+variable: T; depth level 002/097; time (seconds): 050.11
+variable: T; depth level 003/097; time (seconds): 036.33
+variable: T; depth level 004/097; time (seconds): 060.74
+variable: T; depth level 005/097; time (seconds): 058.56
+
+     angular_precision: 0.5
+     num_geodesic_bins: 10242
+   num_subpolygons_max: 200
+num_samples_for_kmeans: 100000
+
+variable: T; depth level 001/097; time (seconds): 087.21
+
+
+     angular_precision: 0.25
+     num_geodesic_bins: 10242
+   num_subpolygons_max: 200
+-------------------------------
+-------------------------------
+num_samples_for_kmeans: 10000
+-------------------------------
+-------------------------------
+
+variable: T; depth level 001/097; time (seconds): 010.04
+variable: T; depth level 002/097; time (seconds): 051.25
+variable: T; depth level 003/097; time (seconds): 037.30
+variable: T; depth level 004/097; time (seconds): 062.49
+variable: T; depth level 005/097; time (seconds): 059.77
+variable: T; depth level 006/097; time (seconds): 059.74
+variable: T; depth level 007/097; time (seconds): 071.65
+
+
+-------------------------------
+-------------------------------
+     angular_precision: 0.1
+-------------------------------
+-------------------------------
+     num_geodesic_bins: 10242
+   num_subpolygons_max: 200
+num_samples_for_kmeans: 10000
+
+variable: T; depth level 001/097; time (seconds): 010.28
+variable: T; depth level 002/097; time (seconds): 054.30
+variable: T; depth level 003/097; time (seconds): 039.54
+variable: T; depth level 004/097; time (seconds): 066.03
+
+
+     angular_precision: 0.1
+     num_geodesic_bins: 10242
+   num_subpolygons_max: 1000
+num_samples_for_kmeans: 10000
+
+variable: T; depth level 001/097; time (seconds): 010.99
+variable: T; depth level 002/097; time (seconds): 053.30
+variable: T; depth level 003/097; time (seconds): 039.08
+variable: T; depth level 004/097; time (seconds): 065.70
+variable: T; depth level 005/097; time (seconds): 062.34
+
+     angular_precision: 0.1
+     num_geodesic_bins: 10242
+   num_subpolygons_max: 1000
+num_samples_for_kmeans: 50000
+
+variable: T; depth level 001/097; time (seconds): 051.25
+
+
+     angular_precision: 0.1
+     num_geodesic_bins: 10242
+   num_subpolygons_max: 1000
+num_samples_for_kmeans: 5000
+
+variable: T; depth level 001/097; time (seconds): 006.45
+variable: T; depth level 002/097; time (seconds): 031.87
+variable: T; depth level 003/097; time (seconds): 023.15
+
+
+     angular_precision: 0.1
+     num_geodesic_bins: 10242
+   num_subpolygons_max: 1000
+num_samples_for_kmeans: 20000
+
+variable: T; depth level 001/097; profile count: 798; time (seconds): 019.84
+variable: T; depth level 002/097; profile count: 2519; time (seconds): 093.64
+variable: T; depth level 003/097; profile count: 1502; time (seconds): 067.77
+
+
+
+
+
+File: /Users/brucel/ecco/yip/ECCO-Insitu-Python/z_test_output/WOD_WO_2002_GLD__ncei_step_10.nc
+
+     angular_precision: 0.1
+     num_geodesic_bins: 10242
+   num_subpolygons_max: 1000
+num_samples_for_kmeans: 10000
+
+variable: T; depth level 001/097; profile count: 721; time (seconds): 002.55
+variable: T; depth level 002/097; profile count: 312; time (seconds): 001.29
+variable: T; depth level 003/097; profile count: 64; time (seconds): 000.73
+variable: T; depth level 004/097; profile count: 30; time (seconds): 000.68
+
+
+     angular_precision: 0.1
+     num_geodesic_bins: 10242
+   num_subpolygons_max: 1000
+num_samples_for_kmeans: 50000
+
+variable: T; depth level 001/097; profile count: 721; time (seconds): 017.81
+variable: T; depth level 002/097; profile count: 312; time (seconds): 007.99
+variable: T; depth level 003/097; profile count: 64; time (seconds): 002.97
+variable: T; depth level 004/097; profile count: 30; time (seconds): 002.49
+variable: T; depth level 005/097; profile count: 31; time (seconds): 002.51
+variable: T; depth level 006/097; profile count: 12; time (seconds): 002.18
+variable: T; depth level 007/097; profile count: 21; time (seconds): 002.29
+variable: T; depth level 008/097; profile count: 18; time (seconds): 002.31
+variable: T; depth level 009/097; profile count: 21; time (seconds): 002.32
+variable: T; depth level 010/097; profile count: 15; time (seconds): 002.97
+variable: T; depth level 011/097; profile count: 14; time (seconds): 002.94
+variable: T; depth level 012/097; profile count: 18; time (seconds): 002.90
+variable: T; depth level 013/097; profile count: 17; time (seconds): 002.94

@@ -1,1 +1,35 @@
 __pycache__/
+*.log
+*.nc
+z_*
+processed_profile_files/
+*.zarr
+
+# --- editor / OS / tooling noise ---
+.DS_Store
+.claude/
+*.part
+
+# --- scratch, drafts, and archived work (kept locally, not tracked) ---
+# dot-prefixed python files are used here as "hide this draft" markers
+.*.py
+**/.drafts/
+x_old/
+binned_output/
+**/binned_output/
+
+# --- tests: the small fixture files are tracked despite *.nc above ---
+!tests/fixtures/**/*.nc
+.pytest_cache/
+
+# --- this machine's data locations (copy config/local.example.yaml) ---
+config/local.yaml
+
+# --- packaging build output ---
+*.egg-info/
+build/
+dist/
+
+# --- Sphinx build output ---
+docs/sphinx/_build/
+docs/sphinx/api/generated/

@@ -1,0 +1,47 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ecco-insitu"
+dynamic = ["version"]
+description = "Post-processing of in-situ ocean profiles (WOD, Argo, MEOP, ITP, ...) for the ECCO state estimate"
+readme = "README.md"
+requires-python = ">=3.10"
+authors = [{ name = "Sweet Zhang" }, { name = "Ian Fenty" }, { name = "Bruce Laughlin" }]
+# Versions: those of the environment the chain was validated in (ecco_env1, 2026-10); lower
+# bounds are the oldest major versions known to work, not tested minimums.
+dependencies = [
+    "numpy>=1.24",
+    "xarray>=2023.1",
+    "netCDF4>=1.6",
+    "scipy>=1.10",
+    "pandas>=2.0",
+    "pyyaml>=6.0",
+    "pyproj>=3.5",
+    "geopy>=2.3",
+    "pymatreader>=0.0.30",
+    "matplotlib>=3.7",
+]
+
+[project.optional-dependencies]
+# diagnostics maps and reports
+diagnostics = ["cartopy>=0.22", "pyarrow>=12"]
+test = ["pytest>=7"]
+docs = ["sphinx>=7", "sphinx-rtd-theme>=2", "myst-parser>=2"]
+
+[project.scripts]
+ecco-insitu = "ecco_insitu.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+ecco_insitu = ["defaults.yaml"]
+
+[tool.setuptools.dynamic]
+version = { attr = "ecco_insitu.__version__" }
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = ["slow: runs the whole chain on the fixtures (about 30 s each)"]

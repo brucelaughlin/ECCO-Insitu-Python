@@ -1,0 +1,22 @@
+NCEI chain run summary (steps 01-10)
+input folder: /Users/brucel/ecco/yip/ECCO-Insitu-Python/tests/fixtures/inputs
+
+files found:                  8
+skipped by the input check:   0
+written:                      8
+no data left after the steps: 0
+failed:                       0
+
+WRITTEN  CTD_WOD/WOD_WO_1992_CTD_OSD.nc  (88 profiles)
+           WARNING 10 profiles with times like SS=60 or 24:00:00 (rolled forward to valid times)
+WRITTEN  GLD_WOD/WOD_WO_2013_GLD.nc  (39 profiles)
+           WARNING 10 profiles with times like SS=60 or 24:00:00 (rolled forward to valid times)
+WRITTEN  ITP/L2/ITP2_WO_2023_CTD.nc  (42 profiles)
+WRITTEN  ITP/L3/ITP_WO_2004_CTD.nc  (27 profiles)
+WRITTEN  MEOP/MEOP_WO_2024_CTD.nc  (117 profiles)
+           WARNING "prof_S" has no valid values
+WRITTEN  MRB_WOD/WOD_WO_2025_MRB.nc  (150 profiles)
+           WARNING "prof_S" has no valid values
+WRITTEN  PFL/ARGO_WO_2015_PFL_D.nc  (210 profiles)
+WRITTEN  XBT_WOD/WOD_WO_1992_XBT.nc  (184 profiles)
+           WARNING "prof_S" has no valid values

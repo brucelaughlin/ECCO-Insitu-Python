@@ -1,0 +1,91 @@
+{
+  "profiles_dir": "/var/folders/j7/pfsk9xjs2x17n21d5h73j1wh0000gq/T/tmp3pl1jx7v/run/yearly",
+  "arrays_dir": "/var/folders/j7/pfsk9xjs2x17n21d5h73j1wh0000gq/T/tmp3pl1jx7v/run/ecco_arrays",
+  "llc": 90,
+  "tile": 30,
+  "grid_dir": "/Users/brucel/ecco/yip/sample_data/ecco-insitu/sweet_gdrive/grid_llc90",
+  "n_tiles": 117,
+  "position": "interp",
+  "split_by_subdir": [
+    "ITP"
+  ],
+  "year_rule": "whole_years",
+  "nobsglob_cap": 150,
+  "nobsglob_needed": 150,
+  "nfilesprofmax_needed": 8,
+  "total_profiles": 857,
+  "files": [
+    {
+      "file": "CTD_WOD_001_19920101_19921231.nc",
+      "provenance": "CTD_WOD",
+      "part": 1,
+      "time_start": "19920101",
+      "time_end": "19921231",
+      "n_profiles": 88,
+      "busiest_tile": 16
+    },
+    {
+      "file": "GLD_WOD_001_20130101_20131231.nc",
+      "provenance": "GLD_WOD",
+      "part": 1,
+      "time_start": "20130101",
+      "time_end": "20131231",
+      "n_profiles": 39,
+      "busiest_tile": 11
+    },
+    {
+      "file": "ITP_L2_001_20230101_20231231.nc",
+      "provenance": "ITP_L2",
+      "part": 1,
+      "time_start": "20230101",
+      "time_end": "20231231",
+      "n_profiles": 42,
+      "busiest_tile": 42
+    },
+    {
+      "file": "ITP_L3_001_20040101_20041231.nc",
+      "provenance": "ITP_L3",
+      "part": 1,
+      "time_start": "20040101",
+      "time_end": "20041231",
+      "n_profiles": 27,
+      "busiest_tile": 27
+    },
+    {
+      "file": "MEOP_001_20240101_20241231.nc",
+      "provenance": "MEOP",
+      "part": 1,
+      "time_start": "20240101",
+      "time_end": "20241231",
+      "n_profiles": 117,
+      "busiest_tile": 62
+    },
+    {
+      "file": "MRB_WOD_001_20250101_20251231.nc",
+      "provenance": "MRB_WOD",
+      "part": 1,
+      "time_start": "20250101",
+      "time_end": "20251231",
+      "n_profiles": 150,
+      "busiest_tile": 150
+    },
+    {
+      "file": "PFL_001_20150101_20151231.nc",
+      "provenance": "PFL",
+      "part": 1,
+      "time_start": "20150101",
+      "time_end": "20151231",
+      "n_profiles": 210,
+      "busiest_tile": 62
+    },
+    {
+      "file": "XBT_WOD_001_19920101_19921231.nc",
+      "provenance": "XBT_WOD",
+      "part": 1,
+      "time_start": "19920101",
+      "time_end": "19921231",
+      "n_profiles": 184,
+      "busiest_tile": 39
+    }
+  ]
+}

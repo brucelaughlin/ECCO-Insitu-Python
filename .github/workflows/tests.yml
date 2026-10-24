@@ -1,0 +1,52 @@
+# Runs on every push and pull request: install the package, run the tests, and build the
+# documentation in strict mode (any Sphinx warning fails). Tests that need the chain's external
+# data (grid, climatology, sigma files) skip here; run them locally with `python -m pytest`.
+name: tests
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[diagnostics,test,docs]"
+      - name: Tests
+        run: python -m pytest -rs
+      - name: Command line starts
+        run: ecco-insitu --help
+
+  # The documentation as one PDF, downloadable from the run's page (Actions tab -> the run -> Artifacts).
+  docs-pdf:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Install
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends latexmk texlive-xetex texlive-latex-extra texlive-fonts-recommended fonts-freefont-otf xindy
+          python -m pip install --upgrade pip
+          pip install -e ".[diagnostics,docs]"
+      - name: Build the PDF
+        run: python -m sphinx -M latexpdf docs/sphinx docs/sphinx/_build
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ecco_insitu-docs-pdf
+          path: docs/sphinx/_build/latex/ecco_insitu.pdf
