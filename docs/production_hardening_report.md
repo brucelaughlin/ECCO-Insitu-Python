@@ -443,7 +443,7 @@ that meets a written contract, checks it, and offers to build the standard one w
 - **Warnings:** things the chain handles, but a user should know about. The file is processed and
   the affected profiles are zero-weighted or corrected:
   - bad positions;
-  - dates before 1950, impossible or month-only;
+  - dates before 1950, impossible, or with no day (`YYYYMM00`);
   - times like `24:00:00`;
   - values outside plausible ranges (often a unit problem);
   - empty variables;
@@ -460,17 +460,50 @@ On all 246 files of `Interp_Profiles`, **every file passes**; 120 have warnings:
 |---|---|
 | `prof_S` exists but has no valid values (T-only data in a file with an S variable) | 77 |
 | Times rolled forward (`SS = 60`, `24:00:00`, ...) | 28 |
-| **Month but no day** (`YYYYMM00`): about **18,000 profiles**, almost all CTD 1992–2002 | 12 |
+| **Day missing** (`YYYYMM00`: year and month known, day `00`): **18,377 profiles**, almost all CTD 1992–2002 | 12 |
 | No position (`lon = 99999`) | 7 |
 | Latitude outside −90–90 | 7 |
 | T values outside −3–40 °C (a handful per file, up to 61 °C) | 6 |
 | Longitude out of range | 1 |
 
-**The month-only dates are a finding worth noting.** About 18,000 CTD profiles have a month but
-no day (e.g. `19920300`). Step 06 already zeroes their weights as "bad dates", so they never reach
-the model. That was true before this project too; the new check just makes it visible. If those
-profiles are wanted, a day could be assigned (e.g. the 15th) in a future change. That is a science
-decision, so I haven't made it.
+**The dates with a missing day are a finding worth noting.** Some CTD profiles have a year and month
+but **no day**: the day is `00`, as in `20020100` (January 2002). They have no time either
+(`HHMMSS` = 0), and their `prof_date` falls on the last day of the previous month (what a day of 0
+works out to).
+
+Step 06 zeroes their weights as "bad dates", so **they never reach the model**. That was true before
+this project too; the new check just makes it visible.
+
+How many:
+
+- **18,374 of the 1,174,838 CTD profiles (1.6%)**, all in 1992–2002;
+- plus 3 XBT profiles (1992) out of about 720,000.
+
+Within those years the share rises steadily, from about 1–3% in the early 1990s to **7.3% in
+2002**; none after 2002:
+
+| Year | CTD profiles with no day | CTD profiles that year | Share |
+|---|---|---|---|
+| 1992 | 1,290 | 61,551 | 2.1% |
+| 1993 | 783 | 63,417 | 1.2% |
+| 1994 | 1,653 | 56,509 | 2.9% |
+| 1995 | 1,993 | 61,684 | 3.2% |
+| 1996 | 1,742 | 50,411 | 3.5% |
+| 1997 | 1,539 | 52,840 | 2.9% |
+| 1998 | 1,476 | 51,720 | 2.9% |
+| 1999 | 1,968 | 51,885 | 3.8% |
+| 2000 | 1,887 | 47,039 | 4.0% |
+| 2001 | 2,173 | 45,461 | 4.8% |
+| 2002 | 1,870 | 25,698 | 7.3% |
+
+The sharp stop after 2002 suggests a few contributing datasets that report only the month; WOD's
+metadata could identify them.
+
+**Possible change, not implemented (the user's decision, 2026-10-23):** assign mid-month (the 15th,
+with a flag). The profiles would then be kept in the right month, and the monthly spatial scaling
+and the model's monthly comparison would be barely affected. Step 09's duplicate removal compares
+profiles on the same day, so it would need checking. **This is recorded for the team to decide; the
+chain does not change these profiles.**
 
 ### 3.3 What happens to each file, and the run summary
 
@@ -617,7 +650,7 @@ one with `setup_climatology.py --build`") are now stated where a new user looks 
 - **`print` → `logging`.** This is moved to Phase 4. The cost report reads the chain's log text
   (`step: N`, `valid prof_T profile count ...`), so the log format has to stay the same. And
   Phase 4 rewrites every module's imports anyway, so doing it there touches each file once.
-- **Month-only dates** (section 3.2): flagged, not changed. Whether to keep those profiles is a
+- **Dates with a missing day** (section 3.2): flagged, not changed (mid-month approximation noted, not implemented). Whether to keep those profiles is a
   science decision for the team.
 - **Checks inside steps 01–10** (e.g. step 04's σ file covering the grid) still rely on each
   step's own code. The up-front check covers the input files, which is where the past problems were.

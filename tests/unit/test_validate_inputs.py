@@ -109,7 +109,7 @@ def test_dates(tmp_path):
     r = vi.check_profile_file(_copy(tmp_path, edit=edit))
     assert r.ok
     text = ' '.join(r.warnings)
-    assert 'month but no day' in text and 'impossible date' in text and 'before 1950' in text
+    assert 'day missing' in text and 'impossible date' in text and 'before 1950' in text
 
 
 def test_T_in_kelvin_is_flagged(tmp_path):

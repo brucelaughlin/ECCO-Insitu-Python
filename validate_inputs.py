@@ -173,7 +173,8 @@ def check_profile_file(path, variables=OBS_VARS):
         no_day = int(np.sum((m >= 1) & (m <= 12) & (d == 0)))
         bad_date = int(np.sum((m < 1) | (m > 12) | (d > 31) | ~np.isfinite(ymd) | ((d == 0) & ((m < 1) | (m > 12)))))
         if no_day:
-            rep.warnings.append(f'{no_day} profiles have a month but no day (YYYYMM00); step 06 zeroes their weights')
+            rep.warnings.append(f'{no_day} profiles with the day missing (YYYYMM00: year and month known, day 00); '
+                                'step 06 zeroes their weights')
         if bad_date:
             rep.warnings.append(f'{bad_date} profiles with an impossible date (their weights will be zeroed)')
         old = int(np.sum(y < FIRST_YEAR))

@@ -40,7 +40,7 @@ toolbox and `csv_to_nc.py`. Every file in `Interp_Profiles` meets this.
 | Warning | What the chain does |
 |---|---|
 | Latitude outside −90–90, longitude outside −180–360, or no position (`lon = 99999`) | step 06 zeroes those profiles' weights |
-| Date before 1950, in the future, impossible (month 13), or month but no day (`YYYYMM00`) | step 06 zeroes those profiles' weights |
+| Date before 1950, in the future, impossible (month 13), or day missing (`YYYYMM00`: year and month known, day 00) | step 06 zeroes those profiles' weights. The day-missing ones are 18,374 CTD profiles, 1.6% of all CTD, all 1992–2002; assigning mid-month is a possible future option, not implemented. |
 | Time like `SS = 60`, `MM = 60`, `24:00:00` | rolled forward to a valid date and time (e.g. 23:59:60 → 00:00:00 the next day) |
 | T outside −3–40 °C or S outside 0–42 psu | processed normally; often a unit or fill-value problem, so check |
 | A variable with no valid values (e.g. a CTD file with an empty `prof_S`) | processed normally; nothing from that variable survives |
@@ -49,7 +49,7 @@ toolbox and `csv_to_nc.py`. Every file in `Interp_Profiles` meets this.
 On the full `Interp_Profiles` set (246 files) the check takes about 12 seconds and every file passes:
 
 - 120 files have warnings, the most common being empty `prof_S` (77 files), times rolled forward
-  (28) and month-only dates (12 files, about 18,000 profiles);
+  (28) and dates with the day missing (12 files, 18,377 profiles);
 - no file is skipped.
 
 ## 2. Climatology files

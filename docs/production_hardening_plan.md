@@ -115,8 +115,10 @@ The full write-up for readers (what was done, why, and how it was checked, in pl
     - Pre-baked files are used only if their `source_file` matches the current climatology. Before,
       a stale pre-baked file could silently be used.
   - **Cleanup:** pdb removed; tracebacks logged.
-  - **Found in the real inputs:** about 18,000 CTD profiles (1992–2002) with month-only dates
-    `YYYYMM00`, zero-weighted by step 06 as before. Flagged for the team; not changed.
+  - **Found in the real inputs:** 18,374 CTD profiles (1.6%; 1992–2002, up to 7.3% in 2002) with the day missing (dates
+    `YYYYMM00`), zero-weighted by step 06 as before. Flagged for the team; not changed.
+  - The user's decision (2026-10-23): note the mid-month option (the 15th), but DON'T implement it
+    yet.
   - **Tests:** 76 in total.
     - 27 contract tests;
     - 3 climatology-guard tests;
