@@ -282,7 +282,8 @@ def dump(cfg, path):
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     body = {k: v for k, v in cfg.items() if k != '_sources'}
-    header = ('# Settings used for this run (merged from, in order):\n'
+    import ecco_insitu   # here, not at the top: the package's __init__ must stay import-free
+    header = (f'# Settings used for this run, by {ecco_insitu.provenance()} (merged from, in order):\n'
               + ''.join(f'#   {s}\n' for s in cfg.get('_sources', [])) + '\n')
     path.write_text(header + yaml.safe_dump(body, sort_keys=False, default_flow_style=False))
 

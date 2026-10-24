@@ -1,4 +1,5 @@
 """NCEI.check_climatologies: pre-baked files are used only if made from the climatology in use."""
+import glob
 import os
 import shutil
 
@@ -7,12 +8,14 @@ import pytest
 
 import ecco_insitu.config as config_loader
 import ecco_insitu.pipeline as NCEI
+from conftest import climatology_file
 
-WOA = '/Users/brucel/ecco/yip/woa23_climatology'
-CLIM = os.path.join(WOA, 'woa23_decav91C0_TS_clim_potential_T_1deg_fulldepth.nc')
-PRE = os.path.join(WOA, 'woa23_decav91C0_TS_clim_potential_T_1deg_22depths_prebaked.nc')
+CLIM = climatology_file() or ''
+# any pre-baked file made from it, in the same folder
+_pre = sorted(p for p in glob.glob(os.path.join(os.path.dirname(CLIM), '*_prebaked.nc'))) if CLIM else []
+PRE = _pre[0] if _pre else ''
 needs_data = pytest.mark.skipif(not (os.path.exists(CLIM) and os.path.exists(PRE)),
-                                reason='WOA23 climatology files not on this machine')
+                                reason='climatology / pre-baked files not configured on this machine')
 
 
 @needs_data

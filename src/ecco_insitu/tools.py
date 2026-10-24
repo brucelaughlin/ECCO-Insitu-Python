@@ -23,6 +23,8 @@ import netCDF4 as nc
 import xarray as xr
 from scipy.interpolate import griddata
 
+import ecco_insitu
+
 
 def print_survivors(MITprof_ds, profile_var_key_set, step_counter):
     """Print how many data values of each variable are still valid (not NaN), for the log.
@@ -344,6 +346,7 @@ def MITprof_write_to_nc(dest_dir, MITprof_ds, step, original_file, input_dir):
     output_filepath_relative = original_file.relative_to(Path(input_dir)).with_stem(original_file.stem + f"__ncei_step_{step}").with_suffix(".nc")
     output_filepath = Path(dest_dir) / output_filepath_relative
     output_filepath.parent.mkdir(parents=True, exist_ok=True)
+    MITprof_ds.attrs['ecco_insitu_version'] = ecco_insitu.provenance()     # which code made the file
     MITprof_ds.to_netcdf(output_filepath, encoding = encoding)
     print(f"output file: {output_filepath}")
 

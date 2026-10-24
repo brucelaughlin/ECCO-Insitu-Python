@@ -165,9 +165,23 @@ The full write-up for readers (what was done, why, and how it was checked, in pl
   - **Issues found:** listed in report section 5.4, none fixed. Safe fixes: `np.NaN` (csv_to_nc,
     LLC270 loaders), the `logical_and` bug, stale texts, unused imports. Team decisions: csv_to_nc
     T label and years, step06 T ≥ −2 °C and (0,0), step09 HHMMSS distance.
-- **Next: Phase 6 (CI and publishing).**
-  - **GitHub Actions** on push/PR:
-    - install, unit tests (the regression tests skip without data, unless trimmed data files are added);
-    - the strict docs build;
-    - publish the docs to GitHub Pages.
-  - **Versioning:** a PR template (changelog/docs checklist), and the version stamped into output files.
+- 2026-10-23, **known issues published** (the user's request)
+  - `docs/known_issues.md` (KI-1 to KI-17) is also a docs page ("Known issues").
+- 2026-10-23, **Phase 6 done** (details in the report, Phase 6 section)
+  - **CI:** `.github/workflows/tests.yml` runs on push/PR, py3.11 and 3.12; installs with
+    `.[diagnostics,test,docs]`, runs pytest (strict docs build included) and `ecco-insitu --help`.
+    - Data tests skip there (5); checked by simulation: 92 passed, 5 skipped, also in a fresh venv.
+  - **Docs publishing:** `.github/workflows/docs.yml` publishes to GitHub Pages from `main`. It needs the
+    repo setting Pages → Source: GitHub Actions, which only the owner can set.
+  - **PR checklist:** `.github/pull_request_template.md` (science / changelog / docstrings / docs /
+    known issues).
+  - **Version stamp:** `ecco_insitu_version` global attribute in every output NetCDF, plus the
+    `run_config.yaml` header.
+    - Reference regenerated deliberately: data identical; only `ecco_insitu_version` (new) and
+      `created_by` changed.
+  - **Tests:** find the data via the settings (no `/Users` paths in tests).
+- **Project complete through Phase 6.** Suggested next steps:
+  - merge to `main` (the user's call), enable Pages, tag `v1.0.0`;
+  - the safe known-issue fixes (KI-1, 2, 10, 11, 13–17);
+  - team decisions on KI-4–9;
+  - optionally, trimmed data so the regression tests run in CI.

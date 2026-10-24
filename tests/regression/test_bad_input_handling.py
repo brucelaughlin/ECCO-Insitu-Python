@@ -8,16 +8,17 @@ import sys
 import netCDF4
 import pytest
 
+from conftest import CHAIN_DATA
+
 sys.path.insert(0, os.path.dirname(__file__))
 from compare import compare_runs  # noqa: E402
 from run_chain import run_chain  # noqa: E402
 
 FIX = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'fixtures'))
-GRID_DIR = '/Users/brucel/ecco/yip/sample_data/ecco-insitu/sweet_gdrive/grid_llc90'
 
 
 @pytest.mark.slow
-@pytest.mark.skipif(not os.path.isdir(GRID_DIR), reason='chain input data (llc90 grid etc.) not available')
+@pytest.mark.skipif(not CHAIN_DATA, reason='chain input data (grid, climatology, sigma) not configured here')
 def test_bad_file_is_skipped_with_reason(tmp_path):
     inp = tmp_path / 'inputs'
     shutil.copytree(os.path.join(FIX, 'inputs'), inp)

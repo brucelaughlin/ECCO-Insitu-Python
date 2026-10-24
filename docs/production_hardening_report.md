@@ -31,7 +31,7 @@ processed profiles stay exactly the same.
 | 3 | Input checks and clear error reporting | **Done** (2026-10-23) |
 | 4 | Reorganize into an installable Python package | **Done** (2026-10-23) |
 | 5 | Docstrings and Sphinx documentation | **Done** (2026-10-23) |
-| 6 | Automatic checks on every change (CI), changelog, versioning | Next |
+| 6 | Automatic checks on every change (CI), changelog, versioning | **Done** (2026-10-23) |
 
 ---
 
@@ -1024,7 +1024,8 @@ team, in rough order of importance.
       importing.
     - The cost report's PDF step uses a macOS-only Chrome path.
 
-Items 1, 2, 10 and 11 are safe code fixes that the regression test can guard; they could be done
+These are now tracked as **KI-1 to KI-17** in `docs/known_issues.md`, which is also a page of the
+documentation website ("Known issues"). Items 1, 2, 10 and 11 are safe code fixes that the regression test can guard; they could be done
 in a short follow-up. Items 4–6 need a decision from the team. Item 5's day `00` is the
 mid-month question already recorded.
 
@@ -1048,6 +1049,169 @@ mid-month question already recorded.
 | `pyproject.toml` | `docs` extra: sphinx, sphinx-rtd-theme, myst-parser |
 | `.gitignore` | the docs build output |
 
+### 5.7 Follow-up: known issues are published
+
+At the user's request, the issues of section 5.4 are tracked in **`docs/known_issues.md`**, which is
+also a page of the documentation website ("Known issues", under Reference). Publishing known issues
+with the documentation is normal practice for scientific software; users then see a limitation
+before they run into it.
+
+Each issue has an ID (**KI-1 to KI-17**), its location, whether it affects current runs, its status
+(*open* or *decision needed*), and whether a fix would change the processed profiles. When one is
+fixed it moves to a "Fixed" section, with a changelog line. The README and the changelog point to
+the page.
+
+---
+
+## Phase 6: automatic checks, publishing, and versioning (done 2026-10-23)
+
+### Purpose
+
+Phases 1–5 built the tests and the documentation. Phase 6 makes them run **automatically on every
+change**, publishes the documentation online, and makes every output file say which version of the
+code made it. The aim: docs and code can't silently drift apart, and no change reaches the main
+branch without the tests having run.
+
+### 6.1 Automatic tests on GitHub (continuous integration)
+
+**`.github/workflows/tests.yml`.** On every push and every pull request, GitHub's servers:
+
+1. set up a clean Linux machine with Python 3.11 and 3.12;
+2. install the package exactly as a new user would (`pip install -e ".[diagnostics,test,docs]"`);
+3. run the whole test suite, including the docstring-coverage check and the strict documentation
+   build;
+4. check the `ecco-insitu` command starts.
+
+GitHub shows the result as a green tick or red cross next to each commit and pull request.
+
+**What can't run there:** the 5 tests that need the chain's data:
+
+- the two full-chain regression tests;
+- the real-WOA23 climatology checks.
+
+The grid, climatology and σ files total about 1.5 GB and live outside the repository. They are
+skipped there with a clear reason, and still run on any machine that has the data
+(`python -m pytest`). The pull-request checklist (6.3) asks for that local run. Shipping a
+trimmed copy of the data to GitHub (the climatology and grid cut down to the fixtures' regions)
+would let the regression tests run there too; it's a possible later step.
+
+**How it was checked before relying on GitHub:**
+
+- **No local data:** a copy of the repository with no `config/local.yaml` gave **92 passed and 5
+  skipped**, each skip with its reason.
+- **Clean install:** a brand-new Python environment installed the package from `pyproject.toml`
+  alone (getting numpy 2.4, xarray 2026.9, pandas 3.1, Sphinx 9.0). The same 92 tests pass there,
+  including the strict docs build. This confirms the dependency list is complete.
+- **Tests no longer contain machine-specific paths.** They find the data the same way the chain
+  does, through the settings, and skip when the settings don't point at it.
+
+### 6.2 The documentation website
+
+**`.github/workflows/docs.yml`.** Whenever the `main` branch changes, GitHub builds the
+documentation in strict mode and publishes it to **GitHub Pages**:
+`https://brucelaughlin.github.io/ECCO-Insitu-Python/`. It can also be run by hand from the Actions
+tab.
+
+**One-time setup is needed in the GitHub repository settings** (only the repository owner can do
+it): *Settings → Pages → Source: GitHub Actions*. Until then, and until this branch is merged into
+`main`, the site isn't published. The docs can always be built locally:
+
+```
+python -m sphinx -b html docs/sphinx docs/sphinx/_build/html
+```
+
+### 6.3 Keeping the changelog and docs in step: the pull-request checklist
+
+**`.github/pull_request_template.md`.** Every pull request on GitHub starts with this checklist:
+
+- the tests pass locally (with the data);
+- **Science:** does it change the processed profiles? If so, the reference is regenerated on
+  purpose and the reason recorded under **Science:** in the changelog;
+- a `CHANGELOG.md` entry;
+- docstrings for new or changed functions (the tests also enforce this);
+- docs updated for user-facing changes;
+- known issues moved to "Fixed" when fixed.
+
+Together with the automatic checks:
+
+- a function without a docstring **fails** the tests;
+- a docstring that breaks the documentation build **fails** them;
+- a change to any processed value **fails** the regression test, unless the reference is regenerated
+  deliberately.
+
+### 6.4 Versioning: every output says which code made it
+
+The package version (now `1.0.0.dev0`, in `src/ecco_insitu/__init__.py`) is written into:
+
+- **every NetCDF file the chain writes**, as the global attribute
+  `ecco_insitu_version = "ecco_insitu 1.0.0.dev0"`: the yearly files (steps 01–10 and 11) and the
+  model-ready files (step 13);
+- the header of `documentation/run_config.yaml`.
+
+Any file handed to the model team can therefore be traced to the exact code version, and with
+`run_config.yaml`, to the exact settings.
+
+**This is a deliberate change to the outputs, so the regression reference was regenerated**, the
+first time since Phase 1, and checked:
+
+- **Data:** every variable in every file is identical to the previous reference.
+- **Attributes:** the only differences are two global attributes. `ecco_insitu_version` is new;
+  step 13's `created_by` changed from `optimize_profile_files.py` to `ecco_insitu.packing`, the
+  module's new name since Phase 4.
+
+This is recorded in `CHANGELOG.md` with "Science: none".
+
+**Version numbers from here on** follow semantic versioning (MAJOR.MINOR.PATCH):
+
+- a release that changes the processed profiles, or the settings in an incompatible way, gets a
+  new MAJOR or MINOR number;
+- bug fixes that don't change results get a new PATCH number.
+
+When this work is merged, tagging `v1.0.0` would mark the first production release.
+
+### 6.5 What changed, file by file
+
+| File | Change |
+|---|---|
+| `.github/workflows/tests.yml` (new) | tests + strict docs build on every push / PR, Python 3.11 and 3.12 |
+| `.github/workflows/docs.yml` (new) | build and publish the docs to GitHub Pages from `main` |
+| `.github/pull_request_template.md` (new) | the checklist |
+| `src/ecco_insitu/__init__.py` | `provenance()`, the version text |
+| `src/ecco_insitu/tools.py`, `steps/step11_spatial_scaling.py`, `packing.py` | write `ecco_insitu_version` into each output file |
+| `src/ecco_insitu/config.py` | version in the `run_config.yaml` header |
+| `tests/conftest.py`, the regression tests, `test_validate_inputs.py`, `test_climatology_guard.py` | find the data through the settings and skip cleanly without it |
+| `tests/fixtures/reference/` | regenerated (provenance attributes only; see 6.4) |
+| `docs/known_issues.md` (new) and the docs page | the known issues (5.7) |
+| `CHANGELOG.md`, `README.md` | the changes above |
+
+---
+
+## Where the project stands (end of Phase 6)
+
+Compared with the start (section 0):
+
+| | Before | Now |
+|---|---|---|
+| Running on a new machine or with new data | edit paths and options in the code | copy one settings template; `ecco-insitu run` |
+| A bad input file | crash somewhere in steps 01–10 | skipped before processing, with the reason, in a per-run summary |
+| Climatology | one hard-coded file; no help to make one | any file meeting a written contract, checked before each run; the standard one built on request |
+| Which settings / code made an output | not recorded | `run_config.yaml` and `ecco_insitu_version` in every file |
+| Proof a change didn't alter results | rerun everything and compare by hand | about 85 s of automatic tests, bit-for-bit |
+| Documentation | READMEs; 37% of functions described | every function described; a documentation website with user guide, API reference, known issues and changelog |
+| Installation | copy the folder, find the packages by trial | `pip install -e .`; one `ecco-insitu` command |
+| Changes reviewed | by hand | tests and docs build on GitHub for every change; a pull-request checklist |
+
+**Still to do (suggested):**
+
+- **Merge and publish.**
+  - Merge `production_hardening` into `main`; this is the user's call.
+  - Turn on GitHub Pages (6.2).
+  - Tag `v1.0.0`.
+- **The safe fixes from the known issues:** KI-1, 2, 10, 11, 13–17. They don't change current results
+  and are guarded by the regression test.
+- **Decisions for the team:** KI-4–9, including the missing-day dates (KI-7).
+- **Optional:** a trimmed data set so the regression tests also run on GitHub (6.1).
+
 ---
 
 ## Glossary
@@ -1060,6 +1224,9 @@ mid-month question already recorded.
 | Reference output | The saved output of the code as it was before the changes; the regression test compares against it. |
 | Deterministic | Gives exactly the same answer every time it runs on the same input. |
 | CI (continuous integration) | GitHub runs the tests automatically on every change and marks the change red or green. |
+| GitHub Actions / workflow | GitHub's system for CI; a workflow file in `.github/workflows/` says what to run and when. |
+| GitHub Pages | GitHub's free web hosting for a repository's documentation. |
+| Semantic versioning | Version numbers MAJOR.MINOR.PATCH, where the part that changes says how big the change is. |
 | Sphinx | The standard tool for Python documentation websites; it builds the API reference from the docstrings. |
 | Docstring | The description written at the top of a function: what it does, its inputs and outputs. |
 | reST (reStructuredText) | The text markup Sphinx reads; docstrings are written in it, which is why indentation and blank lines matter. |

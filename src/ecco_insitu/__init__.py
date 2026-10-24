@@ -18,3 +18,12 @@ Main pieces:
 Command line: ``ecco-insitu --help`` (see :mod:`ecco_insitu.cli`).
 """
 __version__ = '1.0.0.dev0'
+
+
+def provenance():
+    """Text identifying the code that made a file: ``ecco_insitu <version>``.
+
+    Written as the global attribute ``ecco_insitu_version`` in every NetCDF file the chain writes,
+    and in ``run_config.yaml``, so any output can be traced to the code that produced it.
+    """
+    return f'ecco_insitu {__version__}'

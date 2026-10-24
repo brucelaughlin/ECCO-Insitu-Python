@@ -11,10 +11,11 @@ import numpy as np
 import pytest
 
 import ecco_insitu.validate as vi
+from conftest import climatology_file
 
 FIX = os.path.join(os.path.dirname(__file__), '..', 'fixtures', 'inputs')
 GOOD = os.path.join(FIX, 'CTD_WOD', 'WOD_WO_1992_CTD_OSD.nc')
-CLIM = '/Users/brucel/ecco/yip/woa23_climatology/woa23_decav91C0_TS_clim_potential_T_1deg_fulldepth.nc'
+CLIM = climatology_file()
 
 
 def _copy(tmp_path, drop=(), edit=None, rename=None):
@@ -181,7 +182,7 @@ def test_climatology_kelvin_is_rejected(tmp_path):
     assert not r.ok and any('plausible temperature' in e for e in r.errors)
 
 
-@pytest.mark.skipif(not os.path.exists(CLIM), reason='WOA23 climatology not on this machine')
+@pytest.mark.skipif(CLIM is None, reason='climatology not configured on this machine')
 def test_real_woa23_climatology_is_valid():
     r = vi.check_climatology_file(CLIM)
     assert r.ok, r.lines()

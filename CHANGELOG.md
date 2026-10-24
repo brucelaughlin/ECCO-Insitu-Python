@@ -22,11 +22,20 @@ since those changes need the regression reference regenerated on purpose
   - API documentation (Sphinx, `docs/sphinx/`).
 
 ### Changed
+- Every NetCDF file the chain writes (yearly, step 11, step 13) has the global attribute
+  `ecco_insitu_version` (e.g. `ecco_insitu 1.0.0.dev0`), and `run_config.yaml` names the version, so
+  any output can be traced to the code that made it. Step 13 files' `created_by` is now
+  `ecco_insitu.packing`. The regression reference was regenerated for this; **only these two global
+  attributes changed**, and all data values are identical.
 - Every script is now an `ecco-insitu` subcommand. `NCEI.py` → `ecco-insitu steps`;
   `run_ncei.sh` → `ecco-insitu run`, with options renamed: `-S` → `--no-scaling`, `-p` → `--plots`,
   `-c` → `--compact`, `-A` → `--no-pack`, `-C` → `--config`, `-s` → `--set`.
 - Controller messages go through Python `logging`; the per-file step lines are unchanged.
-- **Science:** none. The outputs are bit-identical to those before the hardening work (commit 7fa2cb5).
+- **Science:** none. Every data value is bit-identical to the outputs before the hardening work
+  (commit 7fa2cb5); only the provenance attributes above were added.
+
+### Known issues
+- Recorded in `docs/known_issues.md` (KI-1 to KI-17), not yet fixed.
 
 ### Fixed
 - `build_woa23_climatology` called `step06.calculate_potential_T`, which is in step05.

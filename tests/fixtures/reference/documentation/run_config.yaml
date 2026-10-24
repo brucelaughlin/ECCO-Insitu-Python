@@ -1,5 +1,5 @@
-# Settings used for this run (merged from, in order):
-#   /Users/brucel/ecco/yip/ECCO-Insitu-Python/config/defaults.yaml
+# Settings used for this run, by ecco_insitu 1.0.0.dev0 (merged from, in order):
+#   /Users/brucel/ecco/yip/ECCO-Insitu-Python/src/ecco_insitu/defaults.yaml
 #   /Users/brucel/ecco/yip/ECCO-Insitu-Python/config/local.yaml
 
 data_root: /Users/brucel/ecco/yip
@@ -18,6 +18,7 @@ paths:
 run:
   input_dir: /Users/brucel/ecco/yip/ECCO-Insitu-Python/tests/fixtures/inputs
   output_base: /Users/brucel/ecco/yip/processed_by_NCEI_profile_data/profile_files_NCEI_processed
+  log_dir: null
   n_workers: null
   spatial_scaling: true
   scaling_plots: false

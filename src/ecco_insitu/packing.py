@@ -77,6 +77,8 @@ import netCDF4
 import numpy as np
 from scipy.spatial import cKDTree
 
+import ecco_insitu
+
 # ---------------------------------------------------------------------------
 # Defaults (ECCO v4r6)
 # ---------------------------------------------------------------------------
@@ -522,7 +524,7 @@ def write_file(args):
     with netCDF4.Dataset(tmp, 'w') as out:
         gattrs.update({'title': f'ECCO-ready profile file: {prov}, part {k}', 'provenance': prov,
                        'n_profiles': n, 'yearly_files': json.dumps([files[i].name for i in file_ids]),
-                       'created_by': 'ecco_insitu.packing',
+                       'created_by': 'ecco_insitu.packing', 'ecco_insitu_version': ecco_insitu.provenance(),
                        'created': datetime.datetime.now().isoformat(timespec='seconds'), **extra_attrs})
         out.setncatts({a: v for a, v in gattrs.items() if a != '_NCProperties'})
         out.createDimension('iPROF', n)

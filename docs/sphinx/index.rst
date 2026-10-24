@@ -39,6 +39,7 @@ state estimate (MITgcm ``profiles`` package) reads.
    :caption: Reference
 
    api/index
+   known_issues
    changelog
 
 Indices: :ref:`genindex` · :ref:`modindex`

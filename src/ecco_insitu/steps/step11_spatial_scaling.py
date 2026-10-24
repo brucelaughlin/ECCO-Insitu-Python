@@ -57,6 +57,7 @@ from pathlib import Path
 import numpy as np
 import xarray as xr
 
+import ecco_insitu
 import ecco_insitu.config as config_loader  # noqa: E402
 
 # ---------------------------------------------------------------------------
@@ -257,6 +258,7 @@ def _apply_one(f, dry_run=False):
 
     tmp = f.with_suffix('.spatial_scaling_tmp.nc')
     try:
+        ds_out.attrs['ecco_insitu_version'] = ecco_insitu.provenance()   # the code that last wrote the file
         ds_out.to_netcdf(tmp)
         tmp.replace(new_path)
         # Remove old file if the name changed

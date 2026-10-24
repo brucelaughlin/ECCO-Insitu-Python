@@ -26,6 +26,8 @@ A support data package (LLC90 grid, WOA23 climatology, sigma files, geodesic
 bin files) is required and is available on the project Google Drive:
 https://drive.google.com/drive/folders/17h0qMS7vVimet8FXieGP1mWhnqnY0ljr
 
+Known problems not yet fixed are listed in [`docs/known_issues.md`](docs/known_issues.md).
+
 ## Quick start
 
 0. **Install** (once, in the repository folder): `pip install -e .`
