@@ -1172,7 +1172,21 @@ This is recorded in `CHANGELOG.md` with "Science: none".
 
 When this work is merged, tagging `v1.0.0` would mark the first production release.
 
-### 6.5 What changed, file by file
+### 6.5 Follow-up: the automation is documented on the website
+
+At the user's request, a docs page **"Automatic checks and publishing"** (`docs/sphinx/automation.rst`,
+under Reference) explains:
+
+- what GitHub Actions is, and that the jobs run on GitHub's servers when commits are pushed;
+- what each workflow does and when;
+- what can't be checked there;
+- the pull-request checklist;
+- which kind of mistake each safeguard catches;
+- how to run the same checks locally.
+
+The README points to it.
+
+### 6.6 What changed, file by file
 
 | File | Change |
 |---|---|

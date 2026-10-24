@@ -39,6 +39,7 @@ state estimate (MITgcm ``profiles`` package) reads.
    :caption: Reference
 
    api/index
+   automation
    known_issues
    changelog
 

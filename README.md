@@ -27,6 +27,8 @@ bin files) is required and is available on the project Google Drive:
 https://drive.google.com/drive/folders/17h0qMS7vVimet8FXieGP1mWhnqnY0ljr
 
 Known problems not yet fixed are listed in [`docs/known_issues.md`](docs/known_issues.md).
+Every push is tested automatically on GitHub (`.github/workflows/`; see the docs page
+"Automatic checks and publishing", `docs/sphinx/automation.rst`).
 
 ## Quick start
 
