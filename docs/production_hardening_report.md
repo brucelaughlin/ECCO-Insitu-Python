@@ -1084,6 +1084,9 @@ branch without the tests having run.
 
 GitHub shows the result as a green tick or red cross next to each commit and pull request.
 
+**First run on GitHub:** after the Phase 6 commit (`b15d66a`) the workflow ran on GitHub's servers and
+**passed on both Python 3.11 and 3.12**: install, tests and the command check, all green.
+
 **What can't run there:** the 5 tests that need the chain's data:
 
 - the two full-chain regression tests;
