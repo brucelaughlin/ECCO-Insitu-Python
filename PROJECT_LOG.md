@@ -6,6 +6,68 @@ git history with human-readable rationale.)
 
 ---
 
+## 2026-10-23 — Production hardening (Phases 1–6), model-comparison tools, docs website
+
+Full plain-language write-up: `docs/production_hardening_report.md` (one section per phase:
+what, why, how it was checked, and files changed). Plan and progress log:
+`docs/production_hardening_plan.md`. Changes: `CHANGELOG.md`.
+
+### What was done
+- **Phase 1, tests.**
+  - 8 small fixture files (1,370 profiles, all sources, polar and bad-time cases).
+  - A regression test runs the whole chain and compares every output **bit for bit** with a saved
+    reference; it was shown to catch a 2% parameter change.
+  - Unit tests.
+- **Phase 2, settings.**
+  - Every path and option moved from the code into `src/ecco_insitu/defaults.yaml` +
+    `config/local.yaml` + `--config` / `--set`.
+  - Typos and wrong types are errors; each run saves `documentation/run_config.yaml`.
+  - Fixed: the climatology builder called a function in step06 that lives in step05.
+- **Phase 3, input checks.**
+  - A written input contract (`docs/input_contract.md`), checked for every file before processing;
+    bad files are skipped with reasons in `documentation/run_summary.txt`; exit code 3.
+  - Any climatology meeting a contract can be used; `ecco-insitu climatology --build` makes the
+    standard WOA23 one.
+  - Fixed: stale pre-baked files could silently be used after changing the climatology.
+  - Found: **18,374 CTD profiles (1.6%, 1992–2002) have day `00`** and are zero-weighted
+    (KI-7; mid-month option noted, not implemented).
+- **Phase 4, package.**
+  - The chain is now the package `src/ecco_insitu/` with `pyproject.toml` and one command,
+    `ecco-insitu`; the whole-run controller is `ecco-insitu run`.
+  - The user is the sole user and chose the modern layout with no compatibility wrappers;
+    `NCEI.py`, `run_ncei.sh` and the old script names are gone.
+- **Phase 5, docs.**
+  - NumPy-style docstrings everywhere (verified docstring-only by AST comparison).
+  - Sphinx site: front page says a climatology need not exist already; user guide; API reference;
+    known issues; changelog. Builds with no warnings.
+  - Issues found while documenting are listed in `docs/known_issues.md` (KI-1 to KI-17), none fixed.
+- **Phase 6, automation.**
+  - GitHub Actions runs the tests (92 there; 5 need local data and skip) on Python 3.11/3.12, plus
+    the strict docs build and a PDF on every push.
+  - The docs publish to GitHub Pages from `main`; a PR checklist.
+  - Every output NetCDF carries `ecco_insitu_version`. The reference was regenerated once for this:
+    data identical.
+- **Model-comparison tools (work in progress)**, from the team's three tasks
+  (`docs/model_comparison.md`):
+  - `ecco-insitu mds-to-nc` (model `.equi.data` → NetCDF; **bit-identical** to MITprof_gcm2nc.m on
+    all 21 v4r6 datasets);
+  - `ecco-insitu model-cost` (offline cost as v4r6 `cost_profiles.F`; reproduces the team's v4r6
+    bars);
+  - `ecco-insitu model-cost-bars`;
+  - monthly means → `prof_Vestim` planned.
+- **Merged and published.**
+  - `production_hardening` merged into the fork's `main` (fork PR #1).
+  - Docs live at https://brucelaughlin.github.io/ECCO-Insitu-Python/.
+  - All other branches deleted; only `main` remains.
+  - A PR opened against the team's repository by mistake (ifenty #3) was to be closed.
+
+### Verification
+- **Science output:** every data value is bit-identical to the outputs before this work
+  (commit 7fa2cb5).
+- **Tests:** 100, all passing locally; green on GitHub.
+
+---
+
 ## 2026-10-21 to 2026-10-23 — Temperature double conversion found and fixed; climatology check
 
 ### What was wrong

@@ -1,9 +1,34 @@
 # Handoff Context — ECCO-Insitu-Python
 
-**Branch:** `devel_v3`; the production-hardening work is on `production_hardening`
-(plan and progress: `docs/production_hardening_plan.md`; full write-up: `docs/production_hardening_report.md`)
+**Branch:** `main` (the only branch; `devel*`, `production_hardening` and the old experiments were
+merged or deleted on 2026-10-23). Repository: the fork `brucelaughlin/ECCO-Insitu-Python` (parent
+`ifenty/ECCO-Insitu-Python`).
+**Documentation website:** https://brucelaughlin.github.io/ECCO-Insitu-Python/ (rebuilt on every push to
+`main`). As one PDF: Actions tab → a *tests* run → Artifacts.
+**Production hardening (finished 2026-10-23):** plan and progress in `docs/production_hardening_plan.md`;
+the full plain-language write-up, for explaining it to others, is `docs/production_hardening_report.md`.
 **Last commit:** see `git log`
 **Date:** 2026-10-23
+
+## Start here (new session)
+
+```bash
+cd /Users/brucel/ecco/yip/ECCO-Insitu-Python && git pull     # on main
+pip install -e ".[diagnostics,test,docs]"                    # once per environment (ecco_env1 has it)
+python -m pytest                                             # ~90 s; must pass (incl. bit-identical regression)
+ecco-insitu --help                                           # every command
+```
+
+- **Settings:** `src/ecco_insitu/defaults.yaml` (all, with comments) + `config/local.yaml` (this
+  machine's paths; not in git).
+- **Whole chain:** `ecco-insitu run`.
+- **Before changing science:**
+  - read `CHANGELOG.md` and `docs/known_issues.md`;
+  - an intended change to the outputs needs `python tests/regression/make_reference.py` and a
+    **Science:** changelog entry.
+- **Every push** runs the tests on GitHub (Actions tab), and **every push to `main`** republishes the
+  docs. Use pull requests within the fork; when opening one, check the **base repository** is
+  `brucelaughlin/...`, not `ifenty/...` (GitHub defaults to the parent).
 
 ---
 
@@ -138,6 +163,25 @@ All accept either run layout and read each run's step order from its log.
 
 ## Pending
 
+0. **New since 2026-10-23 (production hardening, model-comparison tools):**
+   - **Model comparison, task 2** (monthly-mean model fields → `prof_Vestim`): waiting for
+     monthly-mean T/S fields from the team. Plan in `docs/model_comparison.md`.
+   - **Model comparison, task 3:** check `ecco-insitu model-cost` against a model run's own cost
+     output (STDOUT `cost_profiles(...)=` lines or the `costfunction` file) when one is available.
+   - **Known issues** (`docs/known_issues.md`):
+     - *safe fixes, any time:* KI-1 `np.NaN` (csv_to_nc, LLC270 loaders), KI-2 `logical_and` (LLC270),
+       KI-10, 11, 13–17;
+     - *team decisions:* KI-4 CSV T label, KI-5 CSV years, KI-6 step 06 T ≥ −2 °C, KI-7 the 18,374
+       missing-day CTD profiles (mid-month option noted, not implemented), KI-8 (0° N, 0° E),
+       KI-9 step 09 HHMMSS distance.
+   - **README support-data line:** confirm the Google Drive folder is current and list exactly
+     which files the chain needs. The Arctic σ files are probably not in it; the climatology can
+     now be built (`ecco-insitu climatology --build`).
+   - **Optional:**
+     - tag `v1.0.0`;
+     - trimmed data so the full-chain regression tests also run on GitHub;
+     - a proposal to the team's repository (a PR from the fork's `main` to `ifenty/main`).
+   - **Paused:** the deck.gl profile viewer (`docs/deckgl_viewer_plan.md`, with hosting notes).
 1. **Hand the 2026-10-21 files to the model team**, and tell them that all earlier runs
    (including the double conversion files) have the cold-T bias.
 2. **XBT temperature offset** against the old pipeline (~0.1 °C): compare our raw XBT
@@ -151,16 +195,16 @@ All accept either run layout and read each run's step order from its log.
    **Note (2026-10-23):** the patch predates the package layout (`src/ecco_insitu/`) and the settings
    file; it no longer applies as is. To use it, re-make it against `src/ecco_insitu/steps/step06.py`,
    with the switch as a `chain.*` setting in `defaults.yaml`.
-   `git apply --check patches/step06_code12_drop_unbinned_profiles.patch`, then
-   `git apply …`.
 5. **Southern Ocean uncertainty field**, when the team has one (replaces the constant
-   σ south of 60°S, `southern_sigma_const_dict`).
+   σ south of 60°S, setting `high_latitude_sigma.south_constant`).
 6. **Map app** (`profile_analysis/app_profile_map.py`): its store is built from the
    2026-10-21 run (`z_profile_file_analysis/allsource_bin_timeseries_with_anomalies_20261021_100417`).
    The older stores (20260930, 20261014) can be deleted. Rebuild after each chain run with
    `profile_analysis/build_allsource_bin_timeseries_with_anomalies.py --source_root <run>`.
    Possible later feature (paused): model-cost color modes from the `prof_Testim` values.
 7. **Does step 13 keep `prof_T:T_conversion`** in the model-ready files? Not checked.
+8. **Old map-app stores** (20260930, 20261014) can still be deleted; the old `processed_by_NCEI` runs too,
+   if no longer needed.
 
 ---
 
