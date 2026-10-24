@@ -28,7 +28,7 @@ import numpy as np
 import pandas as pd
 
 VARS = ('T', 'S')
-_REPO = Path(__file__).resolve().parents[2]
+_REPO = Path(__file__).resolve().parents[2]   # repository root
 _FILE_RE = re.compile(r'^ncei processing for file \d+/\d+: (.+\.nc)\s*$')
 _STEP_RE = re.compile(r'^step: (\d+)\s*$')
 _QC_RE = re.compile(r'^attempting step (\d+) code')
@@ -413,7 +413,7 @@ def html_sections(prof, fig_dir, run_dir, table_fn, log_path=None,
                    f'z_logs/ncei_log_&lt;run timestamp&gt;.log); pass --log to include this section.</p>')
         return out
     if input_root is None:
-        import common   # same folder (diagnostics/lib); default input folder from the chain settings
+        import ecco_insitu.diagnostics.common as common   # default input folder from the chain settings
         input_root = common.RAW_ROOT
     counts = parse_step_counts(log_path, Path(input_root) if input_root else None)
     out.append(f'<p class="note">From the chain log <code>{log_path}</code>: profiles with valid T / S at '

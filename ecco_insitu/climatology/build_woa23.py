@@ -23,7 +23,7 @@ Output folder: the folder of paths.climatology_file in the chain settings (confi
 or --out_dir.
 
 Run:
-    python build_woa23_climatology.py [--out_dir DIR]
+    ecco-insitu climatology --build   # or: python -m ecco_insitu.climatology.build_woa23 [--out_dir DIR]
 """
 
 import numpy as np
@@ -34,9 +34,10 @@ import urllib.error
 import time
 
 import argparse
+import sys
 
-import config_loader
-import step05  # reuse calculate_potential_T verbatim
+import ecco_insitu.config as config_loader
+import ecco_insitu.steps.step05 as step05  # reuse calculate_potential_T verbatim
 
 # ==============================================================================
 # Config
@@ -46,7 +47,7 @@ DECADE     = 'decav91C0'      # 1991-2020 climate normal
 RES        = '1.00'           # 1-degree grid
 GRID_CODE  = '01'             # filename suffix for 1-degree
 OUT_NAME   = f'woa23_{DECADE}_TS_clim_potential_T_1deg_fulldepth.nc'
-# Output folder; set in main() from --out_dir or the chain settings.
+# Output folder; set by build() from --out_dir or the chain settings.
 OUT_DIR    = None
 RAW_DIR    = None
 OUT_FILE   = None
@@ -307,11 +308,11 @@ def build(out_dir):
     return OUT_FILE
 
 
-def main():
+def cli(argv=None):
     ap = argparse.ArgumentParser(description='Build the WOA23 monthly T/S climatology for the NCEI chain.')
     ap.add_argument('--out_dir', default=None,
                     help='output folder (default: the folder of paths.climatology_file in the settings)')
-    a = ap.parse_args()
+    a = ap.parse_args(argv)
     if a.out_dir is None:
         clim = config_loader.load()['paths']['climatology_file']
         if not clim:
@@ -321,4 +322,4 @@ def main():
 
 
 if __name__ == '__main__':
-    main()
+    sys.exit(cli())

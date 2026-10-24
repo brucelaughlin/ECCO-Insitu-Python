@@ -25,9 +25,8 @@ import matplotlib.ticker as ticker
 from pathlib import Path
 from scipy.interpolate import griddata
 
-sys.path.append('/Users/brucel/ecco/yip/ECCO-Insitu-Python')
-import tools
-
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))   # repository root, for ecco_insitu
+import ecco_insitu.tools as tools  # noqa: E402
 # ==============================================================================
 # Switches
 # ==============================================================================

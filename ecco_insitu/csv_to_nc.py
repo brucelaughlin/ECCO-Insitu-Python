@@ -1,4 +1,5 @@
 import argparse
+import sys
 import os
 import glob
 import csv
@@ -696,7 +697,8 @@ def main(dest_dir, input_dir):
     
     csv_processing(dest_dir, input_dir)
 
-if __name__ == '__main__':
+def cli(argv=None):
+    """Command-line entry point (``ecco-insitu`` subcommand)."""
 
     parser = argparse.ArgumentParser()
 
@@ -709,9 +711,13 @@ if __name__ == '__main__':
                         type = str, required= True)
     
 
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
 
     dest_dir = args.dest_dir
     input_dir = args.input_dir
   
     main(dest_dir, input_dir)
+
+
+if __name__ == '__main__':
+    sys.exit(cli())

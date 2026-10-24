@@ -16,7 +16,7 @@ suitable for assimilation into the ECCO ocean state estimate. The pipeline:
 2. Runs a 10-step quality-control and preprocessing chain on each profile file (`NCEI.py`)
 3. Applies spatial density scaling to the weights (step 11)
 4. Packs the result into model-ready profile files that minimize the model's
-   memory (step 13, `optimize_profile_files.py`; plain-language explanation in
+   memory (step 13, `ecco_insitu/packing.py`; plain-language explanation in
    [`docs/profile_file_optimization.md`](docs/profile_file_optimization.md))
 5. Checks and reports on the output (`diagnostics/`, see `diagnostics/README.md`)
 6. Aggregates the processed profiles into geodesic bins for visualization, with an
@@ -28,6 +28,7 @@ https://drive.google.com/drive/folders/17h0qMS7vVimet8FXieGP1mWhnqnY0ljr
 
 ## Quick start
 
+0. **Install** (once, in the repository folder): `pip install -e .`
 1. **Point the chain at your data.**
    ```bash
    cp config/local.example.yaml config/local.yaml
@@ -40,18 +41,18 @@ https://drive.google.com/drive/folders/17h0qMS7vVimet8FXieGP1mWhnqnY0ljr
      grid works (rules: [`docs/input_contract.md`](docs/input_contract.md), section 2); or
    - **build the standard one:** this project's WOA23 climatology, made on the fly:
      ```bash
-     python setup_climatology.py --build      # downloads WOA23 (~1.4 GB), builds it where paths.climatology_file points
-     python setup_climatology.py --prebake    # optional: faster step 03
-     python setup_climatology.py              # check the setup
+     ecco-insitu climatology --build      # downloads WOA23 (~1.4 GB), builds it where paths.climatology_file points
+     ecco-insitu climatology --prebake    # optional: faster step 03
+     ecco-insitu climatology              # check the setup
      ```
    If the climatology is missing or unusable, a run stops before processing and says so.
 3. **Check your input files** (optional; the chain does this anyway):
    ```bash
-   python validate_inputs.py /path/to/inputs
+   ecco-insitu validate /path/to/inputs
    ```
 4. **Run:**
    ```bash
-   ./run_ncei.sh
+   ./run_ncei.sh            # or: ecco-insitu run
    ```
    The output, the settings used (`documentation/run_config.yaml`) and a per-file summary
    (`documentation/run_summary.txt`) go in a new timestamped folder.
@@ -60,23 +61,34 @@ https://drive.google.com/drive/folders/17h0qMS7vVimet8FXieGP1mWhnqnY0ljr
 
 ## Repository structure
 
+The chain is the Python package `ecco_insitu`, installed with `pip install -e .`, which also
+gives the `ecco-insitu` command:
+
 ```
 ECCO-Insitu-Python/
-  NCEI.py                         — main pipeline controller
-  run_ncei.sh                     — shell wrapper for NCEI.py (recommended entry point)
-  csv_to_nc.py                    — convert WOD CSV exports to NetCDF
-  prebake_woa23_climatology.py    — offline climatology pre-interpolation (run once)
-  clim_interp.py                  — climatology interpolation library
-  high_latitude_sigma.py          — high-latitude T/S uncertainties for step 04
-  step01.py … step10.py           — individual pipeline steps
-  step11_spatial_scaling.py       — post-chain spatial density scaling (per T/S)
-  step12_profiles_compact.py      — optional post-chain compaction
-  step13_pack_ecco_arrays.py      — packs yearly output into ECCO-ready profile files (chain settings)
-  optimize_profile_files.py       — the packing program: any LLC grid / tile size; trade-off report
-  diagnostics/                    — checks and reports on chain output (validation, QC, profile counts,
-                                    costs, step 11 figures); see diagnostics/README.md
-  tools.py                        — shared utilities
-  docs/profile_file_optimization.md — plain-language guide to the step 13 file packing (also .pdf)
+  pyproject.toml                  — package definition and dependencies (pip install -e .)
+  run_ncei.sh                     — runs the whole chain, steps 01–13 (same as: ecco-insitu run)
+  config/
+    local.example.yaml            — template for this machine's data locations (copy to local.yaml)
+  ecco_insitu/                    — the package
+    cli.py                        — the ecco-insitu command
+    defaults.yaml                 — every setting, with defaults and explanations
+    config.py                     — reads, checks and saves the settings
+    validate.py                   — the input-file and climatology contracts (docs/input_contract.md)
+    pipeline.py                   — runs steps 01–10 on a folder of input files
+    steps/                        — step01.py … step10.py, step11_spatial_scaling.py,
+                                    step12_profiles_compact.py, step13_pack_ecco_arrays.py
+    packing.py                    — the step 13 packing program: any LLC grid / tile size; trade-off report
+    climatology/                  — setup.py (check / --build / --prebake), build_woa23.py, prebake.py
+    clim_interp.py                — climatology interpolation (step 03)
+    high_latitude_sigma.py        — high-latitude T/S uncertainties (step 04)
+    tools.py                      — shared utilities
+    csv_to_nc.py                  — convert WOD CSV exports to NetCDF
+    diagnostics/                  — checks and reports on chain output (see diagnostics/README.md)
+  tests/                          — regression and unit tests (python -m pytest)
+  docs/                           — input contract, file-packing guide, hardening plan and report
+  NCEI.py, step11_…py, …          — old script names, kept as thin wrappers around ecco-insitu commands
+  diagnostics/*.py                — the same, for the diagnostics
   patches/                        — saved, tested changes not yet applied (see HANDOFF.md)
   profile_analysis/
     app_profile_map.py            — interactive map app (World / Arctic / Southern Ocean; bins or profiles)
@@ -84,6 +96,17 @@ ECCO-Insitu-Python/
     build_allsource_bin_timeseries_with_anomalies.py — builds the data store the app reads
     README_maps.md                — map app documentation
 ```
+
+### Installing
+
+```bash
+pip install -e .                 # in the repository folder; -e keeps it linked to this checkout
+pip install -e ".[diagnostics,test]"   # also the map/report extras and pytest
+ecco-insitu --help               # all commands
+```
+
+The old script names (`python NCEI.py ...`, `python diagnostics/check_run_files.py ...`) still work
+and do the same as the matching `ecco-insitu` command.
 
 ---
 
@@ -166,7 +189,7 @@ python diagnostics/report_spatial_scaling.py <run_dir>  # 28 figures (14 per T/S
 Figures go to `<processed_root>/figures/figures_<YYYYMMDD_HHMMSS>/`, outside
 the run directory.
 
-**Step 13 — ECCO-ready profile files** (`optimize_profile_files.py`, called by
+**Step 13 — ECCO-ready profile files** (`ecco_insitu/packing.py`, called by
 `step13_pack_ecco_arrays.py` with the chain's settings). New to this? Start with
 [`docs/profile_file_optimization.md`](docs/profile_file_optimization.md). The MITgcm profiles package
 allocates per-tile arrays of `NFILESPROFMAX` × `NOBSGLOB` (× levels), where
@@ -183,10 +206,10 @@ any LLC grid size N and per-rank tile size (only N, the tile size and the grid's
 cell coordinates are needed; which tiles a model run blanks doesn't matter):
 
 ```bash
-python optimize_profile_files.py <profiles_dir>                         # report only
-python optimize_profile_files.py <profiles_dir> --write <out_dir>       # write the files
-python optimize_profile_files.py <dir> --nobsglob 35000 --year_rule none
-python optimize_profile_files.py <dir> --llc 270 --tile 30 --grid_dir <llc270 grid dir>
+ecco-insitu optimize <profiles_dir>                         # report only
+ecco-insitu optimize <profiles_dir> --write <out_dir>       # write the files
+ecco-insitu optimize <dir> --nobsglob 35000 --year_rule none
+ecco-insitu optimize <dir> --llc 270 --tile 30 --grid_dir <llc270 grid dir>
 ```
 Check with `python diagnostics/check_ecco_arrays.py <run_dir>`.
 
@@ -220,7 +243,7 @@ All paths and options live in YAML files, not in the code:
 
 | File | What it is |
 |------|-----------|
-| `config/defaults.yaml` | Every setting, with its default and a comment explaining it. Don't edit it for one machine or one run. |
+| `ecco_insitu/defaults.yaml` | Every setting, with its default and a comment explaining it. Don't edit it for one machine or one run. |
 | `config/local.yaml` | This machine's data locations. Not committed: copy `config/local.example.yaml` and set `data_root` (relative paths are taken from it). |
 | `--config my_run.yaml` (`run_ncei.sh -C`) | Settings for one run: any subset of the keys. |
 | `--set key=value` (`run_ncei.sh -s`) | Change one setting, e.g. `-s chain.new_floor.prof_S=0.006`. |
@@ -230,7 +253,7 @@ They are merged in that order (later wins), with `$ECCO_INSITU_CONFIG` (a file p
 naming it, so a typo can't be silently ignored. Each run saves the merged settings it used to
 `<run>/documentation/run_config.yaml`.
 
-To see the merged settings: `python config_loader.py [--config FILE] [--set key=value]`.
+To see the merged settings: `ecco-insitu config [--config FILE] [--set key=value]`.
 
 ### Input checks and the run summary
 
@@ -252,7 +275,7 @@ warnings.
 - `3`: the run finished, but some files failed (see the summary);
 - `2`: bad options or settings.
 
-To check a folder of inputs without running the chain: `python validate_inputs.py <input_dir>`.
+To check a folder of inputs without running the chain: `ecco-insitu validate <input_dir>`.
 
 ### Climatology
 
@@ -261,9 +284,9 @@ Step 03 needs a monthly potential-T / S climatology: `paths.climatology_file`. U
 one:
 
 ```bash
-python setup_climatology.py            # check the climatology in the settings and say what to do
-python setup_climatology.py --build    # download WOA23 (~1.4 GB) and build it where paths.climatology_file points
-python setup_climatology.py --prebake  # optional: pre-baked copies per input depth grid (faster step 03)
+ecco-insitu climatology            # check the climatology in the settings and say what to do
+ecco-insitu climatology --build    # download WOA23 (~1.4 GB) and build it where paths.climatology_file points
+ecco-insitu climatology --prebake  # optional: pre-baked copies per input depth grid (faster step 03)
 ```
 
 The chain uses only the pre-baked files that were made from the current climatology.
@@ -290,8 +313,8 @@ stored in the file (`obs_depth`), so adding a new grid needs no code change.
 Generate them once with:
 
 ```bash
-python prebake_woa23_climatology.py        # defaults: run.input_dir and paths.climatology_file
-python prebake_woa23_climatology.py --input_dir <dir> --source <woa23_fulldepth.nc> --out_dir <dir>
+python -m ecco_insitu.climatology.prebake        # defaults: run.input_dir and paths.climatology_file
+python -m ecco_insitu.climatology.prebake --input_dir <dir> --source <woa23_fulldepth.nc> --out_dir <dir>
 ```
 
 This pre-interpolates the WOA23 climatology onto each distinct observation depth
@@ -325,7 +348,7 @@ with 8 workers.
 Alternatively, call `NCEI.py` directly:
 
 ```bash
-python NCEI.py -i <input_dir> -d <output_dir> [-n <n_workers>] [--config FILE] [--set key=value]
+ecco-insitu steps -i <input_dir> -d <output_dir> [-n <n_workers>] [--config FILE] [--set key=value]
 ```
 
 This runs steps 01–10 only; `run_ncei.sh` also runs steps 11–13.
@@ -346,7 +369,7 @@ fields including:
 
 ### Parameter reference
 
-Every setting, with its default and an explanation, is in `config/defaults.yaml`. The main ones:
+Every setting, with its default and an explanation, is in `ecco_insitu/defaults.yaml`. The main ones:
 
 | Setting | Default | Description |
 |-----------|---------|-------------|

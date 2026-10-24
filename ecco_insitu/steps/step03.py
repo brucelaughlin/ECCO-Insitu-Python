@@ -1,10 +1,10 @@
 import datetime
 import numpy as np
-import tools
+import ecco_insitu.tools as tools
 import pymatreader
 import xarray as xr
 from pathlib import Path
-import clim_interp
+import ecco_insitu.clim_interp as clim_interp
 def update_monthly_mean_clim_WOA13v2_on_prepared_profiles(MITprof_ds, profile_var_key_set, climatology_file, prebaked_clim_files=None):
     """
     Assigns monthly T and S climatology values to MITprof objects.

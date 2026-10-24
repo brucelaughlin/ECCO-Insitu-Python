@@ -10,7 +10,7 @@ import netCDF4
 import numpy as np
 import pytest
 
-import validate_inputs as vi
+import ecco_insitu.validate as vi
 
 FIX = os.path.join(os.path.dirname(__file__), '..', 'fixtures', 'inputs')
 GOOD = os.path.join(FIX, 'CTD_WOD', 'WOD_WO_1992_CTD_OSD.nc')

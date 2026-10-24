@@ -2,7 +2,7 @@ import xarray as xr
 import numpy as np
 from geopy import distance
 from scipy.interpolate import griddata
-import tools
+import ecco_insitu.tools as tools
 
 def get_profpoint_llc_ian(lon_llc, lat_llc, mask_llc, MITprof_ds):
     """

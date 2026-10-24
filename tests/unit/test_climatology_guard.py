@@ -5,8 +5,8 @@ import shutil
 import netCDF4
 import pytest
 
-import config_loader
-import NCEI
+import ecco_insitu.config as config_loader
+import ecco_insitu.pipeline as NCEI
 
 WOA = '/Users/brucel/ecco/yip/woa23_climatology'
 CLIM = os.path.join(WOA, 'woa23_decav91C0_TS_clim_potential_T_1deg_fulldepth.nc')

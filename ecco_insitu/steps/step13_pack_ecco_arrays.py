@@ -3,7 +3,7 @@ Step 13 — pack the yearly chain output into ECCO-ready profile files.
 
 A thin wrapper around optimize_profile_files.py (which explains the problem
 and does the work), with the settings this chain uses. The settings are in the
-``pack`` section of config/defaults.yaml (and ``paths.grid_dir``); override them in
+``pack`` section of ecco_insitu/defaults.yaml (and ``paths.grid_dir``); override them in
 config/local.yaml, a ``--config`` file or ``--set pack.<key>=<value>``. Any of
 them can also be given to optimize_profile_files.py directly on the command line.
 
@@ -15,9 +15,8 @@ import argparse
 import os
 import sys
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import config_loader  # noqa: E402
-import optimize_profile_files as opt  # noqa: E402
+import ecco_insitu.config as config_loader  # noqa: E402
+import ecco_insitu.packing as opt  # noqa: E402
 
 
 def main(yearly_dir, out_dir, n_workers=None, dry_run=False, cfg=None):
@@ -46,16 +45,21 @@ def main(yearly_dir, out_dir, n_workers=None, dry_run=False, cfg=None):
                    max_files=pk['max_files'], n_workers=n_workers)
 
 
-if __name__ == '__main__':
+def cli(argv=None):
+    """Command-line entry point (``ecco-insitu`` subcommand)."""
     ap = argparse.ArgumentParser(description='Pack yearly chain output into ECCO-ready profile files.')
     ap.add_argument('yearly_dir')
     ap.add_argument('out_dir')
     ap.add_argument('-n', '--n_workers', type=int, default=None)
     ap.add_argument('--dry_run', action='store_true', help='Plan and print, write nothing')
     config_loader.add_arguments(ap)
-    a = ap.parse_args()
+    a = ap.parse_args(argv)
     try:
         c = config_loader.from_args(a)
     except config_loader.ConfigError as e:
         sys.exit(f'config error: {e}')
     main(a.yearly_dir, a.out_dir, a.n_workers, a.dry_run, cfg=c)
+
+
+if __name__ == '__main__':
+    sys.exit(cli())

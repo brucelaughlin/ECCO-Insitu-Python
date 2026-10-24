@@ -30,17 +30,16 @@ from pathlib import Path
 import netCDF4
 import numpy as np
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-import optimize_profile_files as opt  # noqa: E402
+import ecco_insitu.packing as opt  # noqa: E402
 
 
-def main():
+def cli(argv=None):
     ap = argparse.ArgumentParser(description='Validate ECCO-ready profile files.')
     ap.add_argument('run_dir', nargs='?', default=None)
     ap.add_argument('--yearly', default=None)
     ap.add_argument('--arrays', default=None)
     ap.add_argument('--docs', default=None, help="folder with ecco_arrays_manifest.json (default: 'documentation' beside --arrays)")
-    a = ap.parse_args()
+    a = ap.parse_args(argv)
     yearly = Path(a.yearly) if a.yearly else Path(a.run_dir) / 'yearly'
     arrays = Path(a.arrays) if a.arrays else Path(a.run_dir) / 'ecco_arrays'
     errors = []
@@ -158,4 +157,4 @@ def main():
 
 
 if __name__ == '__main__':
-    main()
+    sys.exit(cli())

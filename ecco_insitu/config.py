@@ -3,8 +3,9 @@ Load the NCEI chain settings from YAML files.
 
 The settings are merged from, in order (later ones win):
 
-1. ``config/defaults.yaml`` (in the repository; every setting, with comments)
-2. ``config/local.yaml`` (this machine's data locations; not committed)
+1. ``ecco_insitu/defaults.yaml`` (shipped with the package; every setting, with comments)
+2. ``config/local.yaml`` in the repository checkout (this machine's data locations; not committed;
+   ``~/.config/ecco_insitu/local.yaml`` for a pip-installed package)
 3. the file named by the environment variable ``ECCO_INSITU_CONFIG``, if set
 4. each file given with ``--config`` (any subset of the keys)
 5. individual overrides, e.g. ``--set chain.new_floor.prof_S=0.006``
@@ -15,26 +16,39 @@ paths are taken from ``data_root``.
 
 Typical use::
 
-    import config_loader
+    import ecco_insitu.config as config_loader
     cfg = config_loader.load(['my_run.yaml'])
     grid_dir = cfg['paths']['grid_dir']
 
 Command line, to see the merged settings::
 
-    python config_loader.py [--config my_run.yaml] [--set key.sub=value]
+    ecco-insitu config [--config my_run.yaml] [--set key.sub=value]
 """
 import argparse
 import copy
 import os
+import sys
 from pathlib import Path
 
 import yaml
 
-REPO = Path(__file__).resolve().parent
-CONFIG_DIR = REPO / 'config'
-DEFAULTS_FILE = CONFIG_DIR / 'defaults.yaml'
-LOCAL_FILE = CONFIG_DIR / 'local.yaml'
+PACKAGE_DIR = Path(__file__).resolve().parent
+#: Every setting with its default; shipped inside the package.
+DEFAULTS_FILE = PACKAGE_DIR / 'defaults.yaml'
+#: Repository checkout's config folder (holds local.example.yaml, and local.yaml on this machine).
+CONFIG_DIR = PACKAGE_DIR.parent / 'config'
 ENV_VAR = 'ECCO_INSITU_CONFIG'
+
+
+def _local_file():
+    """This machine's settings file: ``config/local.yaml`` in the repository checkout if that
+    folder exists, else ``~/.config/ecco_insitu/local.yaml`` (for a pip-installed package)."""
+    if CONFIG_DIR.is_dir():
+        return CONFIG_DIR / 'local.yaml'
+    return Path(os.environ.get('XDG_CONFIG_HOME', Path.home() / '.config')) / 'ecco_insitu' / 'local.yaml'
+
+
+LOCAL_FILE = _local_file()
 
 # Keys whose values are paths (dotted). Their entries are expanded and resolved against data_root.
 PATH_KEYS = (
@@ -95,7 +109,7 @@ def _merge(base, over, source, prefix=''):
     for k, v in over.items():
         key = f'{prefix}{k}'
         if k not in base:
-            raise ConfigError(f'{source}: unknown setting "{key}" (see config/defaults.yaml for the valid ones)')
+            raise ConfigError(f'{source}: unknown setting "{key}" (see ecco_insitu/defaults.yaml for the valid ones)')
         if isinstance(base[k], dict) and isinstance(v, dict):
             _merge(base[k], v, source, key + '.')
         elif isinstance(base[k], dict) and v is not None:
@@ -176,7 +190,7 @@ def load(config_files=(), overrides=(), use_local=True, use_env=True):
     Returns
     -------
     dict
-        Every setting from ``config/defaults.yaml``, with overrides applied and paths resolved.
+        Every setting from ``ecco_insitu/defaults.yaml``, with overrides applied and paths resolved.
         ``cfg['_sources']`` lists the files that were merged, in order.
 
     Raises
@@ -216,7 +230,7 @@ def check_required_paths(cfg, keys=CHAIN_REQUIRED_PATHS):
         hint = ''
         if any(p.startswith('  paths.climatology_file') for p in problems):
             hint = ('\nFor the climatology: point paths.climatology_file at your own file, or build the standard '
-                    'WOA23 one with:  python setup_climatology.py --build')
+                    'WOA23 one with:  ecco-insitu climatology --build')
         raise ConfigError('missing input data; set these in config/local.yaml or a --config file '
                           '(see config/local.example.yaml):\n' + '\n'.join(problems) + hint)
 
@@ -234,7 +248,7 @@ def dump(cfg, path):
 def add_arguments(parser):
     """Add the standard ``--config`` and ``--set`` options to an argparse parser."""
     parser.add_argument('--config', action='append', default=[], metavar='FILE',
-                        help='YAML settings file (repeatable; later files win). See config/defaults.yaml.')
+                        help='YAML settings file (repeatable; later files win). See ecco_insitu/defaults.yaml.')
     parser.add_argument('--set', action='append', default=[], metavar='KEY=VALUE', dest='overrides',
                         help='override one setting, e.g. --set chain.new_floor.prof_S=0.006 (repeatable)')
 
@@ -253,19 +267,25 @@ def _shell_value(v):
     return str(v)
 
 
-if __name__ == '__main__':
+def cli(argv=None):
+    """Command-line entry point: print the merged settings (or single values with --get)."""
     ap = argparse.ArgumentParser(description='Print the merged NCEI chain settings.')
     add_arguments(ap)
     ap.add_argument('--get', nargs='+', metavar='KEY',
                     help='print only these dotted settings, one per line (for shell scripts: '
                          'true/false as 1/0, null as an empty line)')
-    a = ap.parse_args()
+    a = ap.parse_args(argv)
     try:
         c = from_args(a)
         if a.get:
             print('\n'.join(_shell_value(get(c, k)) for k in a.get))
-            raise SystemExit(0)
+            return 0
     except (ConfigError, KeyError) as e:
         raise SystemExit(f'config error: {e}')
     print('# merged from: ' + ', '.join(c['_sources']))
     print(yaml.safe_dump({k: v for k, v in c.items() if k != '_sources'}, sort_keys=False))
+    return 0
+
+
+if __name__ == '__main__':
+    sys.exit(cli())

@@ -24,3 +24,8 @@ binned_output/
 
 # --- this machine's data locations (copy config/local.example.yaml) ---
 config/local.yaml
+
+# --- packaging build output ---
+*.egg-info/
+build/
+dist/

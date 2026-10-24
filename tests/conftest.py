@@ -1,4 +1,5 @@
-"""Shared pytest setup: make the chain modules importable from the repo root."""
+"""Shared pytest setup: make the ecco_insitu package importable from this checkout (also without
+``pip install -e .``)."""
 import os
 import sys
 

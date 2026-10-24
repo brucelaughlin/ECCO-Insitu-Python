@@ -45,10 +45,10 @@ Choosing NOBSGLOB (--nobsglob):
         (--tolerance 0 = the minimum itself); --max_files caps the file count.
 
 Usage:
-    python optimize_profile_files.py <profiles_dir>                      # report only
-    python optimize_profile_files.py <profiles_dir> --write <out_dir>    # and write the files
-    python optimize_profile_files.py <dir> --llc 270 --grid_dir <llc270 grid>
-    python optimize_profile_files.py <dir> --nobsglob 35000 --year_rule none
+    ecco-insitu optimize <profiles_dir>                      # report only
+    ecco-insitu optimize <profiles_dir> --write <out_dir>    # and write the files
+    ecco-insitu optimize <dir> --llc 270 --grid_dir <llc270 grid>
+    ecco-insitu optimize <dir> --nobsglob 35000 --year_rule none
 
 Outputs (with --write OUT_DIR): OUT_DIR holds only the profile files.  The
 summary files go to --docs_dir (default: a 'documentation' folder beside OUT_DIR,
@@ -60,6 +60,7 @@ prof_yearly_index).
 """
 
 import argparse
+import sys
 import concurrent.futures
 import csv
 import datetime
@@ -457,7 +458,7 @@ def run(profiles_dir, out_dir=None, llc=DEFAULTS['llc'], tile=DEFAULTS['tile'], 
     return manifest
 
 
-def main():
+def cli(argv=None):
     ap = argparse.ArgumentParser(description='Arrange profile files to minimize NFILESPROFMAX x NOBSGLOB.',
                                  formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     ap.add_argument('profiles_dir', help='folder of input profile files (searched recursively)')
@@ -478,9 +479,9 @@ def main():
     ap.add_argument('--max_files', type=int, default=None, help='auto: at most this many files')
     ap.add_argument('--step', type=int, default=DEFAULTS['step'], help='auto: NOBSGLOB sweep step')
     ap.add_argument('-n', '--n_workers', type=int, default=None)
-    a = ap.parse_args()
+    a = ap.parse_args(argv)
     if a.grid_dir is None:
-        import config_loader
+        import ecco_insitu.config as config_loader
         a.grid_dir = config_loader.load()['paths']['grid_dir']
         if a.grid_dir is None:
             ap.error('give --grid_dir, or set paths.grid_dir in config/local.yaml')
@@ -490,4 +491,4 @@ def main():
 
 
 if __name__ == '__main__':
-    main()
+    sys.exit(cli())

@@ -23,7 +23,7 @@ Public entry point:
   -> (nprof, ndepth)
 
   PREBAKED MODE: when field_months has already been depth-interpolated onto the
-  observation grid (via prebake_woa23_climatology.py), pass prebaked=True.
+  observation grid (via ecco_insitu/climatology/prebake.py), pass prebaked=True.
   Time-blend + space interpolation run as normal; _depth_interp and _fallback_fill
   are skipped.  clim_depths is unused in this mode.
 

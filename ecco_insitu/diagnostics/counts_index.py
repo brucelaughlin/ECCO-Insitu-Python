@@ -24,7 +24,7 @@ Raw files have no bin ids, so they are binned here with the same
 nearest-LLC90-cell lookup as step 02.
 
 Run standalone:
-    python diagnostics/lib/counts_index.py <report_dir> [--processed RUN] [-n 6]
+    python -m ecco_insitu.diagnostics.counts_index <report_dir> [--processed RUN] [-n 6]
 """
 
 import argparse
@@ -39,7 +39,7 @@ import netCDF4
 import numpy as np
 import pandas as pd
 
-import common
+import ecco_insitu.diagnostics.common as common
 
 _CHUNK = 50_000          # profiles read at a time (bounds memory on big files)
 _lookup = None           # per-worker BinLookup (raw stage only)

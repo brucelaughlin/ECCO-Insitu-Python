@@ -25,11 +25,10 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-sys.path.insert(0, str(Path(__file__).resolve().parent / 'lib'))
-import common                              # noqa: E402
-import counts_index as build_index         # noqa: E402
-import counts_maps as plot_maps            # noqa: E402
-import counts_timeseries as plot_timeseries  # noqa: E402
+import ecco_insitu.diagnostics.common as common                              # noqa: E402
+import ecco_insitu.diagnostics.counts_index as build_index         # noqa: E402
+import ecco_insitu.diagnostics.counts_maps as plot_maps            # noqa: E402
+import ecco_insitu.diagnostics.counts_timeseries as plot_timeseries  # noqa: E402
 
 _CSS = """
 body { font-family: Helvetica, Arial, sans-serif; margin: 2em auto; max-width: 1300px; color: #222; }
@@ -127,7 +126,7 @@ def write_html(report_dir, summary):
     return path
 
 
-def main():
+def cli(argv=None):
     ap = argparse.ArgumentParser(description='Build the in situ report (index, figures, HTML).')
     ap.add_argument('--raw_root', default=str(common.RAW_ROOT))
     ap.add_argument('--processed', default=None,
@@ -138,7 +137,7 @@ def main():
     ap.add_argument('-n', '--n_workers', type=int, default=None)
     ap.add_argument('--sources', nargs='*', default=None, help='Only these sources (quick tests)')
     ap.add_argument('--per_year_pngs', action='store_true')
-    a = ap.parse_args()
+    a = ap.parse_args(argv)
 
     if a.reuse_index:
         meta = json.loads(common.index_paths(a.reuse_index)[2].read_text())
@@ -162,4 +161,4 @@ def main():
 
 
 if __name__ == '__main__':
-    main()
+    sys.exit(cli())

@@ -29,8 +29,8 @@ processed profiles stay exactly the same.
 | 1 | Safety net: test data and automatic tests | **Done** (2026-10-23) |
 | 2 | Configuration file instead of editing code | **Done** (2026-10-23) |
 | 3 | Input checks and clear error reporting | **Done** (2026-10-23) |
-| 4 | Reorganize into an installable Python package | Next |
-| 5 | Docstrings and Sphinx documentation | Planned |
+| 4 | Reorganize into an installable Python package | **Done** (2026-10-23) |
+| 5 | Docstrings and Sphinx documentation | Next |
 | 6 | Automatic checks on every change (CI), changelog, versioning | Planned |
 
 ---
@@ -657,6 +657,170 @@ one with `setup_climatology.py --build`") are now stated where a new user looks 
 
 ---
 
+## Phase 4: an installable package with one command (done 2026-10-23)
+
+### Purpose
+
+Until now the chain was about 40 loose scripts in the repository's top folder. They found each
+other through `sys.path` lines, one of them hard-coded to `/Users/brucel/...`. That causes three
+problems:
+
+- **It can't be installed.** Another user, or another machine, has to copy the folder and run
+  scripts from inside it.
+- **It's hard to document.** Sphinx builds the API reference from an importable package, so loose
+  scripts give a thin, disorganized reference.
+- **Many entry points.** Each script had its own name and options; there was no single place to
+  see what can be run.
+
+Phase 4 turns the code into a Python package, **`ecco_insitu`**, installable with `pip`, with a
+single **`ecco-insitu`** command. The science code inside is unchanged.
+
+### 4.1 The new layout
+
+| Before | After |
+|---|---|
+| `NCEI.py` | `ecco_insitu/pipeline.py` |
+| `step01.py` … `step10.py`, `step11_spatial_scaling.py`, `step12_…`, `step13_…` | `ecco_insitu/steps/` (same file names) |
+| `optimize_profile_files.py` | `ecco_insitu/packing.py` |
+| `config_loader.py`, `config/defaults.yaml` | `ecco_insitu/config.py`, `ecco_insitu/defaults.yaml` (the defaults now ship inside the package) |
+| `validate_inputs.py` | `ecco_insitu/validate.py` |
+| `setup_climatology.py`, `build_woa23_climatology.py`, `prebake_woa23_climatology.py` | `ecco_insitu/climatology/` (`setup.py`, `build_woa23.py`, `prebake.py`) |
+| `tools.py`, `clim_interp.py`, `high_latitude_sigma.py`, `csv_to_nc.py` | `ecco_insitu/` (same names) |
+| `diagnostics/*.py` and `diagnostics/lib/*.py` | `ecco_insitu/diagnostics/` |
+| (none) | `pyproject.toml`: package definition, dependencies, the `ecco-insitu` command |
+| (none) | `ecco_insitu/cli.py`: the `ecco-insitu` command |
+| (none) | `ecco_insitu/log.py`: logging set-up (section 4.4) |
+
+Files were moved with `git mv`, so each file's history follows it.
+
+`config/local.yaml` (this machine's paths) stays where it was. For a copy installed without the
+repository, its location is `~/.config/ecco_insitu/local.yaml`.
+
+### 4.2 Installing and the `ecco-insitu` command
+
+```
+pip install -e .            # in the repository folder (once)
+ecco-insitu --help          # lists every command
+```
+
+| Command | Does |
+|---|---|
+| `ecco-insitu run` | the whole chain, steps 01–13 (same as `./run_ncei.sh`, same options) |
+| `ecco-insitu steps` | steps 01–10 only (what `python NCEI.py` did) |
+| `ecco-insitu scale` / `compact` / `pack` | steps 11 / 12 / 13 |
+| `ecco-insitu optimize` | the step 13 packing program with all its options |
+| `ecco-insitu validate` | check input files, or a climatology, against the contract |
+| `ecco-insitu climatology` | check / `--build` / `--prebake` the climatology |
+| `ecco-insitu config` | print the merged settings |
+| `ecco-insitu check-files`, `check-arrays`, `check-qc` | the run checks |
+| `ecco-insitu report-counts`, `report-costs`, `report-scaling` | the reports |
+| `ecco-insitu csv-to-nc` | convert WOD CSV exports to NetCDF |
+
+Every command takes `--help`, and those that use settings take `--config` / `--set`. The commands
+work from **any folder**, not only from inside the repository.
+
+**The old commands keep working.** `python NCEI.py ...`, `python step11_spatial_scaling.py ...`,
+`python diagnostics/check_run_files.py ...` and the others are now three-line wrappers that call
+the matching `ecco-insitu` command. Anyone's existing scripts and habits don't break, and they can
+switch when convenient. `run_ncei.sh` works as before and now runs the package's modules.
+
+### 4.3 Dependencies are written down
+
+`pyproject.toml` lists what the chain needs: numpy, xarray, netCDF4, scipy, pandas, pyyaml, pyproj,
+geopy, pymatreader and matplotlib. It also defines optional extras:
+
+- `diagnostics`: cartopy, pyarrow, for the maps and reports;
+- `test`: pytest;
+- `docs`: sphinx.
+
+`pip install -e ".[diagnostics,test]"` installs them. Before, a new user had to discover the
+packages by running scripts until one failed to import. The lower version bounds are the major
+versions known to work, from the environment the chain was validated in. They are not tested
+minimums; Phase 6's automatic tests will show whether they hold.
+
+### 4.4 Logging
+
+The controller's own messages now go through Python's standard `logging`:
+
+- the climatology and pre-baked checks;
+- the input-file check;
+- the run summary;
+- the start-up lines.
+
+Messages that need attention (an ignored pre-baked file, a climatology warning) are logged as
+*warnings*. A program using the package can now redirect, filter or silence them with one line, and
+by default they print exactly as before.
+
+**Deliberately unchanged:** the per-file output of steps 01–10 (`step: N`,
+`valid prof_T profile count ...`, the `!!!` step 05 boxes). Each worker captures it per file and
+prints it as one block. The cost report (`report-costs`) reads those exact lines to rebuild how many
+profiles each step removed, so their format must not change. Converting the roughly 250 `print`
+calls inside the steps to logging would risk breaking that for little benefit. It can be done step
+by step later, with the regression test guarding the output.
+
+### 4.5 How it was checked
+
+1. **The regression test passes against the Phase 1 reference.** All step 01–13 outputs of the 8
+   fixture files are bit-identical. The reference files were not regenerated in this phase, so this
+   is a direct comparison with the outputs of the code before any hardening work.
+2. **The new command, run from another folder.** `ecco-insitu run` was started from `/tmp` (not the
+   repository). Its outputs were compared with the reference: identical.
+3. **The old entry point.** `python NCEI.py` (now a wrapper) ran steps 01–10 on the fixtures and
+   wrote the same files.
+4. **Every command starts** (`tests/unit/test_cli.py`, 34 tests):
+   - all 15 `ecco-insitu` subcommands show their help;
+   - the top-level help lists them all, plus the climatology hint;
+   - an unknown command gives exit code 2;
+   - **all 17 old script names** still run, each started from an empty temporary folder, so nothing
+     depends on the current directory.
+5. **The log is unchanged where it matters.** The log of a run before and after Phase 4 has the
+   same structure: 80 `step:` lines, 80 count lines, 8 file headers, 4 controller lines. The cost
+   report's log parser extracts **identical** per-step profile counts from both.
+6. **The internal helper modules** (`costs_compute`, `counts_index`, `counts_maps`,
+   `counts_timeseries`) also start with `python -m ecco_insitu.diagnostics.<name>`.
+
+**Total: 111 tests, all passing (about 85 s).**
+
+### 4.6 What changed, file by file
+
+- **Moved** (history kept): the 39 files in the table in section 4.1.
+- **Imports:** in every moved file, rewritten from `import tools` to
+  `import ecco_insitu.tools as tools` and so on. This was done by a script, so every one was caught.
+  The code that uses them is unchanged.
+  - All `sys.path` manipulation inside the package was removed, including the hard-coded one in
+    `profile_analysis/plot_bin_occupancy_per_month.py`, which now finds the package relative to its
+    own location.
+- **Command-line entry points:** each tool's `if __name__ == '__main__':` block became a `cli(argv)`
+  function (the same code), so `ecco-insitu` can call it.
+- **New:** `pyproject.toml`, `ecco_insitu/__init__.py` (package description and version
+  `1.0.0.dev0`), `ecco_insitu/cli.py`, `ecco_insitu/log.py`, a description file for each
+  sub-package (`steps/`, `climatology/`, `diagnostics/`), and the 17 compatibility wrappers.
+- **`ecco_insitu/config.py`:** defaults read from inside the package; the location of `local.yaml`
+  is decided as in section 4.1.
+- **`ecco_insitu/pipeline.py`:** controller messages through logging (4.4).
+- **`run_ncei.sh`:** runs `python -m ecco_insitu....` modules; works without installing, by
+  pointing Python at the checkout.
+- **Docs:** `README.md` (new Repository structure and Installing sections; Quick start uses
+  `ecco-insitu`), `diagnostics/README.md` (commands), `docs/input_contract.md`, the `defaults.yaml`
+  comments, `docs/profile_file_optimization.md`: all now give the new command names.
+- **Tests:** imports updated to the package names; `pytest.ini` folded into `pyproject.toml`; new
+  `tests/unit/test_cli.py`.
+- **`.gitignore`:** the build folders that `pip install` creates.
+
+**No step's processing code was changed.**
+
+### 4.7 Not done in this phase
+
+- **The interactive map app and its store builder** (`profile_analysis/`) and the old
+  `geodesic_binning/` tools are not part of the package. They are separate tools with their own
+  dependencies (Dash, Plotly, zarr). They could become an optional extra later.
+- **`print` → logging inside the steps** (see 4.4).
+- **Publishing to PyPI** (so others could `pip install ecco-insitu` without the repository) isn't
+  planned yet. Installing from the GitHub repository works:
+  `pip install git+https://github.com/brucelaughlin/ECCO-Insitu-Python`.
+
+---
+
 ## Glossary
 
 | Term | Meaning |
@@ -673,3 +837,5 @@ one with `setup_climatology.py --build`") are now stated where a new user looks 
 | Input contract | The written list of what an input file must contain for the chain to process it. |
 | Pre-baked climatology | A copy of the climatology already interpolated onto one input depth grid, so step 03 doesn't have to do it per file. |
 | Exit code | A number a program returns when it ends; scripts use it to tell success (0) from failure. |
+| Editable install (`pip install -e .`) | Installs the package as a link to the repository folder, so code changes take effect without reinstalling. |
+| Logging | Python's standard way for a program to report messages, which the program that uses it can redirect or filter. |

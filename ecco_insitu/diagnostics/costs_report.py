@@ -34,9 +34,8 @@ from matplotlib.colors import LogNorm
 import numpy as np
 import pandas as pd
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
-from costs_compute import REPORT_PARENT, VARS, KINDS, kind_label, kind_short, sf_name  # noqa: E402
-import costs_scaling  # noqa: E402
+from ecco_insitu.diagnostics.costs_compute import REPORT_PARENT, VARS, KINDS, kind_label, kind_short, sf_name  # noqa: E402
+import ecco_insitu.diagnostics.costs_scaling as costs_scaling  # noqa: E402
 
 HIGH = 100.0          # QC single-datum cost threshold (step06.py code 10)
 POLAR = 60.0          # QC skips its cost tests poleward of this, unless the profile has a high-latitude σ

@@ -33,11 +33,10 @@ import cartopy.crs as ccrs
 import cartopy.feature as cfeature
 
 # Reuse count/window logic from step11 — no duplication
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))   # repo root, for step11
-from step11_spatial_scaling import (  # noqa: E402
+from ecco_insitu.steps.step11_spatial_scaling import (  # noqa: E402
     _count_profiles, _has_obs, _WINDOW_FN, N_BINS, SCALED_VARS
 )
-import config_loader  # noqa: E402
+import ecco_insitu.config as config_loader  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # Geodesic bin centers
@@ -360,7 +359,8 @@ def main(run_dir, window_mode='monthly', dpi=150):
     print(f"\nDone. {len(list(fig_dir.glob('*.png')))} figures saved to {fig_dir}\n")
 
 
-if __name__ == '__main__':
+def cli(argv=None):
+    """Command-line entry point (``ecco-insitu`` subcommand)."""
     parser = argparse.ArgumentParser(
         description='Diagnostic plots for step 11 spatial density scaling.')
     parser.add_argument('run_dir',
@@ -369,5 +369,9 @@ if __name__ == '__main__':
                         help='Window mode (default: monthly)')
     parser.add_argument('--dpi', type=int, default=150,
                         help='Figure resolution in DPI (default: 150)')
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
     main(args.run_dir, window_mode=args.window, dpi=args.dpi)
+
+
+if __name__ == '__main__':
+    sys.exit(cli())

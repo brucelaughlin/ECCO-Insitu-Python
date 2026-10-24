@@ -13,7 +13,7 @@ Also:
   summary.csv              per-source totals (used by the HTML table)
 
 Run standalone:
-    python diagnostics/lib/counts_timeseries.py <report_dir>
+    python -m ecco_insitu.diagnostics.counts_timeseries <report_dir>
 """
 
 import argparse
@@ -25,7 +25,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-import common
+import ecco_insitu.diagnostics.common as common
 
 # UCSD page palette for subtypes (light -> dark), then extras
 _SUBTYPE_COLORS = ['#e6b3e6', '#e62ee6', '#140b0f', '#7b2d8e', '#c9a0dc', '#5c1a5c']

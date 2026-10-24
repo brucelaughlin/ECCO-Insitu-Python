@@ -1,18 +1,19 @@
 # Diagnostics: checks and reports on NCEI chain output
 
-Everything you run is in this folder; `lib/` holds the helper modules.
-All commands are run from the repo root. Each tool defaults to the newest
+The tools are `ecco-insitu` commands; their code is in `ecco_insitu/diagnostics/` (the helper
+modules are there too). The scripts in this folder are thin wrappers kept so the old commands still
+work: `python diagnostics/check_run_files.py ...` is the same as `ecco-insitu check-files ...`. Each tool defaults to the newest
 finished run (`profile_files_NCEI_processed_<ts>` with every file at step ≥ 11)
 unless you pass a run directory.
 
-| Script | Question it answers | Typical time | Output |
+| Command (script) | Question it answers | Typical time | Output |
 |---|---|---|---|
-| `check_run_files.py` | Is the run complete and well-formed? | ~15 s | console; exit code 0 = PASS |
-| `check_run_qc.py` | Are the values scientifically plausible? | ~1 h | console |
-| `check_ecco_arrays.py` | Are the step 13 ECCO-ready files complete, correctly labeled, within the NOBSGLOB cap, and identical to the yearly files? | ~1 min per GB | console; exit code 0 = PASS |
-| `report_profile_counts.py` | How many profiles UCSD delivered vs how many survive processing, per source / year / bin? | ~10 min (scan) + plots | `insitu_reports/report_<run>__<ts>/` (HTML, PNGs) |
-| `report_costs.py` | How big are the T/S costs vs climatology, per source / year? | ~1 min + report | `cost_reports/cost_<run>__<ts>/` (HTML + PDF, per-profile costs) |
-| `report_spatial_scaling.py` | What did step 11 do (counts, occupancy, mean scaling factor, per T/S)? | minutes | `processed_by_NCEI_profile_data/figures/figures_<ts>/` (PNGs) |
+| `ecco-insitu check-files` (`check_run_files.py`) | Is the run complete and well-formed? | ~15 s | console; exit code 0 = PASS |
+| `ecco-insitu check-qc` (`check_run_qc.py`) | Are the values scientifically plausible? | ~1 h | console |
+| `ecco-insitu check-arrays` (`check_ecco_arrays.py`) | Are the step 13 ECCO-ready files complete, correctly labeled, within the NOBSGLOB cap, and identical to the yearly files? | ~1 min per GB | console; exit code 0 = PASS |
+| `ecco-insitu report-counts` (`report_profile_counts.py`) | How many profiles UCSD delivered vs how many survive processing, per source / year / bin? | ~10 min (scan) + plots | `insitu_reports/report_<run>__<ts>/` (HTML, PNGs) |
+| `ecco-insitu report-costs` (`report_costs.py`) | How big are the T/S costs vs climatology, per source / year? | ~1 min + report | `cost_reports/cost_<run>__<ts>/` (HTML + PDF, per-profile costs) |
+| `ecco-insitu report-scaling` (`report_spatial_scaling.py`) | What did step 11 do (counts, occupancy, mean scaling factor, per T/S)? | minutes | `processed_by_NCEI_profile_data/figures/figures_<ts>/` (PNGs) |
 
 Default locations (input files, run folders, report folders, grid, climatology) come from
 the chain settings: `config/local.yaml` (`run.*`, `diagnostics.*`, `paths.*`; see the main
@@ -28,13 +29,13 @@ non-profile file left in `ecco_arrays/`.
 ```bash
 RUN=<run.output_base>_<ts>          # the run folder
 
-python diagnostics/check_run_files.py $RUN \
+ecco-insitu check-files $RUN \
     --input_dir <run.input_dir> \
     --log z_logs/ncei_log_<ts>.log
 
-python diagnostics/check_ecco_arrays.py $RUN          # the step 13 model-ready files
+ecco-insitu check-arrays $RUN          # the step 13 model-ready files
 
-nohup python -u diagnostics/check_run_qc.py $RUN --summary > z_logs/qc_<ts>.log 2>&1 &
+nohup ecco-insitu check-qc $RUN --summary > z_logs/qc_<ts>.log 2>&1 &
 ```
 
 ## Each tool
@@ -108,7 +109,7 @@ Caveat: the UCSD side is whatever is in `Interp_Profiles` *now*. If files were
 moved out after the run was made, that source can show "kept" > 100%.
 
 To make a PDF of the HTML page: open it in Chrome and print, or see how
-`lib/costs_report.py:to_pdf` uses headless Chrome.
+`ecco_insitu/diagnostics/costs_report.py:to_pdf` uses headless Chrome.
 
 ### `report_costs.py` — cost vs climatology
 Computes `cost = (prof_V − prof_Vclim)² × prof_Vweight` for T and S at every
@@ -154,7 +155,7 @@ Also run automatically by `./run_ncei.sh -p`.
 python diagnostics/report_spatial_scaling.py <run_dir> [--window monthly|10day] [--dpi 150]
 ```
 
-## `lib/`
+## Helper modules (`ecco_insitu/diagnostics/`)
 
 | Module | Used by |
 |---|---|

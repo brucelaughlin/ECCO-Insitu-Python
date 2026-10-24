@@ -1,5 +1,5 @@
 # Copy to config/local.yaml (not committed) and edit for this machine.
-# Relative paths are taken from data_root. See config/defaults.yaml for what each file is.
+# Relative paths are taken from data_root. See ecco_insitu/defaults.yaml for what each file is.
 
 data_root: /path/to/your/data
 
@@ -12,12 +12,12 @@ paths:
   #     and S_monthly on (month=12, depth, lat, lon), regular lon/lat, potential T in deg C,
   #     works (full rules: docs/input_contract.md, section 2).
   #   * Don't have one?  Set climatology_file to where it should go (the file need not
-  #     exist), then run:   python setup_climatology.py --build
+  #     exist), then run:   ecco-insitu climatology --build
   #     That downloads WOA23 (~1.4 GB) and builds the standard climatology this project
   #     uses: monthly fields to 1500 m stitched onto seasonal fields to 5500 m, in-situ T
   #     converted to potential T with the chain's own routine.
-  #   * Optional, faster:  python setup_climatology.py --prebake  (writes into prebaked_clim_dir)
-  #   * Check either way:  python setup_climatology.py
+  #   * Optional, faster:  ecco-insitu climatology --prebake  (writes into prebaked_clim_dir)
+  #   * Check either way:  ecco-insitu climatology
   # The chain checks the climatology before every run and stops with these instructions if
   # it is missing or unusable.
   # ---------------------------------------------------------------------------------

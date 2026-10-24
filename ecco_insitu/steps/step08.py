@@ -1,7 +1,6 @@
 # Probably my favorite module ever
 
-import tools 
-
+import ecco_insitu.tools as tools
 def main(MITprof_ds, profile_var_key_set, remove_extraneous_depth_levels=True):
     """Trim trailing depth levels with no valid data in the file.
 

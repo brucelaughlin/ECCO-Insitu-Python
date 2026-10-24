@@ -3,7 +3,7 @@ import os
 import numpy as np
 import numpy.ma as ma
 import xarray as xr
-import tools
+import ecco_insitu.tools as tools
 
 
 earth_radius = 6371000

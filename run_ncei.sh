@@ -2,9 +2,10 @@
 #
 # Controller for the NCEI post-processing chain.
 #
-# Runs NCEI.py, teeing all stdout+stderr to a timestamped log under z_logs/.
+# Runs the chain (ecco_insitu package: steps 01-10, then 11-13), teeing all stdout+stderr
+# to a timestamped log under z_logs/. Same as: ecco-insitu run [options]
 #
-# SETTINGS come from config/defaults.yaml, config/local.yaml (this machine's data
+# SETTINGS come from ecco_insitu/defaults.yaml, config/local.yaml (this machine's data
 # locations; copy config/local.example.yaml) and any -C files, merged in that order.
 # Defaults for a bare run:
 #   input  = run.input_dir
@@ -26,7 +27,7 @@
 #   -A                skip step13 ECCO-ready file packing (run.pack).
 #
 # OUTPUT LAYOUT (inside the timestamped output dir):
-#   yearly/        one file per source and year (NCEI.py, then steps 11 and 12)
+#   yearly/        one file per source and year (steps 01-10, then 11 and 12)
 #   ecco_arrays/   step13: the model-ready profile files only (see optimize_profile_files.py)
 #   documentation/ step13 summary: manifest, NOBSGLOB / NFILESPROFMAX trade-off,
 #                  PROFILES_SIZE.h values and data.profiles file list
@@ -52,6 +53,9 @@ set -euo pipefail
 # --- locate ourselves so paths work regardless of CWD ---
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 LOG_DIR="${SCRIPT_DIR}/z_logs"
+# Run the package's modules (python -m), from this checkout even if it isn't pip-installed.
+export PYTHONPATH="${SCRIPT_DIR}${PYTHONPATH:+:${PYTHONPATH}}"
+PY=(python3 -u -m)
 mkdir -p "${LOG_DIR}"
 
 STAMP="$(date +%Y%m%d_%H%M%S)"
@@ -80,7 +84,7 @@ while getopts "C:s:i:d:n:w:SpcAh" opt; do
 done
 
 # --- read the settings (one value per line; true/false as 1/0, null as empty) ---
-SETTINGS="$(python3 "${SCRIPT_DIR}/config_loader.py" ${CONFIG_ARGS[@]+"${CONFIG_ARGS[@]}"} --get \
+SETTINGS="$("${PY[@]}" ecco_insitu.config ${CONFIG_ARGS[@]+"${CONFIG_ARGS[@]}"} --get \
   run.input_dir run.output_base run.n_workers run.spatial_scaling spatial_scaling.window \
   run.scaling_plots run.compact run.pack)" || { echo "ERROR: could not read the settings (see above)" >&2; exit 2; }
 { read -r CFG_INPUT; read -r CFG_OUTPUT_BASE; read -r CFG_WORKERS; read -r CFG_SCALING; read -r CFG_WINDOW
@@ -139,10 +143,10 @@ echo ""
 # stderr into stdout before the pipe so warnings/tracebacks land in the log too.
 N_WORKERS_ARG=""
 if [[ -n "${N_WORKERS}" ]]; then N_WORKERS_ARG="-n ${N_WORKERS}"; fi
-python3 -u "${SCRIPT_DIR}/NCEI.py" -i "${INPUT_DIR}" -d "${YEARLY_DIR}" ${N_WORKERS_ARG} \
+"${PY[@]}" ecco_insitu.pipeline -i "${INPUT_DIR}" -d "${YEARLY_DIR}" ${N_WORKERS_ARG} \
   ${CONFIG_ARGS[@]+"${CONFIG_ARGS[@]}"} 2>&1 | tee -a "${LOG_FILE}"
 STATUS="${PIPESTATUS[0]}"
-# NCEI.py exit 3 = finished, but some input files failed (listed in documentation/run_summary.txt).
+# Steps 01-10 exit 3 = finished, but some input files failed (listed in documentation/run_summary.txt).
 # The other files are fine, so the post-steps still run; the script exits 3 at the end.
 FILES_FAILED=0
 if [[ "${STATUS}" -eq 3 ]]; then
@@ -167,7 +171,7 @@ if [[ "${RUN_SCALING}" -eq 1 && "${STATUS}" -eq 0 ]]; then
   echo "==============================================================="
   } | tee -a "${LOG_FILE}"
 
-  python3 -u "${SCRIPT_DIR}/step11_spatial_scaling.py" \
+  "${PY[@]}" ecco_insitu.steps.step11_spatial_scaling \
     "${YEARLY_DIR}" --window "${SCALING_WINDOW}" ${N_WORKERS_ARG} \
     ${CONFIG_ARGS[@]+"${CONFIG_ARGS[@]}"} 2>&1 | tee -a "${LOG_FILE}"
   STATUS="${PIPESTATUS[0]}"
@@ -188,7 +192,7 @@ if [[ "${RUN_PLOTS}" -eq 1 && "${STATUS}" -eq 0 ]]; then
   echo "==============================================================="
   } | tee -a "${LOG_FILE}"
 
-  python3 -u "${SCRIPT_DIR}/diagnostics/report_spatial_scaling.py" \
+  "${PY[@]}" ecco_insitu.diagnostics.report_spatial_scaling \
     "${YEARLY_DIR}" --window "${SCALING_WINDOW}" 2>&1 | tee -a "${LOG_FILE}"
 
   {
@@ -211,7 +215,7 @@ if [[ "${RUN_COMPACT}" -eq 1 && "${STATUS}" -eq 0 ]]; then
   while IFS= read -r -d '' NC_FILE; do
     STEM="${NC_FILE%.nc}"
     TMP_OUT="${STEM}_compact.nc"
-    python3 -u "${SCRIPT_DIR}/step12_profiles_compact.py" \
+    "${PY[@]}" ecco_insitu.steps.step12_profiles_compact \
       "${NC_FILE}" -o "${TMP_OUT}" --complevel 2 --overwrite 2>&1 | tee -a "${LOG_FILE}"
     COMPACT_STATUS="${PIPESTATUS[0]}"
     if [[ "${COMPACT_STATUS}" -eq 0 ]]; then
@@ -247,7 +251,7 @@ if [[ "${RUN_PACK}" -eq 1 && "${STATUS}" -eq 0 ]]; then
   echo "==============================================================="
   } | tee -a "${LOG_FILE}"
 
-  python3 -u "${SCRIPT_DIR}/step13_pack_ecco_arrays.py" \
+  "${PY[@]}" ecco_insitu.steps.step13_pack_ecco_arrays \
     "${YEARLY_DIR}" "${ARRAYS_DIR}" ${N_WORKERS_ARG} ${CONFIG_ARGS[@]+"${CONFIG_ARGS[@]}"} 2>&1 | tee -a "${LOG_FILE}"
   STATUS="${PIPESTATUS[0]}"
 

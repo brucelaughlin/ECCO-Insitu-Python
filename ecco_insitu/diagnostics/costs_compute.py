@@ -45,7 +45,7 @@ Outputs (in <out_dir>):
 
 Run:
     python diagnostics/report_costs.py            (computes, then writes the report)
-    python diagnostics/lib/costs_compute.py [--processed RUN] [--out DIR] [-n 4]   (compute only)
+    python -m ecco_insitu.diagnostics.costs_compute [--processed RUN] [--out DIR] [-n 4]   (compute only)
 """
 
 import argparse
@@ -62,8 +62,7 @@ import netCDF4
 import numpy as np
 import pandas as pd
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
-import common  # noqa: E402  (run selection, source/subtype parsing)
+import ecco_insitu.diagnostics.common as common  # noqa: E402  (run selection, source/subtype parsing)
 
 VARS = ('T', 'S')
 REPORT_PARENT = Path(common._CFG['diagnostics']['cost_report_dir'] or '.')   # from the chain settings

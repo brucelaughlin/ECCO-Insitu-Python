@@ -2,7 +2,7 @@
 import pytest
 import yaml
 
-import config_loader as cl
+import ecco_insitu.config as cl
 
 
 def _load(tmp_path, *layers, overrides=()):
@@ -75,3 +75,7 @@ def test_dump_round_trips(tmp_path):
 def test_example_local_file_is_valid(tmp_path):
     """config/local.example.yaml must only use real keys."""
     cl.load([cl.CONFIG_DIR / 'local.example.yaml'], use_local=False, use_env=False)
+
+
+def test_defaults_ship_with_the_package():
+    assert cl.DEFAULTS_FILE.parent.name == 'ecco_insitu' and cl.DEFAULTS_FILE.is_file()

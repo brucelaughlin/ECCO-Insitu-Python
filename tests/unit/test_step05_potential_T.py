@@ -1,7 +1,7 @@
 """step05 potential temperature (UNESCO 1983) against published check values."""
 import numpy as np
 
-import step05
+import ecco_insitu.steps.step05 as step05
 
 
 def test_adiabatic_gradient_unesco_check_value():

@@ -19,8 +19,8 @@ expected variable names, dimensions and value ranges can be used, whether made b
 
 Command line::
 
-    python validate_inputs.py <input_dir>            # check every *.nc profile file under it
-    python validate_inputs.py --climatology <file>   # check a climatology file
+    ecco-insitu validate <input_dir>            # check every *.nc profile file under it
+    ecco-insitu validate --climatology <file>   # check a climatology file
 """
 import argparse
 import datetime
@@ -331,7 +331,7 @@ def summarize(reports, root=None):
     return out
 
 
-def main(argv=None):
+def cli(argv=None):
     ap = argparse.ArgumentParser(description='Check NCEI chain input files (see docs/input_contract.md).')
     ap.add_argument('input_dir', nargs='?', help='folder of input profile files (searched recursively)')
     ap.add_argument('--climatology', metavar='FILE', help='check a climatology file instead')
@@ -349,4 +349,4 @@ def main(argv=None):
 
 
 if __name__ == '__main__':
-    sys.exit(main())
+    sys.exit(cli())

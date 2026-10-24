@@ -21,7 +21,7 @@ View: each source gets a polar view if >70% of its profiles are poleward of
 (total_ALL_<grid>_NH.png, ..._SH.png).
 
 Run standalone:
-    python diagnostics/lib/counts_maps.py <report_dir> [--per_year_pngs]
+    python -m ecco_insitu.diagnostics.counts_maps <report_dir> [--per_year_pngs]
 """
 
 import argparse
@@ -33,7 +33,7 @@ import matplotlib.pyplot as plt
 from matplotlib.colors import LogNorm, ListedColormap
 import numpy as np
 
-import common
+import ecco_insitu.diagnostics.common as common
 
 _STAGES = (('raw', 'UCSD'), ('processed', 'processed'))
 _LAND_RGBA = ListedColormap(['#bdbdbd'])

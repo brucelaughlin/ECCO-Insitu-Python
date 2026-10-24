@@ -132,9 +132,23 @@ The full write-up for readers (what was done, why, and how it was checked, in pl
   - A new **Quick start** near the top of `README.md`, with "you don't need a climatology already" as
     step 2.
   - The Sphinx front page must repeat this (see Phase 5).
-- **Next: Phase 4 (package).**
-  - Move into `ecco_insitu/` (`steps/`, `config`, `validate`, `io`, `climatology`, ...), with a
-    `pyproject.toml` and an `ecco-insitu` command line (run / check / setup-climatology).
-  - Keep `run_ncei.sh` and the old script names working as thin wrappers for now.
-  - Switch to `logging` while keeping the log lines the diagnostics parse.
-  - The regression test must pass unchanged.
+- 2026-10-23, **Phase 4 done** (details in the report, Phase 4 section)
+  - **Package:** the code is now `ecco_insitu/` (`pipeline`, `steps/`, `packing`, `config` + `defaults.yaml`,
+    `validate`, `climatology/`, `diagnostics/`, `cli`, `log`), moved with `git mv`; imports
+    rewritten; no `sys.path` hacks.
+  - **Install and command:** `pyproject.toml` (deps + extras); `pip install -e .`; the `ecco-insitu` command
+    with 16 subcommands. 17 old script names are kept as wrappers. `run_ncei.sh` runs
+    `python -m ecco_insitu...`.
+  - **Logging:** controller messages go through logging (`ecco_insitu/log.py`). The steps' per-file output
+    is still printed verbatim, because `costs_scaling.parse_step_counts` parses it; checked
+    identical before and after.
+  - **Tests:** 111, regression bit-identical to the Phase 1 reference; `ecco-insitu run` from `/tmp`
+    is identical too.
+  - Installed editable in `ecco_env1`.
+- **Next: Phase 5 (docs).**
+  - NumPy-style docstrings for every public function, starting with `pipeline`, `steps`, `config`,
+    `validate`, `climatology`, `packing`.
+  - Sphinx in `docs/sphinx/` (autodoc + napoleon), with pages: front page + Quick start (must say a
+    climatology need not exist already), installing, settings, input contract, running, outputs,
+    diagnostics, the steps, and the API reference.
+  - Build locally with warnings as errors.

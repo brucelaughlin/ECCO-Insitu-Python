@@ -159,14 +159,14 @@ def check_file(path, sums, errors, warnings, grids):
     return n
 
 
-def main():
+def cli(argv=None):
     ap = argparse.ArgumentParser(description='Structural validation of an NCEI run directory.')
     ap.add_argument('run_dir')
     ap.add_argument('--input_dir', default=None, help='Check every input file has an output or failure')
     ap.add_argument('--log', default=None, help='run_ncei.sh log, to match missing outputs to failures')
     ap.add_argument('--allow_mixed_grids', action='store_true',
                     help='Do not flag files on different depth grids (step 08 trimming on)')
-    a = ap.parse_args()
+    a = ap.parse_args(argv)
     run = Path(a.run_dir)
     if (run / 'yearly').is_dir():               # run folder with a yearly/ subfolder
         run = run / 'yearly'
@@ -228,4 +228,4 @@ def main():
 
 
 if __name__ == '__main__':
-    main()
+    sys.exit(cli())

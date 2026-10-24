@@ -1,7 +1,7 @@
 import xarray as xr
 import os
 import numpy as np
-import tools
+import ecco_insitu.tools as tools
 from scipy.interpolate import griddata
 
 def update_spatial_bin_index_on_prepared_profiles(MITprof_ds, sphere_bin_dir, grid_dir):

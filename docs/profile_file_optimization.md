@@ -249,7 +249,7 @@ files; at 100, 8,460.
 The numbers to put in `PROFILES_SIZE.h` may change, and the program prints them.
 
 **Can I use a different grid, e.g. LLC270?** Yes:
-`python optimize_profile_files.py <dir> --llc 270 --tile 30 --grid_dir <llc270 grid>`.
+`ecco-insitu optimize <dir> --llc 270 --tile 30 --grid_dir <llc270 grid>`.
 (For a grid the chain did not run on, add `--position obs` so profiles are
 placed by their own latitude/longitude; this is the default for any grid other
 than LLC90.)

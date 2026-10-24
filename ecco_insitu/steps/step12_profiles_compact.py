@@ -735,7 +735,7 @@ def expand_inputs(args, suffix):
     return inputs
 
 
-def main():
+def cli(argv=None):
     p = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument('inputs', nargs='+', help='pkg/profiles netCDF file(s)')
@@ -758,7 +758,7 @@ def main():
                         'type needs NETCDF4 (default: %(default)s)')
     p.add_argument('--overwrite', action='store_true',
                    help='overwrite existing output files')
-    args = p.parse_args()
+    args = p.parse_args(argv)
 
     if args.chunk_prof < 1:
         p.error('--chunk-prof must be >= 1')
@@ -796,4 +796,4 @@ def main():
 
 
 if __name__ == '__main__':
-    main()
+    sys.exit(cli())

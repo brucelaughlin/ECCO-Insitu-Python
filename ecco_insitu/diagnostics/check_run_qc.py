@@ -37,8 +37,7 @@ import warnings
 import numpy as np
 import netCDF4
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))   # repo root
-import config_loader  # noqa: E402
+import ecco_insitu.config as config_loader  # noqa: E402
 
 warnings.filterwarnings('ignore', category=RuntimeWarning)
 
@@ -505,7 +504,7 @@ def run_checks_1_2(output_dir, summary=False):
           f'{len(errors)} errors, {len(warns)} warnings')
 
 
-def main():
+def cli(argv=None):
     p = argparse.ArgumentParser(
         description=__doc__,
         formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -520,7 +519,7 @@ def main():
                    help='skip check 4 (external WOA23 reference)')
     p.add_argument('--summary', action='store_true',
                    help='suppress per-file OK lines; show only warnings/errors')
-    args = p.parse_args()
+    args = p.parse_args(argv)
 
     if not os.path.isdir(args.output_dir):
         p.error(f'not a directory: {args.output_dir}')
@@ -549,4 +548,4 @@ def main():
 
 
 if __name__ == '__main__':
-    main()
+    sys.exit(cli())

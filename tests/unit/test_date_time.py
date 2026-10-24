@@ -2,7 +2,7 @@
 import numpy as np
 import pytest
 
-NCEI = pytest.importorskip('NCEI')
+import ecco_insitu.pipeline as NCEI
 
 
 @pytest.mark.parametrize('ymd, hms, want', [

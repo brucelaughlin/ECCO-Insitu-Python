@@ -1,7 +1,7 @@
 # Input contract: what the NCEI chain needs from its input files
 
 The chain checks every input file against this contract before processing any of them
-(`validate_inputs.py`; run it alone with `python validate_inputs.py <input_dir>`).
+(`ecco_insitu/validate.py`; run it alone with `ecco-insitu validate <input_dir>`).
 
 - An **error** means the file can't be processed correctly. The file is **skipped**, the rest of
   the run continues, and the reason is listed in `<run>/documentation/run_summary.txt`.
@@ -68,26 +68,26 @@ The chain checks it before processing anything, and stops with the reason if it 
 | Salinity | psu |
 | Missing values | NaN, or a value declared as the variable's `_FillValue` / `missing_value` attribute. An **undeclared** fill value (e.g. −9999 or 10²⁰ with no attribute) would be used as a real temperature, so the check rejects values outside the plausible range. Gaps (land, below the bottom) are filled from the nearest valid value. |
 
-Check a file with `python validate_inputs.py --climatology <file>`, or `python setup_climatology.py`
+Check a file with `ecco-insitu validate --climatology <file>`, or `ecco-insitu climatology`
 (which also checks the pre-baked files).
 
 ### 2.1 Getting a climatology
 
-- **Your own file:** set `paths.climatology_file` to it, then run `python setup_climatology.py`.
-- **The standard one** (what this project uses): `python setup_climatology.py --build`. It
+- **Your own file:** set `paths.climatology_file` to it, then run `ecco-insitu climatology`.
+- **The standard one** (what this project uses): `ecco-insitu climatology --build`. It
   downloads WOA23 (1991–2020, 1°) from NOAA, about 1.4 GB, and builds it like this:
   - monthly fields to 1500 m, spliced onto seasonal fields (interpolated to months) down to
     5500 m;
   - in-situ T converted to potential T with the chain's own UNESCO routine (step 05).
 
   The result is written where `paths.climatology_file` points. The method is in
-  `build_woa23_climatology.py`; the decade and resolution are constants at its top.
+  `ecco_insitu/climatology/build_woa23.py`; the decade and resolution are constants at its top.
 - If the climatology is missing when a run starts, the run stops before processing and names
   both options.
 
 ### 2.2 Pre-baked climatologies (optional, faster)
 
-`python setup_climatology.py --prebake` writes copies of the climatology already interpolated onto
+`ecco-insitu climatology --prebake` writes copies of the climatology already interpolated onto
 each depth grid found in the inputs (`*_prebaked.nc` in `paths.prebaked_clim_dir`). Step 03 then
 skips the vertical interpolation.
 

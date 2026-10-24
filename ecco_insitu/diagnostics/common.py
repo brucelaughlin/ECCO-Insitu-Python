@@ -12,13 +12,12 @@ import numpy as np
 import pandas as pd
 from scipy.spatial import cKDTree
 
-_REPO = Path(__file__).resolve().parents[2]   # diagnostics/lib/ -> repo root
-sys.path.insert(0, str(_REPO))
-import tools  # noqa: E402  (repo-level tools.py: LLC90 grid loader, sph2cart)
-import config_loader  # noqa: E402
+_REPO = Path(__file__).resolve().parents[2]   # repository root
+import ecco_insitu.tools as tools  # noqa: E402  (repo-level tools.py: LLC90 grid loader, sph2cart)
+import ecco_insitu.config as config_loader  # noqa: E402
 
 # ---------------------------------------------------------------------------
-# Default locations, from the chain settings (config/defaults.yaml + config/local.yaml):
+# Default locations, from the chain settings (ecco_insitu/defaults.yaml + config/local.yaml):
 # the same grid/bin files as NCEI.py step 02. A setting that isn't set gives None here;
 # the scripts then need the matching command-line option.
 # ---------------------------------------------------------------------------

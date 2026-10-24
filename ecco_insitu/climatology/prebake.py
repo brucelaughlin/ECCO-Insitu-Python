@@ -17,16 +17,16 @@ entries needed to activate pre-baked mode in NCEI.py.
 
 Usage:
     # scan default input dir, write files alongside source climatology:
-    python prebake_woa23_climatology.py
+    python -m ecco_insitu.climatology.prebake
 
     # scan a specific input dir:
-    python prebake_woa23_climatology.py --input_dir /path/to/Interp_Profiles
+    python -m ecco_insitu.climatology.prebake --input_dir /path/to/Interp_Profiles
 
     # override climatology source or output dir:
-    python prebake_woa23_climatology.py --source /path/to/fulldepth.nc --out_dir /path/to/out
+    python -m ecco_insitu.climatology.prebake --source /path/to/fulldepth.nc --out_dir /path/to/out
 
     # skip grids with fewer than N levels (e.g. skip 1-level SOCAT files):
-    python prebake_woa23_climatology.py --min_levels 5
+    python -m ecco_insitu.climatology.prebake --min_levels 5
 """
 
 import argparse
@@ -38,11 +38,11 @@ from pathlib import Path
 import numpy as np
 import xarray as xr
 
-import clim_interp
+import ecco_insitu.clim_interp as clim_interp
 
-import config_loader
+import ecco_insitu.config as config_loader
 
-# Defaults from the chain settings (config/defaults.yaml + config/local.yaml)
+# Defaults from the chain settings (ecco_insitu/defaults.yaml + config/local.yaml)
 _CFG = config_loader.load()
 _DEFAULT_SOURCE = _CFG['paths']['climatology_file']
 _DEFAULT_INPUT_DIR = _CFG['run']['input_dir']
@@ -186,7 +186,7 @@ def prebake(source_path, input_dir, out_dir, min_levels=2):
     print("="*60)
 
 
-def main():
+def cli(argv=None):
     parser = argparse.ArgumentParser(description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument('--source', default=_DEFAULT_SOURCE,
@@ -197,7 +197,7 @@ def main():
                         help='Output directory (default: same as source file)')
     parser.add_argument('--min_levels', type=int, default=2,
                         help='Skip grids with fewer than this many levels (default: 2)')
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
 
     if not args.source or not args.input_dir:
         parser.error('give --source and --input_dir, or set paths.climatology_file and run.input_dir '
@@ -212,4 +212,4 @@ def main():
 
 
 if __name__ == '__main__':
-    main()
+    sys.exit(cli())

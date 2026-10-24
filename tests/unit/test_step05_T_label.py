@@ -3,7 +3,7 @@ import numpy as np
 import pytest
 import xarray as xr
 
-import step05
+import ecco_insitu.steps.step05 as step05
 
 
 def _ds(long_name=None, standard_name=None):

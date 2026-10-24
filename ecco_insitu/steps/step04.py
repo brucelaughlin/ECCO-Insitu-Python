@@ -5,8 +5,8 @@ import glob
 import os
 import numpy as np
 from scipy.interpolate import griddata
-import tools 
-import high_latitude_sigma
+import ecco_insitu.tools as tools
+import ecco_insitu.high_latitude_sigma as high_latitude_sigma
 from scipy.interpolate import interp1d
 #from scipy import interpolate, interp1d
 

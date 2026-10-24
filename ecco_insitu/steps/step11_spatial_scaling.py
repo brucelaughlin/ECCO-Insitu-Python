@@ -58,8 +58,7 @@ from pathlib import Path
 import numpy as np
 import xarray as xr
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import config_loader  # noqa: E402
+import ecco_insitu.config as config_loader  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -354,7 +353,8 @@ def main(run_dir, window_mode='monthly', dry_run=False, n_workers=None):
     print(f"{'='*60}\n")
 
 
-if __name__ == '__main__':
+def cli(argv=None):
+    """Command-line entry point (``ecco-insitu`` subcommand)."""
     parser = argparse.ArgumentParser(
         description='Apply per-variable spatial density scaling to processed profile NC files.')
     parser.add_argument('run_dir',
@@ -368,10 +368,14 @@ if __name__ == '__main__':
     parser.add_argument('-n', '--n_workers', type=int, default=None,
                         help='Worker processes for pass 2 (default: min(8, cpu_count-1))')
     config_loader.add_arguments(parser)
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
     try:
         cfg = config_loader.from_args(args)
     except config_loader.ConfigError as e:
         sys.exit(f"config error: {e}")
     main(args.run_dir, window_mode=args.window or cfg['spatial_scaling']['window'], dry_run=args.dry_run,
          n_workers=args.n_workers if args.n_workers is not None else cfg['run']['n_workers'])
+
+
+if __name__ == '__main__':
+    sys.exit(cli())

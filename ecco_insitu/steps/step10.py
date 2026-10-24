@@ -1,6 +1,6 @@
 import xarray as xr
 import numpy as np
-import tools
+import ecco_insitu.tools as tools
 
 def update_gamma_factor_on_prepared_profiles(MITprof_ds, profile_var_key_set, grid_dir, apply_gamma_factor, llcN):
     """
