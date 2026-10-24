@@ -43,3 +43,8 @@ html_theme = 'sphinx_rtd_theme'
 html_title = f'ecco_insitu {release}'
 exclude_patterns = ['_build']
 templates_path = ['_templates']
+
+# PDF (python -m sphinx -M latexpdf docs/sphinx docs/sphinx/_build): XeLaTeX handles the Unicode in
+# the docs (sigma, degree signs, arrows).
+latex_engine = 'xelatex'
+latex_documents = [('index', 'ecco_insitu.tex', f'ecco\\_insitu {release} documentation', author, 'manual')]

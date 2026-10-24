@@ -132,6 +132,24 @@ a missing dependency                         the clean install on GitHub
 a forgotten changelog / docs update          the pull-request checklist
 ==========================================  ===================================================
 
+Sharing the documentation
+-------------------------
+
+- **Website (live link).** Once the ``docs`` workflow publishes (merge to ``main`` and enable
+  Pages, above), the link to share is https://brucelaughlin.github.io/ECCO-Insitu-Python/. A
+  specific page has its own link, e.g. ``.../api/index.html`` for the API reference.
+- **PDF (one file, for Slack or email).** Every run of the ``tests`` workflow also builds the whole
+  documentation as one PDF (about 120 pages). Download it from the run's page on the **Actions**
+  tab, under *Artifacts* (``ecco_insitu-docs-pdf``). To build it locally (needs LaTeX):
+  ``python -m sphinx -M latexpdf docs/sphinx docs/sphinx/_build``, then open
+  ``docs/sphinx/_build/latex/ecco_insitu.pdf``.
+- **On GitHub, without building:** GitHub shows the Markdown pages (``docs/*.md``, ``README.md``)
+  formatted, but not the generated website or API pages.
+- **Locally, for anyone with the repository:**
+  ``python -m sphinx -b html docs/sphinx docs/sphinx/_build/html`` and open
+  ``docs/sphinx/_build/html/index.html``. The built folder works only as a whole (pages link to each
+  other and to ``_static/``), so a single HTML file can't be sent on its own; use the PDF for that.
+
 Running the same checks yourself
 --------------------------------
 
