@@ -24,6 +24,7 @@ settings accepts ``--config FILE`` and ``--set key=value``.
 ``mds-to-nc``               *work in progress:* model equivalents to NetCDF
 ``model-cost``              *work in progress:* offline profile cost (ECCO v4r6)
 ``model-cost-bars``         *work in progress:* cost bar charts
+``model-cost-versions``     *work in progress:* cost with gamma / spatial scaling removed
 ==========================  =============================================================
 """
 import importlib
@@ -53,6 +54,8 @@ COMMANDS = {
                    '[work in progress] offline profile cost as ECCO v4r6 cost_profiles.F'),
     'model-cost-bars': ('ecco_insitu.model_comparison.cost_bars', 'cli',
                         '[work in progress] bar charts of model-cost results'),
+    'model-cost-versions': ('ecco_insitu.model_comparison.cost_versions', 'cli',
+                            '[work in progress] cost per datum with weight factors removed, by type/year/...'),
 }
 
 

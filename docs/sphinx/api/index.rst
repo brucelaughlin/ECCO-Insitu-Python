@@ -111,3 +111,4 @@ Model comparison (work in progress)
    model_comparison.mds_to_nc
    model_comparison.cost
    model_comparison.cost_bars
+   model_comparison.cost_versions

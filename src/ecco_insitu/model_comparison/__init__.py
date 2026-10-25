@@ -14,6 +14,9 @@ have regression tests of their own.
   reproduces the v4r6 per-type cost bars, not yet checked against a model run's own cost output.
 - :mod:`~ecco_insitu.model_comparison.cost_bars` (``ecco-insitu model-cost-bars``): bar charts of
   cost per datum by dataset type. *Working.*
+- :mod:`~ecco_insitu.model_comparison.cost_versions` (``ecco-insitu model-cost-versions``): the anomaly
+  cost per datum with the spatial scaling factor and γ removed, by type, year, latitude band or depth
+  band, from ``model-cost``'s ``cost_breakdown.csv``. *Working.*
 - *Planned:* monthly-mean model fields to ``prof_Vestim`` (for cost checks without a model run).
   *Not started*; waiting for monthly-mean fields.
 

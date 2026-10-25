@@ -92,6 +92,20 @@ to the precision readable from the plots.
 **Still to do:** compare with the model's own numbers (STDOUT `cost_profiles(...)=` lines, or the
 `costfunction` file) for exact agreement, when a run's output is available.
 
+**Slicing (added 2026-10-25, at the team's request):** besides the model's cost ("final"),
+`model-cost` reports the anomaly cost with weight factors removed:
+
+- `no_sf`: weight / spatial scaling ("decimation") factor;
+- `no_gamma_sf`: weight / (γ · sf) = (misfit/σ)².
+
+It writes `cost_breakdown.csv`, one row per variable, file, year, latitude band and depth band, with
+counts and the three costs. `ecco-insitu model-cost-versions` plots it by type, year, latitude band
+or depth band, for one run or several side by side. It works on this package's files (`sf_T`,
+`sf_S`) and on older files such as v4r6's (one `prof_spatial_scaling_factor`).
+
+First use: the v4r6 vs 20261021 comparison in
+`/Users/brucel/ecco/yip/cost_comparisons/v4r6_vs_20261021_weights/FINDINGS.md`.
+
 `ecco-insitu model-cost-bars` draws the team's bar plots from one or more `cost_summary.json`
 files (old vs new).
 
