@@ -96,8 +96,14 @@ ourselves.**
       - **Profile flag:** it catches 72% of the v4r6-flagged points we keep.
     - **XBT 1992–98 cost/datum:** 0.282 → 0.240 with the 2025 profile flag, 0.242 with v4r6's flags
       copied by cast number, 0.229 with both. v4r6 is 0.188. That closes about half the gap.
+    - **Standard-level flags found (later, 2026-10-26):**
+      - **Source:** `ncei.noaa.gov/data/oceans/woa/WOD/YEARLY/<SRC>/STD/<SRC>S<year>.gz`, read with
+        wodpy.
+      - **Agreement:** 99.4% with v4r6's flags.
+      - **Effect:** they flag 2.3% of our 1992–98 XBT points; cost 0.282 → 0.237. As before, about half
+        the gap.
     - **Next:**
-      - find a bulk source of WOD standard-level flags (or use WODselect);
+      - download STD files for all years and sources, write `prof_Tflag`/`prof_Sflag` in a chain step;
       - the team decides which flags step 06 applies, and for which sources.
 
 **Lessons (the user was embarrassed by overstated claims sent to the team and UCSD):** verify every claim

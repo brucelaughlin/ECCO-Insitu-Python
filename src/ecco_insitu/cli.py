@@ -25,6 +25,9 @@ settings accepts ``--config FILE`` and ``--set key=value``.
 ``model-cost``              *work in progress:* offline profile cost (ECCO v4r6)
 ``model-cost-bars``         *work in progress:* cost bar charts
 ``model-cost-versions``     *work in progress:* cost with gamma / spatial scaling removed
+``profile-analyze``         T/S profiles and cost distributions per obs class (NetCDF + figures)
+``profile-compare``         overlay comparison of multiple profile-analyze outputs
+``profile-report``          compile profile-analyze/compare figures into HTML + PDF
 ==========================  =============================================================
 """
 import importlib
@@ -56,6 +59,12 @@ COMMANDS = {
                         '[work in progress] bar charts of model-cost results'),
     'model-cost-versions': ('ecco_insitu.model_comparison.cost_versions', 'cli',
                             '[work in progress] cost per datum with weight factors removed, by type/year/...'),
+    'profile-analyze': ('ecco_insitu.diagnostics.profile_analyses.compute', 'cli',
+                        'profile analyses: T/S profiles, cost distributions, saved as NetCDF + figures'),
+    'profile-compare': ('ecco_insitu.diagnostics.profile_analyses.compare', 'cli',
+                        'profile analysis comparison: overlay figures from multiple analyze outputs'),
+    'profile-report':  ('ecco_insitu.diagnostics.profile_analyses.report', 'cli',
+                        'profile analysis report: compile figures into HTML + PDF'),
 }
 
 

@@ -3,4 +3,6 @@
 Checks: :mod:`~ecco_insitu.diagnostics.check_run_files`, :mod:`~ecco_insitu.diagnostics.check_ecco_arrays`,
 :mod:`~ecco_insitu.diagnostics.check_run_qc`. Reports: :mod:`~ecco_insitu.diagnostics.report_profile_counts`,
 :mod:`~ecco_insitu.diagnostics.report_costs`, :mod:`~ecco_insitu.diagnostics.report_spatial_scaling`.
+Profile analysis suite: :mod:`~ecco_insitu.diagnostics.profile_analyses` (``profile-analyze``,
+``profile-compare``, ``profile-report``).
 """
