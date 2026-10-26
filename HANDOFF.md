@@ -87,7 +87,18 @@ ourselves.**
      neighbouring WOD value used in the interpolation is flagged, or the cast's profile flag is bad.
   4. Write `prof_Tflag`; step 06 applies it unchanged.
   5. Recompute the XBT cost: does it drop toward v4r6's 0.17?
-  - **Status:** started 2026-10-26 (see the cost_comparisons/wod_flags/ folder once it exists).
+  - **Status: test done 2026-10-26.** Full results: `cost_comparisons/wod_flags/README.md`.
+    - **v4r6's `prof_Tflag` is WOD's standard-level flag:** it matches the 2018 CSV export at 100% of
+      5.35 M levels.
+    - **WOD 2025 per-year netCDF:** it has observed-level flags only, plus a per-cast profile flag.
+      - **Observed-level flags:** they hit only 3.8 k of our points. Where WOD flags a value, our file
+        usually has none; inferred: UCSD's interpolation drops them.
+      - **Profile flag:** it catches 72% of the v4r6-flagged points we keep.
+    - **XBT 1992–98 cost/datum:** 0.282 → 0.240 with the 2025 profile flag, 0.242 with v4r6's flags
+      copied by cast number, 0.229 with both. v4r6 is 0.188. That closes about half the gap.
+    - **Next:**
+      - find a bulk source of WOD standard-level flags (or use WODselect);
+      - the team decides which flags step 06 applies, and for which sources.
 
 **Lessons (the user was embarrassed by overstated claims sent to the team and UCSD):** verify every claim
 against the data before it goes in a report or message; label inference vs confirmed; don't summarize
