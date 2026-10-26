@@ -27,7 +27,6 @@ unless stated.
 | KI-4 | `csv_to_nc.py` (~189) | WOD CSV temperature is labeled "potential temperature", but WOD CSV T is normally **in-situ**. Step 05 trusts the label and wouldn't convert. | Only files made by `csv-to-nc`; not `Interp_Profiles` | decision needed | yes, for those files |
 | KI-5 | `csv_to_nc.py` (~347, 435, 791) | `unique_years` is shared across all CSV files, and each file's last year is written after the file loop, so a multi-file conversion may lose years. | Only `csv-to-nc` | open | yes, for those files |
 | KI-6 | `steps/step06.py` (~119) | The legal T range is −2 to 40 °C. Seawater near freezing can be about −2.1 °C, so the coldest polar water may be zero-weighted. | Yes, possibly a few polar points | decision needed | yes |
-| KI-7 | `steps/step06.py` | Dates with day `00` (`YYYYMM00`; year and month known) fail the date test: **18,374 CTD profiles, 1.6% of CTD, all 1992–2002** (up to 7.3% in 2002). Option noted: assign mid-month (the 15th). | Yes; they are zero-weighted, as they always have been | decision needed (mid-month option recorded, not implemented) | yes |
 | KI-8 | `steps/step06.py` (~220) | A profile at exactly (0° N, 0° E) is rejected as a missing position. The code's own comment questions this. | Possibly a handful | decision needed | yes |
 | KI-9 | `steps/step09.py` | "Closest to `closest_time`" is measured on the HHMMSS number, not in seconds (11:59:59 vs 12:00:00 counts as 4041 apart), so among near-noon profiles the choice can be slightly off. The `method` setting is ignored. | Yes, the choice among same-day duplicates | decision needed | yes (which duplicate is kept) |
 | KI-10 | `steps/step01.py` (~266, 272) | Any unexpected error is caught and reported as "you may have no valid data", so a real bug looks like an empty file (shown as "no data left" in `run_summary.txt`). | Only if a bug occurs | open | no |
@@ -44,6 +43,8 @@ unless stated.
 | KI-16 | `climatology/prebake.py`, `diagnostics/common.py` | Read the settings when imported, so a broken `config/local.yaml` stops them importing (other modules report it when run). | open |
 | KI-17 | `diagnostics/costs_report.py` (`to_pdf`) | The PDF step uses a macOS-only Chrome path. | open |
 
-## Fixed
+## Fixed or decided
 
-(none yet)
+| ID | Where | Outcome |
+|---|---|---|
+| KI-7 | `steps/step06.py` | **Decided 2026-10-25: drop them** (no change needed). The 18,374 CTD profiles (1.6% of CTD, 1992–2002) with day `00` fail the date test and are removed by step 07; none is in the output. They aren't in the old v4r6 dataset (only 2 positional near-matches, neither the same cast), the day was already 00 in UCSD's earlier delivery, and 98% sit on a regular grid at 15–33°N, 110–127°E (South China Sea / Luzon Strait / Taiwan): a month-resolution source in WOD, not a processing bug. The mid-month option was considered and not adopted. |
