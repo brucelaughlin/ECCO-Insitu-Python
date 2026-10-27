@@ -25,6 +25,7 @@ import html as _html
 import json
 import mimetypes
 import re
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -183,6 +184,44 @@ standard level, three options: 0&nbsp;=&nbsp;never extend (safe); 1&nbsp;=&nbsp;
 values). <em>Decision: formal sign-off on option&nbsp;2 needed.</em></p>
 """
 
+_CHAIN_NOTES_HTML = """
+<p><strong>WOD quality flags (why we apply them and where they come from)</strong></p>
+
+<p>Every profile from a WOD source (CTD, XBT, Argo/PFL, glider, mooring, MEOP) is accompanied
+in the World Ocean Database by per-value quality flags at WOD&rsquo;s standard depths. A flag
+of 1 means &ldquo;good&rdquo;; anything else means the value should be treated as bad and
+given zero weight in the cost function.</p>
+
+<p>The input files supplied by UCSD (<code>Interp_Profiles</code>) do not carry these flags.
+UCSD confirmed that their processing pipeline never included them: the
+<code>prof_Tflag</code> / <code>prof_Sflag</code> arrays in their files are either absent
+or all zeros. Before this fix, values that WOD flags as bad had full weight in the cost
+function.</p>
+
+<p>The evidence that this was wrong: the v4r6 optimization dataset <em>does</em> contain
+WOD standard-level flags in <code>prof_Tflag</code>. Comparing those flags against WOD&rsquo;s
+own 2018 export for XBT 1992&ndash;1998 gives a <strong>99.4% match</strong>. The most
+likely explanation is that the original MATLAB processing chain fetched the flags directly
+from WOD &mdash; exactly what this Python chain now does.</p>
+
+<p>The chain fetches WOD standard-level flag files from NCEI
+(<code>paths.wod_std_dir</code>; yearly <code>.gz</code> archives, read with
+<code>wodpy</code>), matches each profile by WOD cast number, maps the flags to the
+chain&rsquo;s 97 depth levels, and writes them as <code>prof_Tflag</code> /
+<code>prof_Sflag</code> before step 01. Step 06 then zeroes any value whose flag is
+non-zero.</p>
+
+<p><strong>Effect:</strong> XBT T normalized misfit (misfit/&sigma;)&sup2; fell from
+0.943 (20261021, no flags) to <strong>0.808</strong> (20261027, flags applied), matching
+v4r6&rsquo;s 0.802. The remaining gap between our <code>final</code> cost and v4r6&rsquo;s
+is explained by &gamma; and sf differences, not data quality.</p>
+
+<p style="margin-top:0.5em;font-size:0.9em;color:#666">
+See also: <code>known_issues.md</code> KI-18 (fix), KI-19 (flag extension decision),
+<code>src/ecco_insitu/wod_flags.py</code>, <code>cost_comparisons/wod_flags/</code>.
+</p>
+"""
+
 # ── CSS ────────────────────────────────────────────────────────────────────────
 
 _CSS_FLAT = """
@@ -282,6 +321,41 @@ code { background: #f0f0f0; padding: 1px 3px; border-radius: 2px; font-size: 0.9
 
 
 # ── utility functions ──────────────────────────────────────────────────────────
+
+def _make_site(html, out_dir):
+    """Copy figures to out_dir/figures/ and rewrite src to relative paths.
+
+    Produces a directory that can be served as a static site (GitHub Pages,
+    any HTTP host) without base64 bloat.  Output filename: index.html.
+    """
+    fig_dir = Path(out_dir) / 'figures'
+    fig_dir.mkdir(exist_ok=True)
+
+    def _replace(m):
+        path = Path(m.group(1))
+        # derive a flat descriptive name from the path structure:
+        # .../CTD_WOD/figures/vs_clim/01_mean_T_S_depth.png
+        #  -> CTD_WOD_vs_clim_01_mean_T_S_depth.png
+        parts = path.parts
+        try:
+            fig_idx = next(i for i, p in enumerate(parts) if p == 'figures')
+            source = parts[fig_idx - 1] if fig_idx > 0 else ''
+            # cost_type is one dir below 'figures', stem one below that
+            inner = parts[fig_idx + 1:-1]   # dirs between 'figures' and filename
+            name_parts = [p for p in [source] + list(inner) + [path.stem] if p]
+            new_name = '_'.join(name_parts) + path.suffix
+        except (StopIteration, IndexError):
+            new_name = path.name
+        dest = fig_dir / new_name
+        if not dest.exists():
+            try:
+                shutil.copy2(path, dest)
+            except OSError:
+                return m.group(0)
+        return f'src="figures/{new_name}"'
+
+    return re.sub(r'src="file://([^"]+)"', _replace, html)
+
 
 def _embed_images(html):
     """Replace file:// image src attributes with inline base64 data URIs."""
@@ -552,7 +626,7 @@ document.querySelectorAll('.an-tab').forEach(btn =>
 );
 
 // header toggle links
-['side-gloss', 'side-meta', 'side-issues'].forEach(id => {{
+['side-gloss', 'side-meta', 'side-issues', 'side-chain-notes'].forEach(id => {{
   const btn = document.getElementById('toggle-' + id);
   if (btn) btn.addEventListener('click', () => {{
     const el = document.getElementById(id);
@@ -580,6 +654,8 @@ render();
   <span class="hdr-link" id="toggle-side-meta">Metadata</span>
   <span style="color:#ccc">|</span>
   <span class="hdr-link" id="toggle-side-issues">Issues</span>
+  <span style="color:#ccc">|</span>
+  <span class="hdr-link" id="toggle-side-chain-notes">WOD flags</span>
   <span style="color:#ccc;font-size:0.8em;margin-left:0.5em">← → cycle sources &nbsp; ↑ ↓ cycle analyses</span>
 </div>
 <div id="nav">
@@ -605,6 +681,10 @@ render();
     <details id="side-issues" style="margin-top:0.6em">
       <summary>Outstanding issues</summary>
       <div style="margin-top:0.5em;line-height:1.5;color:#444">{_ISSUES_HTML}</div>
+    </details>
+    <details id="side-chain-notes" style="margin-top:0.6em">
+      <summary>Chain notes — WOD flags</summary>
+      <div style="margin-top:0.5em;line-height:1.5;color:#444">{_CHAIN_NOTES_HTML}</div>
     </details>
   </div>
 </div>
@@ -708,7 +788,8 @@ def _compile_flat_report(input_dirs, out_dir, title=None):
 
 # ── public API ─────────────────────────────────────────────────────────────────
 
-def compile_report(input_dirs, out_dir, title=None, flat=False, portable=False):
+def compile_report(input_dirs, out_dir, title=None, flat=False, portable=False,
+                   site=False):
     """Compile profile-analyze/compare figures into a report.
 
     Parameters
@@ -719,8 +800,12 @@ def compile_report(input_dirs, out_dir, title=None, flat=False, portable=False):
     flat : bool
         Generate a sequential flat HTML + PDF instead of the interactive HTML.
     portable : bool
-        Embed all images as base64 data URIs so the HTML is self-contained
-        (no external file dependencies).  Increases file size ~33%.
+        Embed all images as base64 data URIs → single self-contained file
+        (~23 MB for a full 7-source report).  Output: report_portable.html.
+    site : bool
+        Copy figures to out_dir/figures/ with relative paths and write
+        index.html.  The resulting directory is ready for GitHub Pages or
+        any static HTTP host.
     """
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -739,12 +824,23 @@ def compile_report(input_dirs, out_dir, title=None, flat=False, portable=False):
         print('Embedding images…', end=' ', flush=True)
         html = _embed_images(html)
         print('done.')
+        out_name = 'report_portable.html'
+    elif site:
+        print('Copying figures for static site…', end=' ', flush=True)
+        html = _make_site(html, out_dir)
+        print('done.')
+        out_name = 'index.html'
+    else:
+        out_name = 'report.html'
 
-    out_name = 'report_portable.html' if portable else 'report.html'
     html_path = out_dir / out_name
     html_path.write_text(html, encoding='utf-8')
     size_mb = html_path.stat().st_size / 1e6
     print(f'HTML: {html_path}  ({size_mb:.1f} MB)')
+    if site:
+        n_figs = len(list((out_dir / 'figures').glob('*.png')))
+        print(f'      + figures/ ({n_figs} PNG files)')
+        print(f'      Ready for GitHub Pages — commit out_dir as a docs/ subfolder.')
     return out_dir
 
 
@@ -759,7 +855,11 @@ def cli(argv=None):
     p.add_argument('--flat', action='store_true',
                    help='Generate sequential flat HTML + PDF instead of interactive HTML')
     p.add_argument('--portable', action='store_true',
-                   help='Embed all images as base64 data URIs — self-contained file, '
-                        'no external dependencies (output: report_portable.html, ~23 MB)')
+                   help='Embed all images as base64 data URIs — single self-contained '
+                        'file (~23 MB); output: report_portable.html')
+    p.add_argument('--site', action='store_true',
+                   help='Copy figures to <out>/figures/ and write index.html with '
+                        'relative paths — ready for GitHub Pages or any static host')
     a = p.parse_args(argv)
-    compile_report(a.inputs, a.out, a.title, flat=a.flat, portable=a.portable)
+    compile_report(a.inputs, a.out, a.title, flat=a.flat, portable=a.portable,
+                   site=a.site)
