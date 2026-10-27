@@ -55,6 +55,8 @@ COMMANDS = {
     'csv-to-nc': ('ecco_insitu.csv_to_nc', 'cli', 'convert WOD CSV exports to NetCDF'),
     'mds-to-nc': ('ecco_insitu.model_comparison.mds_to_nc', 'cli',
                   '[work in progress] model equivalents (*.equi.data) to NetCDF'),
+    'monthly-estim': ('ecco_insitu.model_comparison.monthly_estim', 'cli',
+                      '[work in progress] approximate prof_Vestim from monthly-mean model fields'),
     'model-cost': ('ecco_insitu.model_comparison.cost', 'cli',
                    '[work in progress] offline profile cost as ECCO v4r6 cost_profiles.F'),
     'model-cost-bars': ('ecco_insitu.model_comparison.cost_bars', 'cli',
