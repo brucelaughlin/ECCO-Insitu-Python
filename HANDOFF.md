@@ -104,7 +104,7 @@ ourselves.**
         the gap.
     - **Next:**
       - download STD files for all years and sources, write `prof_Tflag`/`prof_Sflag` in a chain step;
-    - **DONE (2026-10-27): the WOD flags chain step** (commit 85f8dcd).
+    - **DONE (2026-10-27): the WOD flags chain step** (commit 2768878).
       - **Code:** `src/ecco_insitu/wod_flags.py`, `ecco-insitu wod-flags [--download|--build]`.
       - **Settings:** `chain.apply_wod_flags: true` and `paths.wod_std_dir` (= `wod_std/` in
         `local.yaml`).
