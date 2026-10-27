@@ -50,7 +50,22 @@ Every push is tested automatically on GitHub (`.github/workflows/`; see the docs
      ecco-insitu climatology              # check the setup
      ```
    If the climatology is missing or unusable, a run stops before processing and says so.
-3. **Check your input files** (optional; the chain does this anyway):
+3. **Get WOD's quality flags** (`chain.apply_wod_flags`, on by default). The input files carry no
+   quality flags, so the chain adds the World Ocean Database's own per-level flags to every WOD
+   profile, matched by cast number, as the original MATLAB chain had them. Set `paths.wod_std_dir`, then:
+   ```bash
+   ecco-insitu wod-flags --download     # WOD's standard-level files, ~2 GB for 1992 on
+   ecco-insitu wod-flags --build        # index them once (needs wodpy, installed with the package)
+   ecco-insitu wod-flags                # check the setup
+   ```
+   If they are missing, a run stops before processing and says so.
+   **Pending approval:** values deeper than a cast's deepest WOD standard level get a flag only if the
+   cast's last 2 WOD levels are both flagged (`chain.wod_flags_extend_levels: 2`; 1 or 0 are the
+   alternatives). See [`docs/known_issues.md`](docs/known_issues.md), KI-19.
+   **Decided by the user, to be confirmed by the team:** XBT values deeper than 2900 m are excluded
+   (step 06 code 12, `chain.xbt_max_depth: 2900`; KI-21). This removes 10 questionable values at
+   3000 m from two ships in 1994–95, and keeps the deep Mediterranean XBTs.
+4. **Check your input files** (optional; the chain does this anyway):
    ```bash
    ecco-insitu validate /path/to/inputs
    ```
@@ -297,6 +312,25 @@ ecco-insitu climatology --prebake  # optional: pre-baked copies per input depth 
 ```
 
 The chain uses only the pre-baked files that were made from the current climatology.
+
+### WOD quality flags
+
+Before step 01, the chain adds WOD's per-level quality flags (`prof_Tflag`, `prof_Sflag`) to the
+profiles from the World Ocean Database (`WOD-<code>//<cast>` in `prof_descr`); step 06 test 2 zeroes
+the weight wherever a flag is > 0. The flags come from WOD's standard-level files
+(`WOD/YEARLY/<dataset>/STD/` at NCEI), the same flags the original MATLAB chain used. See
+`src/ecco_insitu/wod_flags.py` for the matching and depth rules, and `chain.apply_wod_flags` to turn it off.
+
+> **Decision pending approval (KI-19):** values beyond a cast's WOD standard levels (deeper than the
+> deepest, or shallower than the shallowest) have no WOD flag. With `chain.wod_flags_extend_levels: 2`
+> (the default), such a value takes the nearest level's flag only if the cast's 2 WOD levels at that end
+> are both flagged. Use `1` to extend whenever the end level is flagged, or `0` never to extend. It
+> affects at most 0.09% of any source's values.
+
+```bash
+ecco-insitu wod-flags --download   # into paths.wod_std_dir/<dataset>/
+ecco-insitu wod-flags --build      # into paths.wod_std_dir/index/
+```
 
 ### Required support files
 

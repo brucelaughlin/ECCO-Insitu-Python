@@ -21,11 +21,30 @@ since those changes need the regression reference regenerated on purpose
   - the `ecco_insitu` package (`src/` layout, `pip install -e .`) and the `ecco-insitu` command;
   - API documentation (Sphinx, `docs/sphinx/`).
 
+- **Science:** WOD quality flags (`src/ecco_insitu/wod_flags.py`, `ecco-insitu wod-flags`,
+  `chain.apply_wod_flags`, `paths.wod_std_dir`). Before step 01, the chain adds WOD's per-level flags
+  (`prof_Tflag`, `prof_Sflag`, from WOD's standard-level files at NCEI, matched by WOD cast number) to
+  every WOD profile, and step 06 test 2 zeroes the flagged values, as in the original MATLAB chain. The
+  input files carry no flags, so before this, values WOD flags as bad had full weight; this was
+  the main cause of the higher XBT cost in the 20261021 run. New dependency: `wodpy`.
+- **Science, pending approval (KI-19):** `chain.wod_flags_extend_levels` (default 2). A value beyond a
+  cast's WOD standard levels takes the nearest level's flag only if the cast's last 2 levels at that
+  end are both flagged (1 = whenever the end level is flagged; 0 = never). At most 0.09% of a
+  source's values.
+
+- **Science, decided by the user, to be confirmed by the team (KI-21):** step 06 code 12,
+  `chain.xbt_max_depth` (default 2900 m). XBT values deeper than the limit get zero weight. It removes
+  10 questionable values at 3000 m (two ships, 1994–95) and nothing else.
+
+
 ### Added (work in progress)
 - `src/ecco_insitu/model_comparison/` (`docs/model_comparison.md`): `ecco-insitu mds-to-nc` (model
   equivalents `.equi.data` → NetCDF, bit-identical to MITprof_gcm2nc.m on v4r6 iter47),
   `ecco-insitu model-cost` (offline cost as ECCO v4r6 `cost_profiles.F`) and `model-cost-bars`.
   Monthly means → `prof_Vestim` is planned.
+- `ecco-insitu model-cost` also reports the anomaly cost with the spatial scaling factor and γ
+  removed, and writes `cost_breakdown.csv` (by variable, file, year, latitude band, depth band);
+  `ecco-insitu model-cost-versions` plots it. The model's own cost ("final") is unchanged.
 
 ### Changed
 - Every NetCDF file the chain writes (yearly, step 11, step 13) has the global attribute
@@ -44,6 +63,8 @@ since those changes need the regression reference regenerated on purpose
 - Recorded in `docs/known_issues.md` (KI-1 to KI-17), not yet fixed.
 
 ### Fixed
+- `check-qc`: the interpolation-displacement check built an iPROF × iPROF array (nonsense counts,
+  out of memory on large files; KI-20).
 - `build_woa23_climatology` called `step06.calculate_potential_T`, which is in step05.
 - Changing the climatology could silently keep using pre-baked files made from the old one.
 

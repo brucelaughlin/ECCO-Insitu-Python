@@ -13,6 +13,7 @@ settings accepts ``--config FILE`` and ``--set key=value``.
 ``optimize``                the step 13 packing program, with all its options
 ``validate``                check input files (or a climatology) against the contract
 ``climatology``             check / build (``--build``) / pre-bake (``--prebake``) the climatology
+``wod-flags``               check / download (``--download``) / index (``--build``) the WOD quality flags
 ``config``                  print the merged settings
 ``check-files``             diagnostics: run output complete and consistent
 ``check-arrays``            diagnostics: step 13 files correct
@@ -24,6 +25,10 @@ settings accepts ``--config FILE`` and ``--set key=value``.
 ``mds-to-nc``               *work in progress:* model equivalents to NetCDF
 ``model-cost``              *work in progress:* offline profile cost (ECCO v4r6)
 ``model-cost-bars``         *work in progress:* cost bar charts
+``model-cost-versions``     *work in progress:* cost with gamma / spatial scaling removed
+``profile-analyze``         T/S profiles and cost distributions per obs class (NetCDF + figures)
+``profile-compare``         overlay comparison of multiple profile-analyze outputs
+``profile-report``          compile profile-analyze/compare figures into HTML + PDF
 ==========================  =============================================================
 """
 import importlib
@@ -39,6 +44,7 @@ COMMANDS = {
     'optimize': ('ecco_insitu.packing', 'cli', 'the step 13 packing program, all options'),
     'validate': ('ecco_insitu.validate', 'cli', 'check input files or a climatology against the contract'),
     'climatology': ('ecco_insitu.climatology.setup', 'cli', 'check / --build / --prebake the climatology'),
+    'wod-flags': ('ecco_insitu.wod_flags', 'cli', 'check / --download / --build the WOD quality-flag files'),
     'config': ('ecco_insitu.config', 'cli', 'print the merged settings'),
     'check-files': ('ecco_insitu.diagnostics.check_run_files', 'cli', 'diagnostics: run output complete'),
     'check-arrays': ('ecco_insitu.diagnostics.check_ecco_arrays', 'cli', 'diagnostics: step 13 files correct'),
@@ -49,10 +55,20 @@ COMMANDS = {
     'csv-to-nc': ('ecco_insitu.csv_to_nc', 'cli', 'convert WOD CSV exports to NetCDF'),
     'mds-to-nc': ('ecco_insitu.model_comparison.mds_to_nc', 'cli',
                   '[work in progress] model equivalents (*.equi.data) to NetCDF'),
+    'monthly-estim': ('ecco_insitu.model_comparison.monthly_estim', 'cli',
+                      '[work in progress] approximate prof_Vestim from monthly-mean model fields'),
     'model-cost': ('ecco_insitu.model_comparison.cost', 'cli',
                    '[work in progress] offline profile cost as ECCO v4r6 cost_profiles.F'),
     'model-cost-bars': ('ecco_insitu.model_comparison.cost_bars', 'cli',
                         '[work in progress] bar charts of model-cost results'),
+    'model-cost-versions': ('ecco_insitu.model_comparison.cost_versions', 'cli',
+                            '[work in progress] cost per datum with weight factors removed, by type/year/...'),
+    'profile-analyze': ('ecco_insitu.diagnostics.profile_analyses.compute', 'cli',
+                        'profile analyses: T/S profiles, cost distributions, saved as NetCDF + figures'),
+    'profile-compare': ('ecco_insitu.diagnostics.profile_analyses.compare', 'cli',
+                        'profile analysis comparison: overlay figures from multiple analyze outputs'),
+    'profile-report':  ('ecco_insitu.diagnostics.profile_analyses.report', 'cli',
+                        'profile analysis report: compile figures into HTML + PDF'),
 }
 
 

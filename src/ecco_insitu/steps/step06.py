@@ -23,6 +23,8 @@ code  test (a point fails if ...)
 10    single-point cost vs. climatology: (V - Vclim)**2 * weight >= 100
 11    likely bad conductivity cell (salinity only, but it zeroes T and S): the median over the
       levels below 50 m of "S < 30" is true, or below 250 m of "S < 34" (whole profile)
+12    XBT value deeper than ``chain.xbt_max_depth`` (``WOD-XBT//`` in ``prof_descr``; DECISION
+      PENDING APPROVAL, KI-21; null = no limit)
 ====  ==============================================================================
 
 The weight here is still 1 / sigma**2 (gamma is applied later, in step 10), so the cost tests
@@ -45,7 +47,7 @@ import datetime
 
 
 def update_zero_weight_points_on_prepared_profiles(MITprof_ds, profile_var_key_set, exclude_high_latitude_profiles_from_clim_cost, dubious_clim_lat_threshold,
-                                                    clim_cost_qc_with_high_lat_sigma=True):
+                                                    clim_cost_qc_with_high_lat_sigma=True, xbt_max_depth=None):
     """Zero the weights of points that fail the QC tests (codes 1-11, see the module docstring).
 
     Parameters
@@ -62,6 +64,8 @@ def update_zero_weight_points_on_prepared_profiles(MITprof_ds, profile_var_key_s
     clim_cost_qc_with_high_lat_sigma : bool
         Still apply codes 9 and 10 poleward of the threshold to profiles with a high-latitude
         sigma (``prof_Vuncertainty_source`` 1 or 2) (``chain.clim_cost_qc_with_high_lat_sigma``).
+    xbt_max_depth : float or None
+        Code 12: zero XBT values deeper than this (m); None for no limit (``chain.xbt_max_depth``).
 
     Returns
     -------
@@ -111,6 +115,7 @@ def update_zero_weight_points_on_prepared_profiles(MITprof_ds, profile_var_key_s
         'high avg cost of whole prof vs. climatology',
         'high cost of a particular value vs. climatology',
         'test of likely bad conductivity cell',
+        'XBT value deeper than xbt_max_depth',
         ]
 
     zero_criteria_codes = np.arange(1, len(criteria_names) + 1)
@@ -278,6 +283,20 @@ def update_zero_weight_points_on_prepared_profiles(MITprof_ds, profile_var_key_s
                         MITprof_ds[f'{prof_key}weight_code'] = xr.where(bool_mask_da, MITprof_ds[f'{prof_key}weight_code'] + 2**(zero_criteria_code - 1), MITprof_ds[f'{prof_key}weight_code'])
 
 
+                if zero_criteria_code == 12: # XBT values deeper than xbt_max_depth (KI-21)
+                    if xbt_max_depth is None or 'prof_descr' not in MITprof_ds:
+                        bool_mask_da = xr.zeros_like(MITprof_ds[prof_key], dtype=bool)
+                    else:
+                        descr = MITprof_ds['prof_descr'].values
+                        is_xbt = np.array([(s.decode(errors='replace') if isinstance(s, bytes) else str(s)).strip().startswith('WOD-XBT//')
+                                           for s in descr])
+                        deep = np.asarray(MITprof_ds['prof_depth'].values, float) > float(xbt_max_depth)
+                        bool_mask_da = MITprof_ds[prof_key].copy(deep=False, data=is_xbt[:, None] & deep[None, :])
+                        print(f"  code 12: {int(is_xbt.sum())} XBT profiles; values deeper than {xbt_max_depth} m zeroed: "
+                              f"{int((bool_mask_da.data & MITprof_ds[prof_key].notnull().data).sum())}")
+                    MITprof_ds[f'{prof_key}weight'] = xr.where(bool_mask_da, 0, MITprof_ds[f'{prof_key}weight'])
+                    MITprof_ds[f'{prof_key}weight_code'] = xr.where(bool_mask_da, MITprof_ds[f'{prof_key}weight_code'] + 2**(zero_criteria_code - 1), MITprof_ds[f'{prof_key}weight_code'])
+
                 if zero_criteria_code == 11: # test for possible bad conductivity cell.
                     if prof_key == 'prof_S':
                         if len(MITprof_ds[prof_key].shape) > 1:
@@ -347,10 +366,10 @@ def update_zero_weight_points_on_prepared_profiles(MITprof_ds, profile_var_key_s
 
 
 def main(MITprof_ds, profile_var_key_set, exclude_high_latitude_profiles_from_clim_cost, dubious_clim_lat_threshold,
-         clim_cost_qc_with_high_lat_sigma=True):
+         clim_cost_qc_with_high_lat_sigma=True, xbt_max_depth=None):
     """Run step 06; see :func:`update_zero_weight_points_on_prepared_profiles`."""
     MITprof_ds = update_zero_weight_points_on_prepared_profiles(MITprof_ds, profile_var_key_set, exclude_high_latitude_profiles_from_clim_cost, dubious_clim_lat_threshold,
-                                                                clim_cost_qc_with_high_lat_sigma)
+                                                                clim_cost_qc_with_high_lat_sigma, xbt_max_depth)
     return MITprof_ds
     
 

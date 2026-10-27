@@ -35,24 +35,25 @@ All commands
 
 ``ecco-insitu <command> --help`` shows each command's options.
 
-=====================  =====================================================================
-``run``                the whole chain (steps 01–13)
-``steps``              steps 01–10 only (:mod:`ecco_insitu.pipeline`)
-``scale``              step 11, spatial scaling, on a run folder
-``compact``            step 12, compaction of one file
-``pack``               step 13, the model-ready files
-``optimize``           the step 13 packing program with all its options (:mod:`ecco_insitu.packing`)
-``validate``           check input files, or a climatology, against the contract
-``climatology``        check / ``--build`` / ``--prebake`` the climatology
-``config``             print the merged settings
-``check-files``        is a run complete and well-formed?
-``check-arrays``       are the step 13 files a faithful repacking?
-``check-qc``           slower scientific checks
-``report-counts``      profile counts report
-``report-costs``       cost report
-``report-scaling``     step 11 figures
-``csv-to-nc``          convert WOD CSV exports to NetCDF
-``mds-to-nc``          *work in progress:* model equivalents (``.equi.data``) to NetCDF
-``model-cost``         *work in progress:* offline profile cost, as ECCO v4r6
-``model-cost-bars``    *work in progress:* cost bar charts
-=====================  =====================================================================
+=======================  =====================================================================
+``run``                  the whole chain (steps 01–13)
+``steps``                steps 01–10 only (:mod:`ecco_insitu.pipeline`)
+``scale``                step 11, spatial scaling, on a run folder
+``compact``              step 12, compaction of one file
+``pack``                 step 13, the model-ready files
+``optimize``             the step 13 packing program with all its options (:mod:`ecco_insitu.packing`)
+``validate``             check input files, or a climatology, against the contract
+``climatology``          check / ``--build`` / ``--prebake`` the climatology
+``config``               print the merged settings
+``check-files``          is a run complete and well-formed?
+``check-arrays``         are the step 13 files a faithful repacking?
+``check-qc``             slower scientific checks
+``report-counts``        profile counts report
+``report-costs``         cost report
+``report-scaling``       step 11 figures
+``csv-to-nc``            convert WOD CSV exports to NetCDF
+``mds-to-nc``            *work in progress:* model equivalents (``.equi.data``) to NetCDF
+``model-cost``           *work in progress:* offline profile cost, as ECCO v4r6
+``model-cost-bars``      *work in progress:* cost bar charts
+``model-cost-versions``  *work in progress:* cost with γ / spatial scaling removed, by type, year, ...
+=======================  =====================================================================

@@ -54,6 +54,9 @@ paths:
     prof_S: null
   # geodesic bin centers (ecco-insitu report-scaling)
   geodesic_bin_csv: null
+  # WOD standard-level files and their index, for chain.apply_wod_flags (ecco-insitu wod-flags
+  # --download, then --build; about 2 GB for 1992 on)
+  wod_std_dir: null
 
 # -------------------------------------------------------------------------------------
 # Where a run reads and writes ('ecco-insitu run' and the diagnostics)
@@ -84,6 +87,17 @@ chain:
   # step 01: 1 = place profiles on wet grid points only, 0 = on all points
   wet_or_all: 1
 
+  # WOD quality flags (before step 01; step 06 test 2 applies them): add WOD's per-level flags
+  # (prof_Tflag, prof_Sflag) to profiles from the World Ocean Database, matched by WOD cast
+  # number, as the original MATLAB chain had them. The input files carry no flags, so without this
+  # values that WOD flags as bad keep full weight. Needs paths.wod_std_dir (see src/ecco_insitu/wod_flags.py).
+  apply_wod_flags: true
+  # !!! DECISION PENDING APPROVAL (docs/known_issues.md, KI-19) !!!
+  # Values deeper than a cast's deepest WOD standard level (or shallower than its shallowest) get no
+  # WOD flag. Flag them (with the nearest level's flag) only if the cast's last N WOD levels at that
+  # end are ALL flagged:  2 = proposed default;  1 = whenever the end level is flagged;  0 = never.
+  wod_flags_extend_levels: 2
+
   # step 04: uncertainties and weights
   # keep weights that are already zero in the input file
   respect_existing_zero_weights: false
@@ -108,6 +122,10 @@ chain:
   dubious_clim_lat_threshold: 60
   # ... except for profiles that have a high-latitude sigma (Arctic file or southern constant)
   clim_cost_qc_with_high_lat_sigma: true
+  # step 06 code 12. !!! DECISION PENDING APPROVAL (docs/known_issues.md, KI-21) !!!
+  # Zero XBT values (WOD-XBT in prof_descr) deeper than this (m); null = no limit. 2900 removes the
+  # 10 questionable XBT values at 3000 m (12 casts from two ships, 1994-95) and nothing else.
+  xbt_max_depth: 2900
 
   # step 08: true = trim trailing depth levels with no data in the whole file;
   # false = keep the full input depth grid (empty levels get zero weight)
