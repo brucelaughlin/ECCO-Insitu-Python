@@ -21,6 +21,13 @@ since those changes need the regression reference regenerated on purpose
   - the `ecco_insitu` package (`src/` layout, `pip install -e .`) and the `ecco-insitu` command;
   - API documentation (Sphinx, `docs/sphinx/`).
 
+- **Science:** WOD quality flags (`src/ecco_insitu/wod_flags.py`, `ecco-insitu wod-flags`,
+  `chain.apply_wod_flags`, `paths.wod_std_dir`). Before step 01, the chain adds WOD's per-level flags
+  (`prof_Tflag`, `prof_Sflag`, from WOD's standard-level files at NCEI, matched by WOD cast number) to
+  every WOD profile, and step 06 test 2 zeroes the flagged values, as in the original MATLAB chain. The
+  input files carry no flags, so before this, values WOD flags as bad had full weight; this was
+  the main cause of the higher XBT cost in the 20261021 run. New dependency: `wodpy`.
+
 ### Added (work in progress)
 - `src/ecco_insitu/model_comparison/` (`docs/model_comparison.md`): `ecco-insitu mds-to-nc` (model
   equivalents `.equi.data` → NetCDF, bit-identical to MITprof_gcm2nc.m on v4r6 iter47),

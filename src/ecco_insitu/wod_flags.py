@@ -48,10 +48,12 @@ from pathlib import Path
 import numpy as np
 
 BASE = 'https://www.ncei.noaa.gov/data/oceans/woa/WOD/YEARLY'
-#: WOD datasets searched, by the instrument code in ``prof_descr`` (``WOD-<code>//``). Unknown codes
-#: search all datasets.
+#: WOD datasets searched.
 DATASETS = ('XBT', 'CTD', 'OSD', 'MRB', 'GLD')
-CODE_TO_DATASETS = {'XBT': ('XBT',), 'CTD': ('CTD',), 'OSD': ('OSD',), 'XCTD': ('CTD', 'XBT', 'OSD'),
+#: The datasets searched first, by the instrument code in ``prof_descr`` (``WOD-<code>//``); the rest of
+#: ``DATASETS`` is searched after them, since a cast can sit in another dataset than its code says (e.g.
+#: some 'CTD' casts of 1995 are in WOD's OSD files).
+CODE_TO_DATASETS = {'XBT': ('XBT',), 'CTD': ('CTD', 'OSD'), 'OSD': ('OSD', 'CTD'), 'XCTD': ('CTD', 'XBT', 'OSD'),
                     'STD': ('OSD', 'CTD'), 'MRB': ('MRB',), 'GLD': ('GLD',)}
 FIRST_YEAR = 1992
 _CAST = re.compile(r'^WOD-([A-Z]+)//(\d+)')
@@ -215,8 +217,8 @@ def _load_index(wod_std_dir, dataset, year, _cache={}):
 def flags_for(descr, yyyymmdd, depth, wod_std_dir, variables=('prof_T', 'prof_S')):
     """WOD flags (iPROF x iDEPTH, int16) for each variable, and counts for the log.
 
-    Each profile is looked up in the datasets for its instrument code, in its year and the years
-    either side (a date can move across New Year when the chain normalizes it)."""
+    Each profile is looked up in the datasets for its instrument code first, then in the others, in its
+    year and the years either side (a date can move across New Year when the chain normalizes it)."""
     codes, casts = cast_numbers(descr)
     years = (np.asarray(yyyymmdd, float) // 10000).astype(int)
     depth = np.asarray(depth, float)
@@ -227,7 +229,8 @@ def flags_for(descr, yyyymmdd, depth, wod_std_dir, variables=('prof_T', 'prof_S'
         groups.setdefault((codes[k], years[k]), []).append(k)
     for (code, y), ks in groups.items():
         ks = np.array(ks)
-        for ds in CODE_TO_DATASETS.get(code, DATASETS):
+        first = CODE_TO_DATASETS.get(code, ())
+        for ds in first + tuple(d for d in DATASETS if d not in first):
             for yy in (y, y - 1, y + 1):
                 todo = ks[~found[ks]]
                 if len(todo) == 0:
@@ -274,12 +277,16 @@ def apply(MITprof_ds, wod_std_dir, variables=('prof_T', 'prof_S')):
         print(f"  WOD flags: {v}: {n_flag:,} of {int(has.sum()):,} values flagged ({100 * n_flag / max(int(has.sum()), 1):.2f}%)")
         if f'{v}flag' in MITprof_ds:   # keep any flag the input already has
             flags[v] = np.maximum(flags[v], np.nan_to_num(MITprof_ds[f'{v}flag'].values, nan=0).astype(np.int16))
-        MITprof_ds[f'{v}flag'] = xr.DataArray(flags[v], dims=dims, attrs={
-            'long_name': f'WOD quality flag of {v[5:]} (0 = accepted)',
+        MITprof_ds[f'{v}flag'] = xr.DataArray(flags[v], dims=dims, attrs=flag_attrs(v))
+    return MITprof_ds
+
+
+def flag_attrs(v):
+    """Attributes of ``prof_Vflag`` (the chain's steps drop attributes, so the pipeline sets them again)."""
+    return {'long_name': f'WOD quality flag of {v[5:]} (0 = accepted)',
             'comment': ("WOD standard-level per-level flag (WOD/YEARLY/<dataset>/STD), by WOD cast number; "
                         "on depths between WOD standard levels, the larger of the two levels' flags. "
-                        "Step 06 zeroes the weight where > 0.")})
-    return MITprof_ds
+                        "Step 06 zeroes the weight where > 0.")}
 
 
 # --------------------------------------------------------------------------------------------------

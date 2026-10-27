@@ -30,6 +30,8 @@ paths:
     prof_T: profile_data/high_latitude_uncertanties/expected_rmse_from_woa23_and_aotd_potential_temperature_ease2_100km.nc
     prof_S: profile_data/high_latitude_uncertanties/expected_rmse_from_woa23_and_aotd_salinity_ease2_100km.nc
   geodesic_bin_csv: sample_data/ecco-insitu/sweet_gdrive/geodesic/10242_bin_locations.csv
+  # WOD standard-level flag files (ecco-insitu wod-flags --download, then --build)
+  wod_std_dir: wod_std
 
 run:
   input_dir: profile_data/Interp_Profiles

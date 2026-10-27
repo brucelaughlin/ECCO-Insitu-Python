@@ -54,6 +54,9 @@ paths:
     prof_S: null
   # geodesic bin centers (ecco-insitu report-scaling)
   geodesic_bin_csv: null
+  # WOD standard-level files and their index, for chain.apply_wod_flags (ecco-insitu wod-flags
+  # --download, then --build; about 2 GB for 1992 on)
+  wod_std_dir: null
 
 # -------------------------------------------------------------------------------------
 # Where a run reads and writes ('ecco-insitu run' and the diagnostics)
@@ -83,6 +86,12 @@ chain:
   llcN: 90
   # step 01: 1 = place profiles on wet grid points only, 0 = on all points
   wet_or_all: 1
+
+  # WOD quality flags (before step 01; step 06 test 2 applies them): add WOD's per-level flags
+  # (prof_Tflag, prof_Sflag) to profiles from the World Ocean Database, matched by WOD cast
+  # number, as the original MATLAB chain had them. The input files carry no flags, so without this
+  # values that WOD flags as bad keep full weight. Needs paths.wod_std_dir (see src/ecco_insitu/wod_flags.py).
+  apply_wod_flags: true
 
   # step 04: uncertainties and weights
   # keep weights that are already zero in the input file

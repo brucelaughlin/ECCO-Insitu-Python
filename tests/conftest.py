@@ -11,14 +11,16 @@ if SRC not in sys.path:
 def _chain_data_available():
     """True if the settings (config/local.yaml or $ECCO_INSITU_CONFIG) point at the chain's data."""
     try:
-        from ecco_insitu import config
-        config.check_required_paths(config.load())
-        return True
+        from ecco_insitu import config, wod_flags
+        cfg = config.load()
+        config.check_required_paths(cfg)
+        return not (cfg['chain']['apply_wod_flags'] and wod_flags.check(cfg['paths']['wod_std_dir']))
     except Exception:
         return False
 
 
-#: Whether the full chain can run here (grid, climatology, sigma files found via the settings).
+#: Whether the full chain can run here (grid, climatology, sigma files, and the WOD flag index if
+#: chain.apply_wod_flags, found via the settings).
 #: Tests that run the chain are skipped when it is False (e.g. on GitHub's servers).
 CHAIN_DATA = _chain_data_available()
 

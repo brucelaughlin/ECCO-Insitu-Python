@@ -192,4 +192,17 @@ The full write-up for readers (what was done, why, and how it was checked, in pl
   - `reference/` holds the model's Fortran cost code and the unused xmitgcm draft.
   - Re-checked after the move: still identical to the MATLAB, and the same cost numbers.
   - 100 tests.
-
+- 2026-10-27, **WOD quality flags added to the chain** (the user's request)
+  - **What it does:** `src/ecco_insitu/wod_flags.py` and `ecco-insitu wod-flags` (`--download`,
+    `--build`) add WOD's standard-level per-level flags (`prof_Tflag`, `prof_Sflag`) to every WOD
+    profile before step 01, matched by WOD cast number. Step 06 test 2 applies them.
+  - **Settings:** `chain.apply_wod_flags` (default true) and `paths.wod_std_dir`.
+  - **Why:** the input files carry no flags, and the missing flags were the main cause of the higher
+    XBT cost of 20261021 vs v4r6 (see `cost_comparisons/wod_flags/`).
+  - **Check on XBT 1992–98:** the flags agree with v4r6's at 99.4% of levels, and the module's mask is
+    identical to the test mapping.
+  - **Coverage:** XBT, CTD/OSD and MRB casts are all found. Gliders: 99.66% found; the misses are in
+    2021–2024, probably casts added to WOD after its last standard-level update (not checked).
+  - **Regression reference regenerated deliberately:** only the WOD-flagged points changed (weights,
+    weight codes, costs), plus the new `prof_Tflag` / `prof_Sflag`.
+  - 118 tests.

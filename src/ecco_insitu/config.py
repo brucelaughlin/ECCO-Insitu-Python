@@ -56,7 +56,7 @@ PATH_KEYS = (
     'paths.grid_dir', 'paths.sphere_bin_dir', 'paths.climatology_file', 'paths.prebaked_clim_dir',
     'paths.sigma_files.prof_T', 'paths.sigma_files.prof_S',
     'paths.high_lat_sigma_files.prof_T', 'paths.high_lat_sigma_files.prof_S',
-    'paths.geodesic_bin_csv',
+    'paths.geodesic_bin_csv', 'paths.wod_std_dir',
     'run.input_dir', 'run.output_base', 'run.log_dir',
     'diagnostics.report_dir', 'diagnostics.cost_report_dir',
 )

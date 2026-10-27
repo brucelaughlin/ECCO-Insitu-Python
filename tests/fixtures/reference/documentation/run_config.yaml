@@ -15,6 +15,7 @@ paths:
     prof_T: /Users/brucel/ecco/yip/profile_data/high_latitude_uncertanties/expected_rmse_from_woa23_and_aotd_potential_temperature_ease2_100km.nc
     prof_S: /Users/brucel/ecco/yip/profile_data/high_latitude_uncertanties/expected_rmse_from_woa23_and_aotd_salinity_ease2_100km.nc
   geodesic_bin_csv: /Users/brucel/ecco/yip/sample_data/ecco-insitu/sweet_gdrive/geodesic/10242_bin_locations.csv
+  wod_std_dir: /Users/brucel/ecco/yip/wod_std
 run:
   input_dir: /Users/brucel/ecco/yip/ECCO-Insitu-Python/tests/fixtures/inputs
   output_base: /Users/brucel/ecco/yip/processed_by_NCEI_profile_data/profile_files_NCEI_processed
@@ -30,6 +31,7 @@ chain:
   - prof_S
   llcN: 90
   wet_or_all: 1
+  apply_wod_flags: true
   respect_existing_zero_weights: false
   new_floor:
     prof_T: 0

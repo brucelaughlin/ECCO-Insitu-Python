@@ -70,6 +70,14 @@ Climatology
    climatology.prebake
    clim_interp
 
+WOD quality flags
+-----------------
+
+.. autosummary::
+   :toctree: generated
+
+   wod_flags
+
 Uncertainties and utilities
 ---------------------------
 

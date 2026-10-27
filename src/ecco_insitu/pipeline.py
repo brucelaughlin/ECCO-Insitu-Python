@@ -18,7 +18,10 @@ controller prints it as one block, so the log reads file by file. The diagnostic
 blocks (``step: N`` and ``valid prof_T profile count ...`` lines), so their format is fixed.
 
 Before step 01, out-of-range dates and times (``SS = 60``, ``24:00:00``, day 31 of a 30-day month)
-are rolled forward to valid ones. After step 10, ``prof_Tcost`` / ``prof_Scost`` (misfit to the
+are rolled forward to valid ones, and, with ``chain.apply_wod_flags``, WOD's per-level quality flags are
+added to profiles from the World Ocean Database (``prof_Tflag``, ``prof_Sflag``; see
+:mod:`ecco_insitu.wod_flags`), for step 06 test 2. The WOD flag files are checked before any file is
+processed. After step 10, ``prof_Tcost`` / ``prof_Scost`` (misfit to the
 climatology times the weight) are added, longitudes are wrapped to -180..180, and ``prof_T`` is
 labeled potential temperature, with step 05's decision in its ``T_conversion`` attribute.
 
@@ -51,6 +54,7 @@ from ecco_insitu.log import get_logger
 import netCDF4
 import ecco_insitu.tools as tools
 import ecco_insitu.validate as validate_inputs
+import ecco_insitu.wod_flags as wod_flags
 import ecco_insitu.steps.step01 as step01
 import ecco_insitu.steps.step02 as step02
 import ecco_insitu.steps.step03 as step03
@@ -312,6 +316,10 @@ def _process_one_file(args):
                             dims=MITprof_ds[name].dims,
                             attrs=MITprof_ds[name].attrs)
 
+            # WOD quality flags (chain.apply_wod_flags): prof_Tflag / prof_Sflag, applied by step 06 test 2.
+            if ncei_function_kwargs.get('wod_std_dir'):
+                MITprof_ds = wod_flags.apply(MITprof_ds, ncei_function_kwargs['wod_std_dir'], sorted(profile_var_key_set))
+
             valid_data_dict_list = [tools.collect_valid_data_stats(MITprof_ds, profile_var_key_set)]
 
             if not MITprof_ds or MITprof_ds.sizes['iPROF'] == 0:
@@ -420,6 +428,10 @@ def _process_one_file(args):
                     if t_conversion:          # how step05 decided (metadata, climatology check, default, forced)
                         MITprof_ds['prof_T'].attrs['T_conversion'] = t_conversion
 
+                for prof_key in profile_var_key_set:   # also dropped by the steps
+                    if f'{prof_key}flag' in MITprof_ds and ncei_function_kwargs.get('wod_std_dir'):
+                        MITprof_ds[f'{prof_key}flag'].attrs.update(wod_flags.flag_attrs(prof_key))
+
                 # Chain-internal only (steps 01 and 10 use it to look up grid-cell values); not saved.
                 MITprof_ds = MITprof_ds.drop_vars('profile_flattened_monotonic_grid_indices', errors='ignore')
 
@@ -522,6 +534,19 @@ def NCEI_pipeline(dest_dir, input_dir, n_workers=None, cfg=None):
 
     prebaked_clim_paths = check_climatologies(climatology_file, prebaked_clim_dir)
 
+    # WOD quality flags: check the downloaded files and their index before processing anything.
+    wod_std_dir = paths['wod_std_dir'] if ch['apply_wod_flags'] else None
+    if ch['apply_wod_flags']:
+        problems = wod_flags.check(wod_std_dir)
+        if problems:
+            raise config_loader.ConfigError(
+                'chain.apply_wod_flags is true, but the WOD flag files are not ready:\n  ' + '\n  '.join(problems) +
+                '\nSet paths.wod_std_dir, then: ecco-insitu wod-flags --download; ecco-insitu wod-flags --build '
+                '(or set chain.apply_wod_flags: false to run without WOD flags)')
+        log.info(f"[NCEI] WOD quality flags: {wod_std_dir}")
+    else:
+        log.info("[NCEI] WOD quality flags: not applied (chain.apply_wod_flags is false)")
+
     # Check every input file before processing any (see docs/input_contract.md): files that
     # can't be processed are skipped with the reason; warnings are listed but don't stop a file.
     input_profile_files, input_reports = _validate_input_files(input_profile_files, input_dir, profile_var_key_set)
@@ -549,6 +574,7 @@ def NCEI_pipeline(dest_dir, input_dir, n_workers=None, cfg=None):
         distance_tolerance=distance_tolerance,
         closest_time=closest_time,
         method=method,
+        wod_std_dir=wod_std_dir,
     )
 
     n_total = len(input_profile_files)

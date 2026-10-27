@@ -13,6 +13,7 @@ settings accepts ``--config FILE`` and ``--set key=value``.
 ``optimize``                the step 13 packing program, with all its options
 ``validate``                check input files (or a climatology) against the contract
 ``climatology``             check / build (``--build``) / pre-bake (``--prebake``) the climatology
+``wod-flags``               check / download (``--download``) / index (``--build``) the WOD quality flags
 ``config``                  print the merged settings
 ``check-files``             diagnostics: run output complete and consistent
 ``check-arrays``            diagnostics: step 13 files correct
@@ -43,6 +44,7 @@ COMMANDS = {
     'optimize': ('ecco_insitu.packing', 'cli', 'the step 13 packing program, all options'),
     'validate': ('ecco_insitu.validate', 'cli', 'check input files or a climatology against the contract'),
     'climatology': ('ecco_insitu.climatology.setup', 'cli', 'check / --build / --prebake the climatology'),
+    'wod-flags': ('ecco_insitu.wod_flags', 'cli', 'check / --download / --build the WOD quality-flag files'),
     'config': ('ecco_insitu.config', 'cli', 'print the merged settings'),
     'check-files': ('ecco_insitu.diagnostics.check_run_files', 'cli', 'diagnostics: run output complete'),
     'check-arrays': ('ecco_insitu.diagnostics.check_ecco_arrays', 'cli', 'diagnostics: step 13 files correct'),
