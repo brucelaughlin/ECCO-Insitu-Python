@@ -395,20 +395,17 @@ def _build_interactive_html(data, metas, title):
         if data[src][ct][an]
     }
 
-    # tab buttons
+    # tab buttons — no inline onclick; event listeners wired in JS
     src_tabs = ''.join(
-        f'<button class="tab src-tab" data-src="{_html.escape(s)}"'
-        f' onclick="selectSource({json.dumps(s)})">{_html.escape(s)}</button>'
+        f'<button class="tab src-tab" data-src="{_html.escape(s)}">{_html.escape(s)}</button>'
         for s in sources
     )
     cost_tabs = ''.join(
-        f'<button class="tab cost-tab" data-ct="{_html.escape(ct)}"'
-        f' onclick="selectCost({json.dumps(ct)})">{_html.escape(ct)}</button>'
+        f'<button class="tab cost-tab" data-ct="{_html.escape(ct)}">{_html.escape(ct)}</button>'
         for ct in all_cost_types
     )
     an_tabs = ''.join(
         f'<button class="tab an-tab" data-an="{an}"'
-        f' onclick="selectAnalysis({json.dumps(an)})"'
         f' title="{_html.escape(_ANALYSIS_TITLES.get(an, an))}">{an}</button>'
         for an in all_analyses
     )
@@ -507,6 +504,27 @@ document.addEventListener('keydown', e => {{
   }}
 }});
 
+// wire up tab event listeners
+document.querySelectorAll('.src-tab').forEach(btn =>
+  btn.addEventListener('click', () => selectSource(btn.dataset.src))
+);
+document.querySelectorAll('.cost-tab').forEach(btn =>
+  btn.addEventListener('click', () => selectCost(btn.dataset.ct))
+);
+document.querySelectorAll('.an-tab').forEach(btn =>
+  btn.addEventListener('click', () => selectAnalysis(btn.dataset.an))
+);
+
+// header toggle links
+['side-gloss', 'side-meta', 'side-issues'].forEach(id => {{
+  const btn = document.getElementById('toggle-' + id);
+  if (btn) btn.addEventListener('click', () => {{
+    const el = document.getElementById(id);
+    el.open = !el.open;
+    document.getElementById('side').scrollTop = 0;
+  }});
+}});
+
 curAn = firstExisting(curSource, curCost);
 render();
 """
@@ -521,11 +539,11 @@ render();
 <body>
 <div id="header">
   <h1>{_html.escape(title)}</h1>
-  <span class="hdr-link" onclick="document.getElementById('side-gloss').open=!document.getElementById('side-gloss').open;document.getElementById('side').scrollTop=0">Terminology</span>
+  <span class="hdr-link" id="toggle-side-gloss">Terminology</span>
   <span style="color:#ccc">|</span>
-  <span class="hdr-link" onclick="document.getElementById('side-meta').open=!document.getElementById('side-meta').open;document.getElementById('side').scrollTop=0">Metadata</span>
+  <span class="hdr-link" id="toggle-side-meta">Metadata</span>
   <span style="color:#ccc">|</span>
-  <span class="hdr-link" onclick="document.getElementById('side-issues').open=!document.getElementById('side-issues').open;document.getElementById('side').scrollTop=0">Issues</span>
+  <span class="hdr-link" id="toggle-side-issues">Issues</span>
   <span style="color:#ccc;font-size:0.8em;margin-left:0.5em">← → cycle sources &nbsp; ↑ ↓ cycle analyses</span>
 </div>
 <div id="nav">
