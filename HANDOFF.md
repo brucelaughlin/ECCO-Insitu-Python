@@ -104,6 +104,30 @@ ourselves.**
         the gap.
     - **Next:**
       - download STD files for all years and sources, write `prof_Tflag`/`prof_Sflag` in a chain step;
+    - **IN PROGRESS (2026-10-26, evening): the WOD flags chain step.**
+      - **The user's request:** apply WOD's flags to every WOD source (XBT, CTD/OSD, MRB, GLD; T and S),
+        matching the old chain.
+      - **Downloads:** done, 1.9 GB, `/Users/brucel/ecco/yip/wod_std/{xbt,ctd,osd,mrb,gld}/<DS>S<year>.gz`,
+        1992–2026.
+      - **wodpy:** installed in `ecco_env1`.
+      - **Written so far:** `src/ecco_insitu/wod_flags.py` (download, index build, check, `apply()`,
+        `cli`). It has NOT been run or tested, and is NOT wired in.
+      - **Remaining:**
+        1. Add `paths.wod_std_dir` (null) and `chain.apply_wod_flags` (false) to `defaults.yaml`, and
+           `wod_std_dir: wod_std` to `config/local.yaml` and `local.example.yaml`.
+        2. Register the `wod-flags` command in `cli.py` and add `wodpy` to the dependencies in
+           `pyproject.toml`.
+        3. In `pipeline.py`, call `wod_flags.apply` before step 01, or as part of step 06 test 2. Run
+           `check()` up front when the flags are enabled, and pass `wod_std_dir` through the
+           function arguments.
+        4. Run `ecco-insitu wod-flags --build` to make `wod_std/index/`.
+        5. Check: the `std` mask from `cost_comparisons/wod_flags/std_flags_to_ours.py`; for XBT
+           1992–98 the flags should hit about 283 k weighted points, 2.28%.
+        6. Unit test of `level_flags` and `cast_numbers`; docs (`input_contract`, `known_issues`,
+           sphinx api, CHANGELOG).
+        7. A full chain run, then `model-cost`.
+      - **Note:** the old chain applied only per-level flags, not WOD's whole-cast flag. Our module
+        does the same.
       - the team decides which flags step 06 applies, and for which sources.
 
 **Lessons (the user was embarrassed by overstated claims sent to the team and UCSD):** verify every claim
