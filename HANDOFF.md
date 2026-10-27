@@ -8,7 +8,54 @@
 **Production hardening (finished 2026-10-23):** plan and progress in `docs/production_hardening_plan.md`;
 the full plain-language write-up, for explaining it to others, is `docs/production_hardening_report.md`.
 **Last commit:** see `git log`
-**Date:** 2026-10-27 (the "Active work (2026-10-27)" section below is the newest; read it first)
+**Date:** 2026-10-27 (the "Active work (2026-10-27 session 2)" section below is the newest; read it first)
+
+## Active work (2026-10-27 session 2): run verified, code committed, ready to merge
+
+### Status
+- **Full chain run `profile_files_NCEI_processed_20261027_011321/` is done and clean.**
+  - `check-files`: PASS (241 files; no-bin warnings for MEOP/Argo/XBT near coasts are known benign).
+  - `check-qc`: 0 errors, 721 warnings (all expected: high-cost outliers, T-only XBT/MEOP,
+    ITP Arctic lon displacement).
+  - 241 files written; 1 persistent failure (ITP L2 2008 — pre-existing, "NoneType not iterable");
+    4 files had all profiles removed by step 07.
+- **Model cost via `mds-to-nc` won't work for 20261027 ecco_arrays** — the MDS `.equi.data`
+  files are indexed to the 20261021 profile counts; the 20261027 run has slightly different
+  per-file counts (e.g. CTD_WOD_001: 213158 vs 213301), so `mds-to-nc` fails with an index
+  overflow.
+- **Approximate model equivalents via `monthly-estim` ARE being generated** (started 2026-10-27
+  session 2) using `ecco_v4r6_model_data/{THETA,SALT}_mon_mean` (816 MDS files covering the
+  full v4r6 iter47 period) against the 20261027 `ecco_arrays/`. Output:
+  `ecco_v4r6_model_data/model_equivalents_20261027/netCDF/`. These are approximate
+  (monthly-mean state vs the model's daily actual state), suitable for offline cost comparisons.
+  **The estimated cost numbers from the wod_flags README remain valid as a cross-check:**
+  XBT T 0.222 → **0.181** (v4r6 0.170); CTD T 0.050 → 0.048; CTD S 0.063 → 0.060.
+- **Profile analysis framework committed** (`d591c24`): `profile-analyze`, `profile-compare`,
+  `profile-report`; 9 unit tests pass.
+- **monthly-estim WIP committed** (`eea81d7`): blocked on monthly-mean fields from the team.
+- **All 123 tests pass.** Branch is clean.
+
+### Next
+1. **Wait for `monthly-estim` to finish**, then run `model-cost`:
+   ```
+   ecco-insitu model-cost \
+     --data .../profile_files_NCEI_processed_20261027_011321/ecco_arrays \
+     --estim .../model_equivalents_20261027/netCDF \
+     --out cost_comparisons/r20261027_cost_breakdown
+   ```
+   Then `model-cost-versions` to compare v4r6, 20261021, 20261027.
+2. **Profile analysis on the 20261027 run** (vs-climatology, and vs-model once model-cost is done):
+   ```
+   ecco-insitu profile-analyze \
+     --run .../profile_files_NCEI_processed_20261027_011321 \
+     --out ~/ecco/yip/insitu_reports/profile_analyses_20261027 \
+     --sources CTD_WOD GLD_WOD ITP MEOP MRB_WOD PFL XBT_WOD
+   ```
+3. **Merge `model-cost-slicing` → `main`** via a PR on the fork — 123 tests pass, ready.
+4. **Team decisions still pending:**
+   - KI-19: `chain.wod_flags_extend_levels` default (proposed 2);
+   - whether to drop XBT values below ~2000 m;
+   - XBT no_flag treatment (earlier finding: keep).
 
 ## Active work (2026-10-27): WOD flags in the chain, and the deep XBT values (for every agent)
 
