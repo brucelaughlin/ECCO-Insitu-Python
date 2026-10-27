@@ -20,8 +20,10 @@ Structure of the interactive document:
   - Outstanding issues and run metadata in collapsible side-panel sections
 """
 import argparse
+import base64
 import html as _html
 import json
+import mimetypes
 import re
 import subprocess
 import sys
@@ -156,7 +158,12 @@ All use the same misfit (V&nbsp;&minus;&nbsp;V<sub>ref</sub>)&sup2;; they differ
 <table class="gloss-table">
 <tr><th>Label</th><th>Meaning</th></tr>
 <tr><td><code>vs_clim</code></td><td>Profile vs WOA-style climatology; always available</td></tr>
-<tr><td><code>vs_model</code></td><td>Profile vs ECCO model state interpolated to obs location/depth</td></tr>
+<tr><td><code>vs_model</code></td>
+    <td>Profile vs approximate model equivalent V<sub>estim</sub>, derived from
+        <strong>monthly-mean</strong> v4r6 THETA/SALT fields interpolated to obs location
+        and depth. This is an approximation — monthly means cannot capture
+        sub-monthly variability, so V<sub>estim</sub> carries a smoothing error on top of
+        the true model&ndash;obs misfit. See run metadata for the source directory.</td></tr>
 <tr><td><code>vs_run_b</code></td><td>Profile vs a second model run (run-A vs run-B comparison)</td></tr>
 </table>
 """
@@ -276,6 +283,20 @@ code { background: #f0f0f0; padding: 1px 3px; border-radius: 2px; font-size: 0.9
 
 # ── utility functions ──────────────────────────────────────────────────────────
 
+def _embed_images(html):
+    """Replace file:// image src attributes with inline base64 data URIs."""
+    def _replace(m):
+        path = m.group(1)
+        try:
+            data = Path(path).read_bytes()
+            mime = mimetypes.guess_type(path)[0] or 'image/png'
+            b64 = base64.b64encode(data).decode()
+            return f'src="data:{mime};base64,{b64}"'
+        except OSError:
+            return m.group(0)
+    return re.sub(r'src="file://([^"]+)"', _replace, html)
+
+
 def _scan_figures(fig_dir):
     """Collect figure paths grouped by analysis number."""
     if not Path(fig_dir).is_dir():
@@ -373,12 +394,27 @@ def _build_interactive_html(data, metas, title):
                 )
                 panels.append(f'<div class="panel" id="{_html.escape(pid)}">{figs_html}</div>')
 
-    # metadata for side panel
+    # metadata for side panel — with a note when estim_dir is set
     meta_sections = ''
     for inp_name, meta in metas:
-        meta_sections += f'<p style="font-weight:600;margin-bottom:0.3em">{_html.escape(inp_name)}</p>'
+        meta_sections += (
+            f'<p style="font-weight:600;margin-bottom:0.3em">'
+            f'{_html.escape(inp_name)}</p>'
+        )
         if meta:
             meta_sections += _meta_table(meta)
+        estim = meta.get('estim_dir') if meta else None
+        if estim and estim != 'None':
+            meta_sections += (
+                '<p style="margin-top:0.5em;padding:0.4em 0.6em;'
+                'background:#fff8e8;border:1px solid #e8d080;border-radius:3px;'
+                'font-size:0.85em;line-height:1.4">'
+                '<strong>Note on vs_model:</strong> V<sub>estim</sub> was computed '
+                'from <strong>monthly-mean</strong> v4r6 THETA/SALT fields '
+                '(not exact model state). Sub-monthly variability is not captured; '
+                'treat vs_model costs as approximate.'
+                '</p>'
+            )
 
     # pass descriptions to JS as JSON
     desc_data = {
@@ -672,7 +708,7 @@ def _compile_flat_report(input_dirs, out_dir, title=None):
 
 # ── public API ─────────────────────────────────────────────────────────────────
 
-def compile_report(input_dirs, out_dir, title=None, flat=False):
+def compile_report(input_dirs, out_dir, title=None, flat=False, portable=False):
     """Compile profile-analyze/compare figures into a report.
 
     Parameters
@@ -681,8 +717,10 @@ def compile_report(input_dirs, out_dir, title=None, flat=False):
     out_dir : str or Path
     title : str, optional
     flat : bool
-        If True generate a sequential flat HTML + PDF instead of the default
-        interactive single-page HTML.
+        Generate a sequential flat HTML + PDF instead of the interactive HTML.
+    portable : bool
+        Embed all images as base64 data URIs so the HTML is self-contained
+        (no external file dependencies).  Increases file size ~33%.
     """
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -697,9 +735,16 @@ def compile_report(input_dirs, out_dir, title=None, flat=False):
     data, metas = _collect_data(input_dirs)
     html = _build_interactive_html(data, metas, title)
 
-    html_path = out_dir / 'report.html'
+    if portable:
+        print('Embedding images…', end=' ', flush=True)
+        html = _embed_images(html)
+        print('done.')
+
+    out_name = 'report_portable.html' if portable else 'report.html'
+    html_path = out_dir / out_name
     html_path.write_text(html, encoding='utf-8')
-    print(f'HTML: {html_path}')
+    size_mb = html_path.stat().st_size / 1e6
+    print(f'HTML: {html_path}  ({size_mb:.1f} MB)')
     return out_dir
 
 
@@ -713,5 +758,8 @@ def cli(argv=None):
     p.add_argument('--title', default=None, help='Report title (default: auto)')
     p.add_argument('--flat', action='store_true',
                    help='Generate sequential flat HTML + PDF instead of interactive HTML')
+    p.add_argument('--portable', action='store_true',
+                   help='Embed all images as base64 data URIs — self-contained file, '
+                        'no external dependencies (output: report_portable.html, ~23 MB)')
     a = p.parse_args(argv)
-    compile_report(a.inputs, a.out, a.title, flat=a.flat)
+    compile_report(a.inputs, a.out, a.title, flat=a.flat, portable=a.portable)
