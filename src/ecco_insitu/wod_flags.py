@@ -20,8 +20,33 @@ files at 99.4% of levels; the rest are WOD's updates since 2018.
 
 **Depths:** the input files are on their own depth grid, not WOD's standard levels. A depth gets the
 flag of the WOD standard level at the same depth, or else the larger of the flags of the two WOD levels
-around it (a value interpolated from a flagged level is flagged). Depths outside the cast's levels
-get 0. Only the per-level flags are used, as in the original chain; WOD's whole-cast flag is not.
+around it (a value interpolated from a flagged level is flagged). Only the per-level flags are used, as
+in the original chain; WOD's whole-cast flag is not.
+
+**Depths beyond the cast's WOD levels (DECISION PENDING APPROVAL; setting** ``chain.wod_flags_extend_levels``
+**).** Our files can have values deeper than the cast's deepest WOD standard level (or shallower than its
+shallowest), where WOD gives no flag. The original chain never had such values (it worked on WOD's
+standard levels). Rule: such a value is flagged if the cast's ``N`` end levels nearest to it (the deepest
+``N`` for a deeper value, the shallowest ``N`` for a shallower one) are **all** flagged; it then gets the
+flag of the nearest level. Otherwise it gets 0.
+
+- ``N = 2`` (default, proposed): a flagged bottom is extended only when it is more than one bad level.
+- ``N = 1``: extend whenever the last level is flagged.
+- ``N = 0``: never extend (values beyond the cast's WOD levels are unflagged).
+
+Effect on Interp_Profiles (counted 2026-10-27), extra values flagged beyond ``N = 0``:
+
+==========  =================  =================
+source      ``N = 1``          ``N = 2``
+==========  =================  =================
+XBT T       8,452 (0.023%)     7,127 (0.020%)
+CTD T / S   8,650 / 12,412     5,628 / 7,499
+MRB T / S   6,786 / 5,481      4,201 / 2,231 (S: 0.093%)
+GLD T / S   25,877 / 40,116    17,223 / 26,475
+==========  =================  =================
+
+For comparison, ``N = 0`` already flags 1.1-3.1% of each source's values. See ``docs/known_issues.md``
+(KI-19).
 
 **Setup** (once; see ``paths.wod_std_dir`` and ``chain.apply_wod_flags`` in the settings)::
 
@@ -187,10 +212,15 @@ def cast_numbers(descr):
     return np.array(codes), np.array(casts, np.int64)
 
 
-def level_flags(z_std, f_std, z):
+#: Default for ``chain.wod_flags_extend_levels`` (see the module description; pending approval).
+EXTEND_LEVELS = 2
+
+
+def level_flags(z_std, f_std, z, extend_levels=EXTEND_LEVELS):
     """Flags on depths ``z`` from a cast's standard levels ``z_std`` (ascending) and their flags ``f_std``
     (-1 = no value; those levels are skipped): the flag at the same depth, else the larger of the two
-    levels around it; 0 outside the cast's levels."""
+    levels around it. Outside the cast's levels: the nearest end level's flag if the ``extend_levels``
+    levels at that end are all flagged (0 = never), else 0."""
     ok = f_std >= 0
     zs, fs = z_std[ok], f_std[ok].astype(np.int16)
     out = np.zeros(len(z), np.int16)
@@ -202,6 +232,12 @@ def level_flags(z_std, f_std, z):
     inside = (j >= 1) & (j < len(zs))
     lo, hi = fs[np.clip(j - 1, 0, len(zs) - 1)], fs[jc]
     out = np.where(exact, fs[jc], np.where(inside, np.maximum(lo, hi), 0))
+    n = int(extend_levels)
+    if n > 0 and len(fs) >= n:
+        if (fs[-n:] > 0).all():
+            out = np.where(z > zs[-1] + 1e-6, fs[-1], out)
+        if (fs[:n] > 0).all():
+            out = np.where(z < zs[0] - 1e-6, fs[0], out)
     return out.astype(np.int16)
 
 
@@ -214,7 +250,7 @@ def _load_index(wod_std_dir, dataset, year, _cache={}):
     return _cache[key]
 
 
-def flags_for(descr, yyyymmdd, depth, wod_std_dir, variables=('prof_T', 'prof_S')):
+def flags_for(descr, yyyymmdd, depth, wod_std_dir, variables=('prof_T', 'prof_S'), extend_levels=EXTEND_LEVELS):
     """WOD flags (iPROF x iDEPTH, int16) for each variable, and counts for the log.
 
     Each profile is looked up in the datasets for its instrument code first, then in the others, in its
@@ -248,13 +284,13 @@ def flags_for(descr, yyyymmdd, depth, wod_std_dir, variables=('prof_T', 'prof_S'
                     zs = ix['z'][s].astype(float)
                     for v in variables:
                         if f'{v}flag' in ix:
-                            out[v][k] = level_flags(zs, ix[f'{v}flag'][s], depth)
+                            out[v][k] = level_flags(zs, ix[f'{v}flag'][s], depth, extend_levels)
                 found[todo[hit]] = True
     counts = {'with_cast_number': int((casts > 0).sum()), 'found': int(found.sum())}
     return out, counts
 
 
-def apply(MITprof_ds, wod_std_dir, variables=('prof_T', 'prof_S')):
+def apply(MITprof_ds, wod_std_dir, variables=('prof_T', 'prof_S'), extend_levels=EXTEND_LEVELS):
     """Add ``prof_Vflag`` (WOD's per-level flags on the file's depths) for each variable in the file.
 
     Profiles from outside WOD (no ``WOD-...//<cast>`` in ``prof_descr``) are left without flags (0). If no
@@ -268,7 +304,7 @@ def apply(MITprof_ds, wod_std_dir, variables=('prof_T', 'prof_S')):
     if not any(_CAST.match((s.decode(errors='replace') if isinstance(s, bytes) else str(s)).strip()) for s in descr[:1000]):
         print('  WOD flags: no WOD cast numbers in prof_descr; none added')
         return MITprof_ds
-    flags, c = flags_for(descr, MITprof_ds['prof_YYYYMMDD'].values, MITprof_ds['prof_depth'].values, wod_std_dir, vs)
+    flags, c = flags_for(descr, MITprof_ds['prof_YYYYMMDD'].values, MITprof_ds['prof_depth'].values, wod_std_dir, vs, extend_levels)
     print(f"  WOD flags: {c['found']:,} of {c['with_cast_number']:,} WOD casts found in the WOD standard-level index")
     for v in vs:
         dims = MITprof_ds[v].dims
@@ -277,16 +313,19 @@ def apply(MITprof_ds, wod_std_dir, variables=('prof_T', 'prof_S')):
         print(f"  WOD flags: {v}: {n_flag:,} of {int(has.sum()):,} values flagged ({100 * n_flag / max(int(has.sum()), 1):.2f}%)")
         if f'{v}flag' in MITprof_ds:   # keep any flag the input already has
             flags[v] = np.maximum(flags[v], np.nan_to_num(MITprof_ds[f'{v}flag'].values, nan=0).astype(np.int16))
-        MITprof_ds[f'{v}flag'] = xr.DataArray(flags[v], dims=dims, attrs=flag_attrs(v))
+        MITprof_ds[f'{v}flag'] = xr.DataArray(flags[v], dims=dims, attrs=flag_attrs(v, extend_levels))
     return MITprof_ds
 
 
-def flag_attrs(v):
+def flag_attrs(v, extend_levels=EXTEND_LEVELS):
     """Attributes of ``prof_Vflag`` (the chain's steps drop attributes, so the pipeline sets them again)."""
+    beyond = (f"beyond the cast's WOD levels, the nearest level's flag if the {extend_levels} levels at that end are "
+              f"all flagged, else 0" if extend_levels else "beyond the cast's WOD levels, 0")
     return {'long_name': f'WOD quality flag of {v[5:]} (0 = accepted)',
             'comment': ("WOD standard-level per-level flag (WOD/YEARLY/<dataset>/STD), by WOD cast number; "
-                        "on depths between WOD standard levels, the larger of the two levels' flags. "
-                        "Step 06 zeroes the weight where > 0.")}
+                        "on depths between WOD standard levels, the larger of the two levels' flags; "
+                        f"{beyond}. Step 06 zeroes the weight where > 0."),
+            'wod_flags_extend_levels': int(extend_levels)}
 
 
 # --------------------------------------------------------------------------------------------------

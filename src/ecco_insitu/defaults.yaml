@@ -92,6 +92,11 @@ chain:
   # number, as the original MATLAB chain had them. The input files carry no flags, so without this
   # values that WOD flags as bad keep full weight. Needs paths.wod_std_dir (see src/ecco_insitu/wod_flags.py).
   apply_wod_flags: true
+  # !!! DECISION PENDING APPROVAL (docs/known_issues.md, KI-19) !!!
+  # Values deeper than a cast's deepest WOD standard level (or shallower than its shallowest) get no
+  # WOD flag. Flag them (with the nearest level's flag) only if the cast's last N WOD levels at that
+  # end are ALL flagged:  2 = proposed default;  1 = whenever the end level is flagged;  0 = never.
+  wod_flags_extend_levels: 2
 
   # step 04: uncertainties and weights
   # keep weights that are already zero in the input file

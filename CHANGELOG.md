@@ -27,6 +27,10 @@ since those changes need the regression reference regenerated on purpose
   every WOD profile, and step 06 test 2 zeroes the flagged values, as in the original MATLAB chain. The
   input files carry no flags, so before this, values WOD flags as bad had full weight; this was
   the main cause of the higher XBT cost in the 20261021 run. New dependency: `wodpy`.
+- **Science, pending approval (KI-19):** `chain.wod_flags_extend_levels` (default 2). A value beyond a
+  cast's WOD standard levels takes the nearest level's flag only if the cast's last 2 levels at that
+  end are both flagged (1 = whenever the end level is flagged; 0 = never). At most 0.09% of a
+  source's values.
 
 ### Added (work in progress)
 - `src/ecco_insitu/model_comparison/` (`docs/model_comparison.md`): `ecco-insitu mds-to-nc` (model

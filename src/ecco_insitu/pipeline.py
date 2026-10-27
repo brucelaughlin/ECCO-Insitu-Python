@@ -318,7 +318,8 @@ def _process_one_file(args):
 
             # WOD quality flags (chain.apply_wod_flags): prof_Tflag / prof_Sflag, applied by step 06 test 2.
             if ncei_function_kwargs.get('wod_std_dir'):
-                MITprof_ds = wod_flags.apply(MITprof_ds, ncei_function_kwargs['wod_std_dir'], sorted(profile_var_key_set))
+                MITprof_ds = wod_flags.apply(MITprof_ds, ncei_function_kwargs['wod_std_dir'], sorted(profile_var_key_set),
+                                             ncei_function_kwargs['wod_flags_extend_levels'])
 
             valid_data_dict_list = [tools.collect_valid_data_stats(MITprof_ds, profile_var_key_set)]
 
@@ -430,7 +431,8 @@ def _process_one_file(args):
 
                 for prof_key in profile_var_key_set:   # also dropped by the steps
                     if f'{prof_key}flag' in MITprof_ds and ncei_function_kwargs.get('wod_std_dir'):
-                        MITprof_ds[f'{prof_key}flag'].attrs.update(wod_flags.flag_attrs(prof_key))
+                        MITprof_ds[f'{prof_key}flag'].attrs.update(
+                            wod_flags.flag_attrs(prof_key, ncei_function_kwargs['wod_flags_extend_levels']))
 
                 # Chain-internal only (steps 01 and 10 use it to look up grid-cell values); not saved.
                 MITprof_ds = MITprof_ds.drop_vars('profile_flattened_monotonic_grid_indices', errors='ignore')
@@ -543,7 +545,7 @@ def NCEI_pipeline(dest_dir, input_dir, n_workers=None, cfg=None):
                 'chain.apply_wod_flags is true, but the WOD flag files are not ready:\n  ' + '\n  '.join(problems) +
                 '\nSet paths.wod_std_dir, then: ecco-insitu wod-flags --download; ecco-insitu wod-flags --build '
                 '(or set chain.apply_wod_flags: false to run without WOD flags)')
-        log.info(f"[NCEI] WOD quality flags: {wod_std_dir}")
+        log.info(f"[NCEI] WOD quality flags: {wod_std_dir} (wod_flags_extend_levels = {ch['wod_flags_extend_levels']})")
     else:
         log.info("[NCEI] WOD quality flags: not applied (chain.apply_wod_flags is false)")
 
@@ -575,6 +577,7 @@ def NCEI_pipeline(dest_dir, input_dir, n_workers=None, cfg=None):
         closest_time=closest_time,
         method=method,
         wod_std_dir=wod_std_dir,
+        wod_flags_extend_levels=ch['wod_flags_extend_levels'],
     )
 
     n_total = len(input_profile_files)

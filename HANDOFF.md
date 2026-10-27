@@ -116,6 +116,13 @@ ourselves.**
       - **Tests:** 118 pass; the regression reference was regenerated deliberately.
       - **Estimated cost** (no rerun, `cost_comparisons/wod_flags/cost_all_types_with_flags.txt`): XBT T
         0.222 → 0.181 (v4r6 0.170); CTD S 0.063 → 0.060; Argo unchanged (not WOD).
+      - **Pending the bosses' approval: KI-19, `chain.wod_flags_extend_levels`** (default 2, chosen
+        by the user as option B).
+        - **What it decides:** values beyond a cast's WOD levels take the end level's flag only if the
+          cast's last 2 levels are both flagged; 1 and 0 are the alternatives.
+        - **Size:** at most 0.09% of any source's values.
+        - **Where it's documented:** `docs/known_issues.md`, `README.md`, the `wod_flags.py`
+          docstring and `defaults.yaml`.
       - **Next:**
         - a full chain run (the user's call; long), then ask the team to run the model on it;
         - update `report_20261025` or write a new short report;

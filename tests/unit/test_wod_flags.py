@@ -20,5 +20,26 @@ def test_level_flags():
     assert list(W.level_flags(z_std, f_std, z)) == [0, 0, 0, 3, 3, 3, 3, 0, 0]
 
 
+def test_level_flags_beyond_the_cast():
+    """chain.wod_flags_extend_levels (KI-19): values beyond the cast's levels take the end level's flag only if
+    the last N levels are all flagged."""
+    z_std = np.array([10., 20., 30.]); z = np.array([5., 25., 40.])     # above, inside, below
+    one_bad = np.array([0, 0, 4], np.int8)                             # only the deepest level flagged
+    two_bad = np.array([0, 3, 4], np.int8)                             # the two deepest flagged
+    top_bad = np.array([5, 6, 0], np.int8)                             # the two shallowest flagged
+    assert list(W.level_flags(z_std, one_bad, z, 0)) == [0, 4, 0]
+    assert list(W.level_flags(z_std, one_bad, z, 1)) == [0, 4, 4]
+    assert list(W.level_flags(z_std, one_bad, z, 2)) == [0, 4, 0]
+    assert list(W.level_flags(z_std, two_bad, z, 2)) == [0, 4, 4]
+    assert list(W.level_flags(z_std, top_bad, z, 2)) == [5, 6, 0]
+    assert list(W.level_flags(z_std, top_bad, z, 0)) == [0, 6, 0]
+    assert W.EXTEND_LEVELS == 2                                         # the proposed default
+
+
+def test_default_setting_matches_module():
+    from ecco_insitu import config
+    assert config.load(use_local=False, use_env=False)['chain']['wod_flags_extend_levels'] == W.EXTEND_LEVELS
+
+
 def test_level_flags_no_values():
     assert list(W.level_flags(np.array([0., 10.]), np.array([-1, -1], np.int8), np.array([5.]))) == [0]

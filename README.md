@@ -59,6 +59,9 @@ Every push is tested automatically on GitHub (`.github/workflows/`; see the docs
    ecco-insitu wod-flags                # check the setup
    ```
    If they are missing, a run stops before processing and says so.
+   **Pending approval:** values deeper than a cast's deepest WOD standard level get a flag only if the
+   cast's last 2 WOD levels are both flagged (`chain.wod_flags_extend_levels: 2`; 1 or 0 are the
+   alternatives). See [`docs/known_issues.md`](docs/known_issues.md), KI-19.
 4. **Check your input files** (optional; the chain does this anyway):
    ```bash
    ecco-insitu validate /path/to/inputs
@@ -314,6 +317,12 @@ profiles from the World Ocean Database (`WOD-<code>//<cast>` in `prof_descr`); s
 the weight wherever a flag is > 0. The flags come from WOD's standard-level files
 (`WOD/YEARLY/<dataset>/STD/` at NCEI), the same flags the original MATLAB chain used. See
 `src/ecco_insitu/wod_flags.py` for the matching and depth rules, and `chain.apply_wod_flags` to turn it off.
+
+> **Decision pending approval (KI-19):** values beyond a cast's WOD standard levels (deeper than the
+> deepest, or shallower than the shallowest) have no WOD flag. With `chain.wod_flags_extend_levels: 2`
+> (the default), such a value takes the nearest level's flag only if the cast's 2 WOD levels at that end
+> are both flagged. Use `1` to extend whenever the end level is flagged, or `0` never to extend. It
+> affects at most 0.09% of any source's values.
 
 ```bash
 ecco-insitu wod-flags --download   # into paths.wod_std_dir/<dataset>/
