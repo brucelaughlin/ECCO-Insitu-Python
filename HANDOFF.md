@@ -104,29 +104,23 @@ ourselves.**
         the gap.
     - **Next:**
       - download STD files for all years and sources, write `prof_Tflag`/`prof_Sflag` in a chain step;
-    - **IN PROGRESS (2026-10-26, evening): the WOD flags chain step.**
-      - **The user's request:** apply WOD's flags to every WOD source (XBT, CTD/OSD, MRB, GLD; T and S),
-        matching the old chain.
-      - **Downloads:** done, 1.9 GB, `/Users/brucel/ecco/yip/wod_std/{xbt,ctd,osd,mrb,gld}/<DS>S<year>.gz`,
-        1992–2026.
-      - **wodpy:** installed in `ecco_env1`.
-      - **Written so far:** `src/ecco_insitu/wod_flags.py` (download, index build, check, `apply()`,
-        `cli`). It has NOT been run or tested, and is NOT wired in.
-      - **Remaining:**
-        1. Add `paths.wod_std_dir` (null) and `chain.apply_wod_flags` (false) to `defaults.yaml`, and
-           `wod_std_dir: wod_std` to `config/local.yaml` and `local.example.yaml`.
-        2. Register the `wod-flags` command in `cli.py` and add `wodpy` to the dependencies in
-           `pyproject.toml`.
-        3. In `pipeline.py`, call `wod_flags.apply` before step 01, or as part of step 06 test 2. Run
-           `check()` up front when the flags are enabled, and pass `wod_std_dir` through the
-           function arguments.
-        4. Run `ecco-insitu wod-flags --build` to make `wod_std/index/`.
-        5. Check: the `std` mask from `cost_comparisons/wod_flags/std_flags_to_ours.py`; for XBT
-           1992–98 the flags should hit about 283 k weighted points, 2.28%.
-        6. Unit test of `level_flags` and `cast_numbers`; docs (`input_contract`, `known_issues`,
-           sphinx api, CHANGELOG).
-        7. A full chain run, then `model-cost`.
-      - **Note:** the old chain applied only per-level flags, not WOD's whole-cast flag. Our module
+    - **DONE (2026-10-27): the WOD flags chain step** (commit 85f8dcd).
+      - **Code:** `src/ecco_insitu/wod_flags.py`, `ecco-insitu wod-flags [--download|--build]`.
+      - **Settings:** `chain.apply_wod_flags: true` and `paths.wod_std_dir` (= `wod_std/` in
+        `local.yaml`).
+      - **Data:** files in `/Users/brucel/ecco/yip/wod_std/` (1.9 GB) and the index in
+        `wod_std/index/` (43 MB).
+      - **What it adds:** WOD's per-level T/S flags on all WOD sources, before step 01. Step 06 test 2
+        applies them.
+      - **Coverage:** 100% of XBT, CTD and MRB casts; gliders 99.66% (the misses are 2019–24).
+      - **Tests:** 118 pass; the regression reference was regenerated deliberately.
+      - **Estimated cost** (no rerun, `cost_comparisons/wod_flags/cost_all_types_with_flags.txt`): XBT T
+        0.222 → 0.181 (v4r6 0.170); CTD S 0.063 → 0.060; Argo unchanged (not WOD).
+      - **Next:**
+        - a full chain run (the user's call; long), then ask the team to run the model on it;
+        - update `report_20261025` or write a new short report;
+        - the unrelated untracked `diagnostics/profile_analyses/` (another agent's work) was left
+          uncommitted.
         does the same.
       - the team decides which flags step 06 applies, and for which sources.
 
