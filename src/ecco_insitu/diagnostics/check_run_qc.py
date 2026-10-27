@@ -272,10 +272,11 @@ def check_cross_field(path, verbose=True):
                                         'prof_interp_lon', 'prof_interp_lat')):
         lon  = np.asarray(ds['prof_lon'][:],        dtype=np.float64)
         lat  = np.asarray(ds['prof_lat'][:],        dtype=np.float64)
-        ilon = np.asarray(ds['prof_interp_lon'][:], dtype=np.float64)
-        ilat = np.asarray(ds['prof_interp_lat'][:], dtype=np.float64)
-        dlon = np.abs(lon - ilon)
-        dlon = np.where(dlon > 180, 360 - dlon, dlon)
+        # prof_interp_lon/lat are (iPROF, iINTERP=1): take the first column, or (N,) - (N, 1) would
+        # broadcast to an N x N array (wrong counts, and tens of GB for a large file; KI-20)
+        ilon = np.asarray(ds['prof_interp_lon'][:], dtype=np.float64).reshape(len(lon), -1)[:, 0]
+        ilat = np.asarray(ds['prof_interp_lat'][:], dtype=np.float64).reshape(len(lat), -1)[:, 0]
+        dlon = np.abs(((lon - ilon + 180) % 360) - 180)        # across the dateline too
         dlat = np.abs(lat - ilat)
         n_bad_lon = int((dlon > INTERP_DISP_WARN).sum())
         n_bad_lat = int((dlat > INTERP_DISP_WARN).sum())

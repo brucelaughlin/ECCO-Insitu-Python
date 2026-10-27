@@ -1,6 +1,6 @@
 {
-  "profiles_dir": "/var/folders/j7/pfsk9xjs2x17n21d5h73j1wh0000gq/T/tmpy8t9l7sw/run/yearly",
-  "arrays_dir": "/var/folders/j7/pfsk9xjs2x17n21d5h73j1wh0000gq/T/tmpy8t9l7sw/run/ecco_arrays",
+  "profiles_dir": "/var/folders/j7/pfsk9xjs2x17n21d5h73j1wh0000gq/T/tmp4ac7fopu/run/yearly",
+  "arrays_dir": "/var/folders/j7/pfsk9xjs2x17n21d5h73j1wh0000gq/T/tmp4ac7fopu/run/ecco_arrays",
   "llc": 90,
   "tile": 30,
   "grid_dir": "/Users/brucel/ecco/yip/sample_data/ecco-insitu/sweet_gdrive/grid_llc90",

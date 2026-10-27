@@ -347,7 +347,8 @@ def _process_one_file(args):
                 partial(step06.main, profile_var_key_set=profile_var_key_set,
                         exclude_high_latitude_profiles_from_clim_cost=kw['exclude_high_latitude_profiles_from_clim_cost'],
                         dubious_clim_lat_threshold=kw['dubious_clim_lat_threshold'],
-                        clim_cost_qc_with_high_lat_sigma=kw['clim_cost_qc_with_high_lat_sigma']),
+                        clim_cost_qc_with_high_lat_sigma=kw['clim_cost_qc_with_high_lat_sigma'],
+                        xbt_max_depth=kw['xbt_max_depth']),
                 partial(step07.main, profile_var_key_set=profile_var_key_set),
                 partial(step08.main, profile_var_key_set=profile_var_key_set,
                         remove_extraneous_depth_levels=kw['remove_extraneous_depth_levels']),
@@ -578,6 +579,7 @@ def NCEI_pipeline(dest_dir, input_dir, n_workers=None, cfg=None):
         method=method,
         wod_std_dir=wod_std_dir,
         wod_flags_extend_levels=ch['wod_flags_extend_levels'],
+        xbt_max_depth=ch['xbt_max_depth'],
     )
 
     n_total = len(input_profile_files)

@@ -32,6 +32,11 @@ since those changes need the regression reference regenerated on purpose
   end are both flagged (1 = whenever the end level is flagged; 0 = never). At most 0.09% of a
   source's values.
 
+- **Science, decided by the user, to be confirmed by the team (KI-21):** step 06 code 12,
+  `chain.xbt_max_depth` (default 2900 m). XBT values deeper than the limit get zero weight. It removes
+  10 questionable values at 3000 m (two ships, 1994–95) and nothing else.
+
+
 ### Added (work in progress)
 - `src/ecco_insitu/model_comparison/` (`docs/model_comparison.md`): `ecco-insitu mds-to-nc` (model
   equivalents `.equi.data` → NetCDF, bit-identical to MITprof_gcm2nc.m on v4r6 iter47),
@@ -58,6 +63,8 @@ since those changes need the regression reference regenerated on purpose
 - Recorded in `docs/known_issues.md` (KI-1 to KI-17), not yet fixed.
 
 ### Fixed
+- `check-qc`: the interpolation-displacement check built an iPROF × iPROF array (nonsense counts,
+  out of memory on large files; KI-20).
 - `build_woa23_climatology` called `step06.calculate_potential_T`, which is in step05.
 - Changing the climatology could silently keep using pre-baked files made from the old one.
 

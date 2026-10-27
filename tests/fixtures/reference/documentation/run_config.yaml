@@ -42,6 +42,7 @@ chain:
   exclude_high_latitude_profiles_from_clim_cost: true
   dubious_clim_lat_threshold: 60
   clim_cost_qc_with_high_lat_sigma: true
+  xbt_max_depth: 2900
   remove_extraneous_depth_levels: false
   distance_tolerance: 5000.0
   closest_time: 120000

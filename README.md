@@ -62,6 +62,9 @@ Every push is tested automatically on GitHub (`.github/workflows/`; see the docs
    **Pending approval:** values deeper than a cast's deepest WOD standard level get a flag only if the
    cast's last 2 WOD levels are both flagged (`chain.wod_flags_extend_levels: 2`; 1 or 0 are the
    alternatives). See [`docs/known_issues.md`](docs/known_issues.md), KI-19.
+   **Decided by the user, to be confirmed by the team:** XBT values deeper than 2900 m are excluded
+   (step 06 code 12, `chain.xbt_max_depth: 2900`; KI-21). This removes 10 questionable values at
+   3000 m from two ships in 1994–95, and keeps the deep Mediterranean XBTs.
 4. **Check your input files** (optional; the chain does this anyway):
    ```bash
    ecco-insitu validate /path/to/inputs

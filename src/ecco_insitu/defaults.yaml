@@ -122,6 +122,10 @@ chain:
   dubious_clim_lat_threshold: 60
   # ... except for profiles that have a high-latitude sigma (Arctic file or southern constant)
   clim_cost_qc_with_high_lat_sigma: true
+  # step 06 code 12. !!! DECISION PENDING APPROVAL (docs/known_issues.md, KI-21) !!!
+  # Zero XBT values (WOD-XBT in prof_descr) deeper than this (m); null = no limit. 2900 removes the
+  # 10 questionable XBT values at 3000 m (12 casts from two ships, 1994-95) and nothing else.
+  xbt_max_depth: 2900
 
   # step 08: true = trim trailing depth levels with no data in the whole file;
   # false = keep the full input depth grid (empty levels get zero weight)
