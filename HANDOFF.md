@@ -1,14 +1,128 @@
 # Handoff Context — ECCO-Insitu-Python
 
-**Branch:** `main` (the only branch; `devel*`, `production_hardening` and the old experiments were
-merged or deleted on 2026-10-23). Repository: the fork `brucelaughlin/ECCO-Insitu-Python` (parent
+**Branch:** `model-cost-slicing` (active work, not merged yet; `main` is the default branch. `devel*`,
+`production_hardening` and the old experiments were merged or deleted on 2026-10-23). Repository: the fork `brucelaughlin/ECCO-Insitu-Python` (parent
 `ifenty/ECCO-Insitu-Python`).
 **Documentation website:** https://brucelaughlin.github.io/ECCO-Insitu-Python/ (rebuilt on every push to
 `main`). As one PDF: Actions tab → a *tests* run → Artifacts.
 **Production hardening (finished 2026-10-23):** plan and progress in `docs/production_hardening_plan.md`;
 the full plain-language write-up, for explaining it to others, is `docs/production_hardening_report.md`.
 **Last commit:** see `git log`
-**Date:** 2026-10-26 (the "Active work" section below is the newest; read it first)
+**Date:** 2026-10-27 (the "Active work (2026-10-27)" section below is the newest; read it first)
+
+## Active work (2026-10-27): WOD flags in the chain, and the deep XBT values (for every agent)
+
+**Read this first if you're another agent working on this project** (e.g. the profile-analysis
+framework in `src/ecco_insitu/diagnostics/profile_analyses/`). The detailed write-up, with all the
+numbers and scripts, is **`/Users/brucel/ecco/yip/cost_comparisons/wod_flags/README.md`**: use it for
+the user's documents and reports. Everything there was checked against the data; inferences are
+labeled.
+
+### 1. WOD quality flags are now applied by the chain (commits 2768878, 56ad9ad)
+
+- **The problem:** UCSD's `Interp_Profiles` files carry no per-value quality flags, so values that the
+  World Ocean Database flags as bad had full weight. This was the main cause of the higher XBT cost
+  of 20261021 vs v4r6.
+- **The source:** WOD's standard-level yearly files,
+  `https://www.ncei.noaa.gov/data/oceans/woa/WOD/YEARLY/<XBT|CTD|OSD|MRB|GLD>/STD/<DS>S<year>.gz`.
+  - **Proof they're the right flags:** v4r6's `prof_Tflag` is exactly WOD's standard-level flag. It
+    matches WOD's 2018 export at 100% of 5.35 M levels, and the current files at 99.4% (WOD updated
+    some since).
+  - **Not the right source:** WOD's per-year observed-level netCDF (`wod_netcdf/`). Its value flags
+    remove almost nothing, because UCSD's files seem to drop those values already.
+- **The code:**
+  - `src/ecco_insitu/wod_flags.py`, and `ecco-insitu wod-flags [--download | --build]`.
+  - **Settings:** `chain.apply_wod_flags: true`, `paths.wod_std_dir` (= `/Users/brucel/ecco/yip/wod_std`,
+    1.9 GB of files plus a 43 MB `index/`), and `chain.wod_flags_extend_levels`.
+  - **When it runs:** before step 01. It writes `prof_Tflag` / `prof_Sflag` by WOD cast number (from
+    `prof_descr`), and step 06 test 2 zeroes those values.
+  - **Rule:** per-level flags only, as the old chain; not WOD's whole-cast flag.
+  - **Depths between WOD standard levels:** the larger flag of the two levels around.
+  - **Dependency:** wodpy.
+- **Pending the bosses' approval: KI-19, `chain.wod_flags_extend_levels`** (default 2, the user's
+  option B).
+  - **The rule:** a value beyond the cast's WOD levels takes the end level's flag only if the last 2
+    WOD levels at that end are both flagged. `1` = whenever the end level is flagged; `0` = never.
+  - **Size:** at most 0.09% of any source's values.
+  - **Documented in:** `docs/known_issues.md`, `README.md`, `defaults.yaml`, the module docstring.
+- **Coverage** (every WOD input file):
+  - **Casts found:** XBT, CTD/OSD and MRB 100%; GLD 99.66% (misses mostly 2019–24).
+  - **Values with a real WOD flag:** XBT T 99.77%, CTD 98%, MRB T 98% / S 90%, GLD 97%. The rest are
+    beyond the cast's WOD levels, or WOD has no flags for that variable.
+- **Values flagged:** XBT T 3.07%, CTD T/S 1.08% / 1.24%, MRB 1.6–1.7%, GLD 1.1–1.4%. Argo, ITP and
+  MEOP are not from WOD and get none.
+- **Estimated cost per datum** (the 20261021 files with flagged points zeroed; not a rerun):
+  - XBT T 0.222 → **0.181** (v4r6 0.170);
+  - CTD T 0.050 → 0.048, CTD S 0.063 → 0.060 (the rest of CTD S is the weights);
+  - Argo unchanged.
+- **Tests:** 120 pass; the regression reference was regenerated deliberately (WOD-flagged points
+  changed).
+- **A full run with the flags was started 2026-10-27 01:13:**
+  `processed_by_NCEI_profile_data/profile_files_NCEI_processed_20261027_011321/`, log
+  `z_logs/ncei_log_20261027_011321.log`. Check that it finished: `ecco-insitu check-files`, then
+  `check-qc`.
+
+### 2. The deep XBT "spike" in the global mean T: CORRECTION to the profile-analysis notes
+
+- **What the notes say:** the profile-analysis framework's notes (memory
+  `project_profile_analysis_framework.md`, bug 5) and its `_MIN_DEPTH_COUNT = 30` rationale say the 7
+  XBT values at 2400 m (mean 13.4 °C) are bad data (depth errors), far from climatology but passing
+  QC because σ is large. They also say the WOD flags should fix them. **All three are wrong:**
+  - **They're real Mediterranean water.** All 7 are in the Mediterranean: six eastern, from 1993 (33–35° N,
+    22–32° E), and one at 42° N, 8° E, from 2008. The deep Mediterranean is about 13 °C to the bottom.
+  - **They're close to climatology.** |T − T_clim| = 0.01–0.31 °C against the local WOA23 values of
+    12.9–13.7 °C. They only look wrong against an open-ocean value (~2.5 °C).
+  - **σ is small, not large:** 0.064–0.087 °C. (misfit/σ)² is 0.04–13.3; they pass step 06 because
+    that is under its limits (16 for a whole-profile mean, 100 for one point).
+  - **The WOD flags (correctly) leave them alone.**
+- **Why the spike:** at 2400 and 2600 m the only XBT values left are 6–7 Mediterranean ones, so the
+  "global" mean there is a Mediterranean mean: a sampling effect.
+  - **Mediterranean share of weighted XBT values:** 6% at 1500–1800 m, 7% at 2000 m, 15% at 2200 m,
+    100% at 2400–2600 m.
+  - **Report means** (`a01_T_mean_depth`, run 20261021): 4.8 °C at 2200 m (n = 204), 13.4 °C at 2400
+    and 2600 m (n = 7, 6), 3.0 °C at 3000 m (n = 13).
+  - Masking depths with few values is a fine plotting choice, but the reason should read "sampling
+    (Mediterranean only)", not "bad data".
+- **Wider check:** all weighted XBT T values deeper than 1500 m and warmer than 6 °C: 2,452 values in
+  1,079 casts.
+  - 1,608 are Mediterranean, none more than 3 °C from climatology.
+  - Most of the rest are Mediterranean outflow (Gibraltar, off Iberia, 6–8 °C) and the Arabian Sea;
+    14 are more than 3 °C off.
+  - The WOD flags catch 265 of them (11%).
+- **The XBT values that ARE suspect are at 3000 m:**
+  - **What they are:** 12 casts from two ships: WOD cruise code "JSVY" (1994, south of Tasmania,
+    40–62° S) and "JNQN" (1994–95, south of Japan). Each has its deepest value at exactly 3000 m,
+    0.6–2.7 °C warmer than climatology.
+  - **In WOD's observed levels** (3 casts checked): 34 levels, ending 1500, 2000, 2500, 3000 m, with T
+    to 0.1 °C. One is listed as a T-7 XBT (rated to ~760 m), one as type unknown.
+  - **Inferred:** these are coarse standard-depth values in WOD's record, not real XBT measurements at
+    those depths.
+  - **The WOD flags catch only 1 of the 12.**
+  - **Possible fix, a team decision, not done:** ignore XBT values below ~2000 m, deeper than any XBT
+    probe reaches.
+
+### 3. Scripts and outputs (all in `/Users/brucel/ecco/yip/cost_comparisons/wod_flags/`)
+
+| file | what |
+|---|---|
+| `README.md` | the full write-up: use for the user's documents and reports |
+| `v4r6_vs_wod2018_csv.py`, `std_flags_to_ours.py` | v4r6's flags = WOD's standard-level flags |
+| `coverage_all_inputs.py`, `flag_completeness.py` | coverage of every WOD input file |
+| `extend_rule_cost.py`, `extend_levels_counts.py` | KI-19: data removed by settings 0 / 1 / 2 |
+| `cost_with_wod_flags.py`, `cost_all_types_with_flags.py` | estimated cost effect |
+| `deep_warm_xbt.py` (+ `.txt`) | section 2 |
+
+### 4. Next
+
+- Check the 2026-10-27 run; then the team runs the model on its `ecco_arrays/`, and `model-cost` gives
+  the real new costs.
+- Update the user's report (`cost_comparisons/report_20261025/REPORT.md`) with sections 1–2, or write a
+  new short one.
+- **Team decisions:**
+  - KI-19 (proposed 2);
+  - whether to drop XBT values below ~2000 m;
+  - XBT no_flag treatment (earlier finding: keep).
+- Merge `model-cost-slicing` to `main` (PR on the fork), after the profile-analysis work is committed.
 
 ## Active work (2026-10-25 / 26): why the 20261021 profile costs differ from v4r6's, and WOD flags
 
