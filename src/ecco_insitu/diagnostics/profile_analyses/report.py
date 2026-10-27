@@ -2,20 +2,22 @@
 Profile analysis framework — report step.
 
 Compile figures from ``ecco-insitu profile-analyze`` (and optionally
-``ecco-insitu profile-compare``) into a single HTML + PDF document.
+``ecco-insitu profile-compare``) into a single interactive HTML document.
 
     ecco-insitu profile-report --inputs <analyze_dir> [<compare_dir> ...]
                                --out <out_dir>
                                [--title "Run 20261021"]
+                               [--flat]
 
-Structure of the document:
-  - Metadata table (run path, date, sources, cost types)
-  - For each obs class (source):
-    - Analysis 1 (T/S vs depth)
-    - Analyses 2–10 (cost analyses), one sub-section each
-      Caption: analysis name, cost type, split/unsplit mode, weight version
-      No interpretation text.
-  - Comparison section (if compare directories supplied)
+The default output is an interactive single-page HTML with tab bars for
+source / cost type / analysis.  Pass ``--flat`` to get the old sequential
+HTML + PDF instead.
+
+Structure of the interactive document:
+  - Title bar with collapsible glossary and metadata
+  - Three tab rows: source | cost type | analysis (01–10)
+  - Figure panel (selected combination) + description side panel
+  - Outstanding issues and run metadata in collapsible side-panel sections
 """
 import argparse
 import html as _html
@@ -57,11 +59,11 @@ _ANALYSIS_DESC = {
         'at those depths because XBT sampling there is almost exclusively Mediterranean. '
         'Separately, 12 XBT casts end at exactly 3000&nbsp;m; these are likely coarse '
         'WOD standard-depth entries for probes rated to &sim;760&nbsp;m, and are a pending '
-        'team decision (see Outstanding issues section at the end of this report).'
+        'team decision (see Outstanding issues below).'
     ),
     '02': (
         'The mean misfit cost as a function of depth, averaged over all observations and all '
-        'time. Each line is one combination of weight version and split mode (see glossary). '
+        'time. Each line is one combination of weight version and split mode (see Terminology). '
         'Depth levels where the cost is large indicate systematic disagreement between the '
         'observations and the reference at those depths — either a real signal or a data quality '
         'issue. Comparing split vs unsplit at the same depth shows how much of the cost is '
@@ -101,11 +103,11 @@ _ANALYSIS_DESC = {
         'and whether the pattern is symmetric between hemispheres.'
     ),
     '08': (
-        'A histogram of the log₁₀ cost per datum across all individual observations. '
-        'The x-axis is log₁₀((&#916;V/&sigma;)&sup2;); a value of 0 means the '
+        'A histogram of the log&#x2081;&#x2080; cost per datum across all individual observations. '
+        'The x-axis is log&#x2081;&#x2080;((&Delta;V/&sigma;)&sup2;); a value of 0 means the '
         'observation is exactly 1&sigma; from the reference, 2 means 100&sigma;. '
         'The dashed vertical line marks the default QC threshold of 100 '
-        '((&#916;V/&sigma;)&sup2; = 100). The bulk of observations should sit well to the '
+        '((&Delta;V/&sigma;)&sup2; = 100). The bulk of observations should sit well to the '
         'left of this line; a heavy right tail or a secondary peak near the threshold '
         'suggests outlier contamination or a poorly constrained depth range.'
     ),
@@ -127,7 +129,56 @@ _ANALYSIS_DESC = {
     ),
 }
 
-_CSS = """
+_GLOSSARY_HTML = """
+<p><strong>Weight versions</strong> — which scaling factors are included in the weight <em>w</em>.
+All use the same misfit (V&nbsp;&minus;&nbsp;V<sub>ref</sub>)&sup2;; they differ only in how much each point counts.</p>
+<table class="gloss-table">
+<tr><th>Label</th><th>Formula</th><th>Meaning</th></tr>
+<tr><td><code>final</code></td><td>&gamma; &middot; sf &middot; (&Delta;V/&sigma;)&sup2;</td>
+    <td>Weight as ECCO sees it: area/volume factor &gamma; and step-11 spatial scaling factor sf both included</td></tr>
+<tr><td><code>nosf</code></td><td>&gamma; &middot; (&Delta;V/&sigma;)&sup2;</td>
+    <td>Step-11 spatial scaling removed; &gamma; retained</td></tr>
+<tr><td><code>true</code></td><td>(&Delta;V/&sigma;)&sup2;</td>
+    <td>Both &gamma; and sf removed — pure normalized misfit, &ldquo;cost per datum&rdquo;</td></tr>
+</table>
+<p>Because &gamma;&nbsp;&le;&nbsp;1 and sf&nbsp;&le;&nbsp;1, removing them raises the value:
+<code>true</code> &ge; <code>nosf</code> &ge; <code>final</code>.</p>
+
+<p><strong>Split modes</strong> — what reference is subtracted before squaring.</p>
+<table class="gloss-table">
+<tr><th>Label</th><th>Meaning</th></tr>
+<tr><td><code>unsplit</code></td><td>Raw misfit vs reference — includes any systematic time-mean bias at each location</td></tr>
+<tr><td><code>split</code></td>
+    <td>Anomaly cost — time-mean offset per (bin, depth) subtracted first; mirrors ECCO&rsquo;s <code>cost_profiles.F</code></td></tr>
+</table>
+
+<p><strong>Cost reference types</strong> — what V<sub>ref</sub> is.</p>
+<table class="gloss-table">
+<tr><th>Label</th><th>Meaning</th></tr>
+<tr><td><code>vs_clim</code></td><td>Profile vs WOA-style climatology; always available</td></tr>
+<tr><td><code>vs_model</code></td><td>Profile vs ECCO model state interpolated to obs location/depth</td></tr>
+<tr><td><code>vs_run_b</code></td><td>Profile vs a second model run (run-A vs run-B comparison)</td></tr>
+</table>
+"""
+
+_ISSUES_HTML = """
+<p><strong>1. XBT values at exactly 3000&nbsp;m (KI pending)</strong><br>
+About 12 XBT casts have their deepest observation at exactly 3000&nbsp;m, from two
+1994&ndash;95 cruises. In WOD these are listed with coarse standard depths to 0.1&nbsp;&deg;C
+precision. At least one is identified as a T-7 XBT (rated depth &sim;760&nbsp;m). Values at
+3000&nbsp;m are 0.6&ndash;2.7&nbsp;&deg;C warmer than local climatology. WOD flags catch only
+1 of 12. <em>Decision: drop XBT below some depth threshold?</em></p>
+
+<p><strong>2. WOD flag extension (<code>chain.wod_flags_extend_levels</code>, KI-19)</strong><br>
+WOD standard-level flags only cover standard depths. For values beyond a cast&rsquo;s deepest
+standard level, three options: 0&nbsp;=&nbsp;never extend (safe); 1&nbsp;=&nbsp;always extend;
+2&nbsp;=&nbsp;extend only when last two levels agree (current default, affects &le;0.09% of
+values). <em>Decision: formal sign-off on option&nbsp;2 needed.</em></p>
+"""
+
+# ── CSS ────────────────────────────────────────────────────────────────────────
+
+_CSS_FLAT = """
 body { font-family: sans-serif; margin: 2em; color: #222; }
 h1   { border-bottom: 2px solid #aaa; padding-bottom: 0.3em; }
 h2   { border-bottom: 1px solid #ddd; margin-top: 2em; }
@@ -150,109 +201,83 @@ code { background: #f0f0f0; padding: 1px 4px; border-radius: 3px; font-size: 0.9
 .issues .decision { font-weight: bold; color: #a04000; }
 """
 
-_ISSUES_HTML = """
-<div class="issues">
-<h2>Outstanding issues and pending decisions</h2>
-<p>The items below require a team decision before the next production run or report. They are
-documented here so that the report is self-contained.</p>
-
-<h3>1. XBT values at exactly 3000&nbsp;m (KI pending)</h3>
-<p>About 12 XBT casts in the dataset have their deepest observation at exactly 3000&nbsp;m,
-from two cruises in 1994&ndash;95 (southern Ocean south of Tasmania; south of Japan).
-In the World Ocean Database record, these casts are listed with coarse standard depths
-(500, 1000, 1500, 2000, 2500, 3000&nbsp;m) to 0.1&nbsp;&deg;C precision. At least one is
-identified in WOD as a T-7 XBT, which has a rated depth of &sim;760&nbsp;m. The values
-at 3000&nbsp;m are 0.6&ndash;2.7&nbsp;&deg;C warmer than local climatology &mdash; not
-catastrophic, but inconsistent with the instrument type.
-WOD quality flags catch only 1 of these 12 casts.</p>
-<p><span class="decision">Decision needed:</span> should XBT observations deeper than
-&sim;2000&nbsp;m (or some other threshold) be dropped from the chain? This would affect a
-very small number of values but removes a physically implausible use of the instrument.
-The deep Mediterranean XBT profiles discussed in Analysis&nbsp;1 above are genuine and
-should <em>not</em> be removed &mdash; they are within instrument range and close to
-climatology. Only the 3000&nbsp;m standard-depth artefacts are candidates for removal.</p>
-
-<h3>2. WOD flag extension beyond a cast&rsquo;s deepest standard level
-    (<code>chain.wod_flags_extend_levels</code>, KI-19)</h3>
-<p>WOD standard-level files provide quality flags only at their standard depths (typically
-every 100&nbsp;m to 500&nbsp;m). Many profile values in the chain fall between or beyond
-those standard levels, particularly near the surface and at the base of XBT casts. The chain
-must decide what flag to assign to a value that lies beyond the deepest WOD standard level
-for that cast.</p>
-<p>Three options were evaluated:</p>
-<ul>
-  <li><strong>0 &mdash; never extend:</strong> values beyond the cast&rsquo;s WOD range are
-      treated as unflagged (kept). Safe but misses some genuinely bad end-of-cast values.</li>
-  <li><strong>1 &mdash; always extend:</strong> a value beyond the range takes the flag of
-      the nearest end level. More aggressive; flags up to 0.09% of values across all sources.</li>
-  <li><strong>2 &mdash; extend only when last two levels agree (current default, option B):</strong>
-      a value beyond the range is flagged only if <em>both</em> of the last two WOD standard
-      levels at that end are flagged. This is a conservative rule: it requires evidence of a
-      systematic problem at the edge of the cast, not just a single bad end point.</li>
-</ul>
-<p><span class="decision">Decision needed:</span> the current default is option&nbsp;2
-(<code>chain.wod_flags_extend_levels = 2</code>). This is implemented in the chain and
-documented in the chain, but has not yet received formal team
-sign-off. The setting affects at most 0.09% of values at any source. Option&nbsp;2 is
-recommended as the most defensible conservative choice.</p>
-</div>
-"""
-
-_GLOSSARY_HTML = """
-<div class="glossary">
-<h2>Terminology</h2>
-
-<p><strong>Weight versions</strong> — which scaling factors are included in the weight <em>w</em>.
-All use the same misfit (V&nbsp;&minus;&nbsp;V<sub>ref</sub>)&sup2;; they differ only in how much each point counts.</p>
-<table>
-<tr><th>Label</th><th>Formula</th><th>Meaning</th></tr>
-<tr><td><code>final</code></td><td>&gamma; &middot; sf &middot; (&Delta;V/&sigma;)&sup2;</td>
-    <td>Weight as ECCO sees it: area/volume factor &gamma; and step-11 spatial scaling factor sf both included</td></tr>
-<tr><td><code>nosf</code></td><td>&gamma; &middot; (&Delta;V/&sigma;)&sup2;</td>
-    <td>Step-11 spatial scaling removed; &gamma; retained</td></tr>
-<tr><td><code>true</code></td><td>(&Delta;V/&sigma;)&sup2;</td>
-    <td>Both &gamma; and sf removed — pure normalized misfit, &ldquo;cost per datum&rdquo;</td></tr>
-</table>
-<p>Because &gamma;&nbsp;&le;&nbsp;1 and sf&nbsp;&le;&nbsp;1, removing them raises the value:
-<code>true</code> &ge; <code>nosf</code> &ge; <code>final</code>.</p>
-
-<p><strong>Split modes</strong> — what reference is subtracted before squaring.</p>
-<table>
-<tr><th>Label</th><th>Formula</th><th>Meaning</th></tr>
-<tr><td><code>unsplit</code></td><td>(V &minus; V<sub>ref</sub>)&sup2; &middot; w</td>
-    <td>Raw misfit vs reference — includes any systematic time-mean bias at each location</td></tr>
-<tr><td><code>split</code></td>
-    <td>(V &minus; V<sub>ref</sub> &minus; bias)<sup>2</sup> &middot; w,
-        bias[bin,depth] = mean<sub>t</sub>(V &minus; V<sub>ref</sub>)</td>
-    <td>Anomaly cost — time-mean offset per (bin, depth) subtracted first; only time-varying misfit remains.
-        Mirrors ECCO&rsquo;s <code>cost_profiles.F</code>.
-        Bias arrays are saved in the NetCDF so the unsplit view can always be reconstructed.</td></tr>
-</table>
-
-<p><strong>Cost reference types</strong> — what V<sub>ref</sub> is.</p>
-<table>
-<tr><th>Label</th><th>V<sub>ref</sub></th><th>Meaning</th></tr>
-<tr><td><code>vs_clim</code></td><td>Climatological value V<sub>clim</sub></td>
-    <td>Profile vs WOA-style climatology; always available</td></tr>
-<tr><td><code>vs_model</code></td><td>Model equivalent V<sub>estim</sub></td>
-    <td>Profile vs ECCO model state interpolated to obs location/depth; requires model-equivalent files</td></tr>
-<tr><td><code>vs_run_b</code></td><td>Second run V<sub>estim</sub></td>
-    <td>Profile vs a second model run, for run-A vs run-B comparison</td></tr>
-</table>
-</div>
+_CSS_INTERACTIVE = """
+:root { --accent: #1a5ca8; --accent-light: #e8f0fb; --border: #d0d0d0; }
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  display: flex; flex-direction: column; height: 100vh; overflow: hidden; color: #222;
+  font-size: 14px;
+}
+/* ── header ── */
+#header {
+  padding: 0.5em 1em; background: #fff; border-bottom: 2px solid var(--border);
+  display: flex; align-items: center; gap: 0.8em; min-height: 2.4em; flex-shrink: 0;
+}
+#header h1 { font-size: 1.05em; font-weight: 600; flex: 1; }
+/* ── tab rows ── */
+#nav { background: #f7f7f7; border-bottom: 1px solid var(--border); flex-shrink: 0; }
+.tab-row {
+  display: flex; align-items: center; gap: 0.3em; padding: 0.35em 1em; flex-wrap: wrap;
+  border-bottom: 1px solid #eee;
+}
+.tab-row:last-child { border-bottom: none; }
+.row-label {
+  font-size: 0.78em; color: #888; text-transform: uppercase; letter-spacing: 0.04em;
+  min-width: 6em; flex-shrink: 0;
+}
+.tab {
+  padding: 0.28em 0.7em; border: 1px solid var(--border); border-radius: 4px;
+  cursor: pointer; background: white; font-size: 0.88em; user-select: none;
+  transition: background 0.1s, color 0.1s;
+}
+.tab:hover:not(.active):not([disabled]) { background: var(--accent-light); border-color: var(--accent); }
+.tab.active { background: var(--accent); color: white; border-color: var(--accent); }
+.tab[disabled] { opacity: 0.3; cursor: default; }
+/* ── main split ── */
+#main { display: flex; flex: 1; overflow: hidden; }
+/* figure area */
+#fig-area { flex: 1; overflow-y: auto; padding: 1em 1.5em; }
+.panel { display: none; }
+.panel.active { display: block; }
+figure { margin-bottom: 1em; }
+figure img { max-width: 100%; border: 1px solid #eee; border-radius: 2px; display: block; }
+figcaption { font-size: 0.78em; color: #888; margin-top: 0.3em; }
+/* side panel */
+#side {
+  width: 280px; min-width: 200px; max-width: 340px;
+  overflow-y: auto; padding: 1em; border-left: 1px solid var(--border);
+  background: #fafafa; flex-shrink: 0; font-size: 0.88em;
+}
+#side h3 { font-size: 0.95em; color: #111; margin-bottom: 0.5em; line-height: 1.3; }
+#desc-body { line-height: 1.5; color: #444; }
+#desc-body code { background: #eee; padding: 1px 3px; border-radius: 2px; font-size: 0.9em; }
+details { margin-top: 1em; }
+details summary {
+  cursor: pointer; font-size: 0.82em; color: #888; user-select: none;
+  padding: 0.2em 0; border-top: 1px solid #e8e8e8; list-style: none;
+}
+details summary::before { content: '▶ '; font-size: 0.7em; }
+details[open] summary::before { content: '▼ '; }
+details > div { padding-top: 0.5em; }
+/* inside details */
+.gloss-table { border-collapse: collapse; font-size: 0.85em; margin: 0.5em 0; width: 100%; }
+.gloss-table th, .gloss-table td { border: 1px solid #ddd; padding: 3px 6px; text-align: left; }
+.gloss-table th { background: #f0f0f0; }
+code { background: #f0f0f0; padding: 1px 3px; border-radius: 2px; font-size: 0.9em; }
+.meta-table { border-collapse: collapse; font-size: 0.82em; width: 100%; margin: 0.4em 0; }
+.meta-table th, .meta-table td { border: 1px solid #ddd; padding: 3px 6px; }
+.meta-table th { background: #f0f0f0; width: 7em; }
+/* header right-side links */
+.hdr-link { font-size: 0.82em; color: var(--accent); cursor: pointer; white-space: nowrap; }
+.hdr-link:hover { text-decoration: underline; }
 """
 
 
-def _img_tag(path_rel):
-    return f'<img src="{_html.escape(str(path_rel))}" alt="">'
-
-
-def _figure(img_path, caption):
-    return f'<figure>{_img_tag(img_path)}<figcaption>{_html.escape(caption)}</figcaption></figure>'
-
+# ── utility functions ──────────────────────────────────────────────────────────
 
 def _scan_figures(fig_dir):
-    """Collect figure paths grouped by analysis number (leading digits before first underscore)."""
+    """Collect figure paths grouped by analysis number."""
     if not Path(fig_dir).is_dir():
         return {}
     groups = {}
@@ -260,113 +285,357 @@ def _scan_figures(fig_dir):
         m = re.match(r'^(\d+)_', p.stem)
         if not m:
             continue
-        num = f'{int(m.group(1)):02d}'  # normalize to 2-digit zero-padded string
+        num = f'{int(m.group(1)):02d}'
         groups.setdefault(num, []).append(p)
     return groups
 
 
-def _meta_table(meta):
+def _meta_table(meta, css_class='meta-table'):
     rows = []
     for k, v in meta.items():
-        rows.append(f'<tr><th>{_html.escape(str(k))}</th><td>{_html.escape(str(v))}</td></tr>')
-    return '<table>' + ''.join(rows) + '</table>'
+        rows.append(
+            f'<tr><th>{_html.escape(str(k))}</th>'
+            f'<td>{_html.escape(str(v))}</td></tr>'
+        )
+    return f'<table class="{css_class}">' + ''.join(rows) + '</table>'
 
 
-def compile_report(input_dirs, out_dir, title=None):
-    """Compile figures from one or more analyze/compare directories into HTML + PDF.
-
-    Parameters
-    ----------
-    input_dirs : list of str or Path
-        Directories from ``profile-analyze`` and/or ``profile-compare``.
-    out_dir : str or Path
-        Where to write ``report.html`` and ``report.pdf``.
-    title : str, optional
-        Report title (default: auto from input directory name).
-
-    Returns
-    -------
-    Path
-        The output directory.
+def _collect_data(input_dirs):
     """
+    Returns:
+        data  : dict[source][cost_type][analysis_num] = [(abs_path_str, caption), ...]
+        metas : list of (input_name, meta_dict)
+    """
+    data = {}
+    metas = []
+
+    for inp in input_dirs:
+        inp = Path(inp)
+        meta_path = inp / 'meta.json'
+        meta = json.loads(meta_path.read_text()) if meta_path.exists() else {}
+        metas.append((inp.name, meta))
+
+        sources = sorted(
+            s.name for s in inp.iterdir()
+            if s.is_dir() and not s.name.startswith('.')
+        )
+        for source in sources:
+            src_dir = inp / source / 'figures'
+            if not src_dir.is_dir():
+                continue
+            subdirs = [d for d in src_dir.iterdir() if d.is_dir()]
+            if subdirs:
+                fig_roots = [(sd.name, sd) for sd in sorted(subdirs)]
+            else:
+                fig_roots = [('', src_dir)]
+
+            for cost_type, fig_dir in fig_roots:
+                ct_key = cost_type or '_default'
+                groups = _scan_figures(fig_dir)
+                for num, paths in groups.items():
+                    atitle = _ANALYSIS_TITLES.get(num, f'Analysis {num}')
+                    entries = []
+                    for fpath in paths:
+                        cap = f'{source} — {atitle}'
+                        if cost_type:
+                            cap += f' ({cost_type})'
+                        cap += f'  [{fpath.stem}]'
+                        entries.append((str(fpath.resolve()), cap))
+                    data.setdefault(source, {}).setdefault(ct_key, {})[num] = entries
+
+    return data, metas
+
+
+# ── interactive HTML ───────────────────────────────────────────────────────────
+
+def _build_interactive_html(data, metas, title):
+    sources = sorted(data.keys())
+    all_cost_types = sorted({ct for src in data.values() for ct in src.keys()})
+    all_analyses = sorted({
+        an for src in data.values() for ct in src.values() for an in ct.keys()
+    })
+
+    # panels
+    panels = []
+    for source in sources:
+        for cost_type in all_cost_types:
+            for an in all_analyses:
+                entries = data.get(source, {}).get(cost_type, {}).get(an, [])
+                if not entries:
+                    continue
+                pid = f'p-{source}-{cost_type}-{an}'
+                figs_html = ''.join(
+                    f'<figure>'
+                    f'<img src="file://{_html.escape(path)}" alt="" loading="lazy">'
+                    f'<figcaption>{_html.escape(cap)}</figcaption>'
+                    f'</figure>'
+                    for path, cap in entries
+                )
+                panels.append(f'<div class="panel" id="{_html.escape(pid)}">{figs_html}</div>')
+
+    # metadata for side panel
+    meta_sections = ''
+    for inp_name, meta in metas:
+        meta_sections += f'<p style="font-weight:600;margin-bottom:0.3em">{_html.escape(inp_name)}</p>'
+        if meta:
+            meta_sections += _meta_table(meta)
+
+    # pass descriptions to JS as JSON
+    desc_data = {
+        num: [_ANALYSIS_TITLES.get(num, ''), _ANALYSIS_DESC.get(num, '')]
+        for num in all_analyses
+    }
+
+    # which (source|cost_type|analysis) combos exist
+    exists = {
+        f'{src}|{ct}|{an}': True
+        for src in data
+        for ct in data[src]
+        for an in data[src][ct]
+        if data[src][ct][an]
+    }
+
+    # tab buttons
+    src_tabs = ''.join(
+        f'<button class="tab src-tab" data-src="{_html.escape(s)}"'
+        f' onclick="selectSource({json.dumps(s)})">{_html.escape(s)}</button>'
+        for s in sources
+    )
+    cost_tabs = ''.join(
+        f'<button class="tab cost-tab" data-ct="{_html.escape(ct)}"'
+        f' onclick="selectCost({json.dumps(ct)})">{_html.escape(ct)}</button>'
+        for ct in all_cost_types
+    )
+    an_tabs = ''.join(
+        f'<button class="tab an-tab" data-an="{an}"'
+        f' onclick="selectAnalysis({json.dumps(an)})"'
+        f' title="{_html.escape(_ANALYSIS_TITLES.get(an, an))}">{an}</button>'
+        for an in all_analyses
+    )
+
+    js = f"""
+const SOURCES = {json.dumps(sources)};
+const COST_TYPES = {json.dumps(all_cost_types)};
+const ANALYSES = {json.dumps(all_analyses)};
+const DESCS = {json.dumps(desc_data)};
+const EXISTS = {json.dumps(exists)};
+
+let curSource = SOURCES[0], curCost = COST_TYPES[0], curAn = null;
+
+function exists(src, ct, an) {{
+  return !!EXISTS[src + '|' + ct + '|' + an];
+}}
+
+function firstExisting(src, ct) {{
+  for (const an of ANALYSES) if (exists(src, ct, an)) return an;
+  return null;
+}}
+
+function availableCosts(src) {{
+  return COST_TYPES.filter(ct => ANALYSES.some(an => exists(src, ct, an)));
+}}
+
+function render() {{
+  // source tabs
+  document.querySelectorAll('.src-tab').forEach(t =>
+    t.classList.toggle('active', t.dataset.src === curSource)
+  );
+  // cost-type tabs — hide unavailable ones
+  const avail = availableCosts(curSource);
+  document.querySelectorAll('.cost-tab').forEach(t => {{
+    const show = avail.includes(t.dataset.ct);
+    t.style.display = show ? '' : 'none';
+    t.classList.toggle('active', t.dataset.ct === curCost);
+  }});
+  // analysis tabs
+  document.querySelectorAll('.an-tab').forEach(t => {{
+    const ok = exists(curSource, curCost, t.dataset.an);
+    t.toggleAttribute('disabled', !ok);
+    t.classList.toggle('active', t.dataset.an === curAn);
+  }});
+  // figure panel
+  document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+  if (curAn) {{
+    const el = document.getElementById('p-' + curSource + '-' + curCost + '-' + curAn);
+    if (el) el.classList.add('active');
+  }}
+  // description side panel
+  const d = DESCS[curAn] || ['', ''];
+  document.getElementById('desc-title').textContent = d[0];
+  document.getElementById('desc-body').innerHTML = d[1];
+}}
+
+function selectSource(src) {{
+  curSource = src;
+  const avail = availableCosts(src);
+  if (!avail.includes(curCost)) curCost = avail[0] || COST_TYPES[0];
+  curAn = firstExisting(curSource, curCost) || curAn;
+  render();
+}}
+
+function selectCost(ct) {{
+  curCost = ct;
+  if (!exists(curSource, curCost, curAn)) curAn = firstExisting(curSource, curCost);
+  render();
+}}
+
+function selectAnalysis(an) {{
+  if (!exists(curSource, curCost, an)) return;
+  curAn = an;
+  render();
+}}
+
+// keyboard shortcuts: left/right arrows to cycle sources, up/down for analyses
+document.addEventListener('keydown', e => {{
+  if (e.target.tagName === 'INPUT') return;
+  if (e.key === 'ArrowRight') {{
+    const i = (SOURCES.indexOf(curSource) + 1) % SOURCES.length;
+    selectSource(SOURCES[i]);
+  }} else if (e.key === 'ArrowLeft') {{
+    const i = (SOURCES.indexOf(curSource) - 1 + SOURCES.length) % SOURCES.length;
+    selectSource(SOURCES[i]);
+  }} else if (e.key === 'ArrowDown') {{
+    const i = ANALYSES.indexOf(curAn);
+    for (let j = i + 1; j < ANALYSES.length; j++) {{
+      if (exists(curSource, curCost, ANALYSES[j])) {{ selectAnalysis(ANALYSES[j]); break; }}
+    }}
+  }} else if (e.key === 'ArrowUp') {{
+    const i = ANALYSES.indexOf(curAn);
+    for (let j = i - 1; j >= 0; j--) {{
+      if (exists(curSource, curCost, ANALYSES[j])) {{ selectAnalysis(ANALYSES[j]); break; }}
+    }}
+  }}
+}});
+
+curAn = firstExisting(curSource, curCost);
+render();
+"""
+
+    return f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>{_html.escape(title)}</title>
+<style>{_CSS_INTERACTIVE}</style>
+</head>
+<body>
+<div id="header">
+  <h1>{_html.escape(title)}</h1>
+  <span class="hdr-link" onclick="document.getElementById('side-gloss').open=!document.getElementById('side-gloss').open;document.getElementById('side').scrollTop=0">Terminology</span>
+  <span style="color:#ccc">|</span>
+  <span class="hdr-link" onclick="document.getElementById('side-meta').open=!document.getElementById('side-meta').open;document.getElementById('side').scrollTop=0">Metadata</span>
+  <span style="color:#ccc">|</span>
+  <span class="hdr-link" onclick="document.getElementById('side-issues').open=!document.getElementById('side-issues').open;document.getElementById('side').scrollTop=0">Issues</span>
+  <span style="color:#ccc;font-size:0.8em;margin-left:0.5em">← → cycle sources &nbsp; ↑ ↓ cycle analyses</span>
+</div>
+<div id="nav">
+  <div class="tab-row"><span class="row-label">Source</span>{src_tabs}</div>
+  <div class="tab-row"><span class="row-label">Cost type</span>{cost_tabs}</div>
+  <div class="tab-row"><span class="row-label">Analysis</span>{an_tabs}</div>
+</div>
+<div id="main">
+  <div id="fig-area">
+    {''.join(panels)}
+  </div>
+  <div id="side">
+    <h3 id="desc-title"></h3>
+    <div id="desc-body" style="margin-top:0.5em"></div>
+    <details id="side-gloss" style="margin-top:1.2em">
+      <summary>Terminology</summary>
+      <div>{_GLOSSARY_HTML}</div>
+    </details>
+    <details id="side-meta" style="margin-top:0.6em">
+      <summary>Run metadata</summary>
+      <div style="margin-top:0.5em">{meta_sections}</div>
+    </details>
+    <details id="side-issues" style="margin-top:0.6em">
+      <summary>Outstanding issues</summary>
+      <div style="margin-top:0.5em;line-height:1.5;color:#444">{_ISSUES_HTML}</div>
+    </details>
+  </div>
+</div>
+<script>{js}</script>
+</body>
+</html>
+"""
+
+
+# ── flat HTML (legacy / PDF) ───────────────────────────────────────────────────
+
+def _compile_flat_report(input_dirs, out_dir, title=None):
+    """Generate a sequential flat HTML + PDF (for printing)."""
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
-
     input_dirs = [Path(d) for d in input_dirs]
     if title is None:
-        title = 'Profile Analysis Report: ' + ', '.join(d.name for d in input_dirs)
+        title = 'Profile Analysis: ' + ', '.join(d.name for d in input_dirs)
 
-    sections_html = []
-
+    sections = []
     for inp in input_dirs:
         meta_path = inp / 'meta.json'
         meta = json.loads(meta_path.read_text()) if meta_path.exists() else {}
-
-        sections_html.append(f'<h2 class="section-header">Input: {_html.escape(inp.name)}</h2>')
+        sections.append(f'<h2 class="section-header">Input: {_html.escape(inp.name)}</h2>')
         if meta:
-            sections_html.append(_meta_table(meta))
-
-        # discover sources
+            sections.append(_meta_table(meta))
         sources = sorted(
             s.name for s in inp.iterdir()
-            if s.is_dir() and not s.name.startswith('.') and s.name != 'meta.json'
+            if s.is_dir() and not s.name.startswith('.')
         )
-
         for source in sources:
-            sections_html.append(f'<h2>{_html.escape(source)}</h2>')
-
-            # analyses under <source>/figures/<cost_type>/ (analyze output)
-            # or under <source>/figures/ (compare output)
-            fig_roots = []
+            sections.append(f'<h2>{_html.escape(source)}</h2>')
             src_dir = inp / source / 'figures'
-            if src_dir.is_dir():
-                # Check if there are subdirs (cost_type subdirs from analyze) or direct figs
-                subdirs = [d for d in src_dir.iterdir() if d.is_dir()]
-                if subdirs:
-                    for sd in sorted(subdirs):
-                        fig_roots.append((sd.name, sd))
-                else:
-                    fig_roots.append(('', src_dir))
-
-            for cost_type_label, fig_dir in fig_roots:
-                if cost_type_label:
-                    sections_html.append(f'<h3>Cost type: {_html.escape(cost_type_label)}</h3>')
+            if not src_dir.is_dir():
+                continue
+            subdirs = [d for d in src_dir.iterdir() if d.is_dir()]
+            fig_roots = (
+                [(sd.name, sd) for sd in sorted(subdirs)] if subdirs
+                else [('', src_dir)]
+            )
+            for cost_type, fig_dir in fig_roots:
+                if cost_type:
+                    sections.append(f'<h3>Cost type: {_html.escape(cost_type)}</h3>')
                 groups = _scan_figures(fig_dir)
                 for num in sorted(groups.keys()):
                     atitle = _ANALYSIS_TITLES.get(num, f'Analysis {num}')
-                    sections_html.append(f'<h4>Analysis {num}: {_html.escape(atitle)}</h4>')
+                    sections.append(f'<h4>Analysis {num}: {_html.escape(atitle)}</h4>')
                     desc = _ANALYSIS_DESC.get(num)
                     if desc:
-                        sections_html.append(f'<p>{desc}</p>')
+                        sections.append(f'<p>{desc}</p>')
                     for fpath in groups[num]:
-                        rel = fpath.relative_to(out_dir) if fpath.is_relative_to(out_dir) else fpath
-                        # use absolute path for HTML (file:// in Chrome)
                         cap = f'{source} — {atitle}'
-                        if cost_type_label:
-                            cap += f' ({cost_type_label})'
+                        if cost_type:
+                            cap += f' ({cost_type})'
                         cap += f'  [{fpath.stem}]'
-                        sections_html.append(_figure(fpath.resolve(), cap))
+                        sections.append(
+                            f'<figure><img src="file://{fpath.resolve()}" alt="">'
+                            f'<figcaption>{_html.escape(cap)}</figcaption></figure>'
+                        )
 
+    glos = (
+        '<div class="glossary"><h2>Terminology</h2>' + _GLOSSARY_HTML + '</div>'
+    )
+    iss = (
+        '<div class="issues"><h2>Outstanding issues</h2>' + _ISSUES_HTML + '</div>'
+    )
     doc = f"""<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <title>{_html.escape(title)}</title>
-<style>{_CSS}</style>
+<style>{_CSS_FLAT}</style>
 </head>
 <body>
 <h1>{_html.escape(title)}</h1>
-{_GLOSSARY_HTML}
-{''.join(sections_html)}
-{_ISSUES_HTML}
+{glos}
+{''.join(sections)}
+{iss}
 </body>
 </html>
 """
-    html_path = out_dir / 'report.html'
+    html_path = out_dir / 'report_flat.html'
     html_path.write_text(doc, encoding='utf-8')
-    print(f'HTML: {html_path}')
+    print(f'Flat HTML: {html_path}')
 
-    # PDF via headless Chrome
     pdf_path = out_dir / 'report.pdf'
     try:
         subprocess.run(
@@ -374,12 +643,45 @@ def compile_report(input_dirs, out_dir, title=None):
              f'--print-to-pdf={pdf_path}',
              '--print-to-pdf-no-header',
              str(html_path)],
-            check=True, capture_output=True, timeout=120,
+            check=True, capture_output=True, timeout=300,
         )
-        print(f'PDF:  {pdf_path}')
+        print(f'PDF:       {pdf_path}')
     except (subprocess.CalledProcessError, FileNotFoundError, subprocess.TimeoutExpired) as exc:
-        print(f'PDF generation failed ({exc}); HTML is complete.', file=sys.stderr)
+        print(f'PDF generation failed ({exc}); flat HTML is complete.', file=sys.stderr)
 
+    return out_dir
+
+
+# ── public API ─────────────────────────────────────────────────────────────────
+
+def compile_report(input_dirs, out_dir, title=None, flat=False):
+    """Compile profile-analyze/compare figures into a report.
+
+    Parameters
+    ----------
+    input_dirs : list of str or Path
+    out_dir : str or Path
+    title : str, optional
+    flat : bool
+        If True generate a sequential flat HTML + PDF instead of the default
+        interactive single-page HTML.
+    """
+    out_dir = Path(out_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    input_dirs = [Path(d) for d in input_dirs]
+
+    if flat:
+        return _compile_flat_report(input_dirs, out_dir, title)
+
+    if title is None:
+        title = 'Profile Analysis — ' + ', '.join(d.name for d in input_dirs)
+
+    data, metas = _collect_data(input_dirs)
+    html = _build_interactive_html(data, metas, title)
+
+    html_path = out_dir / 'report.html'
+    html_path.write_text(html, encoding='utf-8')
+    print(f'HTML: {html_path}')
     return out_dir
 
 
@@ -389,7 +691,9 @@ def cli(argv=None):
         description='Compile profile-analyze and/or profile-compare figures into a report.')
     p.add_argument('--inputs', nargs='+', required=True,
                    help='One or more profile-analyze or profile-compare output directories')
-    p.add_argument('--out', required=True, help='Output directory for report.html + report.pdf')
+    p.add_argument('--out', required=True, help='Output directory for report.html')
     p.add_argument('--title', default=None, help='Report title (default: auto)')
+    p.add_argument('--flat', action='store_true',
+                   help='Generate sequential flat HTML + PDF instead of interactive HTML')
     a = p.parse_args(argv)
-    compile_report(a.inputs, a.out, a.title)
+    compile_report(a.inputs, a.out, a.title, flat=a.flat)
