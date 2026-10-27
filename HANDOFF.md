@@ -1,84 +1,27 @@
 # Handoff Context — ECCO-Insitu-Python
 
-## ⟶ READ THIS FIRST (2026-10-27 session 3 — profile-analyze handoff)
+## ⟶ SESSION 3 COMPLETE (2026-10-27)
 
-The App agent hit an API error mid-session and could not finish. The profile-analysis work
-agent (this handoff's intended reader) should pick up from here.
+All profile-analysis work is done. Summary:
 
-### What exists right now
+- **Full profile-analyze on `011321`**: all 7 sources, vs_clim + vs_model, 838 s.
+  Output: `~/ecco/yip/insitu_reports/profile_analyses_20261027/`
+- **Full profile-report**: 126 pages.
+  Output: `~/ecco/yip/insitu_reports/profile_report_20261027/report.{html,pdf}`
+- **Branch `model-cost-slicing`** has all new code committed and 123 tests pass; merge to `main` pending.
 
-**Two new run directories from 2026-10-27:**
+### Current reports
 
-| Run | Path | Key setting | Status |
+| Report | Path | Sources | Cost types |
 |---|---|---|---|
-| `011321` | `.../profile_files_NCEI_processed_20261027_011321/` | WOD flags, `wod_flags_extend_levels=2` | **Clean: check-qc 0 errors. Use this.** |
-| `084933` | `.../profile_files_NCEI_processed_20261027_084933/` | Same + `xbt_max_depth=2900` (KI-21) | Exists; no check-qc run yet; no model equivalents |
+| Pre-WOD-flags (20261021) | `insitu_reports/profile_report_20261021_pre_wod_flags/` | CTD_WOD, XBT_WOD | vs_clim |
+| **20261027 — WOD flags, all sources** | `insitu_reports/profile_report_20261027/` | all 7 | vs_clim, vs_model |
 
-Full path prefix: `/Users/brucel/ecco/yip/processed_by_NCEI_profile_data/`
+### Pending decisions
 
-**Model equivalents for `011321`** are at:
-```
-~/ecco/yip/ecco_v4r6_model_data/model_equivalents_20261027/netCDF/
-```
-18 files, all 7 sources, monthly-mean v4r6 interpolated to the `011321` profiles.
-These were built with `ecco-insitu monthly-estim` and are keyed to `011321`'s `ecco_arrays/`
-via `prof_yearly_file` / `prof_yearly_index`. The `EstimIndex` class in `compute.py` handles
-both per-yearly and per-packed layouts — these files are per-packed, so `EstimIndex` is needed.
-
-**Profile-analyze partial run on `011321`** already exists at:
-```
-~/ecco/yip/insitu_reports/profile_analyses_20261027/
-```
-Only 2 sources were completed (CTD_WOD + XBT_WOD), and **no `--model-equivalents` were passed**,
-so there are no `vs_model` costs. This partial output needs to be replaced by a full run.
-
-**Current reports:**
-- Pre-WOD-flags (20261021 run): `~/ecco/yip/insitu_reports/profile_report_20261021_pre_wod_flags/report.html`
-- Partial 20261027 report (2 sources, vs_clim only): `~/ecco/yip/insitu_reports/profile_report_20261027/report.html`
-
-### What to do next
-
-**Step 1 — Full profile-analyze on `011321` with model equivalents (the main task):**
-```bash
-ecco-insitu profile-analyze \
-  --run /Users/brucel/ecco/yip/processed_by_NCEI_profile_data/profile_files_NCEI_processed_20261027_011321 \
-  --model-equivalents /Users/brucel/ecco/yip/ecco_v4r6_model_data/model_equivalents_20261027/netCDF \
-  --out ~/ecco/yip/insitu_reports/profile_analyses_20261027 \
-  --sources CTD_WOD GLD_WOD ITP MEOP MRB_WOD PFL XBT_WOD
-```
-This will overwrite/extend the partial output. ~15–20 min. All 7 sources, cost types: vs_clim + vs_model.
-
-**Step 2 — Generate the full report:**
-```bash
-ecco-insitu profile-report \
-  --inputs ~/ecco/yip/insitu_reports/profile_analyses_20261027 \
-  --out ~/ecco/yip/insitu_reports/profile_report_20261027
-```
-
-**Step 3 — (Optional, lower priority) Diagnose the `084933` run:**
-The `084933` run has `xbt_max_depth=2900`. No check-qc, no model equivalents. If the team
-wants a comparison, run check-qc first, then build model equivalents with `monthly-estim`,
-then profile-analyze. But `011321` is the baseline for the report.
-
-**Step 4 — `model-cost-versions` bar chart (also pending):**
-```bash
-ecco-insitu model-cost-versions \
-  cost_comparisons/v4r6_iter47_cost_breakdown/cost_breakdown.csv \
-  cost_comparisons/r20261021_monmean_cost_breakdown/cost_breakdown.csv \
-  cost_comparisons/r20261027_cost_breakdown/cost_breakdown.csv \
-  --labels "v4r6 (exact)" "20261021 (monthly)" "20261027 (monthly)" \
-  --out cost_comparisons/v4r6_vs_20261021_vs_20261027_versions
-```
-
-### Important: compute.py has an EstimIndex class you added
-
-`src/ecco_insitu/diagnostics/profile_analyses/compute.py` — you (the App agent) added:
-- `class EstimIndex` (lines ~130–176): maps `*_model.nc` packed files → yearly files via
-  `prof_yearly_file` / `prof_yearly_index`; handles both per-yearly and per-packed layouts.
-- Separate `estimb_` arrays for `vs_run_b` so it doesn't silently reuse `vs_model` values.
-
-Do not overwrite those edits. They are needed for the `--model-equivalents` flag to work
-with the monthly-mean equivalents (which are per-packed, not per-yearly).
+- **KI-19:** `chain.wod_flags_extend_levels=2` — awaiting sign-off.
+- **KI-21:** `chain.xbt_max_depth=2900` — `084933` run exists (no check-qc, no model equivalents).
+- **Merge `model-cost-slicing` → `main`** — 123 tests pass, ready.
 
 ### Key results to know (for context)
 
