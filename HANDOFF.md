@@ -23,35 +23,48 @@ the full plain-language write-up, for explaining it to others, is `docs/producti
   files are indexed to the 20261021 profile counts; the 20261027 run has slightly different
   per-file counts (e.g. CTD_WOD_001: 213158 vs 213301), so `mds-to-nc` fails with an index
   overflow.
-- **Approximate model equivalents via `monthly-estim` ARE being generated** (started 2026-10-27
-  session 2) using `ecco_v4r6_model_data/{THETA,SALT}_mon_mean` (816 MDS files covering the
-  full v4r6 iter47 period) against the 20261027 `ecco_arrays/`. Output:
-  `ecco_v4r6_model_data/model_equivalents_20261027/netCDF/`. These are approximate
-  (monthly-mean state vs the model's daily actual state), suitable for offline cost comparisons.
-  **The estimated cost numbers from the wod_flags README remain valid as a cross-check:**
-  XBT T 0.222 → **0.181** (v4r6 0.170); CTD T 0.050 → 0.048; CTD S 0.063 → 0.060.
+- **Approximate model equivalents computed via `monthly-estim`** (done 2026-10-27 session 2)
+  using `ecco_v4r6_model_data/{THETA,SALT}_mon_mean` (816 MDS files, full v4r6 period) against
+  the 20261027 `ecco_arrays/`. Output: `model_equivalents_20261027/netCDF/` (18 files).
+  Same done for 20261021: `model_equivalents_20261021_monmean/netCDF/` (for apples-to-apples comparison).
+- **`model-cost` run and three-way comparison complete.** Results (cost per datum, monthly-mean equiv
+  for the two NCEI runs; exact equiv for v4r6; see `cost_comparisons/wod_flags/README.md`):
+
+  | source | v4r6 `final` | 20261021 `final` | 20261027 `final` | 20261021 `no_γ·sf` | 20261027 `no_γ·sf` |
+  |---|---|---|---|---|---|
+  | XBT T  | 0.170 | 0.235 | **0.194** | 0.943 | **0.808** |
+  | CTD T  | 0.051 | 0.053 | **0.052** | 0.815 | **0.798** |
+  | CTD S  | 0.053 | 0.064 | **0.061** | 0.837 | **0.807** |
+  | Argo T | 0.121 | 0.129 | 0.129 | 0.648 | 0.647 |
+  | MRB T  | 0.011 | 0.011 | **0.010** | 0.460 | **0.425** |
+
+  `no_γ·sf` = (misfit/σ)² only, without decimation or γ (what the boss asked for).
+  **Key finding:** XBT T `no_γ·sf` 0.943 → **0.808**, matching v4r6's 0.802. WOD flags fix the
+  data quality; the remaining `final` cost gap is from γ and sf, not bad data.
 - **Profile analysis framework committed** (`d591c24`): `profile-analyze`, `profile-compare`,
   `profile-report`; 9 unit tests pass.
 - **monthly-estim WIP committed** (`eea81d7`): blocked on monthly-mean fields from the team.
 - **All 123 tests pass.** Branch is clean.
 
 ### Next
-1. **Wait for `monthly-estim` to finish**, then run `model-cost`:
+1. **Merge `model-cost-slicing` → `main`** via a PR on the fork — 123 tests pass, ready.
+2. **`model-cost-versions` plot** (3-way comparison v4r6 / 20261021 / 20261027):
    ```
-   ecco-insitu model-cost \
-     --data .../profile_files_NCEI_processed_20261027_011321/ecco_arrays \
-     --estim .../model_equivalents_20261027/netCDF \
-     --out cost_comparisons/r20261027_cost_breakdown
+   ecco-insitu model-cost-versions \
+     cost_comparisons/v4r6_iter47_cost_breakdown/cost_breakdown.csv \
+     cost_comparisons/r20261021_monmean_cost_breakdown/cost_breakdown.csv \
+     cost_comparisons/r20261027_cost_breakdown/cost_breakdown.csv \
+     --labels "v4r6 (exact)" "20261021 (monthly)" "20261027 (monthly)" \
+     --out cost_comparisons/v4r6_vs_20261021_vs_20261027_versions
    ```
-   Then `model-cost-versions` to compare v4r6, 20261021, 20261027.
-2. **Profile analysis on the 20261027 run** (vs-climatology, and vs-model once model-cost is done):
+3. **Profile analysis on the 20261027 run** (vs-climatology + vs-model with monthly-mean equiv):
    ```
    ecco-insitu profile-analyze \
      --run .../profile_files_NCEI_processed_20261027_011321 \
+     --model-equivalents .../model_equivalents_20261027/netCDF \
      --out ~/ecco/yip/insitu_reports/profile_analyses_20261027 \
      --sources CTD_WOD GLD_WOD ITP MEOP MRB_WOD PFL XBT_WOD
    ```
-3. **Merge `model-cost-slicing` → `main`** via a PR on the fork — 123 tests pass, ready.
 4. **Team decisions still pending:**
    - KI-19: `chain.wod_flags_extend_levels` default (proposed 2);
    - whether to drop XBT values below ~2000 m;
