@@ -3,6 +3,7 @@
 Uses a small synthetic profile NetCDF so no chain data is needed.  Tests:
   - _load_file reads the expected arrays
   - _new_acc + _accumulate_file + _finalize roundtrip on a 3-profile / 5-depth file
+  - the pooled split and ECCO mean term equal ecco-insitu model-cost on two obs classes
   - output NetCDF has the expected variables
   - compare and report CLI entry points are importable
 """
@@ -107,6 +108,24 @@ def test_weight_versions_relationships():
 # Full accumulate / finalize roundtrip
 # ---------------------------------------------------------------------------
 
+def _two_pass(fd, depth):
+    """Pass 1 (unsplit, own and pooled sums) and pass 2 (both splits) on one file."""
+    acc = pa._new_acc(len(depth))
+    pooled = pa._new_pooled(len(depth))
+    pa._accumulate_file(acc, fd, 'vs_clim', 'unsplit', pooled=pooled)
+    stats = pa._pooled_stats(pooled)
+    own = {}
+    for V in pa.VARS:
+        s, c = acc[f'bias_sum_{V}'], acc[f'bias_count_{V}']
+        with np.errstate(invalid='ignore'):
+            own[V] = np.where(c > 0, s / c, np.nan)
+    biases = {'split': {V: stats[V]['bias'] for V in pa.VARS}, 'split_own': own}
+    pa._accumulate_file(acc, fd, 'vs_clim', 'split', biases=biases)
+    res = pa._finalize(acc, depth)
+    res['pooled'] = stats
+    return res
+
+
 def test_roundtrip_accumulate_finalize(tmp_path):
     """Three-profile file → accumulate → finalize → sane results."""
     p = tmp_path / 'src' / 'XBT_WOD' / 'XBT_1995_test.nc'
@@ -116,53 +135,87 @@ def test_roundtrip_accumulate_finalize(tmp_path):
     fd = pa._load_file(p)
     depth = fd['depth'].astype(np.float32)
     n_d = len(depth)
+    res = _two_pass(fd, depth)
 
-    acc = pa._new_acc(n_d)
-    pa._accumulate_file(acc, fd, None, None, 'vs_clim', 'unsplit')
-
-    # biases from pass 1
-    for V in pa.VARS:
-        s = acc[f'bias_sum_{V}']
-        c = acc[f'bias_count_{V}']
-        with np.errstate(invalid='ignore'):
-            bias = np.where(c > 0, s / c, 0.0)
-
-    # pass 2 with bias
-    pa._accumulate_file(acc, fd, bias, bias, 'vs_clim', 'split')
-
-    res = pa._finalize(acc, depth)
-
-    # analysis 1: mean T/S should be close to the synthetic values
     for V in pa.VARS:
         m = res['a01'][V]['mean']
         assert m.shape == (n_d,)
         assert np.isfinite(m).all(), f'a01 {V} has NaN'
 
-    # analysis 2: cost vs depth — unsplit should be >= 0
     for V in pa.VARS:
-        for wv in pa.WEIGHT_VERS:
-            k = (V, 'unsplit', wv)
-            m = res[('a02', *k)]['mean']
-            assert m.shape == (n_d,)
-            assert (np.where(np.isfinite(m), m, 0) >= 0).all(), f'negative cost in a02 {k}'
+        for sp in pa.SPLIT_MODES:
+            for wv in pa.WEIGHT_VERS:
+                m = res[('a02', V, sp, wv)]['mean']
+                assert m.shape == (n_d,)
+                assert (np.where(np.isfinite(m), m, 0) >= 0).all(), f'negative cost in a02 {V} {sp} {wv}'
 
-    # analysis 2: true (normalized) weight version is the largest (factors ≤1 removed)
     for V in pa.VARS:
-        k_final = (V, 'unsplit', 'final')
-        k_true  = (V, 'unsplit', 'true')
-        m_final = np.where(np.isfinite(res[('a02', *k_final)]['mean']), res[('a02', *k_final)]['mean'], 0)
-        m_true  = np.where(np.isfinite(res[('a02', *k_true)]['mean']),  res[('a02', *k_true)]['mean'],  0)
+        m_final = np.nan_to_num(res[('a02', V, 'unsplit', 'final')]['mean'])
+        m_true = np.nan_to_num(res[('a02', V, 'unsplit', 'true')]['mean'])
         assert (m_true >= m_final - 1e-12).all(), f'true cost < final for {V}'
-
-    # analysis 10: five depth ranges
-    for V in pa.VARS:
-        k = (V, 'unsplit', 'true')
-        dr = res[('a10', *k)]
-        assert dr.shape == (pa.N_DEPTH_RANGES,)
-
-    # bias shape
-    for V in pa.VARS:
+        assert res[('a10', V, 'unsplit', 'true')].shape == (pa.N_DEPTH_RANGES,)
         assert res['bias'][V].shape == (pa.N_BINS + 1, n_d)
+        # one class pooled alone: the pooled split equals the own-class split
+        np.testing.assert_allclose(np.nan_to_num(res[('a02', V, 'split', 'true')]['mean']),
+                                   np.nan_to_num(res[('a02', V, 'split_own', 'true')]['mean']), rtol=1e-6)
+        # each profile is alone in its bin, so removing the bin mean leaves no cost
+        assert np.nansum(res[('a02', V, 'split', 'true')]['mean']) < 1e-8
+
+
+def test_pooled_split_matches_model_cost(tmp_path, capsys):
+    """Two obs classes sharing bins: profile-analyze's pooled split anomaly cost and mean term equal
+    ``ecco-insitu model-cost`` (cost_profiles.F) on the same files; split_own differs."""
+    from ecco_insitu.model_comparison import cost as mc
+    rng = np.random.default_rng(7)
+    run = tmp_path / 'profile_files_NCEI_processed_20990101_000000' / 'yearly'
+    est = tmp_path / 'estim'
+    est.mkdir()
+    n, nd = 40, 5
+    depth = np.array([10, 50, 100, 250, 500], np.float32)
+    for k, src in enumerate(('XBT_WOD', 'CTD_WOD')):
+        d = run / src
+        d.mkdir(parents=True)
+        f = d / f'WOD_WO_1995_{src[:3]}__ncei_step_11.nc'
+        T = rng.normal(15, 2, (n, nd)) + 0.7 * k            # offset between classes
+        S = rng.normal(35, 0.3, (n, nd))
+        with netCDF4.Dataset(f, 'w') as nc:
+            nc.createDimension('iPROF', n); nc.createDimension('iDEPTH', nd)
+            def cv(name, data, dims, dt='f8'):
+                nc.createVariable(name, dt, dims)[:] = data
+            cv('prof_depth', depth, ('iDEPTH',), 'f4')
+            cv('prof_lat', rng.uniform(-50, 50, n), ('iPROF',))
+            cv('prof_lon', rng.uniform(0, 300, n), ('iPROF',))
+            cv('prof_YYYYMMDD', np.full(n, 19950615), ('iPROF',), 'i4')
+            cv('prof_bin_id_a', rng.integers(1, 6, n), ('iPROF',), 'i4')    # 5 shared bins
+            cv('prof_area_gamma', rng.uniform(0.3, 1, n), ('iPROF',))
+            for V, x in (('T', T), ('S', S)):
+                w = rng.uniform(0.5, 4, (n, nd)); w[rng.random((n, nd)) < 0.1] = 0
+                cv(f'prof_{V}', x, ('iPROF', 'iDEPTH'))
+                cv(f'prof_{V}clim', x + rng.normal(0, 0.5, (n, nd)), ('iPROF', 'iDEPTH'))
+                cv(f'prof_{V}weight', w, ('iPROF', 'iDEPTH'))
+                cv(f'prof_{V}spatial_scaling_factor', rng.uniform(0.2, 1, n), ('iPROF',))
+        with netCDF4.Dataset(est / (f.stem + '_model.nc'), 'w') as nc:
+            nc.createDimension('iPROF', n); nc.createDimension('iDEPTH', nd)
+            for V, x in (('T', T), ('S', S)):
+                nc.createVariable(f'prof_{V}estim', 'f8', ('iPROF', 'iDEPTH'))[:] = x + rng.normal(0.2, 0.4, (n, nd))
+
+    out = tmp_path / 'out'
+    pa.run(run, out, estim_dir=est)
+    capsys.readouterr()
+    mc.cli(['--data', str(run), '--estim', str(est), '--out', str(tmp_path / 'mc'), '-n', '1'])
+    import json
+    ref = json.load(open(tmp_path / 'mc' / 'cost_summary.json'))
+    meta = json.load(open(out / 'meta.json'))
+    for V in pa.VARS:
+        anom = 0.0
+        for src in ('XBT_WOD', 'CTD_WOD'):
+            with netCDF4.Dataset(next((out / src).glob('*_vs_model.nc'))) as nc:
+                anom += float(np.nansum(nc[f'a05__a__{V}__split__final__integrated_by_bin'][:]))
+                own = float(np.nansum(nc[f'a05__a__{V}__split_own__final__integrated_by_bin'][:]))
+        assert anom == pytest.approx(ref[V]['anomaly_cost'], rel=1e-6)   # float32 storage
+        assert meta['ecco_mean_term']['vs_model'][V]['cost'] == pytest.approx(ref[V]['mean_cost'], rel=1e-9)
+        assert meta['ecco_mean_term']['vs_model'][V]['count'] == ref[V]['mean_count']
+    assert own != pytest.approx(anom)
 
 
 # ---------------------------------------------------------------------------
@@ -175,34 +228,21 @@ def test_write_nc_creates_valid_file(tmp_path):
     _make_profile_nc(str(p), n_prof=3, n_depth=5)
     fd = pa._load_file(p)
     depth = fd['depth'].astype(np.float32)
-    acc = pa._new_acc(len(depth))
-    pa._accumulate_file(acc, fd, None, None, 'vs_clim', 'unsplit')
-    pa._accumulate_file(acc, fd, None, None, 'vs_clim', 'split')
-    res = pa._finalize(acc, depth)
+    res = _two_pass(fd, depth)
 
     out_nc = tmp_path / 'out' / 'analysis_CTD_WOD_19990101_vs_clim.nc'
     pa._write_nc(res, 'CTD_WOD', '19990101_120000', out_nc, ['vs_clim'])
 
     assert out_nc.exists()
     with netCDF4.Dataset(out_nc) as nc:
-        # required dimensions
-        assert 'depth' in nc.dimensions
-        assert 'bin_a' in nc.dimensions
-        assert 'hist_bin' in nc.dimensions
-        assert 'depth_range' in nc.dimensions
-        # analysis 1 present
-        assert 'a01_T_mean_depth' in nc.variables
-        assert 'a01_S_mean_depth' in nc.variables
-        # biases present
-        assert 'bias_T' in nc.variables
-        assert 'bias_S' in nc.variables
-        # a02 for T, unsplit, final
-        assert 'a02__a__T__unsplit__final__mean_depth' in nc.variables or \
-               any('a02' in v and 'T' in v and 'unsplit' in v and 'final' in v
-                   for v in nc.variables)
-        # split_method attribute
-        assert 'split_method' in nc.ncattrs()
-        assert nc.split_method == 'mean_bias_per_bin_depth'
+        for dim in ('depth', 'bin_a', 'hist_bin', 'depth_range'):
+            assert dim in nc.dimensions
+        for v in ('a01_T_mean_depth', 'a01_S_mean_depth', 'bias_own_T', 'bias_pooled_S',
+                  'a02__a__T__unsplit__final__mean_depth', 'a02__a__T__split__final__mean_depth',
+                  'a02__a__T__split_own__final__mean_depth'):
+            assert v in nc.variables, v
+        assert nc.split_method == 'cost_profiles_F_pooled_bin_mean'
+        assert 'ecco_mean_term_T' in nc.ncattrs()
 
 
 # ---------------------------------------------------------------------------

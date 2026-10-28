@@ -56,12 +56,12 @@ _ANALYSIS_DESC = {
     '02': (
         'Mean cost per point at each depth level, over all points at that level: '
         '<em>J</em>&nbsp;=&nbsp;<em>w</em>&nbsp;&middot;&nbsp;(V&nbsp;&minus;&nbsp;V<sub>ref</sub>)&sup2; '
-        '(unsplit, dashed) or <em>w</em>&nbsp;&middot;&nbsp;(V&nbsp;&minus;&nbsp;V<sub>ref</sub>&nbsp;&minus;&nbsp;<em>b</em>)&sup2; '
-        '(split, solid). One line per weight version and split mode (see Terminology).'
+        '(unsplit, dashed), or with the time-mean misfit <em>b</em> removed: split (solid) and '
+        'split_own (dotted). One line per weight version and split mode (see Terminology).'
     ),
     '03': (
         'Cost per datum, (&Delta;V/&sigma;)&sup2; with &gamma; and sf removed (<code>true</code> '
-        'weights), averaged over all points in each month of the record. Split (solid) and unsplit (dashed).'
+        'weights), averaged over all points in each month of the record. Unsplit (dashed), split (solid), split_own (dotted).'
     ),
     '04': (
         'Total cost per calendar month: the sum of the cost over all points in the month, unsplit, '
@@ -90,12 +90,12 @@ _ANALYSIS_DESC = {
     ),
     '09': (
         'As analysis 2, <code>true</code> weights only: mean (&Delta;V/&sigma;)&sup2; at each depth '
-        'level, split (solid) and unsplit (dashed).'
+        'level: unsplit (dashed), split (solid), split_own (dotted).'
     ),
     '10': (
         'Mean (&Delta;V/&sigma;)&sup2; (<code>true</code> weights) over all points in each depth range: '
         '0&ndash;100, 0&ndash;250, 0&ndash;500, 0&ndash;700 and 0&ndash;2000&nbsp;m (each range starts at '
-        'the surface). Split and unsplit.'
+        'the surface). Unsplit, split and split_own.'
     ),
 }
 
@@ -121,11 +121,19 @@ All use the same misfit &Delta;V&nbsp;=&nbsp;V&nbsp;&minus;&nbsp;V<sub>ref</sub>
 <tr><td><code>split</code></td>
     <td><em>J</em> = <em>w</em>&nbsp;&middot;&nbsp;(V&nbsp;&minus;&nbsp;V<sub>ref</sub>&nbsp;&minus;&nbsp;<em>b</em>)&sup2;,
         where <em>b</em> is the <strong>time-mean misfit</strong> for that geodesic bin and depth level:
-        the average of (V&nbsp;&minus;&nbsp;V<sub>ref</sub>) over every point that fell there, all years and
-        months pooled (not a seasonal or monthly mean). In this report <em>b</em> is computed separately for
-        each obs class and cost type. This differs from ECCO&rsquo;s <code>cost_profiles.F</code>; see
-        <em>Notes &amp; errata</em>.</td></tr>
+        <em>b</em>&nbsp;=&nbsp;mean(V)&nbsp;&minus;&nbsp;mean(V<sub>ref</sub>) over every point that fell there,
+        <strong>all obs classes together</strong> and all years and months pooled (not a seasonal or monthly
+        mean). This is the anomaly term of ECCO v4r6&rsquo;s <code>cost_profiles.F</code>; for vs_model it
+        equals <code>ecco-insitu model-cost</code>&rsquo;s anomaly cost. The cost is still shown per obs class.</td></tr>
+<tr><td><code>split_own</code></td>
+    <td>As <code>split</code>, but <em>b</em> is computed from this obs class only.</td></tr>
 </table>
+<p><strong>ECCO&rsquo;s mean term</strong>: ECCO&rsquo;s split cost also adds, once per (bin, depth),
+<em>w&#772;</em>&nbsp;&middot;&nbsp;(mean(V<sub>ref</sub>)&nbsp;&minus;&nbsp;mean(V))&sup2;, with
+<em>w&#772;</em>&nbsp;=&nbsp;1&nbsp;/&nbsp;max(<em>s</em>/<em>n</em>,&nbsp;<em>s</em>/9), <em>s</em>&nbsp;=&nbsp;mean(1/<em>w</em>),
+<em>n</em>&nbsp;=&nbsp;number of points. It pools all obs classes, so it can&rsquo;t be split by class; its total
+for each cost type is under <em>Metadata</em>. ECCO&rsquo;s split cost = the sum of <code>split</code> over all
+obs classes (<code>final</code> weights) + the mean term.</p>
 
 <p><strong>Cost types</strong>: what V<sub>ref</sub> is.</p>
 <table class="gloss-table">
@@ -230,12 +238,19 @@ above 0. On the same casts, 99.4% of our flags agree with v4r6&rsquo;s. This app
 
 <h3>4. Errata and known limitations</h3>
 <ul>
-<li><strong>Split cost differs from ECCO&rsquo;s.</strong> The team&rsquo;s specification asks for split costs
-&ldquo;like how things are done in the Fortran&rdquo;. ECCO v4r6&rsquo;s <code>cost_profiles.F</code> computes
-one mean per (geodesic bin, depth) over <em>all</em> obs classes pooled, and also adds a mean term
-<em>w&#772;</em>&nbsp;&middot;&nbsp;(m&#772;&nbsp;&minus;&nbsp;d&#772;)&sup2;. This report uses a separate mean for each obs class and
-leaves out the mean term. A Fortran-matching split is planned; for ECCO&rsquo;s exact numbers now, use
-<code>ecco-insitu model-cost</code>.</li>
+<li><strong>Split follows the Fortran</strong> (since 2026-10-28). <code>split</code> removes one mean per
+(geodesic bin, depth) over all obs classes pooled, as ECCO v4r6&rsquo;s <code>cost_profiles.F</code>, and the
+mean term is reported under Metadata. Checked: for run 20261027 (all seven obs classes, vs_model), the
+anomaly cost summed over classes, its point count, the mean term and its number of terms all equal
+<code>ecco-insitu model-cost</code>&rsquo;s on the same files (T: 2.87925&times;10&#8311; over 245,226,456 points;
+mean term 1.96488&times;10&#8309; over 589,586 terms). <code>model-cost</code> reproduces the team&rsquo;s v4r6 cost
+bars; neither is yet checked against a model run&rsquo;s own cost output. <code>split_own</code> (each class&rsquo;s own mean)
+is kept as a comparison. Because the pooled mean depends on which classes are included, a report made with
+<code>--sources</code> has a different <code>split</code>.</li>
+<li><strong>Two small differences from <code>model-cost</code>:</strong> profiles without a geodesic bin (about
+14,000 of 441 million weighted values in run 20261027_142247) have no split cost here; and points whose
+climatology is missing are left out of all costs here, while ECCO keeps them in the model cost
+(none in these runs).</li>
 <li><strong>Split vs climatology</strong> is our extension; ECCO splits only the model&ndash;data cost.</li>
 <li><strong>Analysis 4:</strong> the specification asks for total cost through time &ldquo;after all factors
 removed&rdquo;; that is the <code>true</code> line. The <code>final</code> and <code>nosf</code> lines are
@@ -246,7 +261,8 @@ variability shows up as misfit; profiles after December 2025 have no model value
 the depth note said levels with fewer than 30 observations were hidden (only levels with none are);
 the histogram text said 2 means 100&sigma; (it means 10&sigma;); the WOD-flags note said a flag of 1 means
 good (0 means accepted) and listed Argo and MEOP among the WOD classes (they aren&rsquo;t);
-and the split was described as mirroring <code>cost_profiles.F</code> (it differs, as above).</li>
+the split was described as mirroring <code>cost_profiles.F</code> (until 2026-10-28 it used each obs
+class&rsquo;s own mean, now <code>split_own</code>, and left out the mean term).</li>
 </ul>
 """
 
@@ -420,9 +436,21 @@ def _scan_figures(fig_dir):
     return groups
 
 
+def _mean_term_table(mt):
+    rows = ''.join(
+        f'<tr><td>{_html.escape(ct)}</td>'
+        + ''.join(f'<td>{d[V]["cost"]:.4e} ({d[V]["count"]:,})</td>' if V in d else '<td></td>' for V in ('T', 'S'))
+        + '</tr>' for ct, d in mt.items())
+    return ('<table class="gloss-table"><tr><th>cost type</th><th>T (terms)</th><th>S (terms)</th></tr>'
+            + rows + '</table>')
+
+
 def _meta_table(meta, css_class='meta-table'):
     rows = []
     for k, v in meta.items():
+        if k == 'ecco_mean_term':
+            rows.append(f'<tr><th>ECCO mean term (all obs classes)</th><td>{_mean_term_table(v)}</td></tr>')
+            continue
         rows.append(
             f'<tr><th>{_html.escape(str(k))}</th>'
             f'<td>{_html.escape(str(v))}</td></tr>'

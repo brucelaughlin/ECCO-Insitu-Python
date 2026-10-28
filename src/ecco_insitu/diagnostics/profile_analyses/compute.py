@@ -38,12 +38,16 @@ Model-equivalent folders (--model-equivalents, --run-b) may hold either
 A yearly file with no model values for some profiles leaves those out of the model costs, and the count
 is printed.
 
-Split vs unsplit:
-  unsplit  raw misfit  (V - Vref)² × w
-  split    Fortran-style: (V - Vref - bias)² × w
-           bias[bin,depth] = time-mean (V - Vref) across all obs at that (bin,depth)
-  Both saved; bias arrays are also written to NetCDF for reproducibility.
-  Global attribute split_method = 'mean_bias_per_bin_depth' documents the formula.
+Split vs unsplit (per point; w = weight, V = observation, Vref = reference):
+  unsplit    w (V - Vref)²                       the mean misfit is not removed
+  split      w (V - Vref - b)²,  b = mean(V) - mean(Vref) per (geodesic bin, depth), pooled
+             over all obs classes, points with w > 0 (and, for model costs, Vref != 0):
+             ECCO v4r6 cost_profiles.F's anomaly term. Costs are still tallied per obs class.
+             ECCO's mean term, w_mean (mean(Vref) - mean(V))², w_mean = 1/max(s/n, s/9),
+             s = mean(1/w), is pooled, so it is reported once per cost type (meta.json and
+             the NetCDF attributes), not per obs class.
+  split_own  as split, but b from this obs class only.
+  Bias arrays (pooled and own) are written to the NetCDF.
 
 Weight versions:
   final   γ × sf × (ΔV/σ)²  what ECCO sees
@@ -72,7 +76,8 @@ import ecco_insitu.diagnostics.common as common
 # ---------------------------------------------------------------------------
 VARS = ('T', 'S')
 WEIGHT_VERS = ('final', 'nosf', 'true')   # matches costs_compute.py KINDS
-SPLIT_MODES = ('unsplit', 'split')
+SPLIT_MODES = ('unsplit', 'split', 'split_own')
+PROFILES_MEAN_INDSAMPLES = 9   # v4r6 data.profiles
 COST_TYPES  = ('vs_clim', 'vs_model', 'vs_run_b')
 
 N_BINS   = 10242          # geodesic bin ids 1..10242; index 0 unused
@@ -271,9 +276,6 @@ def _new_acc(n_depths):
                 # a03: mean cost per datum vs time  (YYYYMM → running total)
                 acc[('a03', *k, 'sum')]   = defaultdict(float)
                 acc[('a03', *k, 'count')] = defaultdict(int)
-                # a04: total cost vs time
-                acc[('a04', *k, 'sum')]   = defaultdict(float)
-                acc[('a04', *k, 'count')] = defaultdict(int)
                 # a05: integrated cost per bin  (N_BINS+1,)
                 acc[('a05', *k, 'sum')]   = np.zeros(N_BINS + 1)
                 acc[('a05', *k, 'count')] = np.zeros(N_BINS + 1, dtype=np.int64)
@@ -285,206 +287,119 @@ def _new_acc(n_depths):
     return acc
 
 
-def _accumulate_cost(acc, V, sp, cost2d, ok, weights, lat, bin_a, yyyymm_arr):
-    """Add one file's cost values to all cost-analysis accumulators.
+def _new_pooled(n_depths):
+    """Sums per (bin, depth) over every obs class, for the Fortran-style split (cost_profiles.F)."""
+    def z():
+        return np.zeros((N_BINS + 1, n_depths))
+    return {V: {'d': z(), 'm': z(), 'invw': z(), 'n': np.zeros((N_BINS + 1, n_depths), np.int64)}
+            for V in VARS}
 
-    cost2d  : (n_prof, n_depths) cost array for one weight version → supplied for all 3
-    ok      : (n_prof, n_depths) bool mask of valid, nonzero-weight points
-    weights : dict of {wver: (n_prof, n_depths) weight array}
-    lat     : (n_prof,)
-    bin_a   : (n_prof,) int32 bin ids (1..10242; clipped to valid range)
-    yyyymm_arr: (n_prof,) YYYYMM int
+
+def _pooled_stats(pooled, indsamples=PROFILES_MEAN_INDSAMPLES):
+    """Bin means and ECCO's mean term from pooled sums, as cost_profiles.F (and ``model-cost``).
+
+    b = d_mean - m_mean (the time-mean misfit, NaN where undefined); mean term
+    sum of w_mean * (m_mean - d_mean)^2 with w_mean = 1 / max(s/n, s/indsamples), s = mean(1/w).
     """
-    n_prof, n_depths = cost2d.shape
-    # safe bin index (clip to 0..N_BINS; 0 = unused sentinel)
-    bi = np.clip(bin_a, 0, N_BINS).astype(np.int32)
-    lb = _lat_band_idx(lat)
+    out = {}
+    for V, p in pooled.items():
+        n = p['n']
+        with np.errstate(invalid='ignore', divide='ignore'):
+            dmean = np.where(n > 0, p['d'] / n, 0.0)
+            mmean = np.where(n > 0, p['m'] / n, 0.0)
+            s = np.where(n > 0, p['invw'] / n, 0.0)
+            sig2 = np.maximum(s / np.where(n > 0, n, 1), s / indsamples)
+            wmean = np.where((n > 0) & (sig2 != 0), 1.0 / np.where(sig2 != 0, sig2, 1), 0.0)
+        sel = (wmean > 0) & (dmean != 0) & (mmean != 0)
+        out[V] = {
+            'bias': np.where((n > 0) & (dmean != 0), dmean - mmean, np.nan),
+            'count': n, 'wmean': wmean,
+            'mean_cost': float(np.sum(wmean[sel] * (mmean[sel] - dmean[sel]) ** 2)),
+            'mean_count': int(sel.sum()),
+        }
+    return out
 
+
+def _add_costs(acc, V, mode, mf, ok, w, sf, gamma, ym, bi_safe, lb):
+    """Add one file's costs (misfit ``mf`` at points ``ok``) to every analysis, for each weight version."""
+    weights = _weight_versions(w, sf, gamma)
+    rows_ok, cols_ok = np.where(ok)
+    n_d = mf.shape[1]
     for wv in WEIGHT_VERS:
-        w2d = weights[wv]  # (n_prof, n_depths)
-        # compute cost for this weight version: base misfit^2 × w_ver
-        # 'final' weight already contains misfit^2 in cost2d; other versions scale it
-        # → cost2d IS (misfit^2 * w_final); divide by appropriate factor
-        if wv == 'final':
-            c2d = cost2d
-        elif wv == 'nosf':
-            # nosf = final / sf  →  cost2d_nosf = cost2d_final / sf
-            # But we passed the per-weight-version costs already. Actually cost2d is
-            # (misfit^2 * w_final), and w_nosf = w_final/sf. So cost_nosf = misfit^2 * w_nosf.
-            # We need misfit^2 from cost2d_final / w_final, then * w_nosf.
-            # Simpler: pass cost arrays for all versions together. We'll recompute below.
-            c2d = cost2d   # placeholder; replaced by caller that supplies per-version array
-        else:
-            c2d = cost2d
-
-        k = (V, sp, wv)
-        c_ok = np.where(ok, c2d, np.nan)
-
-        # a02: mean cost vs depth
-        np.add.at(acc[('a02', *k, 'sum')],   np.where(ok)[1], c2d[ok])
-        np.add.at(acc[('a02', *k, 'count')], np.where(ok)[1], 1)
-
-        # a03, a04: per-time aggregates
-        for i in range(n_prof):
-            ym = int(yyyymm_arr[i])
-            ok_i = ok[i]
-            c_i  = c2d[i, ok_i]
-            n_i  = ok_i.sum()
-            if n_i == 0:
-                continue
-            s = float(c_i.sum())
-            acc[('a03', *k, 'sum')][ym]   += s
-            acc[('a03', *k, 'count')][ym] += int(n_i)
-            acc[('a04', *k, 'sum')][ym]   += s
-            acc[('a04', *k, 'count')][ym] += int(n_i)
-
-        # a05: integrated cost per bin
-        #  sum all depth levels for each profile, then scatter by bin
+        c2d = np.where(ok, mf, 0.0) ** 2 * weights[wv]
+        k = (V, mode, wv)
+        np.add.at(acc[('a02', *k, 'sum')],   cols_ok, c2d[ok])
+        np.add.at(acc[('a02', *k, 'count')], cols_ok, 1)
         c_per_prof = np.where(ok, c2d, 0.0).sum(axis=1)
-        count_per_prof = ok.sum(axis=1).astype(np.int64)
-        np.add.at(acc[('a05', *k, 'sum')],   bi, c_per_prof)
-        np.add.at(acc[('a05', *k, 'count')], bi, count_per_prof)
-
-        # a07: zonal mean cost per datum vs depth
-        rows_ok, cols_ok = np.where(ok)
+        n_per_prof = ok.sum(axis=1).astype(np.int64)
+        for i in np.nonzero(n_per_prof)[0]:
+            ymv = int(ym[i])
+            acc[('a03', *k, 'sum')][ymv]   += float(c_per_prof[i])
+            acc[('a03', *k, 'count')][ymv] += int(n_per_prof[i])
+        np.add.at(acc[('a05', *k, 'sum')],   bi_safe, c_per_prof)
+        np.add.at(acc[('a05', *k, 'count')], bi_safe, n_per_prof)
         if rows_ok.size:
-            flat_idx = lb[rows_ok] * n_depths + cols_ok
+            flat_idx = lb[rows_ok] * n_d + cols_ok
             np.add.at(acc[('a07', *k, 'sum')].ravel(),   flat_idx, c2d[ok])
             np.add.at(acc[('a07', *k, 'count')].ravel(), flat_idx, 1)
-
-        # a08: histogram of log10 cost (only where c2d > 0)
         pos = c2d[ok & (c2d > 0)]
         if pos.size:
             hist, _ = np.histogram(np.log10(pos), bins=HIST_EDGES)
             acc[('a08', *k, 'hist')] += hist
 
 
-def _accumulate_file(acc, fd, bias_T, bias_S, cost_type, split_mode):
-    """Update accumulators for one file, one (cost_type, split_mode) combo."""
-    n      = fd['n']
-    n_d    = len(fd['depth'])
-    ymd    = fd['ymd']
-    lat    = fd['lat']
-    gamma  = fd['gamma']
-    bin_a  = fd['bin_a'] if fd.get('bin_a') is not None else np.zeros(n, dtype=np.int32)
-    ym     = _yyyymm(ymd)
+def _accumulate_file(acc, fd, cost_type, pass_, biases=None, pooled=None):
+    """Add one file to the accumulators of one cost type.
 
-    # Only valid bin ids contribute to spatial analyses
+    ``pass_ = 'unsplit'``: unsplit costs, analysis 1, the class's own bias sums, and (if given) the
+    ``pooled`` sums over all obs classes. ``pass_ = 'split'``: the split costs, one per entry of
+    ``biases`` ({split mode: {V: (N_BINS+1, n_depths) bias, NaN where undefined}}).
+    """
+    n = fd['n']
+    bin_a = fd['bin_a'] if fd.get('bin_a') is not None else np.zeros(n, dtype=np.int32)
     valid_bin = (bin_a >= 1) & (bin_a <= N_BINS)
+    bi_safe = np.clip(bin_a, 0, N_BINS).astype(np.int32)
+    ym = _yyyymm(fd['ymd'])
+    lb = _lat_band_idx(fd['lat'])
 
     for V in VARS:
-        val   = fd[f'val_{V}']
-        clim  = fd[f'clim_{V}']
-        w     = fd[f'w_{V}']
-        sf    = fd[f'sf_{V}']
-        if val is None or clim is None or w is None:
+        val, w, sf = fd[f'val_{V}'], fd[f'w_{V}'], fd[f'sf_{V}']
+        if val is None or fd[f'clim_{V}'] is None or w is None:
             continue
-        # reference for this cost type
         if cost_type == 'vs_clim':
-            ref = clim
-        elif cost_type in ('vs_model', 'vs_run_b'):
-            estim = fd.get(f'estim_{V}' if cost_type == 'vs_model' else f'estimb_{V}')
-            if estim is None:
+            ref = fd[f'clim_{V}']
+        else:
+            ref = fd.get(f'estim_{V}' if cost_type == 'vs_model' else f'estimb_{V}')
+            if ref is None:
                 continue
-            ref = estim
+        ok = ~_is_fill_value(val) & ~_is_fill_value(ref) & ~_is_fill_weight(w) & (w > 0)
+        if cost_type != 'vs_clim':
+            ok &= ref != 0          # the model's "no value" (cost_profiles.F mask)
+        mf = val - ref
+
+        if pass_ == 'unsplit':
+            cols = np.where(ok)[1]
+            np.add.at(acc[f'a01_{V}_sum'],   cols, val[ok])
+            np.add.at(acc[f'a01_{V}_count'], cols, 1)
+            okb = ok & valid_bin[:, None]
+            rows, cols = np.where(okb)
+            flat = bi_safe[rows] * mf.shape[1] + cols
+            np.add.at(acc[f'bias_sum_{V}'].ravel(),   flat, mf[okb])
+            np.add.at(acc[f'bias_count_{V}'].ravel(), flat, 1)
+            if pooled is not None:
+                p = pooled[V]
+                np.add.at(p['d'].ravel(),    flat, val[okb])
+                np.add.at(p['m'].ravel(),    flat, ref[okb])
+                np.add.at(p['invw'].ravel(), flat, 1.0 / w[okb])
+                np.add.at(p['n'].ravel(),    flat, 1)
+            _add_costs(acc, V, 'unsplit', mf, ok, w, sf, fd['gamma'], ym, bi_safe, lb)
         else:
-            continue
+            for mode, bias in biases.items():
+                b = bias[V][bi_safe]                     # (n_prof, n_depths); bin 0 has no mean
+                okm = ok & valid_bin[:, None] & np.isfinite(b)
+                _add_costs(acc, V, mode, mf - np.where(okm, b, 0.0), okm, w, sf, fd['gamma'],
+                           ym, bi_safe, lb)
 
-        # valid mask
-        fv  = _is_fill_value(val)
-        fref = _is_fill_value(ref)
-        fw   = _is_fill_weight(w)
-        ok   = ~fv & ~fref & ~fw & (w > 0)
-
-        # analysis 1: T/S mean vs depth (only once, during unsplit pass, independent of split)
-        if split_mode == 'unsplit':
-            if V == 'T':
-                np.add.at(acc['a01_T_sum'],   np.where(ok)[1], val[ok])
-                np.add.at(acc['a01_T_count'], np.where(ok)[1], 1)
-            else:
-                np.add.at(acc['a01_S_sum'],   np.where(ok)[1], val[ok])
-                np.add.at(acc['a01_S_count'], np.where(ok)[1], 1)
-
-        # bias accumulation (only during unsplit pass, for computing split biases)
-        if split_mode == 'unsplit' and valid_bin.any():
-            misfit = val - ref   # (n_prof, n_depths)
-            bi_c = np.clip(bin_a, 0, N_BINS).astype(np.int32)
-            rows_ok, cols_ok = np.where(ok & valid_bin[:, None])
-            flat = bi_c[rows_ok] * n_d + cols_ok
-            mf_flat = misfit[rows_ok, cols_ok]
-            bs_key = f'bias_sum_{V}'
-            bc_key = f'bias_count_{V}'
-            np.add.at(acc[bs_key].ravel(), flat, mf_flat)
-            np.add.at(acc[bc_key].ravel(), flat, 1)
-
-        # misfit
-        if split_mode == 'unsplit':
-            mf = val - ref
-        else:
-            # split: subtract bias at each (bin, depth)
-            bi_c = np.clip(bin_a, 0, N_BINS).astype(np.int32)
-            mf = val - ref
-            if V == 'T':
-                b_arr = bias_T
-            else:
-                b_arr = bias_S
-            if b_arr is not None:
-                # broadcast bias for each profile's bin
-                mf_adj = mf.copy()
-                for i in range(n):
-                    b = bi_c[i]
-                    mf_adj[i] -= b_arr[b]   # shape (n_depths,)
-                mf = mf_adj
-
-        # three weight-version costs
-        weights = _weight_versions(w, sf, gamma)
-        costs_by_ver = {wv: mf ** 2 * weights[wv] for wv in WEIGHT_VERS}
-
-        # for _accumulate_cost we pass the 'final' cost and let it use weight-version arrays
-        # Actually, we need to call _accumulate_cost per weight version.  Do it here directly
-        # to avoid the inner loop overhead of the helper function approach.
-        bi_safe = np.clip(bin_a, 0, N_BINS).astype(np.int32)
-        lb = _lat_band_idx(lat)
-
-        for wv in WEIGHT_VERS:
-            c2d = costs_by_ver[wv]
-            k = (V, split_mode, wv)
-
-            rows_ok, cols_ok = np.where(ok)
-
-            # a02
-            np.add.at(acc[('a02', *k, 'sum')],   cols_ok, c2d[ok])
-            np.add.at(acc[('a02', *k, 'count')], cols_ok, 1)
-
-            # a03, a04
-            c_per_prof = np.where(ok, c2d, 0.0).sum(axis=1)
-            n_per_prof = ok.sum(axis=1).astype(np.int64)
-            for i in range(n):
-                ymv = int(ym[i])
-                ni  = int(n_per_prof[i])
-                if ni == 0:
-                    continue
-                s = float(c_per_prof[i])
-                acc[('a03', *k, 'sum')][ymv]   += s
-                acc[('a03', *k, 'count')][ymv] += ni
-                acc[('a04', *k, 'sum')][ymv]   += s
-                acc[('a04', *k, 'count')][ymv] += ni
-
-            # a05
-            np.add.at(acc[('a05', *k, 'sum')],   bi_safe, c_per_prof)
-            np.add.at(acc[('a05', *k, 'count')], bi_safe, n_per_prof)
-
-            # a07
-            if rows_ok.size:
-                flat_idx = lb[rows_ok] * n_d + cols_ok
-                np.add.at(acc[('a07', *k, 'sum')].ravel(),   flat_idx, c2d[ok])
-                np.add.at(acc[('a07', *k, 'count')].ravel(), flat_idx, 1)
-
-            # a08
-            pos = c2d[ok & (c2d > 0)]
-            if pos.size:
-                hist, _ = np.histogram(np.log10(pos), bins=HIST_EDGES)
-                acc[('a08', *k, 'hist')] += hist
 
 # ---------------------------------------------------------------------------
 # Finalization
@@ -582,7 +497,7 @@ def _finalize(acc, depth):
 # NetCDF writer
 # ---------------------------------------------------------------------------
 
-def _write_nc(res, source, run_ts, path, cost_types_used):
+def _write_nc(res, source, run_ts, path, cost_types_used, pooled_sources=None):
     """Write all analysis results to a NetCDF file."""
     depth   = res['depth']
     n_d     = len(depth)
@@ -597,12 +512,16 @@ def _write_nc(res, source, run_ts, path, cost_types_used):
     with netCDF4.Dataset(path, 'w') as nc:
         nc.setncatts({
             'source': source, 'run_ts': run_ts,
-            'split_method': 'mean_bias_per_bin_depth',
+            'split_method': 'cost_profiles_F_pooled_bin_mean',
             'split_note': (
-                'split = Fortran-style anomaly cost: misfit minus its time-mean per (bin,depth). '
-                'unsplit = raw (V-Vref)^2 * w.  Both are saved; bias arrays are in this file '
-                'for reproducibility.  To recover the raw-misfit view use the unsplit variables.'
+                'unsplit = w*(V-Vref)^2. split = w*(V-Vref-b)^2 with b = mean(V) - mean(Vref) per '
+                '(geodesic bin, depth) pooled over all obs classes in split_pooled_over, as ECCO '
+                'cost_profiles.F (the anomaly term). split_own = the same with b from this obs class '
+                'only. ECCO\'s mean term w_mean*(mean(Vref)-mean(V))^2 is in the attributes '
+                'ecco_mean_term_<V> (pooled, not per obs class). Bias arrays are in this file.'
             ),
+            'split_pooled_over': ', '.join(pooled_sources or [source]),
+            'profiles_mean_indsamples': PROFILES_MEAN_INDSAMPLES,
             'weight_versions': 'final = gamma*sf*(dV/sigma)^2; nosf = gamma*(dV/sigma)^2; true = (dV/sigma)^2',
             'cost_types_used': ', '.join(cost_types_used),
             'created': datetime.datetime.now().isoformat(timespec='seconds'),
@@ -646,11 +565,17 @@ def _write_nc(res, source, run_ts, path, cost_types_used):
 
         # biases
         for V in VARS:
-            b_arr = res['bias'][V][1:]   # bins 1..N_BINS, shape (N_BINS, n_depths)
-            cv(f'bias_{V}', b_arr, ('bin_a', 'depth'), 'f4',
-               long_name=f'Time-mean (prof_{V} - ref) per (bin, depth) used for split cost')
-            nc.createVariable(f'bias_count_{V}', 'i8', ('bin_a', 'depth'))[:]  = \
+            cv(f'bias_own_{V}', res['bias'][V][1:], ('bin_a', 'depth'), 'f4',
+               long_name=f'Time-mean (prof_{V} - ref) per (bin, depth), this obs class only (split_own)')
+            nc.createVariable(f'bias_own_count_{V}', 'i8', ('bin_a', 'depth'))[:] = \
                 res[f'bias_count_{V}'][1:]
+            pl = res.get('pooled', {}).get(V)
+            if pl is not None:
+                cv(f'bias_pooled_{V}', pl['bias'][1:], ('bin_a', 'depth'), 'f4',
+                   long_name=f'mean(prof_{V}) - mean(ref) per (bin, depth), all obs classes pooled (split)')
+                nc.createVariable(f'bias_pooled_count_{V}', 'i8', ('bin_a', 'depth'))[:] = pl['count'][1:]
+                nc.setncattr(f'ecco_mean_term_{V}', pl['mean_cost'])
+                nc.setncattr(f'ecco_mean_term_count_{V}', pl['mean_count'])
 
         # analyses 2–10
         for V in VARS:
@@ -708,12 +633,12 @@ def _write_nc(res, source, run_ts, path, cost_types_used):
 # ---------------------------------------------------------------------------
 
 _V_COLOR = {'T': 'tab:red', 'S': 'tab:blue'}
-_SP_LS   = {'unsplit': '--', 'split': '-'}
+_SP_LS   = {'unsplit': '--', 'split': '-', 'split_own': ':'}
 _WV_COLOR = {'final': 'tab:blue', 'nosf': 'tab:orange', 'true': 'tab:red'}
 # Time-series split/unsplit: slightly darker shade + circle markers for split
 _TS_SP_COLOR = {
-    ('T', 'unsplit'): 'tab:red',  ('T', 'split'): '#8B0000',
-    ('S', 'unsplit'): 'tab:blue', ('S', 'split'): '#00008B',
+    ('T', 'unsplit'): 'tab:red',  ('T', 'split'): '#8B0000', ('T', 'split_own'): '#E8865A',
+    ('S', 'unsplit'): 'tab:blue', ('S', 'split'): '#00008B', ('S', 'split_own'): '#5AA8E8',
 }
 _SP_MARKER = {'unsplit': '', 'split': ''}
 # Only suppress depth levels with zero observations. The Mediterranean spike in XBT below
@@ -933,12 +858,12 @@ def _make_figures(res, source, fig_dir, lims=None):
     fig, axes = plt.subplots(1, nv, figsize=(5*nv + 1, 5), squeeze=False)
     axes = axes.flatten()
     x = np.arange(N_DEPTH_RANGES)
-    width = 0.3
+    width = 0.8 / len(SPLIT_MODES)
     for ax, V in zip(axes, active_vars):
         for i, sp in enumerate(SPLIT_MODES):
             vals = res[('a10', V, sp, 'true')]
             ax.bar(x + i * width, vals, width, label=sp, alpha=0.8)
-        ax.set_xticks(x + width / 2)
+        ax.set_xticks(x + width * (len(SPLIT_MODES) - 1) / 2)
         ax.set_xticklabels(DEPTH_RANGE_LABELS, rotation=30, ha='right', fontsize=8)
         ax.set_ylabel(f'{V} mean cost per datum (ΔV/σ)²')
         ax.set_title(V)
@@ -991,106 +916,42 @@ def _make_spatial_map(res, source, fig_dir, active_vars, lims):
             _savefig(fig, fig_dir / f'{an}_spatial_{V}_{source}.png')
 
 # ---------------------------------------------------------------------------
-# Per-source analysis
-# ---------------------------------------------------------------------------
-
-def _analyze_source(source, files, run_dir, out_dir, estim_dir, estim_dir_b, cost_types):
-    """Run both passes for one obs class; write NetCDF and figures."""
-    t0 = _time.time()
-    n_files = len(files)
-    print(f'  {source}: {n_files} files')
-
-    # determine depth from the first readable file
-    depth = None
-    for f in files:
-        fd = _load_file(f)
-        if fd is not None and fd.get('depth') is not None:
-            depth = fd['depth'].astype(np.float32)
-            break
-    if depth is None:
-        print(f'  {source}: no readable files, skipped')
-        return
-    n_d = len(depth)
-
-    est_index = EstimIndex(estim_dir, run_dir) if estim_dir else None
-    est_index_b = EstimIndex(estim_dir_b, run_dir) if estim_dir_b else None
-    if est_index is not None:
-        found = sum(1 for f in files if (Path(estim_dir) / (Path(f).stem + '_model.nc')).exists() or Path(f).name in est_index.map)
-        print(f'    model equivalents ({estim_dir}): for {found} of {n_files} files')
-        if found == 0:
-            print(f'    [warn] no model equivalents match these files; vs_model is skipped')
-
-    cost_types_used = [ct for ct in cost_types
-                       if ct == 'vs_clim'
-                       or (ct == 'vs_model' and estim_dir)
-                       or (ct == 'vs_run_b' and estim_dir_b)]
-
-    # Accumulators: one per cost_type
-    accs = {ct: _new_acc(n_d) for ct in cost_types_used}
-
-    # ---- Pass 1: unsplit costs + bias accumulation ----
-    print(f'    pass 1 (unsplit + bias)…', end='', flush=True)
-    for i, f in enumerate(files):
-        fd = _load_file(f, estim_index=est_index)
-        if fd is not None and est_index_b is not None:
-            fb = est_index_b.get(f, fd['n'], fd['depth'].size)
-            for V in VARS:
-                e = None if fb is None else fb[V]
-                fd[f'estimb_{V}'] = None if e is None else np.where(e == -9999, np.nan, e)
-        if fd is None:
-            continue
-        for ct in cost_types_used:
-            _accumulate_file(accs[ct], fd, None, None, ct, 'unsplit')
-        if (i + 1) % 50 == 0:
-            print(f' {i+1}', end='', flush=True)
-    print()
-
-    # Compute biases from pass 1
-    biases = {}
-    for ct in cost_types_used:
-        acc = accs[ct]
-        biases[ct] = {}
-        for V in VARS:
-            s = acc[f'bias_sum_{V}']
-            c = acc[f'bias_count_{V}']
-            with np.errstate(invalid='ignore'):
-                biases[ct][V] = np.where(c > 0, s / c, 0.0)   # shape (N_BINS+1, n_d)
-
-    # ---- Pass 2: split costs ----
-    print(f'    pass 2 (split)…', end='', flush=True)
-    for i, f in enumerate(files):
-        fd = _load_file(f, estim_index=est_index)
-        if fd is not None and est_index_b is not None:
-            fb = est_index_b.get(f, fd['n'], fd['depth'].size)
-            for V in VARS:
-                e = None if fb is None else fb[V]
-                fd[f'estimb_{V}'] = None if e is None else np.where(e == -9999, np.nan, e)
-        if fd is None:
-            continue
-        for ct in cost_types_used:
-            _accumulate_file(accs[ct], fd,
-                             biases[ct]['T'], biases[ct]['S'],
-                             ct, 'split')
-        if (i + 1) % 50 == 0:
-            print(f' {i+1}', end='', flush=True)
-    print()
-
-    # Finalize and write; figures of all cost types share axis limits so they compare directly
-    results = {ct: _finalize(accs[ct], depth) for ct in cost_types_used}
-    lims = _shared_limits(results)
-    run_ts_name = common.run_timestamp(run_dir)
-    for ct, res in results.items():
-        out_nc = out_dir / source / f'analysis_{source}_{run_ts_name}_{ct}.nc'
-        _write_nc(res, source, run_ts_name, out_nc, [ct])
-        _make_figures(res, source, out_dir / source / 'figures' / ct, lims)
-        print(f'    {ct}: done  ({_time.time() - t0:.0f}s)')
-
-# ---------------------------------------------------------------------------
 # Orchestration
 # ---------------------------------------------------------------------------
 
+def _source_files(source, files, run_dir, estim_dir, estim_dir_b):
+    """Model-equivalent indexes for one obs class, and a loader that attaches them to each file."""
+    est_index = EstimIndex(estim_dir, run_dir) if estim_dir else None
+    est_index_b = EstimIndex(estim_dir_b, run_dir) if estim_dir_b else None
+    if est_index is not None:
+        found = sum(1 for f in files if (Path(estim_dir) / (Path(f).stem + '_model.nc')).exists()
+                    or Path(f).name in est_index.map)
+        print(f'    {source}: model equivalents for {found} of {len(files)} files')
+
+    def load(f):
+        fd = _load_file(f, estim_index=est_index)
+        if fd is not None and est_index_b is not None:
+            fb = est_index_b.get(f, fd['n'], fd['depth'].size)
+            for V in VARS:
+                e = None if fb is None else fb[V]
+                fd[f'estimb_{V}'] = None if e is None else np.where(e == -9999, np.nan, e)
+        return fd
+    return load
+
+
+def _progress(i):
+    if (i + 1) % 50 == 0:
+        print(f' {i+1}', end='', flush=True)
+
+
 def run(run_dir, out_dir, sources=None, estim_dir=None, estim_dir_b=None, n_workers=None):
     """Compute all standard analyses for every obs class (source) in ``run_dir``.
+
+    Pass 1 reads every file once: unsplit costs, each class's own bias sums, and sums per
+    (geodesic bin, depth) pooled over **all** obs classes (as ECCO's ``cost_profiles.F``).
+    Pass 2 reads each file again for the two split costs: ``split`` (the pooled, Fortran-style
+    mean removed) and ``split_own`` (the class's own mean removed). Results are per obs class.
+    The pooled means come from the obs classes processed, so ``sources`` changes ``split``.
 
     Parameters
     ----------
@@ -1105,7 +966,7 @@ def run(run_dir, out_dir, sources=None, estim_dir=None, estim_dir_b=None, n_work
     estim_dir_b : str or Path, optional
         Second model-equivalent directory (enables vs_run_b cost).
     n_workers : int, optional
-        Parallel workers (default 1; parallelism is over sources).
+        Unused (kept for the command line); the passes run serially.
 
     Returns
     -------
@@ -1116,20 +977,14 @@ def run(run_dir, out_dir, sources=None, estim_dir=None, estim_dir_b=None, n_work
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    cost_types = ['vs_clim']
-    if estim_dir:
-        cost_types.append('vs_model')
-    if estim_dir_b:
-        cost_types.append('vs_run_b')
+    cost_types = ['vs_clim'] + (['vs_model'] if estim_dir else []) + (['vs_run_b'] if estim_dir_b else [])
 
-    # group files by source
     groups = {}
     for f in sorted(run_dir.rglob('*.nc')):
         src, _ = common.classify(f, run_dir)
         if sources and src not in sources:
             continue
         groups.setdefault(src, []).append(f)
-
     if not groups:
         print('No files found.')
         return out_dir
@@ -1139,8 +994,71 @@ def run(run_dir, out_dir, sources=None, estim_dir=None, estim_dir_b=None, n_work
     print(f'{sum(map(len, groups.values()))} files across {len(groups)} sources')
     print(f'Cost types: {cost_types}')
 
+    depth = None
+    for files in groups.values():
+        for f in files:
+            fd = _load_file(f)
+            if fd is not None and fd.get('depth') is not None:
+                depth = fd['depth'].astype(np.float32)
+                break
+        if depth is not None:
+            break
+    n_d = len(depth)
+    loaders = {src: _source_files(src, files, run_dir, estim_dir, estim_dir_b) for src, files in groups.items()}
+
+    accs = {src: {ct: _new_acc(n_d) for ct in cost_types} for src in groups}
+    pooled = {ct: _new_pooled(n_d) for ct in cost_types}
+
+    print('Pass 1 (unsplit, bin means over all obs classes)')
     for src, files in sorted(groups.items()):
-        _analyze_source(src, files, run_dir, out_dir, estim_dir, estim_dir_b, cost_types)
+        print(f'  {src}:', end='', flush=True)
+        for i, f in enumerate(files):
+            fd = loaders[src](f)
+            if fd is None:
+                continue
+            if fd['depth'].size != n_d or not np.array_equal(fd['depth'], depth):
+                raise ValueError(f'{f}: depth levels differ from the other files')
+            for ct in cost_types:
+                _accumulate_file(accs[src][ct], fd, ct, 'unsplit', pooled=pooled[ct])
+            _progress(i)
+        print()
+
+    stats = {ct: _pooled_stats(pooled[ct]) for ct in cost_types}
+    for ct in cost_types:
+        print(f'  {ct}: ECCO mean term T {stats[ct]["T"]["mean_cost"]:.6E} ({stats[ct]["T"]["mean_count"]} terms), '
+              f'S {stats[ct]["S"]["mean_cost"]:.6E} ({stats[ct]["S"]["mean_count"]} terms)')
+
+    print('Pass 2 (split: pooled mean and own-class mean removed)')
+    for src, files in sorted(groups.items()):
+        own = {}
+        for ct in cost_types:
+            own[ct] = {}
+            for V in VARS:
+                s_, c_ = accs[src][ct][f'bias_sum_{V}'], accs[src][ct][f'bias_count_{V}']
+                with np.errstate(invalid='ignore'):
+                    own[ct][V] = np.where(c_ > 0, s_ / c_, np.nan)
+        print(f'  {src}:', end='', flush=True)
+        for i, f in enumerate(files):
+            fd = loaders[src](f)
+            if fd is None:
+                continue
+            for ct in cost_types:
+                biases = {'split': {V: stats[ct][V]['bias'] for V in VARS}, 'split_own': own[ct]}
+                _accumulate_file(accs[src][ct], fd, ct, 'split', biases=biases)
+            _progress(i)
+        print()
+
+    run_ts_name = common.run_timestamp(run_dir)
+    for src in sorted(groups):
+        results = {ct: _finalize(accs[src][ct], depth) for ct in cost_types}
+        for ct in cost_types:
+            results[ct]['pooled'] = stats[ct]
+        lims = _shared_limits(results)
+        for ct, res in results.items():
+            out_nc = out_dir / src / f'analysis_{src}_{run_ts_name}_{ct}.nc'
+            _write_nc(res, src, run_ts_name, out_nc, [ct], pooled_sources=sorted(groups))
+            _make_figures(res, src, out_dir / src / 'figures' / ct, lims)
+        print(f'  {src}: figures done ({_time.time() - t0:.0f}s)')
 
     meta = {
         'run': str(run_dir), 'out': str(out_dir),
@@ -1148,6 +1066,9 @@ def run(run_dir, out_dir, sources=None, estim_dir=None, estim_dir_b=None, n_work
         'cost_types': cost_types,
         'estim_dir': str(estim_dir) if estim_dir else None,
         'estim_dir_b': str(estim_dir_b) if estim_dir_b else None,
+        'split_pooled_over': sorted(groups.keys()),
+        'ecco_mean_term': {ct: {V: {'cost': stats[ct][V]['mean_cost'], 'count': stats[ct][V]['mean_count']}
+                                for V in VARS} for ct in cost_types},
         'created': datetime.datetime.now().isoformat(timespec='seconds'),
     }
     (out_dir / 'meta.json').write_text(json.dumps(meta, indent=2))
