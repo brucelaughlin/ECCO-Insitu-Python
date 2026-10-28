@@ -24,6 +24,7 @@ from pathlib import Path
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
+plt.rcParams.update({'axes.grid': True, 'grid.alpha': 0.5, 'grid.linewidth': 0.6})
 import netCDF4
 import numpy as np
 

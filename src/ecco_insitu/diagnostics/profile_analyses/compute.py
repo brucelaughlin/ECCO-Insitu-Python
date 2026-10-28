@@ -65,6 +65,7 @@ from pathlib import Path
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
+plt.rcParams.update({'axes.grid': True, 'grid.alpha': 0.5, 'grid.linewidth': 0.6})
 import matplotlib.colors as mcolors
 import netCDF4
 import numpy as np
@@ -366,6 +367,12 @@ def _accumulate_file(acc, fd, cost_type, pass_, biases=None, pooled=None):
         val, w, sf = fd[f'val_{V}'], fd[f'w_{V}'], fd[f'sf_{V}']
         if val is None or fd[f'clim_{V}'] is None or w is None:
             continue
+        if pass_ == 'unsplit':
+            # analysis 1: observations only, the same for every cost type
+            obs = ~_is_fill_value(val) & ~_is_fill_weight(w) & (w > 0)
+            cols = np.where(obs)[1]
+            np.add.at(acc[f'a01_{V}_sum'],   cols, val[obs])
+            np.add.at(acc[f'a01_{V}_count'], cols, 1)
         if cost_type == 'vs_clim':
             ref = fd[f'clim_{V}']
         else:
@@ -378,9 +385,6 @@ def _accumulate_file(acc, fd, cost_type, pass_, biases=None, pooled=None):
         mf = val - ref
 
         if pass_ == 'unsplit':
-            cols = np.where(ok)[1]
-            np.add.at(acc[f'a01_{V}_sum'],   cols, val[ok])
-            np.add.at(acc[f'a01_{V}_count'], cols, 1)
             okb = ok & valid_bin[:, None]
             rows, cols = np.where(okb)
             flat = bi_safe[rows] * mf.shape[1] + cols
@@ -460,7 +464,7 @@ def _finalize(acc, depth):
                 c5 = acc[('a05', *k, 'count')]
                 with np.errstate(invalid='ignore'):
                     res[('a05', *k)] = {
-                        'total':     s5[1:].copy(),    # bins 1..N_BINS
+                        'total':     np.where(c5[1:] > 0, s5[1:], np.nan),    # bins 1..N_BINS; NaN if empty
                         'per_datum': np.where(c5[1:] > 0, s5[1:] / c5[1:], np.nan),
                         'count':     c5[1:].copy().astype(np.int64),
                     }
@@ -557,9 +561,9 @@ def _write_nc(res, source, run_ts, path, cost_types_used, pooled_sources=None):
 
         # analysis 1
         cv('a01_T_mean_depth', res['a01']['T']['mean'], ('depth',), 'f4',
-           long_name='Global mean T vs depth (all profiles; not cost-type dependent)')
+           long_name='Global mean T vs depth (all weighted observations; the same for every cost type)')
         cv('a01_S_mean_depth', res['a01']['S']['mean'], ('depth',), 'f4',
-           long_name='Global mean S vs depth')
+           long_name='Global mean S vs depth (all weighted observations; the same for every cost type)')
         nc.createVariable('a01_T_count_depth', 'i8', ('depth',))[:] = res['a01']['T']['count']
         nc.createVariable('a01_S_count_depth', 'i8', ('depth',))[:] = res['a01']['S']['count']
 
@@ -681,6 +685,12 @@ def _p98(arrays):
     return float(vmax) if np.isfinite(vmax) and vmax > 0 else 1.0
 
 
+def _binned(res, V, wv, field):
+    """Per-bin map values (analyses 5/6), NaN in bins with no data."""
+    r = res[('a05', V, 'unsplit', wv)]
+    return np.where(r['count'] > 0, r[field], np.nan)
+
+
 def _shared_limits(results):
     """Axis limits per (analysis, variable) spanning every cost type's results."""
     rs = list(results.values())
@@ -696,16 +706,50 @@ def _shared_limits(results):
                                        for r in rs for sp in SPLIT_MODES]), zero=True)
         s4 = _span([r[('a04', V, 'unsplit', wv)]['total'] for r in rs for wv in WEIGHT_VERS], positive=True)
         lims[('a04', V)] = None if s4 is None else (s4[0] / 1.5, s4[1] * 1.5)
-        lims[('a05', V)] = _p98([r[('a05', V, 'unsplit', 'final')]['total'] for r in rs])
-        lims[('a06', V)] = _p98([r[('a05', V, 'unsplit', 'true')]['per_datum'] for r in rs])
+        lims[('a05', V)] = _p98([_binned(r, V, 'final', 'total') for r in rs])
+        lims[('a06', V)] = _p98([_binned(r, V, 'true', 'per_datum') for r in rs])
         lims[('a07', V)] = _p98([r[('a07', V, 'unsplit', 'true')]['mean'] for r in rs])
         lims[('a08', V)] = _pad(_span([h / h.sum() for r in rs for wv in WEIGHT_VERS
                                        for h in [r[('a08', V, 'unsplit', wv)]] if h.sum() > 0]), zero=True)
         lims[('a10', V)] = _pad(_span([r[('a10', V, sp, 'true')] for r in rs for sp in SPLIT_MODES]),
                                 frac=0.1, zero=True)
+    for an, key in (('a01', None), ('a02', ('a02', 'unsplit', 'final'))):
+        lims[(an, 'n')] = _log_lim([r['a01'][V]['count'] if key is None else r[(key[0], V, *key[1:])]['count']
+                                    for r in rs for V in VARS])
+    lims[('a04', 'n')] = _log_lim([r[('a03', V, 'unsplit', 'true')]['count'] for r in rs for V in VARS])
     lims['year'] = _pad(_span([_decimal_year(r[('a03', V, sp, 'true')]['yyyymm'])
                                for r in rs for V in VARS for sp in SPLIT_MODES]), frac=0.01)
     return lims
+
+
+_CT_LABEL = {'vs_clim': 'vs climatology (WOA23)', 'vs_model': 'vs model (v4r6 monthly means)',
+             'vs_run_b': 'vs model run B (monthly means)'}
+
+
+def _log_lim(arrays):
+    s = _span(arrays, positive=True)
+    return None if s is None else (max(s[0] / 1.5, 0.8), s[1] * 1.5)
+
+
+def _depth_figure(n_main, width_main=4.5, height=6):
+    """Figure with ``n_main`` depth panels and a narrow panel on the right for the number of points."""
+    fig = plt.figure(figsize=(width_main * n_main + 1.8, height))
+    gs = fig.add_gridspec(1, n_main + 1, width_ratios=[4] * n_main + [1.2], wspace=0.12)
+    axes = [fig.add_subplot(gs[0, 0])]
+    axes += [fig.add_subplot(gs[0, i], sharey=axes[0]) for i in range(1, n_main + 1)]
+    return fig, axes[:-1], axes[-1]
+
+
+def _count_panel(ax, counts, depth, lim):
+    """Number of points per depth level (log scale), one line per variable."""
+    for V, c in counts.items():
+        ax.semilogx(np.where(c > 0, c, np.nan), depth, color=_V_COLOR[V], label=V, lw=1.1)
+    _apply(ax.set_xlim, lim)
+    ax.set_xlabel('# points')
+    ax.set_title('n')
+    ax.tick_params(labelleft=False)
+    if len(counts) > 1:
+        ax.legend(fontsize=7)
 
 
 def _apply(set_lim, lim):
@@ -713,9 +757,10 @@ def _apply(set_lim, lim):
         set_lim(*lim)
 
 
-def _make_figures(res, source, fig_dir, lims=None):
+def _make_figures(res, source, fig_dir, lims=None, cost_type=None):
     """Generate all 10 analysis figures; ``lims`` (from _shared_limits) fixes the axis ranges."""
     lims = lims if lims is not None else _shared_limits({'_': res})
+    ctl = f' — {_CT_LABEL.get(cost_type, cost_type)}' if cost_type else ''
     depth = res['depth']
     _dmax = float(np.nanmax(depth)) * 1.05  # bottom of every depth axis
 
@@ -726,8 +771,7 @@ def _make_figures(res, source, fig_dir, lims=None):
     nv = len(active_vars)
 
     # ---- Analysis 1: T and S mean profile ----
-    fig, axes = plt.subplots(1, nv, figsize=(4*nv + 2, 6), sharey=True, squeeze=False)
-    axes = axes.flatten()
+    fig, axes, cax = _depth_figure(nv, 4)
     for ax, V in zip(axes, active_vars):
         m = res['a01'][V]['mean']
         c = res['a01'][V]['count']
@@ -737,8 +781,9 @@ def _make_figures(res, source, fig_dir, lims=None):
         ax.set_ylabel('Depth (m)') if ax is axes[0] else None
         ax.set_title(f'{V} (n_max={c.max():,.0f})')
         _apply(ax.set_xlim, lims[('a01', V)])
+    _count_panel(cax, {V: res['a01'][V]['count'] for V in active_vars}, depth, lims[('a01', 'n')])
     axes[0].set_ylim(_dmax, 0)
-    fig.suptitle(f'{source}: Analysis 1 — Global mean T & S vs depth')
+    fig.suptitle(f'{source}: Analysis 1 — Global mean T & S vs depth (observations only)')
     _savefig(fig, fig_dir / '01_mean_T_S_depth.png')
 
     # ---- Analysis 2/9: cost vs depth ----
@@ -746,8 +791,7 @@ def _make_figures(res, source, fig_dir, lims=None):
         ('02', WEIGHT_VERS, 'mean cost'),
         ('09', ('true',),   'mean cost per datum'),
     ]:
-        fig, axes = plt.subplots(1, nv, figsize=(5*nv + 1, 6), sharey=True, squeeze=False)
-        axes = axes.flatten()
+        fig, axes, cax = _depth_figure(nv, 5)
         for ax, V in zip(axes, active_vars):
             c = res[('a02', V, 'unsplit', 'final')]['count']  # count is same across sp/wv
             for sp in SPLIT_MODES:
@@ -763,8 +807,10 @@ def _make_figures(res, source, fig_dir, lims=None):
             ax.set_title(V)
             ax.legend(fontsize=7)
             _apply(ax.set_xlim, lims[(f'a{an}', V)])
+        _count_panel(cax, {V: res[('a02', V, 'unsplit', 'final')]['count'] for V in active_vars},
+                     depth, lims[('a02', 'n')])
         axes[0].set_ylim(_dmax, 0)
-        fig.suptitle(f'{source}: Analysis {an} — {title_sfx} vs depth')
+        fig.suptitle(f'{source}: Analysis {an} — {title_sfx} vs depth{ctl}')
         _savefig(fig, fig_dir / f'{an}_cost_depth_{source}.png')
 
     # ---- Analysis 3: mean cost per datum vs time ----
@@ -787,13 +833,27 @@ def _make_figures(res, source, fig_dir, lims=None):
         _apply(ax.set_ylim, lims[('a03', V)])
         _apply(ax.set_xlim, lims['year'])
     axes[-1].set_xlabel('Year')
-    fig.suptitle(f'{source}: Analysis 3 — Mean cost per datum vs time (true weights)')
+    fig.suptitle(f'{source}: Analysis 3 — Mean cost per datum vs time (true weights){ctl}')
     _savefig(fig, fig_dir / f'03_cost_per_datum_time_{source}.png')
 
     # ---- Analysis 4: total cost vs time ----
-    fig, axes = plt.subplots(nv, 1, figsize=(10, 3.5*nv + 1), sharex=True, squeeze=False)
-    axes = axes.flatten()
+    fig = plt.figure(figsize=(10, 3.5 * nv + 2.2))
+    gs = fig.add_gridspec(nv + 1, 1, height_ratios=[1.1] + [3] * nv, hspace=0.12)
+    nax = fig.add_subplot(gs[0])
+    axes = [fig.add_subplot(gs[i + 1], sharex=nax) for i in range(nv)]
+    for V in active_vars:
+        r = res[('a03', V, 'unsplit', 'true')]
+        if len(r['yyyymm']):
+            nax.semilogy(_decimal_year(r['yyyymm']), np.where(r['count'] > 0, r['count'], np.nan),
+                         color=_V_COLOR[V], label=V, lw=1.0)
+    nax.set_ylabel('# points\nper month')
+    _apply(nax.set_ylim, lims[('a04', 'n')])
+    nax.tick_params(labelbottom=False)
+    if nv > 1:
+        nax.legend(fontsize=7)
     for ax, V in zip(axes, active_vars):
+        if ax is not axes[-1]:
+            ax.tick_params(labelbottom=False)
         for wv in WEIGHT_VERS:
             r = res[('a04', V, 'unsplit', wv)]
             if len(r['yyyymm']) == 0:
@@ -801,17 +861,17 @@ def _make_figures(res, source, fig_dir, lims=None):
             x = _decimal_year(r['yyyymm'])
             ax.semilogy(x, np.where(np.array(r['total']) > 0, r['total'], np.nan),
                         color=_WV_COLOR[wv], label=wv, lw=1.1)
-        ax.set_ylabel(f'{V} total cost')
+        ax.set_ylabel(f'{V} total cost\n(sum over the month)')
         ax.legend(fontsize=7)
         _apply(ax.set_ylim, lims[('a04', V)])
         _apply(ax.set_xlim, lims['year'])
     axes[-1].set_xlabel('Year')
-    fig.suptitle(f'{source}: Analysis 4 — Total cost vs time')
+    fig.suptitle(f'{source}: Analysis 4 — Total cost per month (sum over all points), unsplit{ctl}')
     _savefig(fig, fig_dir / f'04_total_cost_time_{source}.png')
 
     # ---- Analysis 5/6: spatial map ----
     try:
-        _make_spatial_map(res, source, fig_dir, active_vars, lims)
+        _make_spatial_map(res, source, fig_dir, active_vars, lims, ctl)
     except Exception as exc:
         print(f'  [warn] spatial map failed: {exc}')
 
@@ -823,16 +883,20 @@ def _make_figures(res, source, fig_dir, lims=None):
         valid = np.isfinite(r).any(axis=1)
         if not valid.any():
             continue
-        fig, ax = plt.subplots(figsize=(9, 6))
+        fig = plt.figure(figsize=(11, 6))
+        gs = fig.add_gridspec(1, 2, width_ratios=[5, 1], wspace=0.08)
+        ax = fig.add_subplot(gs[0])
+        cax = fig.add_subplot(gs[1], sharey=ax)
+        _count_panel(cax, {V: res[('a02', V, 'unsplit', 'true')]['count']}, depth, lims[('a02', 'n')])
         vmax = lims[('a07', V)]
         im = ax.contourf(lat_centers, depth, r.T, levels=np.linspace(0, vmax, 21),
                          cmap='YlOrRd', extend='max')
         ax.set_ylim(_dmax, 0)
         ax.set_xlim(LAT_EDGES[0], LAT_EDGES[-1])
-        plt.colorbar(im, ax=ax, label=f'{V} cost per datum (ΔV/σ)²')
+        plt.colorbar(im, ax=ax, label=f'{V} cost per datum (ΔV/σ)²', pad=0.02)
         ax.set_xlabel('Latitude (°N)')
         ax.set_ylabel('Depth (m)')
-        ax.set_title(f'{source}: Analysis 7 — Zonal mean {V} cost per datum (unsplit, true)')
+        fig.suptitle(f'{source}: Analysis 7 — Zonal mean {V} cost per datum (unsplit, true){ctl}')
         _savefig(fig, fig_dir / f'07_zonal_{V}_{source}.png')
 
     # ---- Analysis 8: histogram ----
@@ -851,7 +915,7 @@ def _make_figures(res, source, fig_dir, lims=None):
         ax.legend(fontsize=7)
         ax.set_xlim(HIST_EDGES[0], HIST_EDGES[-1])
         _apply(ax.set_ylim, lims[('a08', V)])
-    fig.suptitle(f'{source}: Analysis 8 — Histogram of cost per datum')
+    fig.suptitle(f'{source}: Analysis 8 — Histogram of cost per datum{ctl}')
     _savefig(fig, fig_dir / f'08_histogram_{source}.png')
 
     # ---- Analysis 10: depth-range summary ----
@@ -869,12 +933,24 @@ def _make_figures(res, source, fig_dir, lims=None):
         ax.set_title(V)
         ax.legend(fontsize=7)
         _apply(ax.set_ylim, lims[('a10', V)])
-    fig.suptitle(f'{source}: Analysis 10 — Mean cost per datum by depth range')
+    fig.suptitle(f'{source}: Analysis 10 — Mean cost per datum by depth range{ctl}')
     _savefig(fig, fig_dir / f'10_depth_ranges_{source}.png')
 
 
-def _make_spatial_map(res, source, fig_dir, active_vars, lims):
-    """Analyses 5 and 6: spatial maps using geodesic bins."""
+_RASTERS = {}
+
+
+def _rasters():
+    """Bin-id rasters for the three map views (global Robinson, north and south polar stereographic, to 50°)."""
+    if not _RASTERS:
+        bl = common.BinLookup()
+        for view, npix in (('global', 700), ('NH', 520), ('SH', 520)):
+            _RASTERS[view] = bl.projected_raster(view, npix=npix)
+    return _RASTERS
+
+
+def _make_spatial_map(res, source, fig_dir, active_vars, lims, ctl=''):
+    """Analyses 5 and 6: per-bin maps, global plus north and south polar stereographic panels."""
     try:
         import cartopy.crs as ccrs
         import cartopy.feature as cfeature
@@ -882,37 +958,41 @@ def _make_spatial_map(res, source, fig_dir, active_vars, lims):
         print('  [warn] cartopy not available; skipping spatial maps')
         return
 
-    bl = common.BinLookup()
-    raster, land, outside, extent = bl.projected_raster('global', npix=600)
-    grid_a = raster['a']   # shape (ny, nx), values 0..10242
+    views = [('global', ccrs.Robinson(), 'Global'),
+             ('NH', ccrs.NorthPolarStereo(), 'North of 50°N'),
+             ('SH', ccrs.SouthPolarStereo(), 'South of 50°S')]
+    rasters = _rasters()
 
     for V in active_vars:
         for an, field, sp, wv, title in [
-            ('05', 'total',     'unsplit', 'final', 'total cost'),
+            ('05', 'total',     'unsplit', 'final', 'total cost (sum over depth levels and profiles)'),
             ('06', 'per_datum', 'unsplit', 'true',  'cost per datum'),
         ]:
-            k = (V, sp, wv)
-            vals = res[('a05', *k)][field]  # (N_BINS,) for bins 1..N_BINS
-            # map: per_bin[bin-1] -> raster pixel; bin_id 0 → 0 (unused)
-            per_bin_full = np.concatenate([[0.0], vals])   # index 0 unused
-            img = per_bin_full[grid_a]                      # (ny, nx)
-            img = np.where(land | outside | (grid_a == 0), np.nan, img)
-
+            vals = _binned(res, V, wv, field)                 # (N_BINS,) bins 1..N_BINS, NaN if empty
+            per_bin_full = np.concatenate([[np.nan], vals])   # index 0 = no bin
             vmax = lims[(f'a{an}', V)]
+            norm = mcolors.Normalize(0, vmax)
 
-            fig = plt.figure(figsize=(12, 5))
-            ax = fig.add_subplot(1, 1, 1, projection=ccrs.Robinson())
-            ax.add_feature(cfeature.LAND, color='lightgray', zorder=1)
-            ax.set_global()
-            ax.imshow(img, origin='lower', extent=extent,
-                      transform=ccrs.Robinson(), cmap='YlOrRd',
-                      vmin=0, vmax=vmax, zorder=0)
-            plt.colorbar(
-                plt.cm.ScalarMappable(
-                    norm=mcolors.Normalize(0, vmax), cmap='YlOrRd'),
-                ax=ax, orientation='horizontal', pad=0.04, fraction=0.04,
-                label=f'{V} {title} ({sp}, {wv})')
-            ax.set_title(f'{source}: Analysis {an} — {V} {title} per geodesic bin')
+            fig = plt.figure(figsize=(16, 5.4))
+            gs = fig.add_gridspec(1, 3, width_ratios=[2.1, 1, 1], wspace=0.05)
+            for i, (view, proj, label) in enumerate(views):
+                raster, land, outside, extent = rasters[view]
+                grid_a = raster['a']
+                img = np.where(land | outside | (grid_a == 0), np.nan, per_bin_full[grid_a])
+                ax = fig.add_subplot(gs[0, i], projection=proj)
+                ax.imshow(img, origin='lower', extent=extent, transform=proj, cmap='YlOrRd',
+                          norm=norm, zorder=0, interpolation='nearest')
+                ax.add_feature(cfeature.LAND, color='lightgray', zorder=1)
+                if view == 'global':
+                    ax.set_global()
+                else:
+                    ax.set_extent(extent, crs=proj)
+                ax.gridlines(linewidth=0.5, alpha=0.5, color='gray')
+                ax.set_title(label, fontsize=9)
+            fig.colorbar(plt.cm.ScalarMappable(norm=norm, cmap='YlOrRd'), ax=fig.axes,
+                         orientation='horizontal', pad=0.05, fraction=0.05, shrink=0.6,
+                         label=f'{V} {title} ({sp}, {wv})')
+            fig.suptitle(f'{source}: Analysis {an} — {V} {title} per geodesic bin{ctl}', fontsize=11)
             _savefig(fig, fig_dir / f'{an}_spatial_{V}_{source}.png')
 
 # ---------------------------------------------------------------------------
@@ -1057,7 +1137,7 @@ def run(run_dir, out_dir, sources=None, estim_dir=None, estim_dir_b=None, n_work
         for ct, res in results.items():
             out_nc = out_dir / src / f'analysis_{src}_{run_ts_name}_{ct}.nc'
             _write_nc(res, src, run_ts_name, out_nc, [ct], pooled_sources=sorted(groups))
-            _make_figures(res, src, out_dir / src / 'figures' / ct, lims)
+            _make_figures(res, src, out_dir / src / 'figures' / ct, lims, ct)
         print(f'  {src}: figures done ({_time.time() - t0:.0f}s)')
 
     meta = {

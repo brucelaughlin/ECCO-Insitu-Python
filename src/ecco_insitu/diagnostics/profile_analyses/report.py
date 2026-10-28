@@ -40,8 +40,8 @@ _ANALYSIS_TITLES = {
     '01': 'Global mean T and S vs depth',
     '02': 'Global mean T and S cost vs depth',
     '03': 'Global mean cost per datum vs time',
-    '04': 'Global mean total cost vs time',
-    '05': 'Vertically integrated cost per geodesic bin',
+    '04': 'Total cost per month',
+    '05': 'Vertically integrated (summed) cost per geodesic bin',
     '06': 'Vertically integrated cost per datum per geodesic bin',
     '07': 'Zonal mean cost per datum vs depth',
     '08': 'Histogram of per-datum cost',
@@ -52,37 +52,44 @@ _ANALYSIS_TITLES = {
 _ANALYSIS_DESC = {
     '01': (
         'Mean observed T and S at each depth level, over all points of this obs class with '
-        'weight&nbsp;&gt;&nbsp;0 and a valid reference value for this cost type (all years pooled). '
-        'Observed values only: no reference or cost. Levels with no points are left blank.'
+        'weight&nbsp;&gt;&nbsp;0 (all years pooled). Observed values only: no reference or cost, so '
+        'this figure is the same for every cost type. Levels with no points are left blank. '
+        'Right panel: number of points at each level.'
     ),
     '02': (
         'Mean cost per point at each depth level, over all points at that level: '
         '<em>J</em>&nbsp;=&nbsp;<em>w</em>&nbsp;&middot;&nbsp;(V&nbsp;&minus;&nbsp;V<sub>ref</sub>)&sup2; '
         '(unsplit, dashed), or with the time-mean misfit <em>b</em> removed: split (solid) and '
-        'split_own (dotted). One line per weight version and split mode (see Terminology).'
+        'split_own (dotted). One line per weight version and split mode (see Terminology). '
+        'Right panel: number of points at each level.'
     ),
     '03': (
         'Cost per datum, (&Delta;V/&sigma;)&sup2; with &gamma; and sf removed (<code>true</code> '
         'weights), averaged over all points in each month of the record. Unsplit (dashed), split (solid), split_own (dotted).'
     ),
     '04': (
-        'Total cost per calendar month: the sum of the cost over all points in the month, unsplit, '
-        'one line per weight version (<code>final</code>, <code>nosf</code>, <code>true</code>), '
-        'log scale. Not divided by the number of points.'
+        'For each month of the record, the cost summed over every point (all profiles and depth levels) '
+        'of this obs class in that month, unsplit, one line per weight version (<code>final</code>, '
+        '<code>nosf</code>, <code>true</code>), log scale. Not an average: not divided by the number of '
+        'points. Top panel: number of points per month. Dividing the <code>true</code> line by it gives '
+        'analysis&nbsp;3 (unsplit).'
     ),
     '05': (
-        'For each geodesic bin (10,242 bins of roughly equal area): the cost summed over all depth '
-        'levels and all points in the bin, <code>final</code> weights, unsplit. The color scale ends at '
-        'the 98th percentile; higher values use the top color.'
+        'For each geodesic bin (10,242 bins of roughly equal area): the sum of <em>w</em>&nbsp;&middot;&nbsp;'
+        '(V&nbsp;&minus;&nbsp;V<sub>ref</sub>)&sup2; over every profile in the bin and every depth level of '
+        'those profiles, all years, <code>final</code> weights, unsplit. Each point counts with its own '
+        'weight <em>w</em> only: depth levels are not weighted by layer thickness. Bins with no data are '
+        'blank. The color scale ends at the 98th percentile; higher values use the top color.'
     ),
     '06': (
         'For each geodesic bin: the cost summed over all depth levels and points, divided by the number '
-        'of points (cost per datum), <code>true</code> weights, unsplit. The color scale ends at the 98th '
-        'percentile; higher values use the top color.'
+        'of points (cost per datum), <code>true</code> weights, unsplit. Bins with no data are blank. The '
+        'color scale ends at the 98th percentile; higher values use the top color.'
     ),
     '07': (
         'Mean cost per datum (<code>true</code> weights, unsplit) in 5&deg; latitude bands at each depth '
-        'level. The color scale ends at the 98th percentile; higher values use the top color.'
+        'level. The color scale ends at the 98th percentile; higher values use the top color. '
+        'Right panel: number of points at each level.'
     ),
     '08': (
         'Distribution of log&#x2081;&#x2080; of each point&rsquo;s cost, unsplit, one line per weight '
@@ -92,7 +99,7 @@ _ANALYSIS_DESC = {
     ),
     '09': (
         'As analysis 2, <code>true</code> weights only: mean (&Delta;V/&sigma;)&sup2; at each depth '
-        'level: unsplit (dashed), split (solid), split_own (dotted).'
+        'level: unsplit (dashed), split (solid), split_own (dotted). Right panel: number of points at each level.'
     ),
     '10': (
         'Mean (&Delta;V/&sigma;)&sup2; (<code>true</code> weights) over all points in each depth range: '
@@ -148,7 +155,9 @@ obs classes (<code>final</code> weights) + the mean term.</p>
         no vs_model value.</td></tr>
 <tr><td><code>vs_run_b</code></td><td>The same, from a second set of monthly-mean model fields</td></tr>
 </table>
-<p><strong>Axes:</strong> within each obs class, a given figure uses the same axis and color ranges in every cost type.</p>
+<p><strong>Axes:</strong> within each obs class, a given figure uses the same axis and color ranges in every cost type.
+Figure titles name the cost type. Controls that don&rsquo;t change the selected figure are grayed out (cost type for
+analysis&nbsp;1).</p>
 """
 
 
@@ -248,7 +257,13 @@ individual months where the anomaly runs against the long-term bias.</li>
 ocean or from data problems. With <code>true</code> weights, values near 1 match the assumed errors &sigma;;
 values well above 1 suggest &sigma; is too small at those depths (or bad data).</li>
 <li><strong>Analysis 3 vs 4:</strong> 3 is per datum, so it tracks fit quality; 4 is a sum, so it also rises
-and falls with the number of observations.</li>
+and falls with the number of observations (top panel of 4).</li>
+<li><strong>Analysis 5 is dominated by the upper ocean.</strong> The vertical sum counts every depth level equally,
+and the 97 levels are 2&ndash;5&nbsp;m apart near the surface (23 levels in the top 100&nbsp;m) but 200&nbsp;m apart
+below 2000&nbsp;m (6 levels in 2000&ndash;3000&nbsp;m). A thickness-weighted integral would weight deep levels far
+more.</li>
+<li><strong>Use the count panels.</strong> A high mean cost at a depth with few points (right-hand panels) can
+come from one region.</li>
 <li><strong>Analysis 5 vs 6:</strong> 5 is high where there is a lot of data or poor fit; 6 removes the
 data-count effect. A region high in 6 but not in 5 has few, poorly fit observations.</li>
 <li><strong>Analysis 7</strong> shows whether misfit is concentrated in latitude bands (fronts, ice edges)
@@ -271,6 +286,34 @@ casts have only coarse levels with T to 0.1&nbsp;&deg;C, and one is listed as a 
 0.6&ndash;2.7&nbsp;&deg;C warmer than local climatology; the WOD flags catch only 1 of the 12. Rule
 (<code>chain.xbt_max_depth</code>&nbsp;=&nbsp;2900): step&nbsp;06 zeroes XBT values deeper than 2900&nbsp;m,
 which removes these 10 values and nothing else. {_xbt_cap_status(metas)}</p>
+
+<p><strong>Argo (PFL) cost below 2000&nbsp;m, vs_model</strong> (run 20261027_142247, <code>true</code> weights,
+unsplit). Below 2000&nbsp;m only Deep Argo floats remain: 1.25&nbsp;million points at 2000&nbsp;m, 29&nbsp;thousand
+at 2200&nbsp;m, 10&nbsp;thousand at 2600&nbsp;m, in a few regions. So the mean there describes those regions, not the
+globe.</p>
+<ul>
+<li><strong>T, 2200&ndash;2400&nbsp;m</strong> (cost per datum 0.93&ndash;1.03 vs about 0.64 just above): 18% of the
+points are in the subpolar North Atlantic (40&ndash;70&deg;N, 60&deg;W&ndash;0&deg;) and carry 44% of the cost; there
+the model is on average 0.16&nbsp;&deg;C warmer than the observations, and the cost per datum is 2.4 against the
+model and 1.1 against climatology.</li>
+<li><strong>S, 2600&ndash;3000&nbsp;m</strong> (0.67&ndash;0.73 vs climatology&rsquo;s 0.09&ndash;0.10): 68% of the
+cost is in the southwest Pacific (30&ndash;45&deg;S, 150&ndash;180&deg;W), where the model is on average 0.016&nbsp;psu
+saltier than the observations. The assumed error &sigma; there is small (median 0.014&nbsp;psu), so small offsets
+give large cost.</li>
+<li>The split cost removes most of it (T split 0.25 at 2200&ndash;2400&nbsp;m), so it is a steady regional offset
+between the model and the floats rather than variability. Climatology doesn&rsquo;t show it, perhaps because WOA23
+is built from the same kind of data in those regions (inferred).</li>
+</ul>
+
+<p><strong>Near-zero cost south of 60&deg;S.</strong> South of 60&deg;S the chain uses a temporary constant
+&sigma; of 10&nbsp;&deg;C and 5&nbsp;psu (high-latitude &sigma; rule; in this run the median Argo &sigma; is
+10&nbsp;&deg;C and 5&nbsp;psu there, against 0.65&nbsp;&deg;C and 0.09&nbsp;psu at |lat|&nbsp;&lt;&nbsp;50&deg;), so costs
+there are close to zero and show as a pale ring on the maps. This is intentional for now, not missing data.</p>
+
+<p><strong>ITP outside the Arctic.</strong> In run 20261027_142247, 444 of 34,875 weighted ITP profiles are in the
+Southern Ocean (Weddell Sea near 74&deg;S 33&deg;W, Amundsen Sea near 78&deg;S 110&deg;W), and 4 are on the US coasts
+(near 42&deg;N 71&deg;W and 43&deg;N 122&deg;W; probably test casts before deployment, inferred). They show as small
+patches on the ITP maps.</p>
 
 <p><strong>WOD quality flags.</strong> WOD gives a quality flag for every value at its standard depths
 (0&nbsp;=&nbsp;accepted, 1&ndash;9&nbsp;=&nbsp;rejected). The UCSD input files (<code>Interp_Profiles</code>)
@@ -321,7 +364,17 @@ the depth note said levels with fewer than 30 observations were hidden (only lev
 the histogram text said 2 means 100&sigma; (it means 10&sigma;); the WOD-flags note said a flag of 1 means
 good (0 means accepted) and listed Argo and MEOP among the WOD classes (they aren&rsquo;t);
 the split was described as mirroring <code>cost_profiles.F</code> (until 2026-10-28 it used each obs
-class&rsquo;s own mean, now <code>split_own</code>, and left out the mean term).</li>
+class&rsquo;s own mean, now <code>split_own</code>, and left out the mean term); and the map bins with no data were drawn as zero cost (now blank).</li>
+<li><strong>Analysis 1 changed on 2026-10-28.</strong> It used to average only the points that had a reference
+value for the selected cost type (the same points as the costs), so it differed between the cost-type tabs:
+under vs_model it left out every point with no model value. Measured on run 20261027_142247:
+CTD 14% fewer points under vs_model (mean T differed by up to 0.64&nbsp;&deg;C, at 40&nbsp;m), gliders 4% (0.13&nbsp;&deg;C),
+XBT 3% (0.17&nbsp;&deg;C, at 2200&nbsp;m), Argo 1% (0.02&nbsp;&deg;C). It now averages every observation with
+weight&nbsp;&gt;&nbsp;0 and is the same in every tab. The old version shows the observations behind each cost
+type&rsquo;s costs, so it may be worth having again. <em>To revert:</em> in
+<code>diagnostics/profile_analyses/compute.py</code>, <code>_accumulate_file</code>, accumulate the
+<code>a01_*</code> sums with the cost mask <code>ok</code> instead of <code>obs</code>, and drop analysis&nbsp;01 from
+<code>NO_COST</code> in <code>report.py</code>.</li>
 </ul>
 {_split_comparison_html(metas)}
 """
@@ -384,6 +437,8 @@ body {
 .tab:hover:not(.active):not([disabled]) { background: var(--accent-light); border-color: var(--accent); }
 .tab.active { background: var(--accent); color: white; border-color: var(--accent); }
 .tab[disabled] { opacity: 0.3; cursor: default; }
+.tab.na { opacity: 0.35; pointer-events: none; }
+.row-note { font-size: 0.8em; color: #888; margin-left: 0.6em; font-style: italic; }
 /* ── main split ── */
 #main { display: flex; flex: 1; overflow: hidden; }
 /* figure area */
@@ -651,6 +706,7 @@ const COST_TYPES = {json.dumps(all_cost_types)};
 const ANALYSES = {json.dumps(all_analyses)};
 const DESCS = {json.dumps(desc_data)};
 const EXISTS = {json.dumps(exists)};
+const NO_COST = ['01'];
 
 let curSource = SOURCES[0], curCost = COST_TYPES[0], curAn = null;
 
@@ -672,13 +728,17 @@ function render() {{
   document.querySelectorAll('.src-tab').forEach(t =>
     t.classList.toggle('active', t.dataset.src === curSource)
   );
-  // cost-type tabs — hide unavailable ones
+  // cost-type tabs — hide unavailable ones; greyed for analyses that involve no cost
   const avail = availableCosts(curSource);
+  const noCost = NO_COST.includes(curAn);
   document.querySelectorAll('.cost-tab').forEach(t => {{
     const show = avail.includes(t.dataset.ct);
     t.style.display = show ? '' : 'none';
-    t.classList.toggle('active', t.dataset.ct === curCost);
+    t.classList.toggle('active', t.dataset.ct === curCost && !noCost);
+    t.classList.toggle('na', noCost);
   }});
+  document.getElementById('cost-note').textContent =
+    noCost ? 'not used: analysis ' + curAn + ' shows observed values only (no cost)' : '';
   // analysis tabs
   document.querySelectorAll('.an-tab').forEach(t => {{
     const ok = exists(curSource, curCost, t.dataset.an);
@@ -793,7 +853,7 @@ render();
 </div>
 <div id="nav">
   <div class="tab-row"><span class="row-label">Source</span>{src_tabs}</div>
-  <div class="tab-row"><span class="row-label">Cost type</span>{cost_tabs}</div>
+  <div class="tab-row"><span class="row-label">Cost type</span>{cost_tabs}<span id="cost-note" class="row-note"></span></div>
   <div class="tab-row"><span class="row-label">Analysis</span>{an_tabs}</div>
 </div>
 <div id="notes-page" hidden>

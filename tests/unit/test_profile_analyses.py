@@ -216,6 +216,14 @@ def test_pooled_split_matches_model_cost(tmp_path, capsys):
         assert meta['ecco_mean_term']['vs_model'][V]['cost'] == pytest.approx(ref[V]['mean_cost'], rel=1e-9)
         assert meta['ecco_mean_term']['vs_model'][V]['count'] == ref[V]['mean_count']
     assert own != pytest.approx(anom)
+    # analysis 1 is observations only: identical for every cost type
+    for src in ('XBT_WOD', 'CTD_WOD'):
+        a1 = {}
+        for ct in ('vs_clim', 'vs_model'):
+            with netCDF4.Dataset(next((out / src).glob(f'*_{ct}.nc'))) as nc:
+                a1[ct] = (nc['a01_T_mean_depth'][:], nc['a01_T_count_depth'][:])
+        np.testing.assert_array_equal(a1['vs_clim'][1], a1['vs_model'][1])
+        np.testing.assert_allclose(a1['vs_clim'][0], a1['vs_model'][0])
 
 
 # ---------------------------------------------------------------------------
