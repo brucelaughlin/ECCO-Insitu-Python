@@ -727,8 +727,70 @@ def _savefig(fig, path):
     plt.close(fig)
 
 
-def _make_figures(res, source, fig_dir):
-    """Generate all 10 analysis figures."""
+def _decimal_year(ym):
+    ym = np.asarray(ym, dtype=int)
+    return (ym // 100) + (ym % 100 - 0.5) / 12.0
+
+
+def _span(arrays, positive=False):
+    vals = [np.asarray(a, dtype=float).ravel() for a in arrays]
+    v = np.concatenate(vals) if vals else np.array([])
+    v = v[np.isfinite(v) & ((v > 0) if positive else True)]
+    return (float(v.min()), float(v.max())) if v.size else None
+
+
+def _pad(span, frac=0.05, zero=False):
+    if span is None:
+        return None
+    lo, hi = span
+    if zero:
+        lo = min(lo, 0.0)
+    d = (hi - lo) * frac or abs(hi) * frac or 1.0
+    return (0.0 if zero and lo == 0 else lo - d, hi + d)
+
+
+def _p98(arrays):
+    vals = [p for a in arrays
+            for p in [np.nanpercentile(a[np.isfinite(a)], 98) if np.isfinite(a).any() else np.nan]]
+    vmax = np.nanmax(vals) if np.isfinite(vals).any() else np.nan
+    return float(vmax) if np.isfinite(vmax) and vmax > 0 else 1.0
+
+
+def _shared_limits(results):
+    """Axis limits per (analysis, variable) spanning every cost type's results."""
+    rs = list(results.values())
+    lims = {}
+    for V in VARS:
+        lims[('a01', V)] = _pad(_span(
+            [np.where(r['a01'][V]['count'] >= _MIN_DEPTH_COUNT, r['a01'][V]['mean'], np.nan) for r in rs]))
+        for an, wvs in (('02', WEIGHT_VERS), ('09', ('true',))):
+            lims[(f'a{an}', V)] = _pad(_span(
+                [np.where(r[('a02', V, sp, wv)]['count'] >= _MIN_DEPTH_COUNT, r[('a02', V, sp, wv)]['mean'], np.nan)
+                 for r in rs for sp in SPLIT_MODES for wv in wvs]), zero=True)
+        lims[('a03', V)] = _pad(_span([r[('a03', V, sp, 'true')]['mean_per_datum']
+                                       for r in rs for sp in SPLIT_MODES]), zero=True)
+        s4 = _span([r[('a04', V, 'unsplit', wv)]['total'] for r in rs for wv in WEIGHT_VERS], positive=True)
+        lims[('a04', V)] = None if s4 is None else (s4[0] / 1.5, s4[1] * 1.5)
+        lims[('a05', V)] = _p98([r[('a05', V, 'unsplit', 'final')]['total'] for r in rs])
+        lims[('a06', V)] = _p98([r[('a05', V, 'unsplit', 'true')]['per_datum'] for r in rs])
+        lims[('a07', V)] = _p98([r[('a07', V, 'unsplit', 'true')]['mean'] for r in rs])
+        lims[('a08', V)] = _pad(_span([h / h.sum() for r in rs for wv in WEIGHT_VERS
+                                       for h in [r[('a08', V, 'unsplit', wv)]] if h.sum() > 0]), zero=True)
+        lims[('a10', V)] = _pad(_span([r[('a10', V, sp, 'true')] for r in rs for sp in SPLIT_MODES]),
+                                frac=0.1, zero=True)
+    lims['year'] = _pad(_span([_decimal_year(r[('a03', V, sp, 'true')]['yyyymm'])
+                               for r in rs for V in VARS for sp in SPLIT_MODES]), frac=0.01)
+    return lims
+
+
+def _apply(set_lim, lim):
+    if lim is not None:
+        set_lim(*lim)
+
+
+def _make_figures(res, source, fig_dir, lims=None):
+    """Generate all 10 analysis figures; ``lims`` (from _shared_limits) fixes the axis ranges."""
+    lims = lims if lims is not None else _shared_limits({'_': res})
     depth = res['depth']
     _dmax = float(np.nanmax(depth)) * 1.05  # bottom of every depth axis
 
@@ -749,6 +811,7 @@ def _make_figures(res, source, fig_dir):
         ax.set_xlabel(f'Mean {V} (°C)' if V == 'T' else f'Mean {V} (psu)')
         ax.set_ylabel('Depth (m)') if ax is axes[0] else None
         ax.set_title(f'{V} (n_max={c.max():,.0f})')
+        _apply(ax.set_xlim, lims[('a01', V)])
     axes[0].set_ylim(_dmax, 0)
     fig.suptitle(f'{source}: Analysis 1 — Global mean T & S vs depth')
     _savefig(fig, fig_dir / '01_mean_T_S_depth.png')
@@ -774,6 +837,7 @@ def _make_figures(res, source, fig_dir):
             ax.set_ylabel('Depth (m)') if ax is axes[0] else None
             ax.set_title(V)
             ax.legend(fontsize=7)
+            _apply(ax.set_xlim, lims[(f'a{an}', V)])
         axes[0].set_ylim(_dmax, 0)
         fig.suptitle(f'{source}: Analysis {an} — {title_sfx} vs depth')
         _savefig(fig, fig_dir / f'{an}_cost_depth_{source}.png')
@@ -788,14 +852,15 @@ def _make_figures(res, source, fig_dir):
             if len(r['yyyymm']) == 0:
                 continue
             any_data = True
-            ym = np.asarray(r['yyyymm'], dtype=int)
-            x = (ym // 100) + (ym % 100 - 0.5) / 12.0  # evenly-spaced decimal year
+            x = _decimal_year(r['yyyymm'])
             ax.plot(x, r['mean_per_datum'],
                     color=_TS_SP_COLOR[(V, sp)], ls=_SP_LS[sp],
                     label=sp, lw=1.1)
         ax.set_ylabel(f'{V} mean cost/datum')
         if any_data:
             ax.legend(fontsize=7)
+        _apply(ax.set_ylim, lims[('a03', V)])
+        _apply(ax.set_xlim, lims['year'])
     axes[-1].set_xlabel('Year')
     fig.suptitle(f'{source}: Analysis 3 — Mean cost per datum vs time (true weights)')
     _savefig(fig, fig_dir / f'03_cost_per_datum_time_{source}.png')
@@ -808,19 +873,20 @@ def _make_figures(res, source, fig_dir):
             r = res[('a04', V, 'unsplit', wv)]
             if len(r['yyyymm']) == 0:
                 continue
-            ym = np.asarray(r['yyyymm'], dtype=int)
-            x = (ym // 100) + (ym % 100 - 0.5) / 12.0  # evenly-spaced decimal year
+            x = _decimal_year(r['yyyymm'])
             ax.semilogy(x, np.where(np.array(r['total']) > 0, r['total'], np.nan),
                         color=_WV_COLOR[wv], label=wv, lw=1.1)
         ax.set_ylabel(f'{V} total cost')
         ax.legend(fontsize=7)
+        _apply(ax.set_ylim, lims[('a04', V)])
+        _apply(ax.set_xlim, lims['year'])
     axes[-1].set_xlabel('Year')
     fig.suptitle(f'{source}: Analysis 4 — Total cost vs time')
     _savefig(fig, fig_dir / f'04_total_cost_time_{source}.png')
 
     # ---- Analysis 5/6: spatial map ----
     try:
-        _make_spatial_map(res, source, fig_dir, active_vars)
+        _make_spatial_map(res, source, fig_dir, active_vars, lims)
     except Exception as exc:
         print(f'  [warn] spatial map failed: {exc}')
 
@@ -833,12 +899,11 @@ def _make_figures(res, source, fig_dir):
         if not valid.any():
             continue
         fig, ax = plt.subplots(figsize=(9, 6))
-        with np.errstate(invalid='ignore'):
-            vmax = np.nanpercentile(r[valid], 98)
-            vmax = vmax if np.isfinite(vmax) and vmax > 0 else 1.0
+        vmax = lims[('a07', V)]
         im = ax.contourf(lat_centers, depth, r.T, levels=np.linspace(0, vmax, 21),
                          cmap='YlOrRd', extend='max')
         ax.set_ylim(_dmax, 0)
+        ax.set_xlim(LAT_EDGES[0], LAT_EDGES[-1])
         plt.colorbar(im, ax=ax, label=f'{V} cost per datum (ΔV/σ)²')
         ax.set_xlabel('Latitude (°N)')
         ax.set_ylabel('Depth (m)')
@@ -859,6 +924,8 @@ def _make_figures(res, source, fig_dir):
         ax.set_ylabel('Density')
         ax.set_title(V)
         ax.legend(fontsize=7)
+        ax.set_xlim(HIST_EDGES[0], HIST_EDGES[-1])
+        _apply(ax.set_ylim, lims[('a08', V)])
     fig.suptitle(f'{source}: Analysis 8 — Histogram of cost per datum')
     _savefig(fig, fig_dir / f'08_histogram_{source}.png')
 
@@ -876,11 +943,12 @@ def _make_figures(res, source, fig_dir):
         ax.set_ylabel(f'{V} mean cost per datum (ΔV/σ)²')
         ax.set_title(V)
         ax.legend(fontsize=7)
+        _apply(ax.set_ylim, lims[('a10', V)])
     fig.suptitle(f'{source}: Analysis 10 — Mean cost per datum by depth range')
     _savefig(fig, fig_dir / f'10_depth_ranges_{source}.png')
 
 
-def _make_spatial_map(res, source, fig_dir, active_vars):
+def _make_spatial_map(res, source, fig_dir, active_vars, lims):
     """Analyses 5 and 6: spatial maps using geodesic bins."""
     try:
         import cartopy.crs as ccrs
@@ -905,10 +973,7 @@ def _make_spatial_map(res, source, fig_dir, active_vars):
             img = per_bin_full[grid_a]                      # (ny, nx)
             img = np.where(land | outside | (grid_a == 0), np.nan, img)
 
-            with np.errstate(invalid='ignore'):
-                vmax = np.nanpercentile(img[np.isfinite(img)], 98)
-                if not (np.isfinite(vmax) and vmax > 0):
-                    vmax = 1.0
+            vmax = lims[(f'a{an}', V)]
 
             fig = plt.figure(figsize=(12, 5))
             ax = fig.add_subplot(1, 1, 1, projection=ccrs.Robinson())
@@ -1010,15 +1075,14 @@ def _analyze_source(source, files, run_dir, out_dir, estim_dir, estim_dir_b, cos
             print(f' {i+1}', end='', flush=True)
     print()
 
-    # Finalize and write
-    for ct in cost_types_used:
-        res = _finalize(accs[ct], depth)
-        run_ts_name = common.run_timestamp(run_dir)
-        fname = f'analysis_{source}_{run_ts_name}_{ct}.nc'
-        out_nc = out_dir / source / fname
+    # Finalize and write; figures of all cost types share axis limits so they compare directly
+    results = {ct: _finalize(accs[ct], depth) for ct in cost_types_used}
+    lims = _shared_limits(results)
+    run_ts_name = common.run_timestamp(run_dir)
+    for ct, res in results.items():
+        out_nc = out_dir / source / f'analysis_{source}_{run_ts_name}_{ct}.nc'
         _write_nc(res, source, run_ts_name, out_nc, [ct])
-        fig_dir = out_dir / source / 'figures' / ct
-        _make_figures(res, source, fig_dir)
+        _make_figures(res, source, out_dir / source / 'figures' / ct, lims)
         print(f'    {ct}: done  ({_time.time() - t0:.0f}s)')
 
 # ---------------------------------------------------------------------------

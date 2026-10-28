@@ -16,7 +16,7 @@ body {
   padding: 0.5em 1em; background: #fff; border-bottom: 2px solid var(--border);
   display: flex; align-items: center; gap: 0.8em; min-height: 2.4em; flex-shrink: 0;
 }
-#header h1 { font-size: 1.05em; font-weight: 600; flex: 1; }
+#header h1 { font-size: 1.05em; font-weight: 600; }
 /* ── tab rows ── */
 #nav { background: #f7f7f7; border-bottom: 1px solid var(--border); flex-shrink: 0; }
 .tab-row {
@@ -73,6 +73,14 @@ code { background: #f0f0f0; padding: 1px 3px; border-radius: 2px; font-size: 0.9
 /* header right-side links */
 .hdr-link { font-size: 0.82em; color: var(--accent); cursor: pointer; white-space: nowrap; }
 .hdr-link:hover { text-decoration: underline; }
+.hdr-notes { color: #888; margin-left: auto; }
+#notes-page { flex: 1; overflow-y: auto; background: #fff; }
+.notes-inner { max-width: 52em; margin: 0 auto; padding: 1.2em 1.5em 3em; line-height: 1.55; color: #333; }
+.notes-inner h2 { font-size: 1.25em; margin: 0.6em 0 0.3em; }
+.notes-inner h3 { font-size: 1.02em; margin: 1.3em 0 0.4em; color: #111; }
+.notes-inner p, .notes-inner li { margin: 0.4em 0; }
+.notes-inner ul { padding-left: 1.3em; }
+.notes-lede { color: #777; font-style: italic; }
 </style>
 </head>
 <body>
@@ -81,16 +89,103 @@ code { background: #f0f0f0; padding: 1px 3px; border-radius: 2px; font-size: 0.9
   <span class="hdr-link" id="toggle-side-gloss">Terminology</span>
   <span style="color:#ccc">|</span>
   <span class="hdr-link" id="toggle-side-meta">Metadata</span>
-  <span style="color:#ccc">|</span>
-  <span class="hdr-link" id="toggle-side-issues">Issues</span>
-  <span style="color:#ccc">|</span>
-  <span class="hdr-link" id="toggle-side-chain-notes">WOD flags</span>
   <span style="color:#ccc;font-size:0.8em;margin-left:0.5em">← → cycle sources &nbsp; ↑ ↓ cycle analyses</span>
+  <span class="hdr-link hdr-notes" id="toggle-notes">Notes &amp; errata</span>
 </div>
 <div id="nav">
   <div class="tab-row"><span class="row-label">Source</span><button class="tab src-tab" data-src="CTD_WOD">CTD_WOD</button><button class="tab src-tab" data-src="GLD_WOD">GLD_WOD</button><button class="tab src-tab" data-src="ITP">ITP</button><button class="tab src-tab" data-src="MEOP">MEOP</button><button class="tab src-tab" data-src="MRB_WOD">MRB_WOD</button><button class="tab src-tab" data-src="PFL">PFL</button><button class="tab src-tab" data-src="XBT_WOD">XBT_WOD</button></div>
   <div class="tab-row"><span class="row-label">Cost type</span><button class="tab cost-tab" data-ct="vs_clim">vs_clim</button><button class="tab cost-tab" data-ct="vs_model">vs_model</button></div>
   <div class="tab-row"><span class="row-label">Analysis</span><button class="tab an-tab" data-an="01" title="Global mean T and S vs depth">01</button><button class="tab an-tab" data-an="02" title="Global mean T and S cost vs depth">02</button><button class="tab an-tab" data-an="03" title="Global mean cost per datum vs time">03</button><button class="tab an-tab" data-an="04" title="Global mean total cost vs time">04</button><button class="tab an-tab" data-an="05" title="Vertically integrated cost per geodesic bin">05</button><button class="tab an-tab" data-an="06" title="Vertically integrated cost per datum per geodesic bin">06</button><button class="tab an-tab" data-an="07" title="Zonal mean cost per datum vs depth">07</button><button class="tab an-tab" data-an="08" title="Histogram of per-datum cost">08</button><button class="tab an-tab" data-an="09" title="Global mean cost per datum vs depth">09</button><button class="tab an-tab" data-an="10" title="Global mean cost per datum by depth range">10</button></div>
+</div>
+<div id="notes-page" hidden>
+  <div class="notes-inner">
+    <p><span class="hdr-link" id="close-notes">&larr; Back to the report</span></p>
+    
+<h2>Notes &amp; errata</h2>
+<p class="notes-lede">Not part of the core report. The core report (figures, captions, Terminology) states only
+what is plotted and how it is computed. This page collects interpretation, notes on the data, open
+decisions, and corrections.</p>
+
+<h3>1. Reading the figures</h3>
+<ul>
+<li><strong>Analysis 1</strong> is a sanity check on the data itself, e.g. it would show a double
+potential-temperature conversion.</li>
+<li><strong>Split vs unsplit:</strong> where split is much lower than unsplit, most of the misfit is a
+steady offset at that location (bias) rather than variation over time. Split can exceed unsplit in
+individual months where the anomaly runs against the long-term bias.</li>
+<li><strong>Analyses 2 and 9:</strong> a level with large cost means persistent disagreement there, from the
+ocean or from data problems. With <code>true</code> weights, values near 1 match the assumed errors &sigma;;
+values well above 1 suggest &sigma; is too small at those depths (or bad data).</li>
+<li><strong>Analysis 3 vs 4:</strong> 3 is per datum, so it tracks fit quality; 4 is a sum, so it also rises
+and falls with the number of observations.</li>
+<li><strong>Analysis 5 vs 6:</strong> 5 is high where there is a lot of data or poor fit; 6 removes the
+data-count effect. A region high in 6 but not in 5 has few, poorly fit observations.</li>
+<li><strong>Analysis 7</strong> shows whether misfit is concentrated in latitude bands (fronts, ice edges)
+or depths.</li>
+<li><strong>Analysis 8:</strong> most points should lie well left of the QC line; a heavy right tail or a
+second peak suggests outliers.</li>
+</ul>
+
+<h3>2. Data notes</h3>
+<p><strong>Deep XBT values are Mediterranean.</strong> In run 20261027_142247, weighted XBT T values below
+2200&nbsp;m are all in the Mediterranean (13 values, 2200&ndash;2800&nbsp;m, T&nbsp;&asymp;&nbsp;12.9&ndash;13.9&nbsp;&deg;C),
+where the deep water stays near 13&nbsp;&deg;C to the bottom. Between 2000 and 2200&nbsp;m, 27 of 187 values
+are Mediterranean. These are valid observations (the 7 values near 2400&nbsp;m were within 0.01&ndash;0.31&nbsp;&deg;C of local
+climatology in an earlier check), but at those depths the XBT &ldquo;global&rdquo; mean in analysis 1 is a Mediterranean mean.</p>
+
+<p><strong>XBT values at exactly 3000&nbsp;m (KI-21).</strong> 10 weighted XBT T values at exactly
+3000&nbsp;m, in 12 casts from two ships (1994&ndash;95, south of Tasmania and south of Japan). In WOD these
+casts have only coarse levels with T to 0.1&nbsp;&deg;C, and one is listed as a T-7 XBT (rated to about
+760&nbsp;m), so they are probably not real measurements at that depth (inferred). They are
+0.6&ndash;2.7&nbsp;&deg;C warmer than local climatology; the WOD flags catch only 1 of the 12. Rule
+(<code>chain.xbt_max_depth</code>&nbsp;=&nbsp;2900): step&nbsp;06 zeroes XBT values deeper than 2900&nbsp;m,
+which removes these 10 values and nothing else. <strong>Not applied in this run</strong> (made before the cap existed): these 10 values are in the costs shown here.</p>
+
+<p><strong>WOD quality flags.</strong> WOD gives a quality flag for every value at its standard depths
+(0&nbsp;=&nbsp;accepted, 1&ndash;9&nbsp;=&nbsp;rejected). The UCSD input files (<code>Interp_Profiles</code>)
+don&rsquo;t carry them: earlier deliveries had <code>prof_Tflag</code> filled with zeros, and the current files
+have no flag variable (confirmed by UCSD, 2026-10-26). ECCO v4r6&rsquo;s files do carry them: on matching XBT
+casts, v4r6&rsquo;s <code>prof_Tflag</code> equals WOD&rsquo;s standard-level flags from WOD&rsquo;s 2018 export
+100% of the time, so the original MATLAB chain most likely took them from WOD (inferred). The chain now does
+the same: it reads WOD&rsquo;s standard-level files from NCEI, matches each profile by its WOD cast number in
+<code>prof_descr</code>, maps the flags to our 97 depths, and step&nbsp;06 zeroes the weight wherever a flag is
+above 0. On the same casts, 99.4% of our flags agree with v4r6&rsquo;s. This applies to the WOD obs classes
+(CTD/OSD, XBT, mooring, glider), not to Argo, ITP or MEOP. Effect on XBT T: (&Delta;V/&sigma;)&sup2; went from
+0.943 (run 20261021, no flags) to 0.808 (run 20261027), against v4r6&rsquo;s 0.802; the remaining gap in the
+<code>final</code> cost (0.194 vs 0.170) is in &gamma; and sf, not in the data. Details:
+<code>docs/known_issues.md</code> KI-18, <code>cost_comparisons/wod_flags/README.md</code>.</p>
+
+<h3>3. Open decisions</h3>
+<ul>
+<li><strong>KI-21, XBT depth cap of 2900&nbsp;m:</strong> decided 2026-10-27; <em>team approval pending.</em></li>
+<li><strong>KI-19, WOD flags beyond a cast&rsquo;s standard levels</strong>
+(<code>chain.wod_flags_extend_levels</code>): 0&nbsp;=&nbsp;never extend; 1&nbsp;=&nbsp;always;
+2&nbsp;=&nbsp;only when the last two levels agree (current default, affects at most 0.09% of values).
+<em>Sign-off on option&nbsp;2 pending.</em></li>
+</ul>
+
+<h3>4. Errata and known limitations</h3>
+<ul>
+<li><strong>Split cost differs from ECCO&rsquo;s.</strong> The team&rsquo;s specification asks for split costs
+&ldquo;like how things are done in the Fortran&rdquo;. ECCO v4r6&rsquo;s <code>cost_profiles.F</code> computes
+one mean per (geodesic bin, depth) over <em>all</em> obs classes pooled, and also adds a mean term
+<em>w&#772;</em>&nbsp;&middot;&nbsp;(m&#772;&nbsp;&minus;&nbsp;d&#772;)&sup2;. This report uses a separate mean for each obs class and
+leaves out the mean term. A Fortran-matching split is planned; for ECCO&rsquo;s exact numbers now, use
+<code>ecco-insitu model-cost</code>.</li>
+<li><strong>Split vs climatology</strong> is our extension; ECCO splits only the model&ndash;data cost.</li>
+<li><strong>Analysis 4:</strong> the specification asks for total cost through time &ldquo;after all factors
+removed&rdquo;; that is the <code>true</code> line. The <code>final</code> and <code>nosf</code> lines are
+shown too.</li>
+<li><strong>vs_model is approximate:</strong> V<sub>estim</sub> comes from monthly means, so sub-monthly
+variability shows up as misfit; profiles after December 2025 have no model value.</li>
+<li><strong>Corrections to earlier versions of this report</strong> (before 2026-10-28):
+the depth note said levels with fewer than 30 observations were hidden (only levels with none are);
+the histogram text said 2 means 100&sigma; (it means 10&sigma;); the WOD-flags note said a flag of 1 means
+good (0 means accepted) and listed Argo and MEOP among the WOD classes (they aren&rsquo;t);
+and the split was described as mirroring <code>cost_profiles.F</code> (it differs, as above).</li>
+</ul>
+
+  </div>
 </div>
 <div id="main">
   <div id="fig-area">
@@ -102,103 +197,50 @@ code { background: #f0f0f0; padding: 1px 3px; border-radius: 2px; font-size: 0.9
     <details id="side-gloss" style="margin-top:1.2em">
       <summary>Terminology</summary>
       <div>
-<p><strong>Weight versions</strong> — which scaling factors are included in the weight <em>w</em>.
-All use the same misfit (V&nbsp;&minus;&nbsp;V<sub>ref</sub>)&sup2;; they differ only in how much each point counts.</p>
+<p><strong>Weight versions</strong>: which factors are kept in the weight <em>w</em> = &gamma;&nbsp;&middot;&nbsp;sf&nbsp;/&nbsp;&sigma;&sup2;.
+All use the same misfit &Delta;V&nbsp;=&nbsp;V&nbsp;&minus;&nbsp;V<sub>ref</sub>.</p>
 <table class="gloss-table">
-<tr><th>Label</th><th>Formula</th><th>Meaning</th></tr>
+<tr><th>Label</th><th>Cost per point</th><th>Meaning</th></tr>
 <tr><td><code>final</code></td><td>&gamma; &middot; sf &middot; (&Delta;V/&sigma;)&sup2;</td>
-    <td>Weight as ECCO sees it: area/volume factor &gamma; and step-11 spatial scaling factor sf both included</td></tr>
+    <td>As ECCO weights it: area factor &gamma; and step-11 spatial scaling factor sf both kept</td></tr>
 <tr><td><code>nosf</code></td><td>&gamma; &middot; (&Delta;V/&sigma;)&sup2;</td>
-    <td>Step-11 spatial scaling removed; &gamma; retained</td></tr>
+    <td>sf removed, &gamma; kept</td></tr>
 <tr><td><code>true</code></td><td>(&Delta;V/&sigma;)&sup2;</td>
-    <td>Both &gamma; and sf removed — pure normalized misfit, &ldquo;cost per datum&rdquo;</td></tr>
+    <td>&gamma; and sf removed: &ldquo;cost per datum&rdquo; (all factors removed)</td></tr>
 </table>
-<p>Because &gamma;&nbsp;&le;&nbsp;1 and sf&nbsp;&le;&nbsp;1, removing them raises the value:
-<code>true</code> &ge; <code>nosf</code> &ge; <code>final</code>.</p>
+<p>&gamma; and sf are both between 0 and 1, so <code>true</code> &ge; <code>nosf</code> &ge; <code>final</code>.</p>
 
-<p><strong>Split modes</strong> — what reference is subtracted before squaring.</p>
+<p><strong>Split modes</strong></p>
 <table class="gloss-table">
 <tr><th>Label</th><th>Meaning</th></tr>
-<tr><td><code>unsplit</code></td><td>Raw misfit vs reference — includes any systematic time-mean bias at each location</td></tr>
+<tr><td><code>unsplit</code></td>
+    <td><em>J</em> = <em>w</em>&nbsp;&middot;&nbsp;(V&nbsp;&minus;&nbsp;V<sub>ref</sub>)&sup2;. The mean misfit is not removed.</td></tr>
 <tr><td><code>split</code></td>
-    <td>Anomaly cost — time-mean offset per (bin, depth) subtracted first; mirrors ECCO&rsquo;s <code>cost_profiles.F</code></td></tr>
+    <td><em>J</em> = <em>w</em>&nbsp;&middot;&nbsp;(V&nbsp;&minus;&nbsp;V<sub>ref</sub>&nbsp;&minus;&nbsp;<em>b</em>)&sup2;,
+        where <em>b</em> is the <strong>time-mean misfit</strong> for that geodesic bin and depth level:
+        the average of (V&nbsp;&minus;&nbsp;V<sub>ref</sub>) over every point that fell there, all years and
+        months pooled (not a seasonal or monthly mean). In this report <em>b</em> is computed separately for
+        each obs class and cost type. This differs from ECCO&rsquo;s <code>cost_profiles.F</code>; see
+        <em>Notes &amp; errata</em>.</td></tr>
 </table>
 
-<p><strong>Cost reference types</strong> — what V<sub>ref</sub> is.</p>
+<p><strong>Cost types</strong>: what V<sub>ref</sub> is.</p>
 <table class="gloss-table">
 <tr><th>Label</th><th>Meaning</th></tr>
-<tr><td><code>vs_clim</code></td><td>Profile vs WOA-style climatology; always available</td></tr>
+<tr><td><code>vs_clim</code></td><td>WOA23 climatology (<code>prof_Vclim</code>) at the profile&rsquo;s location and depths</td></tr>
 <tr><td><code>vs_model</code></td>
-    <td>Profile vs approximate model equivalent V<sub>estim</sub>, derived from
-        <strong>monthly-mean</strong> v4r6 THETA/SALT fields interpolated to obs location
-        and depth. This is an approximation — monthly means cannot capture
-        sub-monthly variability, so V<sub>estim</sub> carries a smoothing error on top of
-        the true model&ndash;obs misfit. See run metadata for the source directory.</td></tr>
-<tr><td><code>vs_run_b</code></td><td>Profile vs a second model run (run-A vs run-B comparison)</td></tr>
+    <td>Approximate model equivalent V<sub>estim</sub>: <strong>monthly-mean</strong> ECCO v4r6
+        THETA/SALT sampled at the profile&rsquo;s grid cell, month and depths (not the model&rsquo;s own
+        sampling at the profile&rsquo;s time). The last v4r6 field is December 2025, so later profiles have
+        no vs_model value.</td></tr>
+<tr><td><code>vs_run_b</code></td><td>The same, from a second set of monthly-mean model fields</td></tr>
 </table>
+<p><strong>Axes:</strong> within each obs class, a given figure uses the same axis and color ranges in every cost type.</p>
 </div>
     </details>
     <details id="side-meta" style="margin-top:0.6em">
       <summary>Run metadata</summary>
-      <div style="margin-top:0.5em"><p style="font-weight:600;margin-bottom:0.3em">profile_analyses_20261027</p><table class="meta-table"><tr><th>run</th><td>/Users/brucel/ecco/yip/processed_by_NCEI_profile_data/profile_files_NCEI_processed_20261027_011321/yearly</td></tr><tr><th>out</th><td>/Users/brucel/ecco/yip/insitu_reports/profile_analyses_20261027</td></tr><tr><th>sources</th><td>[&#x27;CTD_WOD&#x27;, &#x27;GLD_WOD&#x27;, &#x27;ITP&#x27;, &#x27;MEOP&#x27;, &#x27;MRB_WOD&#x27;, &#x27;PFL&#x27;, &#x27;XBT_WOD&#x27;]</td></tr><tr><th>cost_types</th><td>[&#x27;vs_clim&#x27;, &#x27;vs_model&#x27;]</td></tr><tr><th>estim_dir</th><td>/Users/brucel/ecco/yip/ecco_v4r6_model_data/model_equivalents_20261027/netCDF</td></tr><tr><th>estim_dir_b</th><td>None</td></tr><tr><th>created</th><td>2026-10-27T12:11:41</td></tr></table><p style="margin-top:0.5em;padding:0.4em 0.6em;background:#fff8e8;border:1px solid #e8d080;border-radius:3px;font-size:0.85em;line-height:1.4"><strong>Note on vs_model:</strong> V<sub>estim</sub> was computed from <strong>monthly-mean</strong> v4r6 THETA/SALT fields (not exact model state). Sub-monthly variability is not captured; treat vs_model costs as approximate.</p></div>
-    </details>
-    <details id="side-issues" style="margin-top:0.6em">
-      <summary>Outstanding issues</summary>
-      <div style="margin-top:0.5em;line-height:1.5;color:#444"><p><strong>1. XBT values at exactly 3000&nbsp;m (KI-21)</strong><br>
-10 weighted XBT T values sit at exactly 3000&nbsp;m (12 casts from two 1994&ndash;95 cruises).
-In WOD these casts have only coarse levels with T to 0.1&nbsp;&deg;C, and at least one is
-listed as a T-7 XBT (rated to &sim;760&nbsp;m), so they are probably not real XBT measurements
-at that depth (inferred). They are 0.6&ndash;2.7&nbsp;&deg;C warmer than local climatology;
-the WOD flags catch only 1 of 12. Rule (<code>chain.xbt_max_depth</code>&nbsp;=&nbsp;2900):
-step&nbsp;06 zeroes XBT values deeper than 2900&nbsp;m, which removes these 10 values and
-nothing else; the deep Mediterranean XBT values (to 2800&nbsp;m) are kept.<br><strong>Not applied in this run</strong> (made before the cap existed; these 10 values are in the costs shown here). A later run applies it. <em>Decision pending: team approval of the 2900&nbsp;m cap.</em></p>
-
-<p><strong>2. WOD flag extension (<code>chain.wod_flags_extend_levels</code>, KI-19)</strong><br>
-WOD standard-level flags only cover standard depths. For values beyond a cast&rsquo;s deepest
-standard level, three options: 0&nbsp;=&nbsp;never extend (safe); 1&nbsp;=&nbsp;always extend;
-2&nbsp;=&nbsp;extend only when last two levels agree (current default, affects &le;0.09% of
-values). <em>Decision: formal sign-off on option&nbsp;2 needed.</em></p>
-</div>
-    </details>
-    <details id="side-chain-notes" style="margin-top:0.6em">
-      <summary>Chain notes — WOD flags</summary>
-      <div style="margin-top:0.5em;line-height:1.5;color:#444">
-<p><strong>WOD quality flags (why we apply them and where they come from)</strong></p>
-
-<p>Every profile from a WOD source (CTD, XBT, Argo/PFL, glider, mooring, MEOP) is accompanied
-in the World Ocean Database by per-value quality flags at WOD&rsquo;s standard depths. A flag
-of 1 means &ldquo;good&rdquo;; anything else means the value should be treated as bad and
-given zero weight in the cost function.</p>
-
-<p>The input files supplied by UCSD (<code>Interp_Profiles</code>) do not carry these flags.
-UCSD confirmed that their processing pipeline never included them: the
-<code>prof_Tflag</code> / <code>prof_Sflag</code> arrays in their files are either absent
-or all zeros. Before this fix, values that WOD flags as bad had full weight in the cost
-function.</p>
-
-<p>The evidence that this was wrong: the v4r6 optimization dataset <em>does</em> contain
-WOD standard-level flags in <code>prof_Tflag</code>. Comparing those flags against WOD&rsquo;s
-own 2018 export for XBT 1992&ndash;1998 gives a <strong>99.4% match</strong>. The most
-likely explanation is that the original MATLAB processing chain fetched the flags directly
-from WOD &mdash; exactly what this Python chain now does.</p>
-
-<p>The chain fetches WOD standard-level flag files from NCEI
-(<code>paths.wod_std_dir</code>; yearly <code>.gz</code> archives, read with
-<code>wodpy</code>), matches each profile by WOD cast number, maps the flags to the
-chain&rsquo;s 97 depth levels, and writes them as <code>prof_Tflag</code> /
-<code>prof_Sflag</code> before step 01. Step 06 then zeroes any value whose flag is
-non-zero.</p>
-
-<p><strong>Effect:</strong> XBT T normalized misfit (misfit/&sigma;)&sup2; fell from
-0.943 (20261021, no flags) to <strong>0.808</strong> (20261027, flags applied), matching
-v4r6&rsquo;s 0.802. The remaining gap between our <code>final</code> cost and v4r6&rsquo;s
-is explained by &gamma; and sf differences, not data quality.</p>
-
-<p style="margin-top:0.5em;font-size:0.9em;color:#666">
-See also: <code>known_issues.md</code> KI-18 (fix), KI-19 (flag extension decision),
-<code>src/ecco_insitu/wod_flags.py</code>, <code>cost_comparisons/wod_flags/</code>.
-</p>
-</div>
+      <div style="margin-top:0.5em"><p style="font-weight:600;margin-bottom:0.3em">profile_analyses_20261027</p><table class="meta-table"><tr><th>run</th><td>/Users/brucel/ecco/yip/processed_by_NCEI_profile_data/profile_files_NCEI_processed_20261027_011321/yearly</td></tr><tr><th>out</th><td>/Users/brucel/ecco/yip/insitu_reports/profile_analyses_20261027</td></tr><tr><th>sources</th><td>[&#x27;CTD_WOD&#x27;, &#x27;GLD_WOD&#x27;, &#x27;ITP&#x27;, &#x27;MEOP&#x27;, &#x27;MRB_WOD&#x27;, &#x27;PFL&#x27;, &#x27;XBT_WOD&#x27;]</td></tr><tr><th>cost_types</th><td>[&#x27;vs_clim&#x27;, &#x27;vs_model&#x27;]</td></tr><tr><th>estim_dir</th><td>/Users/brucel/ecco/yip/ecco_v4r6_model_data/model_equivalents_20261027/netCDF</td></tr><tr><th>estim_dir_b</th><td>None</td></tr><tr><th>created</th><td>2026-10-28T14:16:01</td></tr></table><p style="margin-top:0.5em;padding:0.4em 0.6em;background:#fff8e8;border:1px solid #e8d080;border-radius:3px;font-size:0.85em;line-height:1.4"><strong>Note on vs_model:</strong> V<sub>estim</sub> was computed from <strong>monthly-mean</strong> v4r6 THETA/SALT fields (not exact model state). Sub-monthly variability is not captured; treat vs_model costs as approximate.</p></div>
     </details>
   </div>
 </div>
@@ -206,7 +248,7 @@ See also: <code>known_issues.md</code> KI-18 (fix), KI-19 (flag extension decisi
 const SOURCES = ["CTD_WOD", "GLD_WOD", "ITP", "MEOP", "MRB_WOD", "PFL", "XBT_WOD"];
 const COST_TYPES = ["vs_clim", "vs_model"];
 const ANALYSES = ["01", "02", "03", "04", "05", "06", "07", "08", "09", "10"];
-const DESCS = {"01": ["Global mean T and S vs depth", "The observed temperature (T) and salinity (S) profiles averaged across all observations in this class, plotted against depth. This shows the typical vertical structure of the water masses sampled and provides a basic sanity check on the data \u2014 e.g. a warm surface layer with cooling at depth for T, and the expected halocline structure for S. No cost or model comparison is involved here.<br><br><strong>Note on depth gaps:</strong> depth levels with fewer than 30 observations are masked (not plotted), because the mean at those levels reflects the specific region sampled rather than a global average. For XBT in particular, the deepest levels (below ~2200&nbsp;m) contain only Mediterranean profiles \u2014 the deep Mediterranean maintains T&nbsp;&asymp;&nbsp;13&nbsp;&deg;C to the bottom, close to its local climatology, so these are valid observations. They simply dominate the global mean at those depths because XBT sampling there is almost exclusively Mediterranean. Separately, 12 XBT casts end at exactly 3000&nbsp;m; these are likely coarse WOD entries for probes rated to &sim;760&nbsp;m. A 2900&nbsp;m cap removes them (pending team approval; see Outstanding issues for whether this run applies it)."], "02": ["Global mean T and S cost vs depth", "The mean misfit cost as a function of depth, averaged over all observations and all time. Each line is one combination of weight version and split mode (see Terminology). Depth levels where the cost is large indicate systematic disagreement between the observations and the reference at those depths \u2014 either a real signal or a data quality issue. Comparing split vs unsplit at the same depth shows how much of the cost is due to a persistent mean bias vs time-varying anomalies."], "03": ["Global mean cost per datum vs time", "The globally averaged cost per datum (true weight version, &gamma; and sf removed) plotted as a time series by calendar month. This tracks whether the fit to observations is improving or degrading over time, and whether there are seasonal patterns or discontinuities associated with changes in data coverage or instrument mix. Split and unsplit variants are overlaid."], "04": ["Global mean total cost vs time", "The total weighted cost (final weight version, as ECCO sees it) summed over all observations in each calendar month. Unlike analysis 3, this is sensitive to the number of observations available \u2014 months with more data contribute more to the total. Useful for identifying periods of unusually high or low overall data volume or cost."], "05": ["Vertically integrated cost per geodesic bin", "A spatial map of the total vertically integrated cost per geodesic bin. Each bin covers a roughly equal area of the ocean surface. High values indicate regions where the cumulative misfit is large \u2014 either because there are many observations there or because the per-observation cost is high. Final weights are used."], "06": ["Vertically integrated cost per datum per geodesic bin", "A spatial map of the vertically integrated cost per datum (true weight version, &gamma; and sf removed) per geodesic bin. Unlike analysis 5, this normalizes by the number of observations, isolating where the per-observation fit is poor regardless of data density. Regions that stand out here but not in analysis 5 have sparse but poorly fit data."], "07": ["Zonal mean cost per datum vs depth", "A latitude&ndash;depth section of the zonal mean cost per datum (true weights, unsplit). Each column is the cost averaged over all observations within a 5&deg; latitude band at that depth. This reveals whether misfit is concentrated in particular latitude bands (e.g. frontal zones, sea-ice margins) or depth ranges, and whether the pattern is symmetric between hemispheres."], "08": ["Histogram of per-datum cost", "A histogram of the log&#x2081;&#x2080; cost per datum across all individual observations. The x-axis is log&#x2081;&#x2080;((&Delta;V/&sigma;)&sup2;); a value of 0 means the observation is exactly 1&sigma; from the reference, 2 means 100&sigma;. The dashed vertical line marks the default QC threshold of 100 ((&Delta;V/&sigma;)&sup2; = 100). The bulk of observations should sit well to the left of this line; a heavy right tail or a secondary peak near the threshold suggests outlier contamination or a poorly constrained depth range."], "09": ["Global mean cost per datum vs depth", "The mean cost per datum (true weight version, &gamma; and sf removed) as a function of depth. This is the normalized version of analysis 2: each depth level shows how many &sigma;&sup2; the typical observation is away from the reference, independent of the area weighting or spatial scaling. A flat profile near 1 is consistent with well-calibrated observation error estimates; values much above 1 suggest the errors are underestimated at those depths."], "10": ["Global mean cost per datum by depth range", "The mean cost per datum (true weights) summarized into five standard depth ranges: 0&ndash;100 m, 0&ndash;250 m, 0&ndash;500 m, 0&ndash;700 m, and 0&ndash;2000 m. Each bar is the average over all observations whose depth falls within that range. Split and unsplit variants are shown side by side, making it easy to read off headline numbers for each tier and to see how much of the cost is explained by the mean bias vs the anomaly component."]};
+const DESCS = {"01": ["Global mean T and S vs depth", "Mean observed T and S at each depth level, over all points of this obs class with weight&nbsp;&gt;&nbsp;0 and a valid reference value for this cost type (all years pooled). Observed values only: no reference or cost. Levels with no points are left blank."], "02": ["Global mean T and S cost vs depth", "Mean cost per point at each depth level, over all points at that level: <em>J</em>&nbsp;=&nbsp;<em>w</em>&nbsp;&middot;&nbsp;(V&nbsp;&minus;&nbsp;V<sub>ref</sub>)&sup2; (unsplit, dashed) or <em>w</em>&nbsp;&middot;&nbsp;(V&nbsp;&minus;&nbsp;V<sub>ref</sub>&nbsp;&minus;&nbsp;<em>b</em>)&sup2; (split, solid). One line per weight version and split mode (see Terminology)."], "03": ["Global mean cost per datum vs time", "Cost per datum, (&Delta;V/&sigma;)&sup2; with &gamma; and sf removed (<code>true</code> weights), averaged over all points in each month of the record. Split (solid) and unsplit (dashed)."], "04": ["Global mean total cost vs time", "Total cost per calendar month: the sum of the cost over all points in the month, unsplit, one line per weight version (<code>final</code>, <code>nosf</code>, <code>true</code>), log scale. Not divided by the number of points."], "05": ["Vertically integrated cost per geodesic bin", "For each geodesic bin (10,242 bins of roughly equal area): the cost summed over all depth levels and all points in the bin, <code>final</code> weights, unsplit. The color scale ends at the 98th percentile; higher values use the top color."], "06": ["Vertically integrated cost per datum per geodesic bin", "For each geodesic bin: the cost summed over all depth levels and points, divided by the number of points (cost per datum), <code>true</code> weights, unsplit. The color scale ends at the 98th percentile; higher values use the top color."], "07": ["Zonal mean cost per datum vs depth", "Mean cost per datum (<code>true</code> weights, unsplit) in 5&deg; latitude bands at each depth level. The color scale ends at the 98th percentile; higher values use the top color."], "08": ["Histogram of per-datum cost", "Distribution of log&#x2081;&#x2080; of each point&rsquo;s cost, unsplit, one line per weight version, normalized to sum to 1. For <code>true</code>, 0 means the point is 1&sigma; from the reference and 2 means 10&sigma;. Dotted line: cost&nbsp;=&nbsp;100, step&nbsp;06&rsquo;s single-point QC limit against climatology."], "09": ["Global mean cost per datum vs depth", "As analysis 2, <code>true</code> weights only: mean (&Delta;V/&sigma;)&sup2; at each depth level, split (solid) and unsplit (dashed)."], "10": ["Global mean cost per datum by depth range", "Mean (&Delta;V/&sigma;)&sup2; (<code>true</code> weights) over all points in each depth range: 0&ndash;100, 0&ndash;250, 0&ndash;500, 0&ndash;700 and 0&ndash;2000&nbsp;m (each range starts at the surface). Split and unsplit."]};
 const EXISTS = {"CTD_WOD|vs_clim|01": true, "CTD_WOD|vs_clim|02": true, "CTD_WOD|vs_clim|03": true, "CTD_WOD|vs_clim|04": true, "CTD_WOD|vs_clim|05": true, "CTD_WOD|vs_clim|06": true, "CTD_WOD|vs_clim|07": true, "CTD_WOD|vs_clim|08": true, "CTD_WOD|vs_clim|09": true, "CTD_WOD|vs_clim|10": true, "CTD_WOD|vs_model|01": true, "CTD_WOD|vs_model|02": true, "CTD_WOD|vs_model|03": true, "CTD_WOD|vs_model|04": true, "CTD_WOD|vs_model|05": true, "CTD_WOD|vs_model|06": true, "CTD_WOD|vs_model|07": true, "CTD_WOD|vs_model|08": true, "CTD_WOD|vs_model|09": true, "CTD_WOD|vs_model|10": true, "GLD_WOD|vs_clim|01": true, "GLD_WOD|vs_clim|02": true, "GLD_WOD|vs_clim|03": true, "GLD_WOD|vs_clim|04": true, "GLD_WOD|vs_clim|05": true, "GLD_WOD|vs_clim|06": true, "GLD_WOD|vs_clim|07": true, "GLD_WOD|vs_clim|08": true, "GLD_WOD|vs_clim|09": true, "GLD_WOD|vs_clim|10": true, "GLD_WOD|vs_model|01": true, "GLD_WOD|vs_model|02": true, "GLD_WOD|vs_model|03": true, "GLD_WOD|vs_model|04": true, "GLD_WOD|vs_model|05": true, "GLD_WOD|vs_model|06": true, "GLD_WOD|vs_model|07": true, "GLD_WOD|vs_model|08": true, "GLD_WOD|vs_model|09": true, "GLD_WOD|vs_model|10": true, "ITP|vs_clim|01": true, "ITP|vs_clim|02": true, "ITP|vs_clim|03": true, "ITP|vs_clim|04": true, "ITP|vs_clim|05": true, "ITP|vs_clim|06": true, "ITP|vs_clim|07": true, "ITP|vs_clim|08": true, "ITP|vs_clim|09": true, "ITP|vs_clim|10": true, "ITP|vs_model|01": true, "ITP|vs_model|02": true, "ITP|vs_model|03": true, "ITP|vs_model|04": true, "ITP|vs_model|05": true, "ITP|vs_model|06": true, "ITP|vs_model|07": true, "ITP|vs_model|08": true, "ITP|vs_model|09": true, "ITP|vs_model|10": true, "MEOP|vs_clim|01": true, "MEOP|vs_clim|02": true, "MEOP|vs_clim|03": true, "MEOP|vs_clim|04": true, "MEOP|vs_clim|05": true, "MEOP|vs_clim|06": true, "MEOP|vs_clim|07": true, "MEOP|vs_clim|08": true, "MEOP|vs_clim|09": true, "MEOP|vs_clim|10": true, "MEOP|vs_model|01": true, "MEOP|vs_model|02": true, "MEOP|vs_model|03": true, "MEOP|vs_model|04": true, "MEOP|vs_model|05": true, "MEOP|vs_model|06": true, "MEOP|vs_model|07": true, "MEOP|vs_model|08": true, "MEOP|vs_model|09": true, "MEOP|vs_model|10": true, "MRB_WOD|vs_clim|01": true, "MRB_WOD|vs_clim|02": true, "MRB_WOD|vs_clim|03": true, "MRB_WOD|vs_clim|04": true, "MRB_WOD|vs_clim|05": true, "MRB_WOD|vs_clim|06": true, "MRB_WOD|vs_clim|07": true, "MRB_WOD|vs_clim|08": true, "MRB_WOD|vs_clim|09": true, "MRB_WOD|vs_clim|10": true, "MRB_WOD|vs_model|01": true, "MRB_WOD|vs_model|02": true, "MRB_WOD|vs_model|03": true, "MRB_WOD|vs_model|04": true, "MRB_WOD|vs_model|05": true, "MRB_WOD|vs_model|06": true, "MRB_WOD|vs_model|07": true, "MRB_WOD|vs_model|08": true, "MRB_WOD|vs_model|09": true, "MRB_WOD|vs_model|10": true, "PFL|vs_clim|01": true, "PFL|vs_clim|02": true, "PFL|vs_clim|03": true, "PFL|vs_clim|04": true, "PFL|vs_clim|05": true, "PFL|vs_clim|06": true, "PFL|vs_clim|07": true, "PFL|vs_clim|08": true, "PFL|vs_clim|09": true, "PFL|vs_clim|10": true, "PFL|vs_model|01": true, "PFL|vs_model|02": true, "PFL|vs_model|03": true, "PFL|vs_model|04": true, "PFL|vs_model|05": true, "PFL|vs_model|06": true, "PFL|vs_model|07": true, "PFL|vs_model|08": true, "PFL|vs_model|09": true, "PFL|vs_model|10": true, "XBT_WOD|vs_clim|01": true, "XBT_WOD|vs_clim|02": true, "XBT_WOD|vs_clim|03": true, "XBT_WOD|vs_clim|04": true, "XBT_WOD|vs_clim|05": true, "XBT_WOD|vs_clim|06": true, "XBT_WOD|vs_clim|07": true, "XBT_WOD|vs_clim|08": true, "XBT_WOD|vs_clim|09": true, "XBT_WOD|vs_clim|10": true, "XBT_WOD|vs_model|01": true, "XBT_WOD|vs_model|02": true, "XBT_WOD|vs_model|03": true, "XBT_WOD|vs_model|04": true, "XBT_WOD|vs_model|05": true, "XBT_WOD|vs_model|06": true, "XBT_WOD|vs_model|07": true, "XBT_WOD|vs_model|08": true, "XBT_WOD|vs_model|09": true, "XBT_WOD|vs_model|10": true};
 
 let curSource = SOURCES[0], curCost = COST_TYPES[0], curAn = null;
@@ -276,7 +318,7 @@ function selectAnalysis(an) {
 
 // keyboard shortcuts: left/right arrows to cycle sources, up/down for analyses
 document.addEventListener('keydown', e => {
-  if (e.target.tagName === 'INPUT') return;
+  if (e.target.tagName === 'INPUT' || !notesPage.hidden) return;
   if (e.key === 'ArrowRight') {
     const i = (SOURCES.indexOf(curSource) + 1) % SOURCES.length;
     selectSource(SOURCES[i]);
@@ -308,7 +350,18 @@ document.querySelectorAll('.an-tab').forEach(btn =>
 );
 
 // header toggle links
-['side-gloss', 'side-meta', 'side-issues', 'side-chain-notes'].forEach(id => {
+// notes & errata page (kept off the main view)
+const notesPage = document.getElementById('notes-page');
+function showNotes(on) {
+  notesPage.hidden = !on;
+  document.getElementById('main').style.display = on ? 'none' : '';
+  document.getElementById('nav').style.display = on ? 'none' : '';
+  if (on) notesPage.scrollTop = 0;
+}
+document.getElementById('toggle-notes').addEventListener('click', () => showNotes(notesPage.hidden));
+document.getElementById('close-notes').addEventListener('click', () => showNotes(false));
+
+['side-gloss', 'side-meta'].forEach(id => {
   const btn = document.getElementById('toggle-' + id);
   if (btn) btn.addEventListener('click', () => {
     const el = document.getElementById(id);
