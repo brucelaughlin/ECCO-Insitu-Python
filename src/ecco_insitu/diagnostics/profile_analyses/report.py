@@ -30,6 +30,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+import yaml
+
 _CHROME = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'
 
 _ANALYSIS_TITLES = {
@@ -61,8 +63,8 @@ _ANALYSIS_DESC = {
         'climatology, so these are valid observations. They simply dominate the global mean '
         'at those depths because XBT sampling there is almost exclusively Mediterranean. '
         'Separately, 12 XBT casts end at exactly 3000&nbsp;m; these are likely coarse '
-        'WOD standard-depth entries for probes rated to &sim;760&nbsp;m, and are a pending '
-        'team decision (see Outstanding issues below).'
+        'WOD entries for probes rated to &sim;760&nbsp;m. A 2900&nbsp;m cap removes them '
+        '(pending team approval; see Outstanding issues for whether this run applies it).'
     ),
     '02': (
         'The mean misfit cost as a function of depth, averaged over all observations and all '
@@ -169,20 +171,49 @@ All use the same misfit (V&nbsp;&minus;&nbsp;V<sub>ref</sub>)&sup2;; they differ
 </table>
 """
 
-_ISSUES_HTML = """
-<p><strong>1. XBT values at exactly 3000&nbsp;m (KI pending)</strong><br>
-About 12 XBT casts have their deepest observation at exactly 3000&nbsp;m, from two
-1994&ndash;95 cruises. In WOD these are listed with coarse standard depths to 0.1&nbsp;&deg;C
-precision. At least one is identified as a T-7 XBT (rated depth &sim;760&nbsp;m). Values at
-3000&nbsp;m are 0.6&ndash;2.7&nbsp;&deg;C warmer than local climatology. WOD flags catch only
-1 of 12. <em>Decision: drop XBT below some depth threshold?</em></p>
+_XBT_ISSUE_BODY = """
+10 weighted XBT T values sit at exactly 3000&nbsp;m (12 casts from two 1994&ndash;95 cruises).
+In WOD these casts have only coarse levels with T to 0.1&nbsp;&deg;C, and at least one is
+listed as a T-7 XBT (rated to &sim;760&nbsp;m), so they are probably not real XBT measurements
+at that depth (inferred). They are 0.6&ndash;2.7&nbsp;&deg;C warmer than local climatology;
+the WOD flags catch only 1 of 12. Rule (<code>chain.xbt_max_depth</code>&nbsp;=&nbsp;2900):
+step&nbsp;06 zeroes XBT values deeper than 2900&nbsp;m, which removes these 10 values and
+nothing else; the deep Mediterranean XBT values (to 2800&nbsp;m) are kept."""
 
+_ISSUES_TAIL = """
 <p><strong>2. WOD flag extension (<code>chain.wod_flags_extend_levels</code>, KI-19)</strong><br>
 WOD standard-level flags only cover standard depths. For values beyond a cast&rsquo;s deepest
 standard level, three options: 0&nbsp;=&nbsp;never extend (safe); 1&nbsp;=&nbsp;always extend;
 2&nbsp;=&nbsp;extend only when last two levels agree (current default, affects &le;0.09% of
 values). <em>Decision: formal sign-off on option&nbsp;2 needed.</em></p>
 """
+
+
+def _xbt_max_depth(meta):
+    """The run's chain.xbt_max_depth from its run_config.yaml; 'absent' if the setting predates it."""
+    run = meta.get('run')
+    cfg = Path(run).parent / 'documentation' / 'run_config.yaml' if run else None
+    if not cfg or not cfg.exists():
+        return None
+    chain = (yaml.safe_load(cfg.read_text()) or {}).get('chain', {})
+    return chain.get('xbt_max_depth', 'absent')
+
+
+def _issues_html(metas):
+    depths = {_xbt_max_depth(m) for _, m in metas}
+    if depths == {2900}:
+        status = ('<strong>Applied in this run</strong> (decided 2026-10-27, to be confirmed '
+                  'with the team). <em>Decision pending: team approval of the 2900&nbsp;m cap.</em>')
+    elif depths <= {'absent'}:
+        status = ('<strong>Not applied in this run</strong> (made before the cap existed; these '
+                  '10 values are in the costs shown here). A later run applies it. '
+                  '<em>Decision pending: team approval of the 2900&nbsp;m cap.</em>')
+    else:
+        status = ('Whether the cap is applied differs by run or could not be read; see each '
+                  "run's <code>run_config.yaml</code>. <em>Decision pending: team approval of "
+                  'the 2900&nbsp;m cap.</em>')
+    return ('<p><strong>1. XBT values at exactly 3000&nbsp;m (KI-21)</strong><br>'
+            + _XBT_ISSUE_BODY + '<br>' + status + '</p>\n' + _ISSUES_TAIL)
 
 _CHAIN_NOTES_HTML = """
 <p><strong>WOD quality flags (why we apply them and where they come from)</strong></p>
@@ -680,7 +711,7 @@ render();
     </details>
     <details id="side-issues" style="margin-top:0.6em">
       <summary>Outstanding issues</summary>
-      <div style="margin-top:0.5em;line-height:1.5;color:#444">{_ISSUES_HTML}</div>
+      <div style="margin-top:0.5em;line-height:1.5;color:#444">{_issues_html(metas)}</div>
     </details>
     <details id="side-chain-notes" style="margin-top:0.6em">
       <summary>Chain notes — WOD flags</summary>
@@ -705,9 +736,11 @@ def _compile_flat_report(input_dirs, out_dir, title=None):
         title = 'Profile Analysis: ' + ', '.join(d.name for d in input_dirs)
 
     sections = []
+    metas = []
     for inp in input_dirs:
         meta_path = inp / 'meta.json'
         meta = json.loads(meta_path.read_text()) if meta_path.exists() else {}
+        metas.append((inp.name, meta))
         sections.append(f'<h2 class="section-header">Input: {_html.escape(inp.name)}</h2>')
         if meta:
             sections.append(_meta_table(meta))
@@ -749,7 +782,7 @@ def _compile_flat_report(input_dirs, out_dir, title=None):
         '<div class="glossary"><h2>Terminology</h2>' + _GLOSSARY_HTML + '</div>'
     )
     iss = (
-        '<div class="issues"><h2>Outstanding issues</h2>' + _ISSUES_HTML + '</div>'
+        '<div class="issues"><h2>Outstanding issues</h2>' + _issues_html(metas) + '</div>'
     )
     doc = f"""<!DOCTYPE html>
 <html lang="en">
