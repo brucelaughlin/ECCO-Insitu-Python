@@ -30,6 +30,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+import netCDF4
+import numpy as np
 import yaml
 
 _CHROME = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'
@@ -170,6 +172,63 @@ def _xbt_cap_status(metas):
     return "Applied in some runs of this report and not others; see each run&rsquo;s <code>run_config.yaml</code>."
 
 
+def _split_rows(meta):
+    """(cost type, source, V, unsplit, split, split_own) for 0–2000 m, true weights, from one run's NetCDF."""
+    out = Path(meta.get('out', ''))
+    rows = []
+    for ct in meta.get('cost_types', []):
+        for f in sorted(out.glob(f'*/analysis_*_{ct}.nc')):
+            with netCDF4.Dataset(f) as nc:
+                nc.set_auto_mask(False)
+                for V in ('T', 'S'):
+                    names = [f'a10__a__{V}__{sp}__true__by_depth_range' for sp in ('unsplit', 'split', 'split_own')]
+                    if not all(n in nc.variables for n in names):
+                        continue
+                    v = [float(nc[n][-1]) for n in names]
+                    if all(np.isfinite(v)):
+                        rows.append((ct, f.parent.name, V, *v))
+    return rows
+
+
+def _split_comparison_html(metas):
+    """Notes section: pooled (ECCO) split vs own-class split, per obs class, measured from the saved results."""
+    parts = []
+    for name, meta in metas:
+        rows = _split_rows(meta)
+        if not rows:
+            continue
+        body = ''.join(
+            f'<tr><td>{ct}</td><td>{src}</td><td>{V}</td><td>{u:.3f}</td><td>{sp:.3f}</td><td>{own:.3f}</td>'
+            f'<td>{sp - own:+.3f}</td><td>{(sp - own) / own * 100:+.0f}%</td></tr>'
+            for ct, src, V, u, sp, own in rows)
+        parts.append(f'<p><em>{_html.escape(name)}</em></p><table class="gloss-table notes-table">'
+                     '<tr><th>cost type</th><th>obs class</th><th>var</th><th>unsplit</th><th>split</th>'
+                     '<th>split_own</th><th>split &minus; own</th><th>relative</th></tr>' + body + '</table>')
+    if not parts:
+        return ''
+    return f"""
+<h3>5. Pooled vs own-class split</h3>
+<p>Mean cost per datum, (&Delta;V/&sigma;)&sup2; (<code>true</code> weights), over 0&ndash;2000&nbsp;m, from analysis 10.
+<code>split</code> removes the mean misfit of all obs classes pooled (as ECCO); <code>split_own</code> removes the
+class&rsquo;s own mean.</p>
+{''.join(parts)}
+<p><strong>What the difference means.</strong> The gap between <code>split</code> and <code>split_own</code> is the
+extra cost from a class&rsquo;s own mean misfit differing from the shared one, i.e. its offset relative to the
+other instruments in the same bins. In both runs <code>split</code> &ge; <code>split_own</code> for every class
+(expected but not guaranteed, since the cost is weighted and the mean is not).</p>
+<ul>
+<li><strong>Argo (PFL)</strong> differs by about 1%: Argo has most of the data, so the pooled mean is largely Argo&rsquo;s own.</li>
+<li><strong>ITP</strong> differs by 1&ndash;2%, probably because few other classes sample its Arctic bins (inferred).
+<strong>Moorings</strong>: 2&ndash;6%.</li>
+<li><strong>CTD, gliders, XBT and MEOP</strong> differ most: 5&ndash;17% against the model and 7&ndash;21% against
+climatology, MEOP salinity the most. Their mean misfit departs from the shared one (inferred: instrument offsets,
+or sampling different seasons and years within a bin).</li>
+<li>For most classes the gap is larger against climatology than against the model.</li>
+</ul>
+<p>The percentages above are from these two runs; the causes are inferences and haven&rsquo;t been checked.</p>
+"""
+
+
 def _notes_html(metas):
     """The notes & errata page: interpretation, data notes, open decisions, and corrections."""
     return f"""
@@ -264,6 +323,7 @@ good (0 means accepted) and listed Argo and MEOP among the WOD classes (they are
 the split was described as mirroring <code>cost_profiles.F</code> (until 2026-10-28 it used each obs
 class&rsquo;s own mean, now <code>split_own</code>, and left out the mean term).</li>
 </ul>
+{_split_comparison_html(metas)}
 """
 
 # ── CSS ────────────────────────────────────────────────────────────────────────
@@ -369,6 +429,8 @@ code { background: #f0f0f0; padding: 1px 3px; border-radius: 2px; font-size: 0.9
 .notes-inner p, .notes-inner li { margin: 0.4em 0; }
 .notes-inner ul { padding-left: 1.3em; }
 .notes-lede { color: #777; font-style: italic; }
+.notes-table { width: auto; font-size: 0.88em; }
+.notes-table td:nth-child(n+4) { text-align: right; font-variant-numeric: tabular-nums; }
 """
 
 

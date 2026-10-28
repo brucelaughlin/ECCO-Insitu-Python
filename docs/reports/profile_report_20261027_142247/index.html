@@ -81,6 +81,8 @@ code { background: #f0f0f0; padding: 1px 3px; border-radius: 2px; font-size: 0.9
 .notes-inner p, .notes-inner li { margin: 0.4em 0; }
 .notes-inner ul { padding-left: 1.3em; }
 .notes-lede { color: #777; font-style: italic; }
+.notes-table { width: auto; font-size: 0.88em; }
+.notes-table td:nth-child(n+4) { text-align: right; font-variant-numeric: tabular-nums; }
 </style>
 </head>
 <body>
@@ -192,6 +194,27 @@ good (0 means accepted) and listed Argo and MEOP among the WOD classes (they are
 the split was described as mirroring <code>cost_profiles.F</code> (until 2026-10-28 it used each obs
 class&rsquo;s own mean, now <code>split_own</code>, and left out the mean term).</li>
 </ul>
+
+<h3>5. Pooled vs own-class split</h3>
+<p>Mean cost per datum, (&Delta;V/&sigma;)&sup2; (<code>true</code> weights), over 0&ndash;2000&nbsp;m, from analysis 10.
+<code>split</code> removes the mean misfit of all obs classes pooled (as ECCO); <code>split_own</code> removes the
+class&rsquo;s own mean.</p>
+<p><em>profile_analyses_20261028_142247</em></p><table class="gloss-table notes-table"><tr><th>cost type</th><th>obs class</th><th>var</th><th>unsplit</th><th>split</th><th>split_own</th><th>split &minus; own</th><th>relative</th></tr><tr><td>vs_clim</td><td>CTD_WOD</td><td>T</td><td>1.314</td><td>1.085</td><td>0.988</td><td>+0.097</td><td>+10%</td></tr><tr><td>vs_clim</td><td>CTD_WOD</td><td>S</td><td>1.314</td><td>1.074</td><td>1.002</td><td>+0.072</td><td>+7%</td></tr><tr><td>vs_clim</td><td>GLD_WOD</td><td>T</td><td>1.230</td><td>0.944</td><td>0.836</td><td>+0.108</td><td>+13%</td></tr><tr><td>vs_clim</td><td>GLD_WOD</td><td>S</td><td>1.221</td><td>0.854</td><td>0.768</td><td>+0.087</td><td>+11%</td></tr><tr><td>vs_clim</td><td>ITP</td><td>T</td><td>1.361</td><td>1.025</td><td>1.016</td><td>+0.009</td><td>+1%</td></tr><tr><td>vs_clim</td><td>ITP</td><td>S</td><td>1.391</td><td>0.954</td><td>0.946</td><td>+0.008</td><td>+1%</td></tr><tr><td>vs_clim</td><td>MEOP</td><td>T</td><td>0.854</td><td>0.675</td><td>0.595</td><td>+0.080</td><td>+13%</td></tr><tr><td>vs_clim</td><td>MEOP</td><td>S</td><td>0.753</td><td>0.591</td><td>0.489</td><td>+0.102</td><td>+21%</td></tr><tr><td>vs_clim</td><td>MRB_WOD</td><td>T</td><td>0.893</td><td>0.770</td><td>0.745</td><td>+0.025</td><td>+3%</td></tr><tr><td>vs_clim</td><td>MRB_WOD</td><td>S</td><td>0.942</td><td>0.811</td><td>0.762</td><td>+0.049</td><td>+6%</td></tr><tr><td>vs_clim</td><td>PFL</td><td>T</td><td>1.017</td><td>0.889</td><td>0.876</td><td>+0.013</td><td>+1%</td></tr><tr><td>vs_clim</td><td>PFL</td><td>S</td><td>0.899</td><td>0.791</td><td>0.783</td><td>+0.007</td><td>+1%</td></tr><tr><td>vs_clim</td><td>XBT_WOD</td><td>T</td><td>1.155</td><td>1.076</td><td>0.995</td><td>+0.081</td><td>+8%</td></tr><tr><td>vs_model</td><td>CTD_WOD</td><td>T</td><td>1.323</td><td>0.811</td><td>0.753</td><td>+0.058</td><td>+8%</td></tr><tr><td>vs_model</td><td>CTD_WOD</td><td>S</td><td>1.535</td><td>0.822</td><td>0.771</td><td>+0.051</td><td>+7%</td></tr><tr><td>vs_model</td><td>GLD_WOD</td><td>T</td><td>1.054</td><td>0.652</td><td>0.606</td><td>+0.045</td><td>+7%</td></tr><tr><td>vs_model</td><td>GLD_WOD</td><td>S</td><td>1.386</td><td>0.635</td><td>0.585</td><td>+0.050</td><td>+9%</td></tr><tr><td>vs_model</td><td>ITP</td><td>T</td><td>10.160</td><td>1.264</td><td>1.240</td><td>+0.024</td><td>+2%</td></tr><tr><td>vs_model</td><td>ITP</td><td>S</td><td>3.978</td><td>1.045</td><td>1.033</td><td>+0.012</td><td>+1%</td></tr><tr><td>vs_model</td><td>MEOP</td><td>T</td><td>0.732</td><td>0.505</td><td>0.462</td><td>+0.043</td><td>+9%</td></tr><tr><td>vs_model</td><td>MEOP</td><td>S</td><td>0.727</td><td>0.496</td><td>0.425</td><td>+0.071</td><td>+17%</td></tr><tr><td>vs_model</td><td>MRB_WOD</td><td>T</td><td>0.733</td><td>0.428</td><td>0.421</td><td>+0.007</td><td>+2%</td></tr><tr><td>vs_model</td><td>MRB_WOD</td><td>S</td><td>0.930</td><td>0.552</td><td>0.536</td><td>+0.016</td><td>+3%</td></tr><tr><td>vs_model</td><td>PFL</td><td>T</td><td>0.901</td><td>0.648</td><td>0.642</td><td>+0.005</td><td>+1%</td></tr><tr><td>vs_model</td><td>PFL</td><td>S</td><td>0.856</td><td>0.575</td><td>0.570</td><td>+0.005</td><td>+1%</td></tr><tr><td>vs_model</td><td>XBT_WOD</td><td>T</td><td>1.010</td><td>0.808</td><td>0.766</td><td>+0.042</td><td>+5%</td></tr></table>
+<p><strong>What the difference means.</strong> The gap between <code>split</code> and <code>split_own</code> is the
+extra cost from a class&rsquo;s own mean misfit differing from the shared one, i.e. its offset relative to the
+other instruments in the same bins. In both runs <code>split</code> &ge; <code>split_own</code> for every class
+(expected but not guaranteed, since the cost is weighted and the mean is not).</p>
+<ul>
+<li><strong>Argo (PFL)</strong> differs by about 1%: Argo has most of the data, so the pooled mean is largely Argo&rsquo;s own.</li>
+<li><strong>ITP</strong> differs by 1&ndash;2%, probably because few other classes sample its Arctic bins (inferred).
+<strong>Moorings</strong>: 2&ndash;6%.</li>
+<li><strong>CTD, gliders, XBT and MEOP</strong> differ most: 5&ndash;17% against the model and 7&ndash;21% against
+climatology, MEOP salinity the most. Their mean misfit departs from the shared one (inferred: instrument offsets,
+or sampling different seasons and years within a bin).</li>
+<li>For most classes the gap is larger against climatology than against the model.</li>
+</ul>
+<p>The percentages above are from these two runs; the causes are inferences and haven&rsquo;t been checked.</p>
+
 
   </div>
 </div>
