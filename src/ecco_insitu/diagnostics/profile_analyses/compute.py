@@ -731,9 +731,17 @@ _SP_MARKER = {'unsplit': '', 'split': ''}
 _MIN_DEPTH_COUNT = 1
 
 
-def _savefig(fig, path):
+# Fixed margins (fractions of the figure): every cost type of a figure is then saved at the same size
+# with its axes at the same pixel positions, so switching tabs changes only the plotted data.
+# (bbox_inches='tight' would crop each image to its own titles and legends, which shifts the frame.)
+_MARGINS = dict(left=0.09, right=0.97, bottom=0.11, top=0.88)
+
+
+def _savefig(fig, path, margins=True):
     path.parent.mkdir(parents=True, exist_ok=True)
-    fig.savefig(path, dpi=110, bbox_inches='tight')
+    if margins:
+        fig.subplots_adjust(**_MARGINS)
+    fig.savefig(path, dpi=110)
     plt.close(fig)
 
 
@@ -1132,13 +1140,15 @@ def _make_spatial_map(res, source, fig_dir, active_vars, lims, ctl=''):
             vmax = lims[('a06' if an == '06' else key, V)]
             norm = mcolors.Normalize(0, vmax)
 
-            fig = plt.figure(figsize=(16, 5.4))
-            gs = fig.add_gridspec(1, 3, width_ratios=[2.1, 1, 1], wspace=0.05)
+            # fixed axes rectangles [left, bottom, width, height] (figure fractions), so every cost type
+            # puts the maps and color bar at the same pixels
+            fig = plt.figure(figsize=(16, 5.6))
+            rects = [[0.02, 0.22, 0.50, 0.66], [0.54, 0.22, 0.21, 0.66], [0.77, 0.22, 0.21, 0.66]]
             for i, (view, proj, label) in enumerate(views):
                 raster, land, outside, extent = rasters[view]
                 grid_a = raster['a']
                 img = np.where(land | outside | (grid_a == 0), np.nan, per_bin_full[grid_a])
-                ax = fig.add_subplot(gs[0, i], projection=proj)
+                ax = fig.add_axes(rects[i], projection=proj)
                 ax.imshow(img, origin='lower', extent=extent, transform=proj, cmap='YlOrRd',
                           norm=norm, zorder=0, interpolation='nearest')
                 ax.add_feature(cfeature.LAND, color='lightgray', zorder=1)
@@ -1148,11 +1158,10 @@ def _make_spatial_map(res, source, fig_dir, active_vars, lims, ctl=''):
                     ax.set_extent(extent, crs=proj)
                 ax.gridlines(linewidth=0.5, alpha=0.5, color='gray')
                 ax.set_title(label, fontsize=9)
-            fig.colorbar(plt.cm.ScalarMappable(norm=norm, cmap='YlOrRd'), ax=fig.axes,
-                         orientation='horizontal', pad=0.05, fraction=0.05, shrink=0.6,
-                         label=f'{V} {title} ({sp}, {wv})')
-            fig.suptitle(f'{source}: Analysis {an} — {V} {title} per geodesic bin{ctl}', fontsize=11)
-            _savefig(fig, fig_dir / f'{an}_spatial_{V}_{source}{sfx}.png')
+            fig.colorbar(plt.cm.ScalarMappable(norm=norm, cmap='YlOrRd'), cax=fig.add_axes([0.3, 0.1, 0.4, 0.035]),
+                         orientation='horizontal', label=f'{V} {title} ({sp}, {wv})')
+            fig.suptitle(f'{source}: Analysis {an} — {V} {title} per geodesic bin{ctl}', fontsize=11, y=0.97)
+            _savefig(fig, fig_dir / f'{an}_spatial_{V}_{source}{sfx}.png', margins=False)
 
 # ---------------------------------------------------------------------------
 # Orchestration
