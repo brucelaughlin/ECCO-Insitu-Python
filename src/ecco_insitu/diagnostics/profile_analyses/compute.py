@@ -10,6 +10,9 @@ standard analyses.  Save as per-source NetCDF files plus figures.
                                 [--run-b <dir>]
                                 [-n N]
 
+    ecco-insitu profile-analyze --replot --out <out_dir>    # redraw the figures only, from the
+                                                            # saved NetCDF (about a minute)
+
 The 10 analyses (per obs class, for each cost type and split/unsplit mode):
 
   1.  Global mean T and S vs depth
@@ -664,6 +667,9 @@ def _write_nc(res, source, run_ts, path, cost_types_used, pooled_sources=None):
                     tmp3[ym_idx] = r3['mean_per_datum']
                     cv(f'a03__{pfx}__mean_per_datum_time', tmp3, ('month',), 'f4',
                        long_name=f'[a03] {V} mean cost per datum vs time ({sp}, {wv})')
+                    cnt3 = np.zeros(len(months), dtype=np.int64)
+                    cnt3[ym_idx] = r3['count']
+                    nc.createVariable(f'a03__{pfx}__count_time', 'i8', ('month',))[:] = cnt3
 
                     # a04
                     r4 = res[('a04', *k)]
@@ -1020,8 +1026,11 @@ def _make_figures(res, source, fig_dir, lims=None, cost_type=None):
     # ---- Analysis 11 (extra): cost per datum vs depth, inside vs after the climatology's years ----
     has_after = any(res[('a11', V, 'unsplit', 'true', 'after_clim_years')]['count'].sum() for V in active_vars)
     if has_after:
-        pe_style = {'in_clim_years': ('tab:blue', f'{CLIM_YEARS[0]}–{CLIM_YEARS[1]}'),
-                    'after_clim_years': ('tab:red', f'{CLIM_YEARS[1] + 1}–')}
+        last = max(int(np.max(res[('a03', V, 'unsplit', 'true')]['yyyymm'])) // 100
+                   for V in active_vars if len(res[('a03', V, 'unsplit', 'true')]['yyyymm']))
+        after = f'{CLIM_YEARS[1] + 1}' + (f'–{last}' if last > CLIM_YEARS[1] + 1 else '')
+        pe_style = {'in_clim_years': ('tab:blue', f'{CLIM_YEARS[0]}–{CLIM_YEARS[1]} (in climatology)'),
+                    'after_clim_years': ('tab:red', f'{after} (after climatology)')}
         fig, axes, cax = _depth_figure(nv, 5)
         for ax, V in zip(axes, active_vars):
             for pe, (col, lab) in pe_style.items():
@@ -1029,15 +1038,15 @@ def _make_figures(res, source, fig_dir, lims=None, cost_type=None):
                     r = res[('a11', V, sp, 'true', pe)]
                     m = np.where(r['count'] > 0, r['mean'], np.nan)
                     ax.plot(m, depth, color=col, ls=_SP_LS[sp], lw=1.2,
-                            label=f'{lab} {sp} (0–2000 m: {r["mean_0_2000"]:.2f})')
+                            label=f'{lab}, {sp}: {r["mean_0_2000"]:.2f}')
             ax.set_xlabel(f'{V} mean cost per datum (true)')
             ax.set_ylabel('Depth (m)') if ax is axes[0] else None
             ax.set_title(V)
-            ax.legend(fontsize=7)
+            ax.legend(fontsize=7, title='period, split mode: 0–2000 m mean', title_fontsize=7)
             _apply(ax.set_xlim, lims[('a11', V)])
         for pe, (col, lab) in pe_style.items():
             c = sum(res[('a11', V, 'unsplit', 'true', pe)]['count'] for V in active_vars[:1])
-            cax.semilogx(np.where(c > 0, c, np.nan), depth, color=col, lw=1.1, label=lab)
+            cax.semilogx(np.where(c > 0, c, np.nan), depth, color=col, lw=1.1, label=lab.split(' (')[0])
         _apply(cax.set_xlim, lims[('a11', 'n')])
         cax.set_xlabel('# points')
         cax.set_title(f'n ({active_vars[0]})')
@@ -1274,13 +1283,88 @@ def run(run_dir, out_dir, sources=None, estim_dir=None, estim_dir_b=None, n_work
     return out_dir
 
 
+def load_results(path):
+    """Rebuild the in-memory results of one obs class and cost type from its saved NetCDF
+    (what ``_make_figures`` needs), so figures can be redrawn without recomputing."""
+    with netCDF4.Dataset(path) as nc:
+        nc.set_auto_mask(False)
+        g = lambda name: np.asarray(nc[name][:])
+        depth = g('depth_m').astype(np.float32)
+        months = g('yyyymm').astype(np.int32)
+        res = {'depth': depth,
+               'a01': {V: {'mean': g(f'a01_{V}_mean_depth').astype(float),
+                           'count': g(f'a01_{V}_count_depth')} for V in VARS}}
+        top = depth <= DEPTH_RANGE_BOUNDS[-1]
+        for V in VARS:
+            for sp in SPLIT_MODES:
+                for wv in WEIGHT_VERS:
+                    k = (V, sp, wv)
+                    pfx = f'a__{V}__{sp}__{wv}'
+                    res[('a02', *k)] = {'mean': g(f'a02__{pfx}__mean_depth').astype(float),
+                                        'count': g(f'a02__{pfx}__count_depth')}
+                    m3 = g(f'a03__{pfx}__mean_per_datum_time').astype(float)
+                    t4 = g(f'a04__{pfx}__total_cost_time').astype(float)
+                    if f'a03__{pfx}__count_time' in nc.variables:
+                        c3 = g(f'a03__{pfx}__count_time')
+                    else:   # files written before the counts were saved: total / mean
+                        with np.errstate(invalid='ignore', divide='ignore'):
+                            c3 = np.where(m3 > 0, np.rint(t4 / m3), 0).astype(np.int64)
+                    have = np.isfinite(m3)
+                    res[('a03', *k)] = {'yyyymm': months[have], 'mean_per_datum': m3[have], 'count': c3[have]}
+                    res[('a04', *k)] = {'yyyymm': months[have], 'total': t4[have], 'count': c3[have]}
+                    res[('a05', *k)] = {'total': g(f'a05__{pfx}__integrated_by_bin').astype(float),
+                                        'per_datum': g(f'a06__{pfx}__per_datum_by_bin').astype(float),
+                                        'count': g(f'a05__{pfx}__count_bin')}
+                    if f'a05tw__{pfx}__thickness_weighted_by_bin' in nc.variables:
+                        res[('a05tw', *k)] = {'total': g(f'a05tw__{pfx}__thickness_weighted_by_bin').astype(float),
+                                              'count': g(f'a05tw__{pfx}__profiles_bin')}
+                    res[('a07', *k)] = {'mean': g(f'a07__{pfx}__zonal_mean_depth').astype(float)}
+                    res[('a08', *k)] = g(f'a08__{pfx}__histogram').astype(float)
+                    res[('a10', *k)] = g(f'a10__{pfx}__by_depth_range').astype(float)
+                    for pe in PERIODS:
+                        name = f'a11__{pfx}__{pe}__mean_depth'
+                        if name not in nc.variables:
+                            continue
+                        m = g(name).astype(float)
+                        c = g(f'a11__{pfx}__{pe}__count_depth')
+                        n = c[top].sum()
+                        res[('a11', *k, pe)] = {'mean': m, 'count': c,
+                                                'mean_0_2000': float(np.nansum(m[top] * c[top]) / n) if n else np.nan}
+    return res
+
+
+def replot(out_dir, sources=None):
+    """Redraw every figure of a ``profile-analyze`` output folder from its saved NetCDF files
+    (minutes, instead of re-reading the run). Uses the cost types and climatology years in meta.json."""
+    global CLIM_YEARS
+    out_dir = Path(out_dir)
+    meta = json.loads((out_dir / 'meta.json').read_text())
+    CLIM_YEARS = tuple(meta.get('clim_years', CLIM_YEARS))
+    t0 = _time.time()
+    for src in meta['sources']:
+        if sources and src not in sources:
+            continue
+        results = {}
+        for ct in meta['cost_types']:
+            f = sorted((out_dir / src).glob(f'analysis_{src}_*_{ct}.nc'))
+            if f:
+                results[ct] = load_results(f[-1])
+        if not results:
+            continue
+        lims = _shared_limits(results)
+        for ct, res in results.items():
+            _make_figures(res, src, out_dir / src / 'figures' / ct, lims, ct)
+        print(f'  {src}: figures redrawn ({_time.time() - t0:.0f}s)')
+    print(f'Replotted {out_dir} in {_time.time() - t0:.0f}s')
+    return out_dir
+
+
 def cli(argv=None):
     """CLI entry point (``ecco-insitu profile-analyze``)."""
     p = argparse.ArgumentParser(
         description='Compute profile analyses (T/S profiles, cost distributions) '
                     'for each obs class in a processed run.')
-    p.add_argument('--run', required=True,
-                   help='Processed run directory (or its yearly/ sub-folder)')
+    p.add_argument('--run', help='Processed run directory (or its yearly/ sub-folder); not needed with --replot')
     p.add_argument('--out', required=True, help='Output directory')
     p.add_argument('--sources', nargs='*', default=None,
                    help='Obs classes to process (default: all)')
@@ -1290,5 +1374,12 @@ def cli(argv=None):
                    help='Second model-equivalent dir for vs-run-B cost')
     p.add_argument('-n', type=int, default=None,
                    help='Parallel workers (default: 1)')
+    p.add_argument('--replot', action='store_true',
+                   help='Only redraw the figures in --out from its saved NetCDF files (no recomputing)')
     a = p.parse_args(argv)
+    if a.replot:
+        replot(a.out, a.sources)
+        return
+    if not a.run:
+        p.error('--run is required (unless --replot)')
     run(a.run, a.out, a.sources, a.estim_dir, a.estim_dir_b, a.n)

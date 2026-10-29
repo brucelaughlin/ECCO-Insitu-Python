@@ -216,6 +216,14 @@ def test_pooled_split_matches_model_cost(tmp_path, capsys):
         assert meta['ecco_mean_term']['vs_model'][V]['cost'] == pytest.approx(ref[V]['mean_cost'], rel=1e-9)
         assert meta['ecco_mean_term']['vs_model'][V]['count'] == ref[V]['mean_count']
     assert own != pytest.approx(anom)
+    # figures can be redrawn from the saved NetCDF alone, giving the same set of files
+    figs = sorted(p.relative_to(out) for p in out.rglob('*.png'))
+    for p in out.rglob('*.png'):
+        p.unlink()
+    pa.replot(out)
+    assert sorted(p.relative_to(out) for p in out.rglob('*.png')) == figs
+    r = pa.load_results(next((out / 'XBT_WOD').glob('*_vs_model.nc')))
+    assert r[('a03', 'T', 'unsplit', 'true')]['count'].sum() == r[('a02', 'T', 'unsplit', 'true')]['count'].sum()
     # analysis 1 is observations only: identical for every cost type
     for src in ('XBT_WOD', 'CTD_WOD'):
         a1 = {}
