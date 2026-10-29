@@ -226,6 +226,50 @@ def test_pooled_split_matches_model_cost(tmp_path, capsys):
         np.testing.assert_allclose(a1['vs_clim'][0], a1['vs_model'][0])
 
 
+def test_thickness_weighted_bin_cost():
+    """Analysis 5 thickness-weighted: each profile contributes sum_k c_k dz_k / sum_k dz_k over its
+    non-empty levels; the bin value is the sum over its profiles."""
+    depth = np.array([10, 50, 100, 250, 500], np.float32)
+    dz = pa._layer_thickness(depth)
+    np.testing.assert_allclose(dz, [30, 45, 100, 200, 250])
+    n = 2
+    fd = {'n': n, 'depth': depth, 'bin_a': np.array([7, 7]), 'ymd': np.array([19950101, 19950101]),
+          'lat': np.zeros(n), 'gamma': np.ones(n)}
+    val = np.ones((n, 5)); ref = np.zeros((n, 5))
+    val[1, 2:] = 3.0                                   # misfit 3 on the deeper levels of profile 1
+    w = np.ones((n, 5)); w[0, 3:] = 0                  # profile 0: only the top 3 levels have data
+    for V in pa.VARS:
+        fd.update({f'val_{V}': val, f'clim_{V}': ref, f'w_{V}': w, f'sf_{V}': np.ones(n)})
+    acc = pa._new_acc(5)
+    pa._accumulate_file(acc, fd, 'vs_clim', 'unsplit')
+    res = pa._finalize(acc, depth)
+    c1 = np.array([1, 1, 9, 9, 9.])
+    expect = 1.0 + (c1 * dz).sum() / dz.sum()          # profile 0: all costs 1, so its weighted mean is 1
+    got = res[('a05tw', 'T', 'unsplit', 'final')]['total'][6]
+    assert got == pytest.approx(expect)
+    assert res[('a05tw', 'T', 'unsplit', 'final')]['count'][6] == 2
+    assert res[('a05', 'T', 'unsplit', 'final')]['total'][6] == pytest.approx(3 + c1.sum())
+
+
+def test_clim_years_split():
+    """Analysis 11: points in the climatology's years and after them are tallied separately and add up."""
+    depth = np.array([10, 50, 100, 250, 500], np.float32)
+    n = 3
+    fd = {'n': n, 'depth': depth, 'bin_a': np.array([3, 3, 3]),
+          'ymd': np.array([19950101, 20200615, 20230101]), 'lat': np.zeros(n), 'gamma': np.ones(n)}
+    val = np.array([[1.0] * 5, [2.0] * 5, [4.0] * 5]); ref = np.zeros((n, 5)); w = np.ones((n, 5))
+    for V in pa.VARS:
+        fd.update({f'val_{V}': val, f'clim_{V}': ref, f'w_{V}': w, f'sf_{V}': np.ones(n)})
+    acc = pa._new_acc(5)
+    pa._accumulate_file(acc, fd, 'vs_clim', 'unsplit')
+    res = pa._finalize(acc, depth)
+    k = ('T', 'unsplit', 'true')
+    np.testing.assert_allclose(res[('a11', *k, 'in_clim_years')]['mean'], (1 + 4) / 2)      # 1995 and 2020
+    np.testing.assert_allclose(res[('a11', *k, 'after_clim_years')]['mean'], 16.0)           # 2023
+    total = res[('a11', *k, 'in_clim_years')]['count'] + res[('a11', *k, 'after_clim_years')]['count']
+    np.testing.assert_array_equal(total, res[('a02', *k)]['count'])
+
+
 # ---------------------------------------------------------------------------
 # NetCDF output from _write_nc
 # ---------------------------------------------------------------------------
@@ -247,7 +291,8 @@ def test_write_nc_creates_valid_file(tmp_path):
             assert dim in nc.dimensions
         for v in ('a01_T_mean_depth', 'a01_S_mean_depth', 'bias_own_T', 'bias_pooled_S',
                   'a02__a__T__unsplit__final__mean_depth', 'a02__a__T__split__final__mean_depth',
-                  'a02__a__T__split_own__final__mean_depth'):
+                  'a02__a__T__split_own__final__mean_depth',
+                  'a11__a__T__unsplit__true__after_clim_years__mean_depth'):
             assert v in nc.variables, v
         assert nc.split_method == 'cost_profiles_F_pooled_bin_mean'
         assert 'ecco_mean_term_T' in nc.ncattrs()

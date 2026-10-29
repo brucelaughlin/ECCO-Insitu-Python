@@ -47,6 +47,7 @@ _ANALYSIS_TITLES = {
     '08': 'Histogram of per-datum cost',
     '09': 'Global mean cost per datum vs depth',
     '10': 'Global mean cost per datum by depth range',
+    '11': 'Supplemental: cost vs depth, data inside vs after the climatology\'s years',
 }
 
 _ANALYSIS_DESC = {
@@ -78,8 +79,13 @@ _ANALYSIS_DESC = {
         'For each geodesic bin (10,242 bins of roughly equal area): the sum of <em>w</em>&nbsp;&middot;&nbsp;'
         '(V&nbsp;&minus;&nbsp;V<sub>ref</sub>)&sup2; over every profile in the bin and every depth level of '
         'those profiles, all years, <code>final</code> weights, unsplit. Each point counts with its own '
-        'weight <em>w</em> only: depth levels are not weighted by layer thickness. Bins with no data are '
-        'blank. The color scale ends at the 98th percentile; higher values use the top color.'
+        'weight <em>w</em> only: depth levels are not weighted by layer thickness. '
+        '<strong>Second figure, thickness weighted:</strong> for each profile, '
+        '&Sigma;<sub>k</sub>&nbsp;<em>c<sub>k</sub></em>&nbsp;&Delta;z<sub>k</sub>&nbsp;/&nbsp;&Sigma;<sub>k</sub>&nbsp;&Delta;z<sub>k</sub> '
+        'over the profile&rsquo;s non-empty levels <em>k</em> (<em>c<sub>k</sub></em> its cost at level '
+        '<em>k</em>, &Delta;z<sub>k</sub> the layer thickness: edges halfway between levels, the top edge at the '
+        'surface), then summed over the profiles in the bin. Bins with no data are blank. The color scale ends '
+        'at the 98th percentile; higher values use the top color.'
     ),
     '06': (
         'For each geodesic bin: the cost summed over all depth levels and points, divided by the number '
@@ -106,7 +112,19 @@ _ANALYSIS_DESC = {
         '0&ndash;100, 0&ndash;250, 0&ndash;500, 0&ndash;700 and 0&ndash;2000&nbsp;m (each range starts at '
         'the surface). Unsplit, split and split_own.'
     ),
+    '11': (
+        '<strong>Supplemental; not one of the ten core analyses.</strong> As analysis&nbsp;9 '
+        '(cost per datum vs depth, <code>true</code> weights), but with the data split by year: points '
+        'from the years the climatology covers (blue; WOA23 here averages 1991&ndash;2020) and points from '
+        'after them (red), unsplit (dashed) and split (solid). The legend gives each line&rsquo;s '
+        '0&ndash;2000&nbsp;m mean. Data from after the climatology&rsquo;s years can&rsquo;t be in it, so '
+        'comparing the two shows how much of the fit to climatology is because the climatology was built '
+        'from the same data. Shown for every cost type; for vs_model the split is just by year. Only made '
+        'for obs classes with data after the climatology&rsquo;s years. Right panel: number of points, '
+        'by period.'
+    ),
 }
+SUPPLEMENTAL = ('11',)
 
 _GLOSSARY_HTML = """
 <p><strong>Weight versions</strong>: which factors are kept in the weight <em>w</em> = &gamma;&nbsp;&middot;&nbsp;sf&nbsp;/&nbsp;&sigma;&sup2;.
@@ -157,7 +175,10 @@ obs classes (<code>final</code> weights) + the mean term.</p>
 </table>
 <p><strong>Axes:</strong> within each obs class, a given figure uses the same axis and color ranges in every cost type.
 Figure titles name the cost type. Controls that don&rsquo;t change the selected figure are grayed out (cost type for
-analysis&nbsp;1).</p>
+analysis&nbsp;1). Switching obs class keeps the selected cost type and analysis.</p>
+<p><strong>Supplemental analyses</strong> (dashed tabs, after the ten core analyses) are extras beyond the
+team&rsquo;s specification. Analysis&nbsp;11 splits the data into the years the climatology covers and the years
+after; the climatology&rsquo;s years are read from the climatology file of the run.</p>
 """
 
 
@@ -238,6 +259,65 @@ or sampling different seasons and years within a bin).</li>
 """
 
 
+def _year_rows(meta):
+    """(cost type, source, V, unsplit in/after, split in/after, n in/after) over 0–2000 m, true weights."""
+    out = Path(meta.get('out', ''))
+    rows = []
+    for ct in meta.get('cost_types', []):
+        for f in sorted(out.glob(f'*/analysis_*_{ct}.nc')):
+            with netCDF4.Dataset(f) as nc:
+                nc.set_auto_mask(False)
+                if 'a11__a__T__unsplit__true__in_clim_years__mean_depth' not in nc.variables:
+                    continue
+                top = nc['depth_m'][:] <= 2000
+                for V in ('T', 'S'):
+                    vals, ns = [], []
+                    for sp in ('unsplit', 'split'):
+                        for pe in ('in_clim_years', 'after_clim_years'):
+                            m = nc[f'a11__a__{V}__{sp}__true__{pe}__mean_depth'][:]
+                            c = nc[f'a11__a__{V}__{sp}__true__{pe}__count_depth'][:]
+                            n = int(c[top].sum())
+                            vals.append(float(np.nansum(m[top] * c[top]) / n) if n else np.nan)
+                            ns.append(n)
+                    if ns[0] and ns[1]:
+                        rows.append((ct, f.parent.name, V, *vals, ns[0], ns[1]))
+    return rows
+
+
+def _year_split_html(metas):
+    """Notes section: cost per datum in vs after the climatology's years, per obs class."""
+    parts = []
+    for name, meta in metas:
+        rows = _year_rows(meta)
+        if not rows:
+            continue
+        y0, y1 = meta.get('clim_years', [1991, 2020])
+        body = ''.join(
+            f'<tr><td>{ct}</td><td>{src}</td><td>{V}</td><td>{ui:.2f}</td><td>{ua:.2f}</td>'
+            f'<td>{(ua - ui) / ui * 100:+.0f}%</td><td>{si:.2f}</td><td>{sa:.2f}</td>'
+            f'<td>{ni / 1e6:.1f}M / {na / 1e6:.2f}M</td></tr>'
+            for ct, src, V, ui, ua, si, sa, ni, na in rows)
+        parts.append(f'<p><em>{_html.escape(name)}</em> (climatology years {y0}&ndash;{y1})</p>'
+                     '<table class="gloss-table notes-table"><tr><th>cost type</th><th>obs class</th><th>var</th>'
+                     f'<th>unsplit {y0}&ndash;{y1}</th><th>unsplit after</th><th>change</th>'
+                     f'<th>split {y0}&ndash;{y1}</th><th>split after</th><th>points in / after</th></tr>'
+                     + body + '</table>')
+    if not parts:
+        return ''
+    return f"""
+<h3>6. Year split (supplemental analysis 11)</h3>
+<p>Mean cost per datum, (&Delta;V/&sigma;)&sup2; (<code>true</code> weights), over 0&ndash;2000&nbsp;m, for data from the
+climatology&rsquo;s years and from after them.</p>
+{''.join(parts)}
+<p><strong>Reading it</strong> (run 20261027_142247): for almost every class the cost is higher after 2020, and it
+rises by a similar amount <em>against the model as against climatology</em> (e.g. Argo T unsplit +17% vs climatology,
++13% vs model; Argo S +15% and +19%). So the higher post-2020 cost against climatology is mostly not because the
+climatology lacks those years: data after 2020 are harder to fit for both references (inferred causes: ocean change
+since 2020, and a different mix of floats and regions; not checked). Exceptions: XBT and MEOP T split are slightly
+lower after 2020. MEOP S has no data after 2020.</p>
+"""
+
+
 def _notes_html(metas):
     """The notes & errata page: interpretation, data notes, open decisions, and corrections."""
     return f"""
@@ -260,8 +340,14 @@ values well above 1 suggest &sigma; is too small at those depths (or bad data).<
 and falls with the number of observations (top panel of 4).</li>
 <li><strong>Analysis 5 is dominated by the upper ocean.</strong> The vertical sum counts every depth level equally,
 and the 97 levels are 2&ndash;5&nbsp;m apart near the surface (23 levels in the top 100&nbsp;m) but 200&nbsp;m apart
-below 2000&nbsp;m (6 levels in 2000&ndash;3000&nbsp;m). A thickness-weighted integral would weight deep levels far
-more.</li>
+below 2000&nbsp;m (6 levels in 2000&ndash;3000&nbsp;m). The thickness-weighted version (second analysis&nbsp;5
+figure) gives each level its layer thickness instead, so a 200&nbsp;m deep layer counts about 70 times a 3&nbsp;m
+surface layer.</li>
+<li><strong>Analysis 11 (supplemental)</strong> splits the data by year. Points from after the climatology&rsquo;s
+years (WOA23 1991&ndash;2020) can&rsquo;t have been used to build it, so a much lower vs_clim cost for the older data
+than for the newer would suggest the climatology fits partly because it contains those data. Other causes of a
+difference between periods: real change in the ocean, and a different mix of instruments and regions (compare the
+count panel).</li>
 <li><strong>Use the count panels.</strong> A high mean cost at a depth with few points (right-hand panels) can
 come from one region.</li>
 <li><strong>Analysis 5 vs 6:</strong> 5 is high where there is a lot of data or poor fit; 6 removes the
@@ -301,8 +387,21 @@ cost is in the southwest Pacific (30&ndash;45&deg;S, 150&ndash;180&deg;W), where
 saltier than the observations. The assumed error &sigma; there is small (median 0.014&nbsp;psu), so small offsets
 give large cost.</li>
 <li>The split cost removes most of it (T split 0.25 at 2200&ndash;2400&nbsp;m), so it is a steady regional offset
-between the model and the floats rather than variability. Climatology doesn&rsquo;t show it, perhaps because WOA23
-is built from the same kind of data in those regions (inferred).</li>
+between the model and the floats rather than variability.</li>
+<li><strong>Is climatology better only because it contains these floats?</strong> Tested: WOA23 here averages
+1991&ndash;2020, so floats from 2021 on can&rsquo;t be in it. Splitting the same regions by year (cost per datum
+against model / against climatology):
+<table class="gloss-table notes-table">
+<tr><th></th><th>2020 and earlier</th><th>2021 and later</th></tr>
+<tr><td>T, N Atlantic, 2200&ndash;2400&nbsp;m</td><td>1.77 / 0.90</td><td>2.69 / 1.24</td></tr>
+<tr><td>S, SW Pacific (30&ndash;45&deg;S, 150&deg;E&ndash;120&deg;W), 2600&ndash;3000&nbsp;m</td><td>1.53 / 0.07</td><td>1.40 / 0.21</td></tr>
+</table>
+Climatology still fits the newer floats far better than the model, so its good fit isn&rsquo;t only from
+containing them. The offset is in the model: on average the model is 0.17&nbsp;&deg;C warmer (N Atlantic T) and
+0.016&nbsp;psu saltier (SW Pacific S) than floats from 2021 on, against 0.10&nbsp;&deg;C and 0.001&nbsp;psu for
+climatology. For N Atlantic T, both fits get worse after 2020, which fits a change in the deep water over
+time (inferred). The &sigma; values and the monthly-mean approximation also affect these numbers; not checked
+separately.</li>
 </ul>
 
 <p><strong>Near-zero cost south of 60&deg;S.</strong> South of 60&deg;S the chain uses a temporary constant
@@ -377,6 +476,7 @@ type&rsquo;s costs, so it may be worth having again. <em>To revert:</em> in
 <code>NO_COST</code> in <code>report.py</code>.</li>
 </ul>
 {_split_comparison_html(metas)}
+{_year_split_html(metas)}
 """
 
 # ── CSS ────────────────────────────────────────────────────────────────────────
@@ -438,6 +538,8 @@ body {
 .tab.active { background: var(--accent); color: white; border-color: var(--accent); }
 .tab[disabled] { opacity: 0.3; cursor: default; }
 .tab.na { opacity: 0.35; pointer-events: none; }
+.sup-label { margin-left: 1.2em; min-width: 0; }
+.tab.sup-tab { border-style: dashed; }
 .row-note { font-size: 0.8em; color: #888; margin-left: 0.6em; font-style: italic; }
 /* ── main split ── */
 #main { display: flex; flex: 1; overflow: hidden; }
@@ -694,11 +796,17 @@ def _build_interactive_html(data, metas, title):
         f'<button class="tab cost-tab" data-ct="{_html.escape(ct)}">{_html.escape(ct)}</button>'
         for ct in all_cost_types
     )
-    an_tabs = ''.join(
-        f'<button class="tab an-tab" data-an="{an}"'
-        f' title="{_html.escape(_ANALYSIS_TITLES.get(an, an))}">{an}</button>'
-        for an in all_analyses
-    )
+    def _an_tab(an):
+        sup = an in SUPPLEMENTAL
+        return (f'<button class="tab an-tab{" sup-tab" if sup else ""}" data-an="{an}"'
+                f' title="{_html.escape(_ANALYSIS_TITLES.get(an, an))}">'
+                f'{an + " year split" if sup else an}</button>')
+    core = [an for an in all_analyses if an not in SUPPLEMENTAL]
+    sup = [an for an in all_analyses if an in SUPPLEMENTAL]
+    an_tabs = ''.join(_an_tab(an) for an in core)
+    if sup:
+        an_tabs += ('<span class="row-label sup-label">Supplemental</span>'
+                    + ''.join(_an_tab(an) for an in sup))
 
     js = f"""
 const SOURCES = {json.dumps(sources)};
@@ -758,10 +866,11 @@ function render() {{
 }}
 
 function selectSource(src) {{
+  // keep the cost type and analysis if this source has them
   curSource = src;
   const avail = availableCosts(src);
   if (!avail.includes(curCost)) curCost = avail[0] || COST_TYPES[0];
-  curAn = firstExisting(curSource, curCost) || curAn;
+  if (!exists(curSource, curCost, curAn)) curAn = firstExisting(curSource, curCost);
   render();
 }}
 

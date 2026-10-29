@@ -79,6 +79,10 @@ VARS = ('T', 'S')
 WEIGHT_VERS = ('final', 'nosf', 'true')   # matches costs_compute.py KINDS
 SPLIT_MODES = ('unsplit', 'split', 'split_own')
 PROFILES_MEAN_INDSAMPLES = 9   # v4r6 data.profiles
+# Analysis 11: data inside vs after the climatology's years; read from the run's climatology file
+# (its 'title', e.g. 'WOA23 1991-2020 ...'); this default is WOA23 decav91C0's
+CLIM_YEARS = (1991, 2020)
+PERIODS = ('in_clim_years', 'after_clim_years')
 COST_TYPES  = ('vs_clim', 'vs_model', 'vs_run_b')
 
 N_BINS   = 10242          # geodesic bin ids 1..10242; index 0 unused
@@ -280,11 +284,18 @@ def _new_acc(n_depths):
                 # a05: integrated cost per bin  (N_BINS+1,)
                 acc[('a05', *k, 'sum')]   = np.zeros(N_BINS + 1)
                 acc[('a05', *k, 'count')] = np.zeros(N_BINS + 1, dtype=np.int64)
+                # a05 thickness-weighted: per profile sum_k c_k dz_k / sum_k dz_k (non-empty k), summed per bin
+                acc[('a05tw', *k, 'sum')]   = np.zeros(N_BINS + 1)
+                acc[('a05tw', *k, 'count')] = np.zeros(N_BINS + 1, dtype=np.int64)
                 # a07: zonal mean cost vs depth  (N_LAT_BANDS, n_depths)
                 acc[('a07', *k, 'sum')]   = np.zeros((N_LAT_BANDS, n_depths))
                 acc[('a07', *k, 'count')] = np.zeros((N_LAT_BANDS, n_depths), dtype=np.int64)
                 # a08: histogram of log10 cost  (N_HIST_BINS,)
                 acc[('a08', *k, 'hist')]  = np.zeros(N_HIST_BINS)
+                # a11: cost vs depth, by period relative to the climatology's years
+                for pe in PERIODS:
+                    acc[('a11', *k, pe, 'sum')]   = np.zeros(n_depths)
+                    acc[('a11', *k, pe, 'count')] = np.zeros(n_depths, dtype=np.int64)
     return acc
 
 
@@ -321,9 +332,38 @@ def _pooled_stats(pooled, indsamples=PROFILES_MEAN_INDSAMPLES):
     return out
 
 
-def _add_costs(acc, V, mode, mf, ok, w, sf, gamma, ym, bi_safe, lb):
+def _layer_thickness(depth):
+    """Thickness (m) of the layer around each depth level: edges at the surface, the midpoints between
+    levels, and half a spacing below the deepest level."""
+    d = np.asarray(depth, float)
+    edges = np.concatenate([[0.0], (d[1:] + d[:-1]) / 2, [d[-1] + (d[-1] - d[-2]) / 2]])
+    return np.diff(edges)
+
+
+def clim_years(run_dir):
+    """(first, last) year of the climatology the run used, from the first 'YYYY-YYYY' in its file's
+    title; ``CLIM_YEARS`` if the file or the years can't be found."""
+    import re
+    import yaml
+    cfg = common.run_root(run_dir) / 'documentation' / 'run_config.yaml'
+    try:
+        path = (yaml.safe_load(cfg.read_text()) or {})['paths']['climatology_file']
+        with netCDF4.Dataset(path) as ds:
+            m = re.search(r'(\d{4})\s*[-–]\s*(\d{4})', getattr(ds, 'title', ''))
+        return (int(m.group(1)), int(m.group(2))) if m else CLIM_YEARS
+    except (OSError, KeyError, TypeError):
+        return CLIM_YEARS
+
+
+def _add_costs(acc, V, mode, mf, ok, w, sf, gamma, ym, bi_safe, lb, dz):
     """Add one file's costs (misfit ``mf`` at points ``ok``) to every analysis, for each weight version."""
     weights = _weight_versions(w, sf, gamma)
+    yr = ym // 100
+    in_clim = (yr >= CLIM_YEARS[0]) & (yr <= CLIM_YEARS[1])
+    period_ok = {'in_clim_years': ok & in_clim[:, None], 'after_clim_years': ok & (yr > CLIM_YEARS[1])[:, None]}
+    dz_ok = np.where(ok, dz[None, :], 0.0)
+    dz_tot = dz_ok.sum(axis=1)
+    has = dz_tot > 0
     rows_ok, cols_ok = np.where(ok)
     n_d = mf.shape[1]
     for wv in WEIGHT_VERS:
@@ -331,6 +371,10 @@ def _add_costs(acc, V, mode, mf, ok, w, sf, gamma, ym, bi_safe, lb):
         k = (V, mode, wv)
         np.add.at(acc[('a02', *k, 'sum')],   cols_ok, c2d[ok])
         np.add.at(acc[('a02', *k, 'count')], cols_ok, 1)
+        for pe, okp in period_ok.items():
+            cols_p = np.where(okp)[1]
+            np.add.at(acc[('a11', *k, pe, 'sum')],   cols_p, c2d[okp])
+            np.add.at(acc[('a11', *k, pe, 'count')], cols_p, 1)
         c_per_prof = np.where(ok, c2d, 0.0).sum(axis=1)
         n_per_prof = ok.sum(axis=1).astype(np.int64)
         for i in np.nonzero(n_per_prof)[0]:
@@ -339,6 +383,9 @@ def _add_costs(acc, V, mode, mf, ok, w, sf, gamma, ym, bi_safe, lb):
             acc[('a03', *k, 'count')][ymv] += int(n_per_prof[i])
         np.add.at(acc[('a05', *k, 'sum')],   bi_safe, c_per_prof)
         np.add.at(acc[('a05', *k, 'count')], bi_safe, n_per_prof)
+        tw = (np.where(ok, c2d, 0.0) * dz_ok).sum(axis=1)[has] / dz_tot[has]
+        np.add.at(acc[('a05tw', *k, 'sum')],   bi_safe[has], tw)
+        np.add.at(acc[('a05tw', *k, 'count')], bi_safe[has], 1)
         if rows_ok.size:
             flat_idx = lb[rows_ok] * n_d + cols_ok
             np.add.at(acc[('a07', *k, 'sum')].ravel(),   flat_idx, c2d[ok])
@@ -362,6 +409,7 @@ def _accumulate_file(acc, fd, cost_type, pass_, biases=None, pooled=None):
     bi_safe = np.clip(bin_a, 0, N_BINS).astype(np.int32)
     ym = _yyyymm(fd['ymd'])
     lb = _lat_band_idx(fd['lat'])
+    dz = _layer_thickness(fd['depth'])
 
     for V in VARS:
         val, w, sf = fd[f'val_{V}'], fd[f'w_{V}'], fd[f'sf_{V}']
@@ -396,13 +444,13 @@ def _accumulate_file(acc, fd, cost_type, pass_, biases=None, pooled=None):
                 np.add.at(p['m'].ravel(),    flat, ref[okb])
                 np.add.at(p['invw'].ravel(), flat, 1.0 / w[okb])
                 np.add.at(p['n'].ravel(),    flat, 1)
-            _add_costs(acc, V, 'unsplit', mf, ok, w, sf, fd['gamma'], ym, bi_safe, lb)
+            _add_costs(acc, V, 'unsplit', mf, ok, w, sf, fd['gamma'], ym, bi_safe, lb, dz)
         else:
             for mode, bias in biases.items():
                 b = bias[V][bi_safe]                     # (n_prof, n_depths); bin 0 has no mean
                 okm = ok & valid_bin[:, None] & np.isfinite(b)
                 _add_costs(acc, V, mode, mf - np.where(okm, b, 0.0), okm, w, sf, fd['gamma'],
-                           ym, bi_safe, lb)
+                           ym, bi_safe, lb, dz)
 
 
 # ---------------------------------------------------------------------------
@@ -468,6 +516,10 @@ def _finalize(acc, depth):
                         'per_datum': np.where(c5[1:] > 0, s5[1:] / c5[1:], np.nan),
                         'count':     c5[1:].copy().astype(np.int64),
                     }
+                st = acc[('a05tw', *k, 'sum')]
+                ct_ = acc[('a05tw', *k, 'count')]
+                res[('a05tw', *k)] = {'total': np.where(ct_[1:] > 0, st[1:], np.nan),
+                                      'count': ct_[1:].copy().astype(np.int64)}
 
                 # a07: zonal mean cost vs depth
                 s7 = acc[('a07', *k, 'sum')]
@@ -494,6 +546,16 @@ def _finalize(acc, depth):
                         val = np.nan
                     depth_ranges.append(val)
                 res[('a10', *k)] = np.array(depth_ranges)
+
+                # a11: cost vs depth by period, and its 0-2000 m mean
+                for pe in PERIODS:
+                    s11 = acc[('a11', *k, pe, 'sum')]
+                    c11 = acc[('a11', *k, pe, 'count')]
+                    top = depth <= DEPTH_RANGE_BOUNDS[-1]
+                    with np.errstate(invalid='ignore'):
+                        res[('a11', *k, pe)] = {
+                            'mean': np.where(c11 > 0, s11 / c11, np.nan), 'count': c11.copy(),
+                            'mean_0_2000': s11[top].sum() / c11[top].sum() if c11[top].sum() else np.nan}
 
     return res
 
@@ -526,6 +588,7 @@ def _write_nc(res, source, run_ts, path, cost_types_used, pooled_sources=None):
             ),
             'split_pooled_over': ', '.join(pooled_sources or [source]),
             'profiles_mean_indsamples': PROFILES_MEAN_INDSAMPLES,
+            'a11_clim_years': f'{CLIM_YEARS[0]}-{CLIM_YEARS[1]}',
             'weight_versions': 'final = gamma*sf*(dV/sigma)^2; nosf = gamma*(dV/sigma)^2; true = (dV/sigma)^2',
             'cost_types_used': ', '.join(cost_types_used),
             'created': datetime.datetime.now().isoformat(timespec='seconds'),
@@ -616,6 +679,11 @@ def _write_nc(res, source, run_ts, path, cost_types_used, pooled_sources=None):
                     cv(f'a06__{pfx}__per_datum_by_bin', r5['per_datum'], ('bin_a',), 'f4',
                        long_name=f'[a06] {V} integrated cost per datum per geodesic bin ({sp}, {wv})')
                     nc.createVariable(f'a05__{pfx}__count_bin', 'i8', ('bin_a',))[:] = r5['count']
+                    rt = res[('a05tw', *k)]
+                    cv(f'a05tw__{pfx}__thickness_weighted_by_bin', rt['total'], ('bin_a',), 'f4',
+                       long_name=f'[a05] {V} cost per geodesic bin, thickness weighted: sum over profiles of '
+                                 f'sum_k c_k dz_k / sum_k dz_k (non-empty levels) ({sp}, {wv})')
+                    nc.createVariable(f'a05tw__{pfx}__profiles_bin', 'i8', ('bin_a',))[:] = rt['count']
 
                     # a07
                     r7 = res[('a07', *k)]
@@ -629,6 +697,13 @@ def _write_nc(res, source, run_ts, path, cost_types_used, pooled_sources=None):
                     # a10
                     cv(f'a10__{pfx}__by_depth_range', res[('a10', *k)], ('depth_range',), 'f4',
                        long_name=f'[a10] {V} mean cost per datum by depth range ({sp}, {wv})')
+
+                    # a11
+                    for pe in PERIODS:
+                        r11 = res[('a11', *k, pe)]
+                        cv(f'a11__{pfx}__{pe}__mean_depth', r11['mean'], ('depth',), 'f4',
+                           long_name=f'[a11] {V} mean cost per datum vs depth, {pe} ({sp}, {wv})')
+                        nc.createVariable(f'a11__{pfx}__{pe}__count_depth', 'i8', ('depth',))[:] = r11['count']
 
     print(f'  wrote {path}')
 
@@ -685,9 +760,9 @@ def _p98(arrays):
     return float(vmax) if np.isfinite(vmax) and vmax > 0 else 1.0
 
 
-def _binned(res, V, wv, field):
+def _binned(res, V, wv, field, key='a05'):
     """Per-bin map values (analyses 5/6), NaN in bins with no data."""
-    r = res[('a05', V, 'unsplit', wv)]
+    r = res[(key, V, 'unsplit', wv)]
     return np.where(r['count'] > 0, r[field], np.nan)
 
 
@@ -707,15 +782,21 @@ def _shared_limits(results):
         s4 = _span([r[('a04', V, 'unsplit', wv)]['total'] for r in rs for wv in WEIGHT_VERS], positive=True)
         lims[('a04', V)] = None if s4 is None else (s4[0] / 1.5, s4[1] * 1.5)
         lims[('a05', V)] = _p98([_binned(r, V, 'final', 'total') for r in rs])
+        lims[('a05tw', V)] = _p98([_binned(r, V, 'final', 'total', 'a05tw') for r in rs])
         lims[('a06', V)] = _p98([_binned(r, V, 'true', 'per_datum') for r in rs])
         lims[('a07', V)] = _p98([r[('a07', V, 'unsplit', 'true')]['mean'] for r in rs])
         lims[('a08', V)] = _pad(_span([h / h.sum() for r in rs for wv in WEIGHT_VERS
                                        for h in [r[('a08', V, 'unsplit', wv)]] if h.sum() > 0]), zero=True)
+        lims[('a11', V)] = _pad(_span([np.where(r[('a11', V, sp, 'true', pe)]['count'] > 0,
+                                                r[('a11', V, sp, 'true', pe)]['mean'], np.nan)
+                                       for r in rs for sp in ('unsplit', 'split') for pe in PERIODS]), zero=True)
         lims[('a10', V)] = _pad(_span([r[('a10', V, sp, 'true')] for r in rs for sp in SPLIT_MODES]),
                                 frac=0.1, zero=True)
     for an, key in (('a01', None), ('a02', ('a02', 'unsplit', 'final'))):
         lims[(an, 'n')] = _log_lim([r['a01'][V]['count'] if key is None else r[(key[0], V, *key[1:])]['count']
                                     for r in rs for V in VARS])
+    lims[('a11', 'n')] = _log_lim([r[('a11', V, 'unsplit', 'true', pe)]['count'] for r in rs for V in VARS
+                                   for pe in PERIODS])
     lims[('a04', 'n')] = _log_lim([r[('a03', V, 'unsplit', 'true')]['count'] for r in rs for V in VARS])
     lims['year'] = _pad(_span([_decimal_year(r[('a03', V, sp, 'true')]['yyyymm'])
                                for r in rs for V in VARS for sp in SPLIT_MODES]), frac=0.01)
@@ -936,6 +1017,37 @@ def _make_figures(res, source, fig_dir, lims=None, cost_type=None):
     fig.suptitle(f'{source}: Analysis 10 — Mean cost per datum by depth range{ctl}')
     _savefig(fig, fig_dir / f'10_depth_ranges_{source}.png')
 
+    # ---- Analysis 11 (extra): cost per datum vs depth, inside vs after the climatology's years ----
+    has_after = any(res[('a11', V, 'unsplit', 'true', 'after_clim_years')]['count'].sum() for V in active_vars)
+    if has_after:
+        pe_style = {'in_clim_years': ('tab:blue', f'{CLIM_YEARS[0]}–{CLIM_YEARS[1]}'),
+                    'after_clim_years': ('tab:red', f'{CLIM_YEARS[1] + 1}–')}
+        fig, axes, cax = _depth_figure(nv, 5)
+        for ax, V in zip(axes, active_vars):
+            for pe, (col, lab) in pe_style.items():
+                for sp in ('unsplit', 'split'):
+                    r = res[('a11', V, sp, 'true', pe)]
+                    m = np.where(r['count'] > 0, r['mean'], np.nan)
+                    ax.plot(m, depth, color=col, ls=_SP_LS[sp], lw=1.2,
+                            label=f'{lab} {sp} (0–2000 m: {r["mean_0_2000"]:.2f})')
+            ax.set_xlabel(f'{V} mean cost per datum (true)')
+            ax.set_ylabel('Depth (m)') if ax is axes[0] else None
+            ax.set_title(V)
+            ax.legend(fontsize=7)
+            _apply(ax.set_xlim, lims[('a11', V)])
+        for pe, (col, lab) in pe_style.items():
+            c = sum(res[('a11', V, 'unsplit', 'true', pe)]['count'] for V in active_vars[:1])
+            cax.semilogx(np.where(c > 0, c, np.nan), depth, color=col, lw=1.1, label=lab)
+        _apply(cax.set_xlim, lims[('a11', 'n')])
+        cax.set_xlabel('# points')
+        cax.set_title(f'n ({active_vars[0]})')
+        cax.tick_params(labelleft=False)
+        cax.legend(fontsize=7)
+        axes[0].set_ylim(_dmax, 0)
+        fig.suptitle(f'{source}: Analysis 11 — cost per datum vs depth, data inside vs after the '
+                     f'climatology\'s years ({CLIM_YEARS[0]}–{CLIM_YEARS[1]}){ctl}')
+        _savefig(fig, fig_dir / f'11_clim_years_{source}.png')
+
 
 _RASTERS = {}
 
@@ -964,13 +1076,16 @@ def _make_spatial_map(res, source, fig_dir, active_vars, lims, ctl=''):
     rasters = _rasters()
 
     for V in active_vars:
-        for an, field, sp, wv, title in [
-            ('05', 'total',     'unsplit', 'final', 'total cost (sum over depth levels and profiles)'),
-            ('06', 'per_datum', 'unsplit', 'true',  'cost per datum'),
+        for an, key, field, sp, wv, title, sfx in [
+            ('05', 'a05',   'total',     'unsplit', 'final', 'total cost (sum over depth levels and profiles)', ''),
+            ('05', 'a05tw', 'total',     'unsplit', 'final',
+             'total cost, thickness weighted (sum over profiles of each profile\'s thickness-weighted mean)',
+             '_thickness_weighted'),
+            ('06', 'a05',   'per_datum', 'unsplit', 'true',  'cost per datum', ''),
         ]:
-            vals = _binned(res, V, wv, field)                 # (N_BINS,) bins 1..N_BINS, NaN if empty
+            vals = _binned(res, V, wv, field, key)            # (N_BINS,) bins 1..N_BINS, NaN if empty
             per_bin_full = np.concatenate([[np.nan], vals])   # index 0 = no bin
-            vmax = lims[(f'a{an}', V)]
+            vmax = lims[('a06' if an == '06' else key, V)]
             norm = mcolors.Normalize(0, vmax)
 
             fig = plt.figure(figsize=(16, 5.4))
@@ -993,7 +1108,7 @@ def _make_spatial_map(res, source, fig_dir, active_vars, lims, ctl=''):
                          orientation='horizontal', pad=0.05, fraction=0.05, shrink=0.6,
                          label=f'{V} {title} ({sp}, {wv})')
             fig.suptitle(f'{source}: Analysis {an} — {V} {title} per geodesic bin{ctl}', fontsize=11)
-            _savefig(fig, fig_dir / f'{an}_spatial_{V}_{source}.png')
+            _savefig(fig, fig_dir / f'{an}_spatial_{V}_{source}{sfx}.png')
 
 # ---------------------------------------------------------------------------
 # Orchestration
@@ -1053,9 +1168,11 @@ def run(run_dir, out_dir, sources=None, estim_dir=None, estim_dir_b=None, n_work
     Path
         The output directory.
     """
+    global CLIM_YEARS
     run_dir = common.yearly_dir(run_dir)
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
+    CLIM_YEARS = clim_years(run_dir)
 
     cost_types = ['vs_clim'] + (['vs_model'] if estim_dir else []) + (['vs_run_b'] if estim_dir_b else [])
 
@@ -1147,6 +1264,7 @@ def run(run_dir, out_dir, sources=None, estim_dir=None, estim_dir_b=None, n_work
         'estim_dir': str(estim_dir) if estim_dir else None,
         'estim_dir_b': str(estim_dir_b) if estim_dir_b else None,
         'split_pooled_over': sorted(groups.keys()),
+        'clim_years': list(CLIM_YEARS),
         'ecco_mean_term': {ct: {V: {'cost': stats[ct][V]['mean_cost'], 'count': stats[ct][V]['mean_count']}
                                 for V in VARS} for ct in cost_types},
         'created': datetime.datetime.now().isoformat(timespec='seconds'),
