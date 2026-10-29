@@ -876,6 +876,41 @@ def _count_panel(ax, counts, depth, lim):
         ax.legend(fontsize=7)
 
 
+def _no_data_text(V):
+    return f'no {V} data in this obs class'
+
+
+def _panels(axes, active_vars):
+    """(ax, V) for each variable with data; a panel for a variable without data (e.g. S for XBT) is
+    kept empty with a note, so every obs class has the same figure layout."""
+    for ax, V in zip(axes, VARS):
+        if V in active_vars:
+            yield ax, V
+        else:
+            ax.text(0.5, 0.5, _no_data_text(V), transform=ax.transAxes, ha='center', va='center',
+                    fontsize=11, color='#888')
+            ax.set_title(V)
+            # keep the frame and any shared axis (depth, year); hide this panel's own value axis
+            shared_x = len(ax.get_shared_x_axes().get_siblings(ax)) > 1
+            shared_y = len(ax.get_shared_y_axes().get_siblings(ax)) > 1
+            if not shared_x:
+                ax.set_xticks([])
+            if not shared_y:
+                ax.set_yticks([])
+            else:
+                ax.tick_params(labelleft=False)
+            ax.grid(False)
+
+
+def _no_data_figure(path, figsize, V, title):
+    """Placeholder image for a per-variable figure of a variable the obs class doesn't have, the same
+    size as the real figure, so the report stacks the same figures for every obs class."""
+    fig = plt.figure(figsize=figsize)
+    fig.text(0.5, 0.5, _no_data_text(V), ha='center', va='center', fontsize=14, color='#888')
+    fig.suptitle(title, fontsize=11, y=0.97)
+    _savefig(fig, path, margins=False)
+
+
 def _apply(set_lim, lim):
     if lim is not None:
         set_lim(*lim)
@@ -892,11 +927,11 @@ def _make_figures(res, source, fig_dir, lims=None, cost_type=None):
     active_vars = [V for V in VARS if np.isfinite(res['a01'][V]['mean']).any()]
     if not active_vars:
         return
-    nv = len(active_vars)
+    nv = len(VARS)   # one panel per variable in every obs class; missing ones stay empty (_panels)
 
     # ---- Analysis 1: T and S mean profile ----
     fig, axes, cax = _depth_figure(nv, 4)
-    for ax, V in zip(axes, active_vars):
+    for ax, V in _panels(axes, active_vars):
         m = res['a01'][V]['mean']
         c = res['a01'][V]['count']
         m_plot = np.where(c >= _MIN_DEPTH_COUNT, m, np.nan)
@@ -916,7 +951,7 @@ def _make_figures(res, source, fig_dir, lims=None, cost_type=None):
         ('09', ('true',),   'mean cost per datum'),
     ]:
         fig, axes, cax = _depth_figure(nv, 5)
-        for ax, V in zip(axes, active_vars):
+        for ax, V in _panels(axes, active_vars):
             c = res[('a02', V, 'unsplit', 'final')]['count']  # count is same across sp/wv
             for sp in SPLIT_MODES:
                 for wv in wvs:
@@ -940,7 +975,7 @@ def _make_figures(res, source, fig_dir, lims=None, cost_type=None):
     # ---- Analysis 3: mean cost per datum vs time ----
     fig, axes = plt.subplots(nv, 1, figsize=(10, 3.5*nv + 1), sharex=True, squeeze=False)
     axes = axes.flatten()
-    for ax, V in zip(axes, active_vars):
+    for ax, V in _panels(axes, active_vars):
         any_data = False
         for sp in SPLIT_MODES:
             r = res[('a03', V, sp, 'true')]
@@ -976,9 +1011,9 @@ def _make_figures(res, source, fig_dir, lims=None, cost_type=None):
     nax.grid(True, which='minor', axis='y', alpha=0.2, lw=0.4)
     _apply(nax.set_ylim, lims[('a04', 'n')])
     nax.tick_params(labelbottom=False)
-    if nv > 1:
+    if len(active_vars) > 1:
         nax.legend(fontsize=7)
-    for ax, V in zip(axes, active_vars):
+    for ax, V in _panels(axes, active_vars):
         if ax is not axes[-1]:
             ax.tick_params(labelbottom=False)
         for wv in WEIGHT_VERS:
@@ -1003,7 +1038,11 @@ def _make_figures(res, source, fig_dir, lims=None, cost_type=None):
         print(f'  [warn] spatial map failed: {exc}')
 
     # ---- Analysis 7: zonal mean cost per datum vs depth ----
-    for V in active_vars:
+    for V in VARS:
+        if V not in active_vars:
+            _no_data_figure(fig_dir / f'07_zonal_{V}_{source}.png', (11, 6), V,
+                            f'{source}: Analysis 7 — Zonal mean {V} cost per datum (unsplit, true){ctl}')
+            continue
         k = (V, 'unsplit', 'true')
         r = res[('a07', *k)]['mean']   # (N_LAT_BANDS, n_depths)
         lat_centers = (LAT_EDGES[:-1] + LAT_EDGES[1:]) / 2
@@ -1030,7 +1069,7 @@ def _make_figures(res, source, fig_dir, lims=None, cost_type=None):
     fig, axes = plt.subplots(1, nv, figsize=(5*nv + 1, 5), squeeze=False)
     axes = axes.flatten()
     bin_centers = (HIST_EDGES[:-1] + HIST_EDGES[1:]) / 2
-    for ax, V in zip(axes, active_vars):
+    for ax, V in _panels(axes, active_vars):
         for wv in WEIGHT_VERS:
             h = res[('a08', V, 'unsplit', wv)]
             if h.sum() > 0:
@@ -1050,7 +1089,7 @@ def _make_figures(res, source, fig_dir, lims=None, cost_type=None):
     axes = axes.flatten()
     x = np.arange(N_DEPTH_RANGES)
     width = 0.8 / len(SPLIT_MODES)
-    for ax, V in zip(axes, active_vars):
+    for ax, V in _panels(axes, active_vars):
         for i, sp in enumerate(SPLIT_MODES):
             vals = res[('a10', V, sp, 'true')]
             ax.bar(x + i * width, vals, width, label=sp, alpha=0.8)
@@ -1072,7 +1111,7 @@ def _make_figures(res, source, fig_dir, lims=None, cost_type=None):
         pe_style = {'in_clim_years': ('tab:blue', f'{CLIM_YEARS[0]}–{CLIM_YEARS[1]} (in climatology)'),
                     'after_clim_years': ('tab:red', f'{after} (after climatology)')}
         fig, axes, cax = _depth_figure(nv, 5)
-        for ax, V in zip(axes, active_vars):
+        for ax, V in _panels(axes, active_vars):
             for pe, (col, lab) in pe_style.items():
                 for sp in ('unsplit', 'split'):
                     r = res[('a11', V, sp, 'true', pe)]
@@ -1085,7 +1124,7 @@ def _make_figures(res, source, fig_dir, lims=None, cost_type=None):
             ax.legend(fontsize=7, title='period, split mode: 0–2000 m mean', title_fontsize=7)
             _apply(ax.set_xlim, lims[('a11', V)])
         for pe, (col, lab) in pe_style.items():
-            c = sum(res[('a11', V, 'unsplit', 'true', pe)]['count'] for V in active_vars[:1])
+            c = res[('a11', active_vars[0], 'unsplit', 'true', pe)]['count']
             cax.semilogx(np.where(c > 0, c, np.nan), depth, color=col, lw=1.1, label=lab.split(' (')[0])
         _apply(cax.set_xlim, lims[('a11', 'n')])
         _count_ticks(cax.xaxis, lims[('a11', 'n')], 4)
@@ -1127,7 +1166,7 @@ def _make_spatial_map(res, source, fig_dir, active_vars, lims, ctl=''):
              ('SH', ccrs.SouthPolarStereo(), 'South of 50°S')]
     rasters = _rasters()
 
-    for V in active_vars:
+    for V in VARS:
         for an, key, field, sp, wv, title, sfx in [
             ('05', 'a05',   'total',     'unsplit', 'final', 'total cost (sum over depth levels and profiles)', ''),
             ('05', 'a05tw', 'total',     'unsplit', 'final',
@@ -1135,6 +1174,10 @@ def _make_spatial_map(res, source, fig_dir, active_vars, lims, ctl=''):
              '_thickness_weighted'),
             ('06', 'a05',   'per_datum', 'unsplit', 'true',  'cost per datum', ''),
         ]:
+            if V not in active_vars:
+                _no_data_figure(fig_dir / f'{an}_spatial_{V}_{source}{sfx}.png', (16, 5.6), V,
+                                f'{source}: Analysis {an} — {V} {title} per geodesic bin{ctl}')
+                continue
             vals = _binned(res, V, wv, field, key)            # (N_BINS,) bins 1..N_BINS, NaN if empty
             per_bin_full = np.concatenate([[np.nan], vals])   # index 0 = no bin
             vmax = lims[('a06' if an == '06' else key, V)]

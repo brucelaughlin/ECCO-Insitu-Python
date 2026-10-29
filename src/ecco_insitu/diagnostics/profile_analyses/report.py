@@ -177,7 +177,8 @@ obs classes (<code>final</code> weights) + the mean term.</p>
 </table>
 <p><strong>Axes:</strong> within each obs class, a given figure uses the same axis and color ranges in every cost type.
 Figure titles name the cost type. Controls that don&rsquo;t change the selected figure are grayed out (cost type for
-analysis&nbsp;1). Switching obs class keeps the selected cost type and analysis.</p>
+analysis&nbsp;1). Switching obs class keeps the selected cost type and analysis. Every obs class has the same figures
+and layout; a variable a class doesn&rsquo;t measure (salinity for XBT) gets an empty panel labeled &ldquo;no S data&rdquo;.</p>
 <p><strong>Supplemental analyses</strong> (dashed tabs, after the ten core analyses) are extras beyond the
 team&rsquo;s specification. Analysis&nbsp;11 splits the data into the years the climatology covers and the years
 after; the climatology&rsquo;s years are read from the climatology file of the run.</p>
