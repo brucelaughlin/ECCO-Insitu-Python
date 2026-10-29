@@ -21,6 +21,7 @@ Structure of the interactive document:
 """
 import argparse
 import base64
+import hashlib
 import html as _html
 import json
 import mimetypes
@@ -623,7 +624,10 @@ def _make_site(html, out_dir):
             shutil.copy2(path, dest)
         except OSError:
             return m.group(0)
-        return f'src="figures/{new_name}"'
+        # version tag from the file's contents: a changed figure gets a new URL, so browsers don't show
+        # a cached old copy
+        tag = hashlib.sha1(dest.read_bytes()).hexdigest()[:10]
+        return f'src="figures/{new_name}?v={tag}"'
 
     return re.sub(r'src="file://([^"]+)"', _replace, html)
 
