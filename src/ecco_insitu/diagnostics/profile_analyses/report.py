@@ -801,7 +801,7 @@ def _build_interactive_html(data, metas, title):
         sup = an in SUPPLEMENTAL
         return (f'<button class="tab an-tab{" sup-tab" if sup else ""}" data-an="{an}"'
                 f' title="{_html.escape(_ANALYSIS_TITLES.get(an, an))}">'
-                f'{an + " year split" if sup else an}</button>')
+                f'{an + " (year split)" if sup else an}</button>')
     core = [an for an in all_analyses if an not in SUPPLEMENTAL]
     sup = [an for an in all_analyses if an in SUPPLEMENTAL]
     an_tabs = ''.join(_an_tab(an) for an in core)
