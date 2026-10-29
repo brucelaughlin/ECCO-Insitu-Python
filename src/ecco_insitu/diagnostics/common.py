@@ -158,26 +158,30 @@ class BinLookup:
             out[g] = b
         return out
 
-    def projected_raster(self, view='global', npix=900):
+    def projected_raster(self, view='global', npix=900, proj=None, fill_box=False):
         """Raster in a map projection: {grid: bin id per pixel (0 = none)},
         land mask, outside-globe mask, imshow extent.
 
-        view: 'global' (Robinson), 'NH' / 'SH' (polar stereographic, to 50°).
+        view: 'global' (Robinson, or ``proj`` if given, e.g. an equal-area projection), 'NH' / 'SH'
+        (polar stereographic, a box around the 50° circle; ``fill_box`` shows data in the whole box,
+        corners included, instead of only inside the circle; a number for ``fill_box`` sets the latitude
+        of the box's edge midpoints instead of 50°).
         Pixels are inverse-projected to lon/lat and binned with the step 02
         lookup, so drawing a map is just per_bin[raster].
         """
         import cartopy.crs as ccrs
         pc = ccrs.PlateCarree()
         if view == 'global':
-            proj = ccrs.Robinson()
+            proj = proj or ccrs.Robinson()
             x0, x1 = proj.x_limits
             y0, y1 = proj.y_limits
             nx, ny = npix, int(npix * (y1 - y0) / (x1 - x0))
             lat_min = None
         else:
             proj = ccrs.NorthPolarStereo() if view == 'NH' else ccrs.SouthPolarStereo()
-            lat_min = 50.0
-            r = abs(proj.transform_point(0, lat_min if view == 'NH' else -lat_min, pc)[1])
+            lat_min = None if fill_box else 50.0
+            edge = 50.0 if not fill_box else float(fill_box) if not isinstance(fill_box, bool) else 50.0
+            r = abs(proj.transform_point(0, edge if view == 'NH' else -edge, pc)[1])
             x0, x1, y0, y1 = -r, r, -r, r
             nx = ny = int(npix * 0.6)
         xs = np.linspace(x0, x1, nx)
@@ -186,6 +190,12 @@ class BinLookup:
         ll = pc.transform_points(proj, X.ravel(), Y.ravel())
         lon, lat = ll[:, 0], ll[:, 1]
         outside = ~(np.isfinite(lon) & np.isfinite(lat))
+        if view == 'global':
+            # some projections return clamped lon/lat for points off the globe: keep only pixels that
+            # project back to themselves
+            back = proj.transform_points(pc, np.where(outside, 0, lon), np.where(outside, 0, lat))
+            tol = 1e-6 * (x1 - x0)
+            outside |= ~((np.abs(back[:, 0] - X.ravel()) < tol) & (np.abs(back[:, 1] - Y.ravel()) < tol))
         if lat_min is not None:
             outside |= (np.abs(lat) < lat_min)
         cells = self._cells(np.where(outside, 0, lon), np.where(outside, 0, lat))

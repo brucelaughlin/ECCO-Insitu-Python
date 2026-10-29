@@ -1,52 +1,63 @@
 # Handoff Context — ECCO-Insitu-Python
 
-## ⟶ SESSION 3 COMPLETE (2026-10-27)
+## ⟶ CURRENT STATE (2026-10-29) — read this first
 
-All profile-analysis work is done. Summary:
+Everything is on `main` (the `model-cost-slicing` branch was merged and deleted 2026-10-27).
 
-- **Full profile-analyze on `011321`**: all 7 sources, vs_clim + vs_model, 838 s.
-  Output: `~/ecco/yip/insitu_reports/profile_analyses_20261027/`
-- **Full profile-report**: 126 pages.
-  Output: `~/ecco/yip/insitu_reports/profile_report_20261027/report.{html,pdf}`
-- **Branch `model-cost-slicing`** has all new code committed and 123 tests pass; merge to `main` pending.
+### Published profile reports (GitHub Pages, rebuilt from `docs/reports/` on every push to `main`)
 
-### Current reports
+| Report | URL | Run |
+|---|---|---|
+| **current** | https://brucelaughlin.github.io/ECCO-Insitu-Python/profile_report_20261027_142247/ | `profile_files_NCEI_processed_20261027_142247` (WOD flags + XBT cap 2900 m) |
+| older | https://brucelaughlin.github.io/ECCO-Insitu-Python/profile_report_20261027/ | `..._20261027_011321` (WOD flags, no XBT cap) |
 
-| Report | Path | Sources | Cost types |
-|---|---|---|---|
-| Pre-WOD-flags (20261021) | `insitu_reports/profile_report_20261021_pre_wod_flags/` | CTD_WOD, XBT_WOD | vs_clim |
-| **20261027 — WOD flags, all sources** | `insitu_reports/profile_report_20261027/` | all 7 | vs_clim, vs_model |
+Analysis outputs (NetCDF + figures): `~/ecco/yip/insitu_reports/profile_analyses_20261028_142247/` and
+`.../profile_analyses_20261027/`. Model equivalents (monthly-mean v4r6): `~/ecco/yip/ecco_v4r6_model_data/model_equivalents_20261028_142247/`.
 
-### Pending decisions
+**Workflow** (`src/ecco_insitu/diagnostics/profile_analyses/`):
 
-- **KI-19:** `chain.wod_flags_extend_levels=2` — awaiting sign-off.
-- **KI-21:** `chain.xbt_max_depth=2900` — `084933` run exists (no check-qc, no model equivalents).
-- **Merge `model-cost-slicing` → `main`** — 123 tests pass, ready.
+```bash
+ecco-insitu profile-analyze --run <run>/yearly --model-equivalents <equiv>/netCDF --out <analysis dir>  # ~20 min
+ecco-insitu profile-analyze --replot --out <analysis dir>       # figures only, from the saved NetCDF (~1 min)
+ecco-insitu profile-report --site --inputs <analysis dir> --out docs/reports/<name>   # then commit + push
+```
 
-### Key results to know (for context)
+A full re-analysis is only needed when a calculation changes; label, layout and color changes need only `--replot`.
 
-Three-way cost comparison (v4r6 exact / 20261021 monthly equiv / 20261027 monthly equiv):
+### Decisions made 2026-10-29 (both reversible; the team may ask to switch)
 
-| source | v4r6 final | 20261021 final | 20261027 final | 20261021 (misfit/σ)² | 20261027 (misfit/σ)² |
-|---|---|---|---|---|---|
-| XBT T | 0.170 | 0.235 | **0.194** | 0.943 | **0.808** |
-| CTD T | 0.051 | 0.053 | **0.052** | 0.815 | **0.798** |
-| CTD S | 0.053 | 0.064 | **0.061** | 0.837 | **0.807** |
-| Argo T | 0.121 | 0.129 | 0.129 | 0.648 | 0.647 |
-| MRB T | 0.011 | 0.011 | **0.010** | 0.460 | **0.425** |
+1. **Split cost: each obs class's own bin means in the core analyses.** The team asked for analysis 02 to show
+   the two terms of the split (anomaly and mean) next to the unsplit cost. With each class's own bin means both
+   terms are per class (the spec's per-class rule). ECCO's `cost_profiles.F` pools the bin means over **all**
+   classes; that version is kept as supplemental analysis **12** (anomaly term) and in `meta.json` /
+   report Metadata (mean term, all classes together; it can't be split by class).
+   **To switch to the Fortran (pooled) version:**
+   `ecco-insitu profile-analyze --replot --split pooled --out <analysis dir>`, then `profile-report`
+   (or set `CORE_SPLIT = 'pooled'` in `compute.py` for the default). Both versions are always computed and saved,
+   so switching needs no re-analysis. With `pooled`, 02 shows no per-class mean-term line.
+   The pooled version matches `ecco-insitu model-cost` exactly (verified 2026-10-28 on run 20261027 vs_model).
+2. **Per-depth maps (analyses 05/06): depth bands, not all 97 levels.** Bands: 0–50, 50–100, 100–250, 250–500,
+   500–1000, 1000–2000, 2000–4000 m and deeper, plus all depths (`MAP_DEPTH_BANDS` in `compute.py`; changing
+   them needs a re-analysis). All 97 levels as images would be ~2 GB per report, too big for GitHub Pages.
+   **To offer all 97 levels:** draw the maps in the browser from per-bin data saved as JSON (a level slider),
+   instead of images: a new map renderer in `report.py`; the per-(bin, level) costs would need saving too
+   (now only per band). Not started.
 
-WOD flags fix the XBT data quality: (misfit/σ)² 0.943 → 0.808, matching v4r6's 0.802.
+Both are also stated on the report's Notes & errata page.
 
-### Pending team decisions
+### Pending
 
-- **KI-19:** `chain.wod_flags_extend_levels=2` — awaiting sign-off.
-- **KI-21:** `chain.xbt_max_depth=2900` — drops 3000m XBT casts (12 suspect, 2 ships
-  Southern Ocean / south of Japan). Already committed and in the `084933` run. Decision: keep?
-- **XBT no-flag treatment:** keep (earlier finding; WOD flags do not touch them).
-- **Merge `model-cost-slicing` → main** — 123 tests pass, ready, holding for the above.
+- **Team sign-off:** KI-21 (`chain.xbt_max_depth=2900`, applied in run 142247), KI-19 (`chain.wod_flags_extend_levels=2`).
+- **Analysis 04:** the team's spec says "global mean T and S cost through time (after all factors removed)";
+  we plot the cost **summed** over each month (the `true` line is the spec's). Ask whether a mean per
+  profile was meant.
+- **Thickness-weighted 05:** confirm the reading (each profile's thickness-weighted mean over its own
+  non-empty levels, summed over the profiles in a bin).
+- **AWS:** upload of run 142247's `ecco_arrays` and cleanup of loose files in the bucket.
 
 ---
 
+### Older notes (2026-10-27 and before)
 
 **Branch:** `model-cost-slicing` (active work, not merged yet; `main` is the default branch. `devel*`,
 `production_hardening` and the old experiments were merged or deleted on 2026-10-23). Repository: the fork `brucelaughlin/ECCO-Insitu-Python` (parent

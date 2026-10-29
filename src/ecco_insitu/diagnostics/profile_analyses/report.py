@@ -39,7 +39,7 @@ _CHROME = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'
 
 _ANALYSIS_TITLES = {
     '01': 'Global mean T and S vs depth',
-    '02': 'Global mean T and S cost vs depth',
+    '02': 'Global mean T and S cost vs depth: unsplit and the two terms of the split',
     '03': 'Global mean cost per datum vs time',
     '04': 'Total cost per month',
     '05': 'Vertically integrated (summed) cost per geodesic bin',
@@ -49,6 +49,7 @@ _ANALYSIS_TITLES = {
     '09': 'Global mean cost per datum vs depth',
     '10': 'Global mean cost per datum by depth range',
     '11': 'Supplemental: cost vs depth, data inside vs after the climatology\'s years',
+    '12': 'Supplemental: split anomaly term with own vs pooled (cost_profiles.F) bin means',
 }
 
 _ANALYSIS_DESC = {
@@ -59,15 +60,26 @@ _ANALYSIS_DESC = {
         'Right panel: number of points at each level.'
     ),
     '02': (
-        'Mean cost per point at each depth level, over all points at that level: '
-        '<em>J</em>&nbsp;=&nbsp;<em>w</em>&nbsp;&middot;&nbsp;(V&nbsp;&minus;&nbsp;V<sub>ref</sub>)&sup2; '
-        '(unsplit, dashed), or with the time-mean misfit <em>b</em> removed: split (solid) and '
-        'split_own (dotted). One line per weight version and split mode (see Terminology). '
+        'Three lines per weight version (colors), each a mean at every depth level <em>k</em>:'
+        '<br>&bull; <strong>unsplit</strong> (dashed): mean over all points at the level of '
+        '<em>w</em>&nbsp;&middot;&nbsp;(V&nbsp;&minus;&nbsp;V<sub>ref</sub>)&sup2;.'
+        '<br>&bull; <strong>anomaly</strong> (solid), the split&rsquo;s first term: mean over the points of '
+        '<em>w</em>&nbsp;&middot;&nbsp;(V&prime;&nbsp;&minus;&nbsp;V&prime;<sub>ref</sub>)&sup2;, with '
+        'V&prime;&nbsp;=&nbsp;V&nbsp;&minus;&nbsp;V&#772;<sub>i,k</sub> and '
+        'V&prime;<sub>ref</sub>&nbsp;=&nbsp;V<sub>ref</sub>&nbsp;&minus;&nbsp;V&#772;<sub>ref,i,k</sub> '
+        '(V&#772;: time mean of the bin&rsquo;s points, geodesic bin <em>i</em>).'
+        '<br>&bull; <strong>mean</strong> (dotted), the split&rsquo;s second term: mean over the geodesic bins '
+        'with data of <em>w&#772;</em><sub>i,k</sub>&nbsp;&middot;&nbsp;(V&#772;<sub>i,k</sub>&nbsp;&minus;&nbsp;'
+        'V&#772;<sub>ref,i,k</sub>)&sup2;, one term per bin, with the bin weight '
+        '<em>w&#772;</em>&nbsp;=&nbsp;1/max(<em>s</em>/<em>n</em>,&nbsp;<em>s</em>/9), <em>s</em>&nbsp;=&nbsp;mean(1/<em>w</em>) '
+        '(as <code>cost_profiles.F</code>).'
+        '<br>The bin means V&#772; are this obs class&rsquo;s own (see Terminology and Notes: our choice). '
         'Right panel: number of points at each level.'
     ),
     '03': (
         'Cost per datum, (&Delta;V/&sigma;)&sup2; with &gamma; and sf removed (<code>true</code> '
-        'weights), averaged over all points in each month of the record. Unsplit (dashed), split (solid), split_own (dotted).'
+        'weights), averaged over all points in each month of the record: unsplit (dashed) and the split&rsquo;s '
+        'anomaly term (solid; own bin means).'
     ),
     '04': (
         'For each month of the record, the cost summed over every point (all profiles and depth levels) '
@@ -85,13 +97,18 @@ _ANALYSIS_DESC = {
         '&Sigma;<sub>k</sub>&nbsp;<em>c<sub>k</sub></em>&nbsp;&Delta;z<sub>k</sub>&nbsp;/&nbsp;&Sigma;<sub>k</sub>&nbsp;&Delta;z<sub>k</sub> '
         'over the profile&rsquo;s non-empty levels <em>k</em> (<em>c<sub>k</sub></em> its cost at level '
         '<em>k</em>, &Delta;z<sub>k</sub> the layer thickness: edges halfway between levels, the top edge at the '
-        'surface), then summed over the profiles in the bin. Bins with no data are blank. The color scale ends '
-        'at the 98th percentile; higher values use the top color.'
+        'surface), then summed over the profiles in the bin (whole profile only). <strong>Depth</strong> row: '
+        'the same map for the points in one depth band only (our choice of bands; see Notes). Maps: '
+        'equal-area global map starting at the western tip of Australia, and north and south polar '
+        'stereographic maps. Bins with no data are blank. The color scale ends at the 98th percentile; '
+        'higher values use the top color. Click a figure to see it full width.'
     ),
     '06': (
         'For each geodesic bin: the cost summed over all depth levels and points, divided by the number '
-        'of points (cost per datum), <code>true</code> weights, unsplit. Bins with no data are blank. The '
-        'color scale ends at the 98th percentile; higher values use the top color.'
+        'of points (cost per datum), <code>true</code> weights, unsplit. Bottom row: the number of profiles in '
+        'each bin (the &ldquo;n&rdquo; behind the per-datum values; for a depth band, profiles with at least one '
+        'point in it). <strong>Depth</strong> row: per depth band. Bins with no data are blank. The color '
+        'scale ends at the 98th percentile; higher values use the top color. Click a figure to see it full width.'
     ),
     '07': (
         'Mean cost per datum (<code>true</code> weights, unsplit) in 5&deg; latitude bands at each depth '
@@ -106,12 +123,13 @@ _ANALYSIS_DESC = {
     ),
     '09': (
         'As analysis 2, <code>true</code> weights only: mean (&Delta;V/&sigma;)&sup2; at each depth '
-        'level: unsplit (dashed), split (solid), split_own (dotted). Right panel: number of points at each level.'
+        'level: unsplit (dashed) and the split&rsquo;s anomaly term (solid; own bin means). The mean term '
+        'isn&rsquo;t per datum, so it is only in analysis&nbsp;2. Right panel: number of points at each level.'
     ),
     '10': (
         'Mean (&Delta;V/&sigma;)&sup2; (<code>true</code> weights) over all points in each depth range: '
         '0&ndash;100, 0&ndash;250, 0&ndash;500, 0&ndash;700 and 0&ndash;2000&nbsp;m (each range starts at '
-        'the surface). Unsplit, split and split_own.'
+        'the surface): unsplit and the split&rsquo;s anomaly term (own bin means).'
     ),
     '11': (
         '<strong>Supplemental; not one of the ten core analyses.</strong> As analysis&nbsp;9 '
@@ -125,8 +143,16 @@ _ANALYSIS_DESC = {
         'for obs classes with data after the climatology&rsquo;s years. Right panel: number of points, '
         'by period.'
     ),
+    '12': (
+        '<strong>Supplemental.</strong> The split&rsquo;s anomaly term (cost per datum, <code>true</code> '
+        'weights) computed two ways: with this obs class&rsquo;s own bin means (blue; what the core analyses '
+        'show) and with bin means pooled over all obs classes (red; what ECCO v4r6&rsquo;s '
+        '<code>cost_profiles.F</code> does, and equal to <code>ecco-insitu model-cost</code> for vs_model). '
+        'Unsplit for reference (dashed). The pooled version&rsquo;s mean term covers all classes together, so '
+        'it can&rsquo;t be shown per class; its total is under Metadata.'
+    ),
 }
-SUPPLEMENTAL = ('11',)
+SUPPLEMENTAL = {'11': 'year split', '12': 'split: own vs pooled'}
 
 _GLOSSARY_HTML = """
 <p><strong>Weight versions</strong>: which factors are kept in the weight <em>w</em> = &gamma;&nbsp;&middot;&nbsp;sf&nbsp;/&nbsp;&sigma;&sup2;.
@@ -148,21 +174,19 @@ All use the same misfit &Delta;V&nbsp;=&nbsp;V&nbsp;&minus;&nbsp;V<sub>ref</sub>
 <tr><td><code>unsplit</code></td>
     <td><em>J</em> = <em>w</em>&nbsp;&middot;&nbsp;(V&nbsp;&minus;&nbsp;V<sub>ref</sub>)&sup2;. The mean misfit is not removed.</td></tr>
 <tr><td><code>split</code></td>
-    <td><em>J</em> = <em>w</em>&nbsp;&middot;&nbsp;(V&nbsp;&minus;&nbsp;V<sub>ref</sub>&nbsp;&minus;&nbsp;<em>b</em>)&sup2;,
-        where <em>b</em> is the <strong>time-mean misfit</strong> for that geodesic bin and depth level:
-        <em>b</em>&nbsp;=&nbsp;mean(V)&nbsp;&minus;&nbsp;mean(V<sub>ref</sub>) over every point that fell there,
-        <strong>all obs classes together</strong> and all years and months pooled (not a seasonal or monthly
-        mean). This is the anomaly term of ECCO v4r6&rsquo;s <code>cost_profiles.F</code>; for vs_model it
-        equals <code>ecco-insitu model-cost</code>&rsquo;s anomaly cost. The cost is still shown per obs class.</td></tr>
-<tr><td><code>split_own</code></td>
-    <td>As <code>split</code>, but <em>b</em> is computed from this obs class only.</td></tr>
+    <td>The cost split into two terms, as in ECCO v4r6&rsquo;s <code>cost_profiles.F</code>. With V&#772;<sub>i,k</sub>
+        and V&#772;<sub>ref,i,k</sub> the time means over the points in geodesic bin <em>i</em> at level <em>k</em>
+        (all years and months pooled):
+        <br><strong>anomaly term</strong>, per point:
+        <em>w</em>&nbsp;&middot;&nbsp;((V&nbsp;&minus;&nbsp;V&#772;)&nbsp;&minus;&nbsp;(V<sub>ref</sub>&nbsp;&minus;&nbsp;V&#772;<sub>ref</sub>))&sup2;;
+        <br><strong>mean term</strong>, per bin and level:
+        <em>w&#772;</em>&nbsp;&middot;&nbsp;(V&#772;&nbsp;&minus;&nbsp;V&#772;<sub>ref</sub>)&sup2;, with
+        <em>w&#772;</em>&nbsp;=&nbsp;1&nbsp;/&nbsp;max(<em>s</em>/<em>n</em>,&nbsp;<em>s</em>/9), <em>s</em>&nbsp;=&nbsp;mean(1/<em>w</em>),
+        <em>n</em>&nbsp;=&nbsp;number of points.
+        <br><strong>Which points make the bin means:</strong> in this report, this obs class&rsquo;s own points
+        (our choice, 2026-10-29; see Notes). <code>cost_profiles.F</code> pools all obs classes instead: that
+        version is supplemental analysis&nbsp;12, and it equals <code>ecco-insitu model-cost</code> for vs_model.</td></tr>
 </table>
-<p><strong>ECCO&rsquo;s mean term</strong>: ECCO&rsquo;s split cost also adds, once per (bin, depth),
-<em>w&#772;</em>&nbsp;&middot;&nbsp;(mean(V<sub>ref</sub>)&nbsp;&minus;&nbsp;mean(V))&sup2;, with
-<em>w&#772;</em>&nbsp;=&nbsp;1&nbsp;/&nbsp;max(<em>s</em>/<em>n</em>,&nbsp;<em>s</em>/9), <em>s</em>&nbsp;=&nbsp;mean(1/<em>w</em>),
-<em>n</em>&nbsp;=&nbsp;number of points. It pools all obs classes, so it can&rsquo;t be split by class; its total
-for each cost type is under <em>Metadata</em>. ECCO&rsquo;s split cost = the sum of <code>split</code> over all
-obs classes (<code>final</code> weights) + the mean term.</p>
 
 <p><strong>Cost types</strong>: what V<sub>ref</sub> is.</p>
 <table class="gloss-table">
@@ -235,19 +259,19 @@ def _split_comparison_html(metas):
             f'<td>{sp - own:+.3f}</td><td>{(sp - own) / own * 100:+.0f}%</td></tr>'
             for ct, src, V, u, sp, own in rows)
         parts.append(f'<p><em>{_html.escape(name)}</em></p><table class="gloss-table notes-table">'
-                     '<tr><th>cost type</th><th>obs class</th><th>var</th><th>unsplit</th><th>split</th>'
-                     '<th>split_own</th><th>split &minus; own</th><th>relative</th></tr>' + body + '</table>')
+                     '<tr><th>cost type</th><th>obs class</th><th>var</th><th>unsplit</th><th>pooled</th>'
+                     '<th>own</th><th>pooled &minus; own</th><th>relative</th></tr>' + body + '</table>')
     if not parts:
         return ''
     return f"""
-<h3>5. Pooled vs own-class split</h3>
+<h3>5. Pooled vs own-class split (anomaly term)</h3>
 <p>Mean cost per datum, (&Delta;V/&sigma;)&sup2; (<code>true</code> weights), over 0&ndash;2000&nbsp;m, from analysis 10.
-<code>split</code> removes the mean misfit of all obs classes pooled (as ECCO); <code>split_own</code> removes the
-class&rsquo;s own mean.</p>
+<code>pooled</code> removes the mean misfit of all obs classes pooled (as <code>cost_profiles.F</code>; analysis 12);
+<code>own</code> removes the class&rsquo;s own mean (the core analyses).</p>
 {''.join(parts)}
-<p><strong>What the difference means.</strong> The gap between <code>split</code> and <code>split_own</code> is the
+<p><strong>What the difference means.</strong> The gap between pooled and own is the
 extra cost from a class&rsquo;s own mean misfit differing from the shared one, i.e. its offset relative to the
-other instruments in the same bins. In both runs <code>split</code> &ge; <code>split_own</code> for every class
+other instruments in the same bins. In both runs pooled &ge; own for every class
 (expected but not guaranteed, since the cost is weighted and the mean is not).</p>
 <ul>
 <li><strong>Argo (PFL)</strong> differs by about 1%: Argo has most of the data, so the pooled mean is largely Argo&rsquo;s own.</li>
@@ -275,7 +299,7 @@ def _year_rows(meta):
                 top = nc['depth_m'][:] <= 2000
                 for V in ('T', 'S'):
                     vals, ns = [], []
-                    for sp in ('unsplit', 'split'):
+                    for sp in ('unsplit', 'split_own'):
                         for pe in ('in_clim_years', 'after_clim_years'):
                             m = nc[f'a11__a__{V}__{sp}__true__{pe}__mean_depth'][:]
                             c = nc[f'a11__a__{V}__{sp}__true__{pe}__count_depth'][:]
@@ -442,15 +466,29 @@ above 0. On the same casts, 99.4% of our flags agree with v4r6&rsquo;s. This app
 
 <h3>4. Errata and known limitations</h3>
 <ul>
-<li><strong>Split follows the Fortran</strong> (since 2026-10-28). <code>split</code> removes one mean per
-(geodesic bin, depth) over all obs classes pooled, as ECCO v4r6&rsquo;s <code>cost_profiles.F</code>, and the
-mean term is reported under Metadata. Checked: for run 20261027 (all seven obs classes, vs_model), the
+<li><strong>Decision (2026-10-29): the core analyses use each obs class&rsquo;s own bin means for the split.</strong>
+Analysis&nbsp;2 shows the split&rsquo;s two terms, anomaly and mean, as the team asked; with each class&rsquo;s own
+bin means both terms stay per class, which fits the specification&rsquo;s per-class rule.
+<code>cost_profiles.F</code> instead pools the bin means over all obs classes; that version is kept as
+supplemental analysis&nbsp;12 (anomaly term) and under Metadata (mean term, all classes together).
+<em>To switch the core analyses to the Fortran (pooled) version:</em> <code>ecco-insitu profile-analyze --split pooled</code>
+(or <code>CORE_SPLIT = 'pooled'</code> in <code>diagnostics/profile_analyses/compute.py</code>), then
+<code>profile-report</code>; a replot is enough, no recomputing. With pooled means the per-class mean-term line
+is left out of analysis&nbsp;2. See also HANDOFF.md.</li>
+<li><strong>The pooled (Fortran) split</strong> (since 2026-10-28; core analyses until 2026-10-29, now
+supplemental analysis&nbsp;12) removes one mean per (geodesic bin, depth) over all obs classes pooled, as ECCO
+v4r6&rsquo;s <code>cost_profiles.F</code>, with the mean term under Metadata. Checked: for run 20261027 (all seven obs classes, vs_model), the
 anomaly cost summed over classes, its point count, the mean term and its number of terms all equal
 <code>ecco-insitu model-cost</code>&rsquo;s on the same files (T: 2.87925&times;10&#8311; over 245,226,456 points;
 mean term 1.96488&times;10&#8309; over 589,586 terms). <code>model-cost</code> reproduces the team&rsquo;s v4r6 cost
-bars; neither is yet checked against a model run&rsquo;s own cost output. <code>split_own</code> (each class&rsquo;s own mean)
-is kept as a comparison. Because the pooled mean depends on which classes are included, a report made with
-<code>--sources</code> has a different <code>split</code>.</li>
+bars; neither is yet checked against a model run&rsquo;s own cost output. Because the pooled mean depends on
+which classes are included, a report made with <code>--sources</code> has a different pooled split.</li>
+<li><strong>Decision (2026-10-29): depth bands for the maps of analyses 5 and 6</strong>, not all 97 levels:
+0&ndash;50, 50&ndash;100, 100&ndash;250, 250&ndash;500, 500&ndash;1000, 1000&ndash;2000, 2000&ndash;4000&nbsp;m and deeper, plus
+all depths. Every level as an image would make the report about 2&nbsp;GB, too big for this site. <em>To change
+the bands:</em> <code>MAP_DEPTH_BANDS</code> in <code>compute.py</code> (needs a re-analysis). <em>All 97
+levels</em> would mean drawing the maps in the browser from saved per-bin data instead of images: a bigger
+change (see HANDOFF.md).</li>
 <li><strong>Two small differences from <code>model-cost</code>:</strong> profiles without a geodesic bin (about
 14,000 of 441 million weighted values in run 20261027_142247) have no split cost here; and points whose
 climatology is missing are left out of all costs here, while ECCO keeps them in the model cost
@@ -543,6 +581,12 @@ body {
 .tab.na { opacity: 0.35; pointer-events: none; }
 .sup-label { margin-left: 1.2em; min-width: 0; }
 .tab.sup-tab { border-style: dashed; }
+img.zoomable { cursor: zoom-in; }
+#zoom { position: fixed; inset: 0; background: rgba(255,255,255,0.97); z-index: 50; overflow: auto;
+        display: flex; align-items: flex-start; justify-content: center; cursor: zoom-out; padding: 1em; }
+#zoom[hidden] { display: none; }
+#zoom img { width: 100%; height: auto; max-width: none; border: none; }
+.zoom-hint { position: fixed; top: 0.5em; right: 1em; font-size: 0.8em; color: #888; }
 .row-note { font-size: 0.8em; color: #888; margin-left: 0.6em; font-style: italic; }
 /* ── main split ── */
 #main { display: flex; flex: 1; overflow: hidden; }
@@ -652,13 +696,26 @@ def _scan_figures(fig_dir):
     if not Path(fig_dir).is_dir():
         return {}
     groups = {}
-    for p in sorted(Path(fig_dir).glob('*.png')):
+    # T before S within an analysis (the file names would otherwise sort S first)
+    def order(p):
+        return (p.stem.replace('_T_', '_0_').replace('_S_', '_1_'), p.name)
+    for p in sorted(Path(fig_dir).glob('*.png'), key=order):
         m = re.match(r'^(\d+)_', p.stem)
         if not m:
             continue
         num = f'{int(m.group(1)):02d}'
         groups.setdefault(num, []).append(p)
     return groups
+
+
+def _map_band_labels(metas):
+    """{'0': '0–50 m', ...}: depth-band labels from the run's analysis files."""
+    for _, meta in metas:
+        for f in sorted(Path(meta.get('out', '')).glob('*/analysis_*.nc'))[:1]:
+            with netCDF4.Dataset(f) as nc:
+                if 'map_band_label' in nc.variables:
+                    return {str(i): str(x) for i, x in enumerate(nc['map_band_label'][:])}
+    return {}
 
 
 def _mean_term_table(mt):
@@ -738,23 +795,37 @@ def _build_interactive_html(data, metas, title):
         an for src in data.values() for ct in src.values() for an in ct.keys()
     })
 
-    # panels
+    # panels: one per (source, cost type, analysis, depth band); band 'all' unless the file name has __z<N>
+    def band_of(path):
+        m = re.search(r'__z(\d+)$', Path(path).stem)
+        return m.group(1) if m else 'all'
     panels = []
+    bands_seen = set()
     for source in sources:
         for cost_type in all_cost_types:
             for an in all_analyses:
                 entries = data.get(source, {}).get(cost_type, {}).get(an, [])
                 if not entries:
                     continue
-                pid = f'p-{source}-{cost_type}-{an}'
-                figs_html = ''.join(
-                    f'<figure>'
-                    f'<img src="file://{_html.escape(path)}" alt="" loading="lazy">'
-                    f'<figcaption>{_html.escape(cap)}</figcaption>'
-                    f'</figure>'
-                    for path, cap in entries
-                )
-                panels.append(f'<div class="panel" id="{_html.escape(pid)}">{figs_html}</div>')
+                by_band = {}
+                for path, cap in entries:
+                    by_band.setdefault(band_of(path), []).append((path, cap))
+                for band, ents in by_band.items():
+                    if band != 'all':
+                        bands_seen.add(band)
+                    pid = f'p-{source}-{cost_type}-{an}' + ('' if band == 'all' else f'-z{band}')
+                    figs_html = ''.join(
+                        f'<figure>'
+                        f'<img src="file://{_html.escape(path)}" alt="" loading="lazy" class="zoomable">'
+                        f'<figcaption>{_html.escape(cap)}</figcaption>'
+                        f'</figure>'
+                        for path, cap in ents
+                    )
+                    panels.append(f'<div class="panel" id="{_html.escape(pid)}">{figs_html}</div>')
+    band_labels = _map_band_labels(metas)
+    band_tabs = '<button class="tab band-tab" data-band="all">all depths</button>' + ''.join(
+        f'<button class="tab band-tab" data-band="{b}">{_html.escape(band_labels.get(b, "band " + b))}</button>'
+        for b in sorted(bands_seen, key=int))
 
     # metadata for side panel — with a note when estim_dir is set
     meta_sections = ''
@@ -806,7 +877,7 @@ def _build_interactive_html(data, metas, title):
         sup = an in SUPPLEMENTAL
         return (f'<button class="tab an-tab{" sup-tab" if sup else ""}" data-an="{an}"'
                 f' title="{_html.escape(_ANALYSIS_TITLES.get(an, an))}">'
-                f'{an + " (year split)" if sup else an}</button>')
+                f'{an + " (" + SUPPLEMENTAL[an] + ")" if sup else an}</button>')
     core = [an for an in all_analyses if an not in SUPPLEMENTAL]
     sup = [an for an in all_analyses if an in SUPPLEMENTAL]
     an_tabs = ''.join(_an_tab(an) for an in core)
@@ -821,8 +892,9 @@ const ANALYSES = {json.dumps(all_analyses)};
 const DESCS = {json.dumps(desc_data)};
 const EXISTS = {json.dumps(exists)};
 const NO_COST = ['01'];
+const BAND_ANALYSES = ['05', '06'];
 
-let curSource = SOURCES[0], curCost = COST_TYPES[0], curAn = null;
+let curSource = SOURCES[0], curCost = COST_TYPES[0], curAn = null, curBand = 'all';
 
 function exists(src, ct, an) {{
   return !!EXISTS[src + '|' + ct + '|' + an];
@@ -859,10 +931,18 @@ function render() {{
     t.toggleAttribute('disabled', !ok);
     t.classList.toggle('active', t.dataset.an === curAn);
   }});
+  // depth-band row: only for the map analyses
+  const bandRow = document.getElementById('band-row');
+  const useBand = BAND_ANALYSES.includes(curAn);
+  if (bandRow) bandRow.style.display = useBand ? '' : 'none';
+  document.querySelectorAll('.band-tab').forEach(t =>
+    t.classList.toggle('active', t.dataset.band === curBand));
   // figure panel
   document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
   if (curAn) {{
-    const el = document.getElementById('p-' + curSource + '-' + curCost + '-' + curAn);
+    const base = 'p-' + curSource + '-' + curCost + '-' + curAn;
+    const el = (useBand && curBand !== 'all' && document.getElementById(base + '-z' + curBand))
+               || document.getElementById(base);
     if (el) el.classList.add('active');
   }}
   // description side panel
@@ -894,7 +974,7 @@ function selectAnalysis(an) {{
 
 // keyboard shortcuts: left/right arrows to cycle sources, up/down for analyses
 document.addEventListener('keydown', e => {{
-  if (e.target.tagName === 'INPUT' || !notesPage.hidden) return;
+  if (e.target.tagName === 'INPUT' || !notesPage.hidden || !zoom.hidden) return;
   if (e.key === 'ArrowRight') {{
     const i = (SOURCES.indexOf(curSource) + 1) % SOURCES.length;
     selectSource(SOURCES[i]);
@@ -924,6 +1004,19 @@ document.querySelectorAll('.cost-tab').forEach(btn =>
 document.querySelectorAll('.an-tab').forEach(btn =>
   btn.addEventListener('click', () => selectAnalysis(btn.dataset.an))
 );
+document.querySelectorAll('.band-tab').forEach(btn =>
+  btn.addEventListener('click', () => {{ curBand = btn.dataset.band; render(); }})
+);
+// click a figure to see it full width; click again (or Esc) to close
+const zoom = document.getElementById('zoom');
+document.getElementById('fig-area').addEventListener('click', e => {{
+  if (e.target.classList.contains('zoomable')) {{
+    zoom.querySelector('img').src = e.target.src;
+    zoom.hidden = false;
+  }}
+}});
+zoom.addEventListener('click', () => {{ zoom.hidden = true; }});
+document.addEventListener('keydown', e => {{ if (e.key === 'Escape') zoom.hidden = true; }});
 
 // header toggle links
 // notes & errata page (kept off the main view)
@@ -970,7 +1063,9 @@ render();
   <div class="tab-row"><span class="row-label">Source</span>{src_tabs}</div>
   <div class="tab-row"><span class="row-label">Cost type</span>{cost_tabs}<span id="cost-note" class="row-note"></span></div>
   <div class="tab-row"><span class="row-label">Analysis</span>{an_tabs}</div>
+  <div class="tab-row" id="band-row" style="display:none"><span class="row-label">Depth</span>{band_tabs}</div>
 </div>
+<div id="zoom" hidden><img alt=""><span class="zoom-hint">click or Esc to close</span></div>
 <div id="notes-page" hidden>
   <div class="notes-inner">
     <p><span class="hdr-link" id="close-notes">&larr; Back to the report</span></p>
