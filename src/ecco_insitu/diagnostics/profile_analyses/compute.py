@@ -827,11 +827,40 @@ def _depth_figure(n_main, width_main=4.5, height=6):
     return fig, axes[:-1], axes[-1]
 
 
+def _count_ticks(axis, lim, max_labels=5):
+    """Readable log ticks for a count axis: at most ``max_labels`` labels (1, 1-3, 1-2-5 or every few
+    powers of ten, depending on the range), short labels (2k, 50k, 1M), and a faint minor grid."""
+    from matplotlib.ticker import FixedLocator, FuncFormatter, LogLocator, NullFormatter
+
+    def fmt(v, _):
+        for div, suf in ((1e9, 'G'), (1e6, 'M'), (1e3, 'k')):
+            if v >= div:
+                return f'{v / div:g}{suf}'
+        return f'{v:g}'
+    lo, hi = lim if lim else axis.get_view_interval()
+    lo, hi = max(lo, 1e-9), max(hi, lo * 10)
+    e0, e1 = int(np.floor(np.log10(lo))), int(np.ceil(np.log10(hi)))
+    for subs in ((1, 2, 5), (1, 3), (1,)):
+        ticks = [m * 10.0 ** e for e in range(e0, e1 + 1) for m in subs if lo <= m * 10.0 ** e <= hi]
+        if len(ticks) <= max_labels:
+            break
+    else:
+        step = int(np.ceil(len(ticks) / max_labels))
+        ticks = ticks[::step]
+    axis.set_major_locator(FixedLocator(ticks))
+    axis.set_major_formatter(FuncFormatter(fmt))
+    axis.set_minor_locator(LogLocator(base=10, subs=np.arange(2, 10), numticks=30))
+    axis.set_minor_formatter(NullFormatter())
+
+
 def _count_panel(ax, counts, depth, lim):
     """Number of points per depth level (log scale), one line per variable."""
     for V, c in counts.items():
         ax.semilogx(np.where(c > 0, c, np.nan), depth, color=_V_COLOR[V], label=V, lw=1.1)
     _apply(ax.set_xlim, lim)
+    _count_ticks(ax.xaxis, lim, 4)
+    ax.tick_params(axis='x', labelsize=7, labelrotation=90)
+    ax.grid(True, which='minor', axis='x', alpha=0.2, lw=0.4)
     ax.set_xlabel('# points')
     ax.set_title('n')
     ax.tick_params(labelleft=False)
@@ -934,6 +963,9 @@ def _make_figures(res, source, fig_dir, lims=None, cost_type=None):
             nax.semilogy(_decimal_year(r['yyyymm']), np.where(r['count'] > 0, r['count'], np.nan),
                          color=_V_COLOR[V], label=V, lw=1.0)
     nax.set_ylabel('# points\nper month')
+    _count_ticks(nax.yaxis, lims[('a04', 'n')], 4)
+    nax.tick_params(axis='y', labelsize=7)
+    nax.grid(True, which='minor', axis='y', alpha=0.2, lw=0.4)
     _apply(nax.set_ylim, lims[('a04', 'n')])
     nax.tick_params(labelbottom=False)
     if nv > 1:
@@ -1048,6 +1080,9 @@ def _make_figures(res, source, fig_dir, lims=None, cost_type=None):
             c = sum(res[('a11', V, 'unsplit', 'true', pe)]['count'] for V in active_vars[:1])
             cax.semilogx(np.where(c > 0, c, np.nan), depth, color=col, lw=1.1, label=lab.split(' (')[0])
         _apply(cax.set_xlim, lims[('a11', 'n')])
+        _count_ticks(cax.xaxis, lims[('a11', 'n')], 4)
+        cax.tick_params(axis='x', labelsize=7, labelrotation=90)
+        cax.grid(True, which='minor', axis='x', alpha=0.2, lw=0.4)
         cax.set_xlabel('# points')
         cax.set_title(f'n ({active_vars[0]})')
         cax.tick_params(labelleft=False)
