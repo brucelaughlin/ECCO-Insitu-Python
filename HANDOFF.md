@@ -54,6 +54,11 @@ Both are also stated on the report's Notes & errata page.
 - **Thickness-weighted 05:** confirm the reading (each profile's thickness-weighted mean over its own
   non-empty levels, summed over the profiles in a bin).
 - **AWS:** upload of run 142247's `ecco_arrays` and cleanup of loose files in the bucket.
+- **Move the published reports to a `gh-pages` branch, with the next report update** (agreed 2026-10-29).
+  Each report is ~79 MB of figures (the per-depth-band maps), and committing them to `main` makes the git
+  history grow by that much on every rebuild (`.git` was 211 MB after the 2026-10-29 push). Plan: publish
+  `docs/reports/` from a separate `gh-pages` branch that is replaced on each publish, so `main` stays small;
+  stop tracking `docs/reports/` on `main`. Explain to the user how it works when doing it.
 
 ---
 
