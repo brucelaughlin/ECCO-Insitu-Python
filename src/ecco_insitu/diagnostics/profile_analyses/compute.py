@@ -1364,12 +1364,14 @@ _BIN_LAT = None
 
 
 def _bin_lat():
-    """Latitude of each geodesic bin's center (index 0 = bin 1), from paths.geodesic_bin_csv."""
+    """Latitude of each geodesic bin's center (index 0 = bin 1), from paths.geodesic_bin_csv; None if
+    that file isn't set or found."""
     global _BIN_LAT
     if _BIN_LAT is None:
-        cfg = config_loader.load()
-        ll = np.loadtxt(config_loader.get(cfg, 'paths.geodesic_bin_csv'), delimiter=',')
-        _BIN_LAT = ll[:N_BINS, 1]
+        path = config_loader.get(config_loader.load(), 'paths.geodesic_bin_csv')
+        if not path or not Path(path).exists():
+            return None
+        _BIN_LAT = np.loadtxt(path, delimiter=',')[:N_BINS, 1]
     return _BIN_LAT
 
 
@@ -1386,7 +1388,10 @@ def _zonal(res, V, part, core):
     if cost is None:
         return None
     c = cost[1:] if cost.shape[0] == N_BINS + 1 else cost          # (N_BINS, nd)
-    lb = _lat_band_idx(_bin_lat())
+    lat = _bin_lat()
+    if lat is None:
+        return None
+    lb = _lat_band_idx(lat)
     have = np.isfinite(c)
     s = np.zeros((N_LAT_BANDS, c.shape[1])); n = np.zeros_like(s)
     np.add.at(s, lb, np.where(have, c, 0.0))
