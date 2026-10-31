@@ -55,7 +55,8 @@ T and S:
   classes (what `cost_profiles.F` does). Which one the core figures show is a setting (section 3).
 - Everything is saved in one NetCDF per class and cost type (`analysis_<class>_<run>_<cost type>.nc`),
   including the bin means, the mean term per (bin, level), cost per bin and depth band, and, for the map
-  explorer, the cost per datum summed per (5-year block, bin, level) (`viewer__*` variables).
+  explorer, the cost per datum and the signed misfit summed per non-empty (year, bin, level), stored
+  sparsely (`viewer__*` variables).
 
 **Checked:** the pooled anomaly cost and mean term equal `ecco-insitu model-cost` (which reproduces the
 team's v4r6 cost bars) on run 20261027 vs_model, to the reported precision; a unit test checks the same
@@ -76,7 +77,8 @@ Choices made, all reversible:
 |---|---|---|
 | Split in the core figures (2026-10-29) | each class's **own** bin means, so both terms are per class (the team's per-class rule); the pooled `cost_profiles.F` version is analysis 12 and, for the mean term, in Metadata | `ecco-insitu profile-analyze --replot --split pooled --out <dir>` (or `CORE_SPLIT` in `compute.py`); no re-analysis |
 | Depth bands for the map images (2026-10-29) | 0–50, 50–100, 100–250, 250–500, 500–1000, 1000–2000, 2000–4000 m and deeper, plus all depths | `MAP_DEPTH_BANDS` in `compute.py` (re-analysis) |
-| Map explorer time blocks (2026-10-30) | 5-year blocks from 1992 (1992–96 … 2022–26) | `VIEWER_YEAR0`, `VIEWER_BLOCK_YEARS`, `VIEWER_N_BLOCKS` in `compute.py` (re-analysis) |
+| Map explorer time resolution (2026-10-31) | 1-year blocks, 1992–2026 (was 5-year until 2026-10-31); stored sparsely | `VIEWER_YEAR0`, `VIEWER_BLOCK_YEARS`, `VIEWER_N_BLOCKS` in `compute.py` (re-analysis) |
+| Mean-bias diagnostic (2026-10-31) | signed misfit per bin, any years; shown separately from the costs | `_add_viewer` in `compute.py`, `viewer.html` |
 | Flagged spikes (2026-10-30) | a level whose mean cost per datum (true; unsplit or anomaly; ≥ 30 points) is > 0.5 and ≥ 1.4× the median of the levels 300–1000 m above and below | `_spikes` in `viewer.py` (rebuild the site only) |
 | Analysis 1 (2026-10-28) | every weighted observation, the same in every cost-type tab | see Notes & errata in the report for the old behavior and how to revert |
 
@@ -85,19 +87,28 @@ Choices made, all reversible:
 `viewer.html` draws the maps in the browser instead of loading images, so any combination is available:
 obs class, cost type, variable; cost (unsplit, split anomaly, split mean term, number of points); depth
 (all, any single level, 100 m bands, the 97 levels in 15 or 30 groups, or the automatically flagged spike
-levels); time (all years, or a slider over the 5-year blocks; not for the mean term, which is defined over
-the whole record). Hover a bin for its value; a log color scale and a fixed maximum are available.
+levels); time (all years, or any range of years with the two-handled slider, or one year at a time; not
+for the mean term, which is defined over the whole record). Hover a bin for its value; the color bar has
+ticks; a log color scale and a fixed maximum are available. A **Guide** on the page explains every option.
+
+**Mean-bias diagnostic** (its own row, separate from the costs): the signed misfit, observation minus
+reference, averaged per bin over the selected depths and years, in °C or psu, on a red–blue scale centered
+on zero. It is not a cost term. ECCO's mean term is defined over the whole assimilation period (the window
+the estimate is fit over), so a per-period mean *term* would not be ECCO's; but the signed offset over
+chosen years shows whether it drifts (model drift, instrument or region changes, ocean change against a
+fixed climatology). Checked: over all years it reproduces the per-bin bias saved by `profile-analyze`.
 
 How it works: `profile-report --site` writes `viewer/`:
 
 - `grid.json` and `grid_<view>.bin`: for each view (global equal area from Australia's western tip,
   north and south polar stereographic), the geodesic bin under each pixel, and the coastline;
-- `<class>__<cost type>.bin`: for every non-empty (bin, level, 5-year block) the mean cost per datum
-  unsplit and anomaly, and the point count; and the mean term per (bin, level). Stored as gzip of 16-bit
+- `<class>__<cost type>.bin`: for every non-empty (bin, level, year) the mean cost per datum unsplit and
+  anomaly, the point count and the mean signed misfit; and the mean term per (bin, level). Stored as gzip of 16-bit
   values (3 significant digits; values below ~6×10⁻⁵ lose precision but are zero on every color scale).
 - `index.json`: the files, depth levels, blocks, level groups and flagged spikes.
 
-The browser downloads one class's file (0.3–22 MB) when it is first selected. **Checked:** decoding the
+The browser downloads one class's file when it is first selected (sizes in section 4 of the HANDOFF /
+the build output: a few hundred kB for small classes, tens of MB for Argo). **Checked:** decoding the
 files reproduces analysis 02's mean cost per datum at the levels tested.
 
 The explorer needs a web server (GitHub Pages, or `python -m http.server` in `docs/reports/` for a local

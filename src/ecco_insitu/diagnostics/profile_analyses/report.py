@@ -497,6 +497,12 @@ per-bin data, so the images only cover the standard bands.</li>
 weights, unsplit or anomaly, levels with at least 30 points) is above 0.5 and at least 1.4 times the median of the
 levels 300&ndash;1000&nbsp;m above and below it. Broad bumps are flagged at each of their levels. These thresholds are
 our choice (<code>_spikes</code> in <code>diagnostics/profile_analyses/viewer.py</code>).</li>
+<li><strong>Map explorer: the mean-bias diagnostic</strong> (since 2026-10-31). The signed misfit, observation minus
+reference, averaged per bin over any depths and years, in &deg;C or psu. It is <em>not</em> part of any cost, and is kept
+in its own row. Why: ECCO&rsquo;s mean term uses the offset over the whole assimilation period (that is the window the
+state estimate is fit over), so a per-period mean term would not be ECCO&rsquo;s; but a time-resolved offset shows drift
+(e.g. Argo&rsquo;s North Atlantic 2200&nbsp;m offset against the model grows after 2020; see Data notes). Checked: over all
+years it reproduces the saved per-bin bias to 1&times;10<sup>&minus;6</sup>&nbsp;&deg;C.</li>
 <li><strong>Map explorer: precision.</strong> Values are stored to 3 significant digits (16-bit floats); values below
 about 6&times;10<sup>&minus;5</sup> lose precision, but they are zero on every color scale. Checked: the explorer&rsquo;s
 data reproduce analysis&nbsp;2 at the levels tested.</li>
@@ -637,6 +643,13 @@ code { background: #f0f0f0; padding: 1px 3px; border-radius: 2px; font-size: 0.9
 .hdr-link { font-size: 0.82em; color: var(--accent); cursor: pointer; white-space: nowrap; }
 .hdr-link:hover { text-decoration: underline; }
 .hdr-notes { color: #888; margin-left: auto; }
+.explorer-btn { margin-left: auto; margin-right: 0.6em; background: var(--accent); color: #fff; text-decoration: none;
+  font-size: 0.9em; font-weight: 600; padding: 0.35em 0.9em; border-radius: 5px; white-space: nowrap;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.2); }
+.explorer-btn:hover { background: #134a8a; }
+.map-hint { background: #eef4fc; border: 1px solid #c5d9f1; border-radius: 4px; padding: 0.4em 0.7em;
+  margin-bottom: 0.7em; font-size: 0.86em; color: #234; }
+.map-hint a { color: var(--accent); font-weight: 600; }
 #notes-page { flex: 1; overflow-y: auto; background: #fff; }
 .notes-inner { max-width: 52em; margin: 0 auto; padding: 1.2em 1.5em 3em; line-height: 1.55; color: #333; }
 .notes-inner h2 { font-size: 1.25em; margin: 0.6em 0 0.3em; }
@@ -914,6 +927,7 @@ const BAND_ANALYSES = ['05', '06'];
 const PART_ANALYSES = ['06', '07'];
 
 let curSource = SOURCES[0], curCost = COST_TYPES[0], curAn = null, curBand = 'all', curPart = 'unsplit';
+let HAS_EXPLORER = false;
 
 function exists(src, ct, an) {{
   return !!EXISTS[src + '|' + ct + '|' + an];
@@ -963,6 +977,10 @@ function render() {{
   document.querySelectorAll('.band-tab').forEach(t =>
     t.classList.toggle('active', t.dataset.band === curBand));
   // figure panel
+  document.getElementById('map-hint').style.display =
+    (HAS_EXPLORER && ['05', '06', '07'].includes(curAn)) ? '' : 'none';
+  document.getElementById('map-hint-link').href = 'viewer.html?src=' + encodeURIComponent(curSource) +
+    '&ct=' + encodeURIComponent(curCost);
   document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
   if (curAn) {{
     const base = 'p-' + curSource + '-' + curCost + '-' + curAn;
@@ -1069,7 +1087,7 @@ document.getElementById('close-notes').addEventListener('click', () => showNotes
 
 // the map explorer link, if this site has one (profile-report --site)
 fetch('viewer/index.json', {{method: 'HEAD'}}).then(r => {{
-  if (r.ok) document.getElementById('map-explorer').style.display = '';
+  if (r.ok) {{ HAS_EXPLORER = true; document.getElementById('map-explorer').style.display = ''; render(); }}
 }}).catch(() => {{}});
 
 curAn = firstExisting(curSource, curCost);
@@ -1090,8 +1108,8 @@ render();
   <span style="color:#ccc">|</span>
   <span class="hdr-link" id="toggle-side-meta">Metadata</span>
   <span style="color:#ccc;font-size:0.8em;margin-left:0.5em">← → cycle sources &nbsp; ↑ ↓ cycle analyses</span>
-  <a class="hdr-link hdr-notes" id="map-explorer" href="viewer.html" style="display:none">Map explorer</a>
-  <span style="color:#ccc">|</span>
+  <a class="explorer-btn" id="map-explorer" href="viewer.html" style="display:none"
+     title="Interactive maps: any depth level or band, any years, unsplit / split / bias">&#x1F5FA;&#xFE0E;&nbsp; Map explorer &rarr;</a>
   <span class="hdr-link" id="toggle-notes" style="color:#888">Notes &amp; errata</span>
 </div>
 <div id="nav">
@@ -1110,6 +1128,9 @@ render();
 </div>
 <div id="main">
   <div id="fig-area">
+    <div class="map-hint" id="map-hint" style="display:none">These are fixed images for the standard depth bands.
+      For any depth level or band, any range of years, the split terms and the mean bias, open the
+      <a href="viewer.html" id="map-hint-link">Map explorer &rarr;</a></div>
     {''.join(panels)}
   </div>
   <div id="side">
@@ -1295,7 +1316,7 @@ def _write_map_explorer(input_dirs, out_dir, title):
     if not nc:
         return
     with netCDF4.Dataset(nc[0]) as ds:
-        if 'viewer__T__unsplit__sum' not in ds.variables:
+        if 'viewer__T__unsplit__cell' not in ds.variables:
             print('      (map explorer: skipped, the analysis has no viewer data; re-run profile-analyze)')
             return
     vdir = Path(out_dir) / 'viewer'
@@ -1303,7 +1324,8 @@ def _write_map_explorer(input_dirs, out_dir, title):
         shutil.rmtree(vdir)
     viewer.write(input_dirs[0], vdir)
     page = (Path(viewer.__file__).with_name('viewer.html')).read_text()
-    (Path(out_dir) / 'viewer.html').write_text(page.replace('__TITLE__', _html.escape(title)))
+    (Path(out_dir) / 'viewer.html').write_text(page.replace('__TITLE__', _html.escape(title))
+                                               .replace('__GUIDE__', viewer.GUIDE_HTML))
     size = sum(f.stat().st_size for f in vdir.iterdir()) / 1e6
     print(f'      + viewer.html and viewer/ ({size:.0f} MB): the interactive map explorer')
 

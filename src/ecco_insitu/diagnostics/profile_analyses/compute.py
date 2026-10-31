@@ -90,11 +90,12 @@ CORE_SPLIT = 'own'
 # Depth bands for the per-depth maps of analyses 5 and 6 (decision 2026-10-29: bands, not all 97 levels;
 # see HANDOFF.md). Upper edges in m; 'all' (the whole profile) is always added.
 MAP_DEPTH_BANDS = (50, 100, 250, 500, 1000, 2000, 4000, None)
-# Map viewer (report): per-(bin, level) sums for unsplit and the core split's anomaly term (true weights),
-# by time block. Block k covers VIEWER_YEAR0 + k*VIEWER_BLOCK_YEARS ... (+ VIEWER_BLOCK_YEARS - 1).
+# Map viewer (report): sums of the cost per datum (true weights) and point counts per (time block, bin,
+# level), for unsplit and both splits. Block k covers VIEWER_YEAR0 + k*VIEWER_BLOCK_YEARS ...
+# (+ VIEWER_BLOCK_YEARS - 1); 1-year blocks since 2026-10-31 (was 5). Stored sparsely (non-empty cells).
 VIEWER_YEAR0 = 1992
-VIEWER_BLOCK_YEARS = 5
-VIEWER_N_BLOCKS = 7      # 1992-2026
+VIEWER_BLOCK_YEARS = 1
+VIEWER_N_BLOCKS = 35     # 1992-2026
 # Analysis 11: data inside vs after the climatology's years; read from the run's climatology file
 # (its 'title', e.g. 'WOA23 1991-2020 ...'); this default is WOA23 decav91C0's
 CLIM_YEARS = (1991, 2020)
@@ -479,19 +480,40 @@ def _add_costs(acc, V, mode, mf, ok, w, sf, gamma, ym, bi_safe, lb, dz, band=Non
 
 def _add_viewer(acc, V, part, mf, ok, w, sf, gamma, ym, bi_safe):
     """Sum of the cost per datum ((misfit/sigma)^2, true weights) and point count per (time block, bin,
-    level), for the report's map viewer."""
+    level), for the report's map viewer. Kept sparse: per file, the unique (block, bin, level) cells and
+    their sums are appended; _viewer_reduce merges them."""
     key = (V, part)
     nd = mf.shape[1]
-    if key not in acc['viewer']:
-        shape = (VIEWER_N_BLOCKS, N_BINS + 1, nd)
-        acc['viewer'][key] = {'sum': np.zeros(shape, np.float32), 'n': np.zeros(shape, np.int32)}
-    v = acc['viewer'][key]
     blk = np.clip((ym // 100 - VIEWER_YEAR0) // VIEWER_BLOCK_YEARS, 0, VIEWER_N_BLOCKS - 1)
     c = np.where(ok, mf, 0.0) ** 2 * _weight_versions(w, sf, gamma)['true']
     rows, cols = np.where(ok)
-    flat = (blk[rows] * (N_BINS + 1) + bi_safe[rows]) * nd + cols
-    np.add.at(v['sum'].ravel(), flat, c[rows, cols])
-    np.add.at(v['n'].ravel(), flat, 1)
+    if not rows.size:
+        return
+    flat = (blk[rows].astype(np.int64) * (N_BINS + 1) + bi_safe[rows]) * nd + cols
+    u, inv = np.unique(flat, return_inverse=True)
+    v = acc['viewer'].setdefault(key, {'keys': [], 'sum': [], 'n': [], 'nd': nd})
+    v['keys'].append(u)
+    v['sum'].append(np.bincount(inv, weights=c[rows, cols], minlength=len(u)))
+    v['n'].append(np.bincount(inv, minlength=len(u)).astype(np.int64))
+    if part == 'unsplit':
+        # bias diagnostic: the signed misfit V - Vref (not a cost term), summed per cell
+        v.setdefault('mis', []).append(np.bincount(inv, weights=mf[rows, cols], minlength=len(u)))
+    if sum(len(k) for k in v['keys']) > 20_000_000:
+        _viewer_reduce(v)
+
+
+def _viewer_reduce(v):
+    """Merge the appended (cell, sum, count) chunks of one viewer array into one sorted chunk."""
+    if len(v['keys']) <= 1:
+        return v
+    k = np.concatenate(v['keys']); s = np.concatenate(v['sum']); n = np.concatenate(v['n'])
+    u, inv = np.unique(k, return_inverse=True)
+    v['keys'] = [u]
+    v['sum'] = [np.bincount(inv, weights=s, minlength=len(u))]
+    v['n'] = [np.bincount(inv, weights=n, minlength=len(u)).astype(np.int64)]
+    if v.get('mis'):
+        v['mis'] = [np.bincount(inv, weights=np.concatenate(v['mis']), minlength=len(u))]
+    return v
 
 
 def _accumulate_file(acc, fd, cost_type, pass_, biases=None, pooled=None):
@@ -578,7 +600,7 @@ def _finalize(acc, depth):
             res['bias'][V] = np.where(c > 0, s / c, np.nan)   # (N_BINS+1, n_depths)
         res[f'bias_count_{V}'] = c
 
-    res['viewer'] = acc['viewer']
+    res['viewer'] = {key: _viewer_reduce(v) for key, v in acc['viewer'].items()}
 
     # the split's mean term per (bin, depth), with this class's own bin means (see _mean_term)
     res['meanterm'] = {(V, wv): _mean_term(acc['own_pooled'][V], wv) for V in VARS for wv in WEIGHT_VERS}
@@ -745,19 +767,30 @@ def _write_nc(res, source, run_ts, path, cost_types_used, pooled_sources=None):
             mb[i] = lbl
         nc.setncattr('core_split', CORE_SPLIT)
 
-        # map viewer: cost per datum sums and point counts per (time block, bin, level), true weights
+        # map viewer: cost per datum sums and point counts per non-empty (time block, bin, level), true
+        # weights, sparse: cell index = (block * (N_BINS + 1) + bin) * n_depths + level
         if res.get('viewer'):
-            nc.createDimension('time_block', VIEWER_N_BLOCKS)
             nc.setncattr('viewer_year0', VIEWER_YEAR0)
             nc.setncattr('viewer_block_years', VIEWER_BLOCK_YEARS)
+            nc.setncattr('viewer_n_blocks', VIEWER_N_BLOCKS)
+            nc.setncattr('viewer_cell_index', '(block * (n_bins + 1) + bin) * n_depths + level; bin 1-based')
             for (V, part), v in res['viewer'].items():
-                x = nc.createVariable(f'viewer__{V}__{part}__sum', 'f4', ('time_block', 'bin_a', 'depth'),
-                                      zlib=True, complevel=4)
-                x[:] = v['sum'][:, 1:, :]
-                x.long_name = (f'{V} sum of (dV/sigma)^2 (true weights) per (5-year block, bin, level), '
-                               f'{part}; with ..._n gives cost per datum for any levels and blocks')
-                nc.createVariable(f'viewer__{V}__{part}__n', 'i4', ('time_block', 'bin_a', 'depth'),
-                                  zlib=True, complevel=4)[:] = v['n'][:, 1:, :]
+                dim = f'viewer_cell__{V}__{part}'
+                nc.createDimension(dim, len(v['keys'][0]) if v['keys'] else 0)
+                if not v['keys']:
+                    continue
+                nc.createVariable(f'viewer__{V}__{part}__cell', 'i8', (dim,), zlib=True)[:] = v['keys'][0]
+                x = nc.createVariable(f'viewer__{V}__{part}__sum', 'f4', (dim,), zlib=True)
+                x[:] = v['sum'][0]
+                x.long_name = (f'{V} sum of (dV/sigma)^2 (true weights) per (year block, bin, level), {part}; '
+                               f'divided by ..._n gives cost per datum')
+                nc.createVariable(f'viewer__{V}__{part}__n', 'i4', (dim,), zlib=True)[:] = v['n'][0]
+                if v.get('mis'):
+                    x = nc.createVariable(f'viewer__{V}__{part}__misfit_sum', 'f4', (dim,), zlib=True)
+                    x[:] = v['mis'][0]
+                    x.long_name = (f'{V} sum of the signed misfit prof_{V} - reference per (year block, bin, '
+                                   f'level); divided by ..._n gives the mean bias (a diagnostic, not a cost term)')
+                    x.units = 'degC' if V == 'T' else 'psu'
 
         # the split's mean term, this class's own bin means (per bin and level, and its mean over bins)
         for (V, wv), mt in res.get('meanterm', {}).items():
