@@ -38,7 +38,7 @@ ecco-insitu = "ecco_insitu.cli:main"
 where = ["src"]
 
 [tool.setuptools.package-data]
-ecco_insitu = ["defaults.yaml"]
+ecco_insitu = ["defaults.yaml", "diagnostics/profile_analyses/viewer.html"]
 
 [tool.setuptools.dynamic]
 version = { attr = "ecco_insitu.__version__" }

@@ -73,6 +73,7 @@ import matplotlib.colors as mcolors
 import netCDF4
 import numpy as np
 
+import ecco_insitu.config as config_loader
 import ecco_insitu.diagnostics.common as common
 
 # ---------------------------------------------------------------------------
@@ -89,6 +90,11 @@ CORE_SPLIT = 'own'
 # Depth bands for the per-depth maps of analyses 5 and 6 (decision 2026-10-29: bands, not all 97 levels;
 # see HANDOFF.md). Upper edges in m; 'all' (the whole profile) is always added.
 MAP_DEPTH_BANDS = (50, 100, 250, 500, 1000, 2000, 4000, None)
+# Map viewer (report): per-(bin, level) sums for unsplit and the core split's anomaly term (true weights),
+# by time block. Block k covers VIEWER_YEAR0 + k*VIEWER_BLOCK_YEARS ... (+ VIEWER_BLOCK_YEARS - 1).
+VIEWER_YEAR0 = 1992
+VIEWER_BLOCK_YEARS = 5
+VIEWER_N_BLOCKS = 7      # 1992-2026
 # Analysis 11: data inside vs after the climatology's years; read from the run's climatology file
 # (its 'title', e.g. 'WOA23 1991-2020 ...'); this default is WOA23 decav91C0's
 CLIM_YEARS = (1991, 2020)
@@ -281,6 +287,8 @@ def _new_acc(n_depths):
         'bias_count_S': np.zeros((N_BINS + 1, n_depths), dtype=np.int64),
         # --- per-class sums for the split's mean term: mean(V), mean(Vref), mean(1/w) per (bin, depth) ---
         'own_pooled': _new_pooled(n_depths),
+        # --- map viewer: {(V, part): sum and count arrays (N_BLOCKS, N_BINS+1, n_depths)}, created lazily ---
+        'viewer': {},
     }
     # cost analyses: a02..a10, per variable, per weight version, per split mode
     for V in VARS:
@@ -296,11 +304,10 @@ def _new_acc(n_depths):
                 # a05: integrated cost per bin  (N_BINS+1,)
                 acc[('a05', *k, 'sum')]   = np.zeros(N_BINS + 1)
                 acc[('a05', *k, 'count')] = np.zeros(N_BINS + 1, dtype=np.int64)
-                # a05 per depth band (unsplit maps): (N_BANDS, N_BINS+1) sums, point and profile counts
-                if sp == 'unsplit':
-                    acc[('a05b', *k, 'sum')]   = np.zeros((len(MAP_DEPTH_BANDS), N_BINS + 1))
-                    acc[('a05b', *k, 'count')] = np.zeros((len(MAP_DEPTH_BANDS), N_BINS + 1), dtype=np.int64)
-                    acc[('a05b', *k, 'nprof')] = np.zeros((len(MAP_DEPTH_BANDS), N_BINS + 1), dtype=np.int64)
+                # a05 per depth band: (N_BANDS, N_BINS+1) sums, point and profile counts
+                acc[('a05b', *k, 'sum')]   = np.zeros((len(MAP_DEPTH_BANDS), N_BINS + 1))
+                acc[('a05b', *k, 'count')] = np.zeros((len(MAP_DEPTH_BANDS), N_BINS + 1), dtype=np.int64)
+                acc[('a05b', *k, 'nprof')] = np.zeros((len(MAP_DEPTH_BANDS), N_BINS + 1), dtype=np.int64)
                 # a05 thickness-weighted: per profile sum_k c_k dz_k / sum_k dz_k (non-empty k), summed per bin
                 acc[('a05tw', *k, 'sum')]   = np.zeros(N_BINS + 1)
                 acc[('a05tw', *k, 'count')] = np.zeros(N_BINS + 1, dtype=np.int64)
@@ -450,7 +457,7 @@ def _add_costs(acc, V, mode, mf, ok, w, sf, gamma, ym, bi_safe, lb, dz, band=Non
             acc[('a03', *k, 'count')][ymv] += int(n_per_prof[i])
         np.add.at(acc[('a05', *k, 'sum')],   bi_safe, c_per_prof)
         np.add.at(acc[('a05', *k, 'count')], bi_safe, n_per_prof)
-        for j in (range(len(MAP_DEPTH_BANDS)) if mode == 'unsplit' else ()):
+        for j in range(len(MAP_DEPTH_BANDS)):
             okj = ok & (band == j)[None, :]
             nj = okj.sum(axis=1)
             if nj.any():
@@ -468,6 +475,23 @@ def _add_costs(acc, V, mode, mf, ok, w, sf, gamma, ym, bi_safe, lb, dz, band=Non
         if pos.size:
             hist, _ = np.histogram(np.log10(pos), bins=HIST_EDGES)
             acc[('a08', *k, 'hist')] += hist
+
+
+def _add_viewer(acc, V, part, mf, ok, w, sf, gamma, ym, bi_safe):
+    """Sum of the cost per datum ((misfit/sigma)^2, true weights) and point count per (time block, bin,
+    level), for the report's map viewer."""
+    key = (V, part)
+    nd = mf.shape[1]
+    if key not in acc['viewer']:
+        shape = (VIEWER_N_BLOCKS, N_BINS + 1, nd)
+        acc['viewer'][key] = {'sum': np.zeros(shape, np.float32), 'n': np.zeros(shape, np.int32)}
+    v = acc['viewer'][key]
+    blk = np.clip((ym // 100 - VIEWER_YEAR0) // VIEWER_BLOCK_YEARS, 0, VIEWER_N_BLOCKS - 1)
+    c = np.where(ok, mf, 0.0) ** 2 * _weight_versions(w, sf, gamma)['true']
+    rows, cols = np.where(ok)
+    flat = (blk[rows] * (N_BINS + 1) + bi_safe[rows]) * nd + cols
+    np.add.at(v['sum'].ravel(), flat, c[rows, cols])
+    np.add.at(v['n'].ravel(), flat, 1)
 
 
 def _accumulate_file(acc, fd, cost_type, pass_, biases=None, pooled=None):
@@ -517,12 +541,15 @@ def _accumulate_file(acc, fd, cost_type, pass_, biases=None, pooled=None):
             if pooled is not None:
                 _add_pooled(pooled[V], flat, val, ref, w, okb, sf, fd['gamma'])
             _add_costs(acc, V, 'unsplit', mf, ok, w, sf, fd['gamma'], ym, bi_safe, lb, dz, band)
+            _add_viewer(acc, V, 'unsplit', mf, ok & valid_bin[:, None], w, sf, fd['gamma'], ym, bi_safe)
         else:
             for mode, bias in biases.items():
                 b = bias[V][bi_safe]                     # (n_prof, n_depths); bin 0 has no mean
                 okm = ok & valid_bin[:, None] & np.isfinite(b)
                 _add_costs(acc, V, mode, mf - np.where(okm, b, 0.0), okm, w, sf, fd['gamma'],
                            ym, bi_safe, lb, dz, band)
+                if mode in ('split_own', 'split'):
+                    _add_viewer(acc, V, mode, mf - np.where(okm, b, 0.0), okm, w, sf, fd['gamma'], ym, bi_safe)
 
 
 # ---------------------------------------------------------------------------
@@ -550,6 +577,8 @@ def _finalize(acc, depth):
         with np.errstate(invalid='ignore'):
             res['bias'][V] = np.where(c > 0, s / c, np.nan)   # (N_BINS+1, n_depths)
         res[f'bias_count_{V}'] = c
+
+    res['viewer'] = acc['viewer']
 
     # the split's mean term per (bin, depth), with this class's own bin means (see _mean_term)
     res['meanterm'] = {(V, wv): _mean_term(acc['own_pooled'][V], wv) for V in VARS for wv in WEIGHT_VERS}
@@ -591,12 +620,11 @@ def _finalize(acc, depth):
                         'per_datum': np.where(c5[1:] > 0, s5[1:] / c5[1:], np.nan),
                         'count':     c5[1:].copy().astype(np.int64),
                     }
-                if sp == 'unsplit':
-                    sb, cb, pb = (acc[('a05b', *k, x)] for x in ('sum', 'count', 'nprof'))
-                    with np.errstate(invalid='ignore', divide='ignore'):
-                        res[('a05b', *k)] = {'total': np.where(cb[:, 1:] > 0, sb[:, 1:], np.nan),
-                                             'per_datum': np.where(cb[:, 1:] > 0, sb[:, 1:] / cb[:, 1:], np.nan),
-                                             'count': cb[:, 1:].copy(), 'nprof': pb[:, 1:].copy()}
+                sb, cb, pb = (acc[('a05b', *k, x)] for x in ('sum', 'count', 'nprof'))
+                with np.errstate(invalid='ignore', divide='ignore'):
+                    res[('a05b', *k)] = {'total': np.where(cb[:, 1:] > 0, sb[:, 1:], np.nan),
+                                         'per_datum': np.where(cb[:, 1:] > 0, sb[:, 1:] / cb[:, 1:], np.nan),
+                                         'count': cb[:, 1:].copy(), 'nprof': pb[:, 1:].copy()}
                 st = acc[('a05tw', *k, 'sum')]
                 ct_ = acc[('a05tw', *k, 'count')]
                 res[('a05tw', *k)] = {'total': np.where(ct_[1:] > 0, st[1:], np.nan),
@@ -716,6 +744,20 @@ def _write_nc(res, source, run_ts, path, cost_types_used, pooled_sources=None):
         for i, lbl in enumerate(map_band_labels()):
             mb[i] = lbl
         nc.setncattr('core_split', CORE_SPLIT)
+
+        # map viewer: cost per datum sums and point counts per (time block, bin, level), true weights
+        if res.get('viewer'):
+            nc.createDimension('time_block', VIEWER_N_BLOCKS)
+            nc.setncattr('viewer_year0', VIEWER_YEAR0)
+            nc.setncattr('viewer_block_years', VIEWER_BLOCK_YEARS)
+            for (V, part), v in res['viewer'].items():
+                x = nc.createVariable(f'viewer__{V}__{part}__sum', 'f4', ('time_block', 'bin_a', 'depth'),
+                                      zlib=True, complevel=4)
+                x[:] = v['sum'][:, 1:, :]
+                x.long_name = (f'{V} sum of (dV/sigma)^2 (true weights) per (5-year block, bin, level), '
+                               f'{part}; with ..._n gives cost per datum for any levels and blocks')
+                nc.createVariable(f'viewer__{V}__{part}__n', 'i4', ('time_block', 'bin_a', 'depth'),
+                                  zlib=True, complevel=4)[:] = v['n'][:, 1:, :]
 
         # the split's mean term, this class's own bin means (per bin and level, and its mean over bins)
         for (V, wv), mt in res.get('meanterm', {}).items():
@@ -845,7 +887,7 @@ def _savefig(fig, path, margins=True, dpi=110):
     from PIL import Image
     path.parent.mkdir(parents=True, exist_ok=True)
     if margins:
-        fig.subplots_adjust(**_MARGINS)
+        fig.subplots_adjust(**(margins if isinstance(margins, dict) else _MARGINS))
     buf = io.BytesIO()
     fig.savefig(buf, dpi=dpi, format='png')
     plt.close(fig)
@@ -916,6 +958,13 @@ def _shared_limits(results):
             lims[('a05', V, j)] = _p98([band_vals(r, 'final', 'total') for r in rs])
             lims[('a06', V, j)] = _p98([band_vals(r, 'true', 'per_datum') for r in rs])
         lims[('a07', V)] = _p98([r[('a07', V, 'unsplit', 'true')]['mean'] for r in rs])
+        lims[('a07mean', V)] = _p98([z for r in rs for z in [_zonal(r, V, 'mean', 'split_own')] if z is not None]
+                                    or [np.full(1, np.nan)])
+        lims[('a06mean', V)] = _p98([v for r in rs for v in [_bin_part(r, V, 'mean', 'split_own')] if v is not None]
+                                    or [np.full(N_BINS, np.nan)])
+        for j in range(len(MAP_DEPTH_BANDS)):
+            lims[('a06mean', V, j)] = _p98([v for r in rs for v in [_bin_part(r, V, 'mean', 'split_own', j)]
+                                            if v is not None] or [np.full(N_BINS, np.nan)])
         lims[('a08', V)] = _pad(_span([h / h.sum() for r in rs for wv in WEIGHT_VERS
                                        for h in [r[('a08', V, 'unsplit', wv)]] if h.sum() > 0]), zero=True)
         lims[('a11', V)] = _pad(_span([np.where(r[('a11', V, sp, 'true', pe)]['count'] > 0,
@@ -952,6 +1001,8 @@ def _depth_figure(n_main, width_main=4.5, height=6):
     gs = fig.add_gridspec(1, n_main + 1, width_ratios=[4] * n_main + [1.2], wspace=0.12)
     axes = [fig.add_subplot(gs[0, 0])]
     axes += [fig.add_subplot(gs[0, i], sharey=axes[0]) for i in range(1, n_main + 1)]
+    for ax in axes[1:]:
+        ax.tick_params(labelleft=False)     # shared depth axis: labels on the first panel only
     return fig, axes[:-1], axes[-1]
 
 
@@ -1071,32 +1122,50 @@ def _make_figures(res, source, fig_dir, lims=None, cost_type=None):
     # bin means the split uses; the other split is shown in supplemental analysis 12.
     core = 'split_own' if CORE_SPLIT == 'own' else 'split'
     _part_ls = {'unsplit': '--', 'anomaly': '-', 'mean': ':'}
+    def _depth_lines(ax, V, wvs, with_mean):
+        c = res[('a02', V, 'unsplit', 'final')]['count']  # count is same across sp/wv
+        for wv in wvs:
+            for part, sp in (('unsplit', 'unsplit'), ('anomaly', core)):
+                m = np.where(c >= _MIN_DEPTH_COUNT, res[('a02', V, sp, wv)]['mean'], np.nan)
+                ax.plot(m, depth, ls=_part_ls[part], color=_WV_COLOR[wv], label=f'{wv} {part}', lw=1.2)
+            if with_mean and CORE_SPLIT == 'own' and (V, wv) in res.get('meanterm', {}):
+                mt = res['meanterm'][(V, wv)]['per_depth']
+                ax.plot(mt, depth, ls=_part_ls['mean'], color=_WV_COLOR[wv], label=f'{wv} mean', lw=1.6)
+
+    how = 'own bin means' if CORE_SPLIT == 'own' else 'bin means pooled over all obs classes'
     for an, wvs, title_sfx in [
         ('02', WEIGHT_VERS, 'mean cost'),
         ('09', ('true',),   'mean cost per datum'),
     ]:
-        fig, axes, cax = _depth_figure(nv, 5)
-        for ax, V in _panels(axes, active_vars):
-            c = res[('a02', V, 'unsplit', 'final')]['count']  # count is same across sp/wv
-            for wv in wvs:
-                for part, sp in (('unsplit', 'unsplit'), ('anomaly', core)):
-                    m = np.where(c >= _MIN_DEPTH_COUNT, res[('a02', V, sp, wv)]['mean'], np.nan)
-                    ax.plot(m, depth, ls=_part_ls[part], color=_WV_COLOR[wv], label=f'{wv} {part}', lw=1.2)
-                if an == '02' and CORE_SPLIT == 'own' and (V, wv) in res.get('meanterm', {}):
-                    mt = res['meanterm'][(V, wv)]['per_depth']
-                    ax.plot(mt, depth, ls=_part_ls['mean'], color=_WV_COLOR[wv], label=f'{wv} mean', lw=1.6)
-            ax.set_xlabel(f'{V} {title_sfx}')
-            ax.set_ylabel('Depth (m)') if ax is axes[0] else None
-            ax.set_title(V)
-            ax.legend(fontsize=7, title='weight version, part' if an == '02' else None, title_fontsize=7)
-            _apply(ax.set_xlim, lims[(f'a{an}', V)])
-        _count_panel(cax, {V: res[('a02', V, 'unsplit', 'final')]['count'] for V in active_vars},
-                     depth, lims[('a02', 'n')])
-        axes[0].set_ylim(_dmax, 0)
-        how = 'own bin means' if CORE_SPLIT == 'own' else 'bin means pooled over all obs classes'
+        zoom = an == '02'          # 02: a second row, the same lines with the cost axis limited to 0-2
+        fig = plt.figure(figsize=(5 * nv + 1.8, 11 if zoom else 6))
+        gs = fig.add_gridspec(2 if zoom else 1, nv + 1, width_ratios=[4] * nv + [1.2], wspace=0.12,
+                              hspace=0.28)
+        rows = []
+        for r in range(2 if zoom else 1):
+            ax0 = fig.add_subplot(gs[r, 0]) if r == 0 else fig.add_subplot(gs[r, 0], sharey=rows[0][0][0])
+            axs = [ax0] + [fig.add_subplot(gs[r, i], sharey=ax0) for i in range(1, nv + 1)]
+            for a_ in axs[1:]:
+                a_.tick_params(labelleft=False)
+            rows.append((axs[:-1], axs[-1]))
+        for r, (axes, cax) in enumerate(rows):
+            for ax, V in _panels(axes, active_vars):
+                _depth_lines(ax, V, wvs, an == '02')
+                ax.set_xlabel(f'{V} {title_sfx}' + (' (zoom: 0–2)' if r == 1 else ''))
+                ax.set_ylabel('Depth (m)') if ax is axes[0] else None
+                ax.set_title(V if r == 0 else f'{V}, cost axis 0–2')
+                if r == 0:
+                    ax.legend(fontsize=7, title='weight version, part' if an == '02' else None, title_fontsize=7)
+                    _apply(ax.set_xlim, lims[(f'a{an}', V)])
+                else:
+                    ax.set_xlim(0, 2)
+            _count_panel(cax, {V: res[('a02', V, 'unsplit', 'final')]['count'] for V in active_vars},
+                         depth, lims[('a02', 'n')])
+        rows[0][0][0].set_ylim(_dmax, 0)
         fig.suptitle(f'{source}: Analysis {an} — {title_sfx} vs depth: unsplit and split ({how}){ctl}',
                      fontsize=11)
-        _savefig(fig, fig_dir / f'{an}_cost_depth_{source}.png')
+        _savefig(fig, fig_dir / f'{an}_cost_depth_{source}.png',
+                 margins=dict(left=0.09, right=0.97, bottom=0.06, top=0.93) if zoom else True)
 
     # ---- Analysis 12 (supplemental): the split computed both ways ----
     fig, axes, cax = _depth_figure(nv, 5)
@@ -1182,33 +1251,34 @@ def _make_figures(res, source, fig_dir, lims=None, cost_type=None):
     except Exception as exc:
         print(f'  [warn] spatial map failed: {exc}')
 
-    # ---- Analysis 7: zonal mean cost per datum vs depth ----
+    # ---- Analysis 7: zonal mean cost per datum vs depth: unsplit, anomaly and mean term ----
+    lat_centers = (LAT_EDGES[:-1] + LAT_EDGES[1:]) / 2
     for V in VARS:
-        if V not in active_vars:
-            _no_data_figure(fig_dir / f'07_zonal_{V}_{source}.png', (11, 6), V,
-                            f'{source}: Analysis 7 — Zonal mean {V} cost per datum (unsplit, true){ctl}')
-            continue
-        k = (V, 'unsplit', 'true')
-        r = res[('a07', *k)]['mean']   # (N_LAT_BANDS, n_depths)
-        lat_centers = (LAT_EDGES[:-1] + LAT_EDGES[1:]) / 2
-        valid = np.isfinite(r).any(axis=1)
-        if not valid.any():
-            continue
-        fig = plt.figure(figsize=(11, 6))
-        gs = fig.add_gridspec(1, 2, width_ratios=[5, 1], wspace=0.08)
-        ax = fig.add_subplot(gs[0])
-        cax = fig.add_subplot(gs[1], sharey=ax)
-        _count_panel(cax, {V: res[('a02', V, 'unsplit', 'true')]['count']}, depth, lims[('a02', 'n')])
-        vmax = lims[('a07', V)]
-        im = ax.contourf(lat_centers, depth, r.T, levels=np.linspace(0, vmax, 21),
-                         cmap='YlOrRd', extend='max')
-        ax.set_ylim(_dmax, 0)
-        ax.set_xlim(LAT_EDGES[0], LAT_EDGES[-1])
-        plt.colorbar(im, ax=ax, label=f'{V} cost per datum (ΔV/σ)²', pad=0.02)
-        ax.set_xlabel('Latitude (°N)')
-        ax.set_ylabel('Depth (m)')
-        fig.suptitle(f'{source}: Analysis 7 — Zonal mean {V} cost per datum (unsplit, true){ctl}')
-        _savefig(fig, fig_dir / f'07_zonal_{V}_{source}.png')
+        for part, psfx in _PARTS:
+            path = fig_dir / f'07_zonal_{V}_{source}{psfx}.png'
+            tt = f'{source}: Analysis 7 — Zonal mean {V} {_PART_TITLE[part]} (true){ctl}'
+            if V not in active_vars:
+                _no_data_figure(path, (11, 6), V, tt)
+                continue
+            r = _zonal(res, V, part, core)
+            if r is None or not np.isfinite(r).any():
+                _no_data_figure(path, (11, 6), V, tt + ' — not available')
+                continue
+            fig = plt.figure(figsize=(11, 6))
+            gs = fig.add_gridspec(1, 2, width_ratios=[5, 1], wspace=0.08)
+            ax = fig.add_subplot(gs[0])
+            cax = fig.add_subplot(gs[1], sharey=ax)
+            _count_panel(cax, {V: res[('a02', V, 'unsplit', 'true')]['count']}, depth, lims[('a02', 'n')])
+            vmax = lims[('a07mean' if part == 'mean' else 'a07', V)]
+            im = ax.contourf(lat_centers, depth, r.T, levels=np.linspace(0, vmax, 21),
+                             cmap='YlOrRd', extend='max')
+            ax.set_ylim(_dmax, 0)
+            ax.set_xlim(LAT_EDGES[0], LAT_EDGES[-1])
+            plt.colorbar(im, ax=ax, label=f'{V} {_PART_TITLE[part]} (ΔV/σ)²', pad=0.02)
+            ax.set_xlabel('Latitude (°N)')
+            ax.set_ylabel('Depth (m)')
+            fig.suptitle(tt)
+            _savefig(fig, path)
 
     # ---- Analysis 8: histogram ----
     fig, axes = plt.subplots(1, nv, figsize=(5*nv + 1, 5), squeeze=False)
@@ -1286,6 +1356,70 @@ def _make_figures(res, source, fig_dir, lims=None, cost_type=None):
         _savefig(fig, fig_dir / f'11_clim_years_{source}.png')
 
 
+# The three cost parts the report can show for maps (06) and zonal sections (07); file-name suffix
+_PARTS = (('unsplit', ''), ('anomaly', '__anomaly'), ('mean', '__mean'))
+_PART_TITLE = {'unsplit': 'cost per datum (unsplit)', 'anomaly': 'cost per datum, split anomaly term',
+               'mean': 'split mean term per bin'}
+_BIN_LAT = None
+
+
+def _bin_lat():
+    """Latitude of each geodesic bin's center (index 0 = bin 1), from paths.geodesic_bin_csv."""
+    global _BIN_LAT
+    if _BIN_LAT is None:
+        cfg = config_loader.load()
+        ll = np.loadtxt(config_loader.get(cfg, 'paths.geodesic_bin_csv'), delimiter=',')
+        _BIN_LAT = ll[:N_BINS, 1]
+    return _BIN_LAT
+
+
+def _zonal(res, V, part, core):
+    """(N_LAT_BANDS, n_depths) zonal mean for one cost part. The mean term (one value per bin and level)
+    is averaged over the bins whose centers fall in each 5-degree band."""
+    if part == 'unsplit':
+        return res[('a07', V, 'unsplit', 'true')]['mean']
+    if part == 'anomaly':
+        return res[('a07', V, core, 'true')]['mean']
+    if CORE_SPLIT != 'own' or (V, 'true') not in res.get('meanterm', {}):
+        return None
+    cost = res['meanterm'][(V, 'true')].get('cost')
+    if cost is None:
+        return None
+    c = cost[1:] if cost.shape[0] == N_BINS + 1 else cost          # (N_BINS, nd)
+    lb = _lat_band_idx(_bin_lat())
+    have = np.isfinite(c)
+    s = np.zeros((N_LAT_BANDS, c.shape[1])); n = np.zeros_like(s)
+    np.add.at(s, lb, np.where(have, c, 0.0))
+    np.add.at(n, lb, have)
+    with np.errstate(invalid='ignore'):
+        return np.where(n > 0, s / n, np.nan)
+
+
+def _bin_part(res, V, part, core, j=None):
+    """Per-bin values for map 06: cost per datum (unsplit or anomaly, true weights) or the mean term
+    (mean over the bin's levels, or over the levels in depth band j)."""
+    if part in ('unsplit', 'anomaly'):
+        sp = 'unsplit' if part == 'unsplit' else core
+        if j is None:
+            return _binned(res, V, 'true', 'per_datum') if sp == 'unsplit' else \
+                np.where(res[('a05', V, sp, 'true')]['count'] > 0, res[('a05', V, sp, 'true')]['per_datum'], np.nan)
+        rb = res[('a05b', V, sp, 'true')]
+        return np.where(rb['count'][j] > 0, rb['per_datum'][j], np.nan)
+    if CORE_SPLIT != 'own' or (V, 'true') not in res.get('meanterm', {}):
+        return None
+    cost = res['meanterm'][(V, 'true')].get('cost')
+    if cost is None:
+        return None
+    c = cost[1:] if cost.shape[0] == N_BINS + 1 else cost
+    if j is not None:
+        c = c[:, _band_index(res['depth']) == j]
+    if not c.shape[1]:
+        return np.full(N_BINS, np.nan)
+    have = np.isfinite(c)
+    with np.errstate(invalid='ignore'):
+        return np.where(have.any(axis=1), np.where(have, c, 0).sum(axis=1) / have.sum(axis=1), np.nan)
+
+
 _RASTERS = {}
 # Global map: equal-area (Lambert cylindrical: a rectangle, so the left edge is one meridian), starting
 # at the western tip of Australia (113.15°E). Polar maps: stereographic boxes whose edges reach
@@ -1358,17 +1492,19 @@ def _make_spatial_map(res, source, fig_dir, active_vars, lims, ctl=''):
     cmap = plt.get_cmap('YlOrRd')
     ncmap = plt.get_cmap('viridis')
 
-    for V in VARS:
-        for an, key, field, wv, title, sfx in [
-            ('05', 'a05',   'total',     'final', 'total cost (sum over depth levels and profiles)', ''),
-            ('05', 'a05tw', 'total',     'final',
+    core = 'split_own' if CORE_SPLIT == 'own' else 'split'
+    jobs = [('05', 'a05', 'total', 'final', 'total cost (sum over depth levels and profiles)', '', 'unsplit'),
+            ('05', 'a05tw', 'total', 'final',
              'total cost, thickness weighted (sum over profiles of each profile\'s thickness-weighted mean)',
-             '_thickness_weighted'),
-            ('06', 'a05',   'per_datum', 'true',  'cost per datum', ''),
-        ]:
+             '_thickness_weighted', 'unsplit')]
+    jobs += [('06', None, None, 'true', _PART_TITLE[part], psfx, part) for part, psfx in _PARTS]
+    for V in VARS:
+        for an, key, field, wv, title, sfx, part in jobs:
             for j, blab, zs in bands:
-                if j is not None and key == 'a05tw':
-                    continue                                   # thickness weighting: whole profile only
+                if j is not None and (key == 'a05tw' or part != 'unsplit'):
+                    # whole profile only for the thickness-weighted map and for the split parts: the
+                    # report's map explorer shows the split parts for any depth selection
+                    continue
                 path = fig_dir / f'{an}_spatial_{V}_{source}{sfx}{zs}.png'
                 tt = f'{source}: Analysis {an} — {V} {title} per geodesic bin, {blab}{ctl}'
                 two_rows = an == '06'
@@ -1376,16 +1512,25 @@ def _make_spatial_map(res, source, fig_dir, active_vars, lims, ctl=''):
                 if V not in active_vars:
                     _no_data_figure(path, size, V, tt)
                     continue
-                if j is None:
+                if an == '06':
+                    vals = _bin_part(res, V, part, core, j)
+                    if vals is None:
+                        _no_data_figure(path, size, V, tt + ' — not available')
+                        continue
+                elif j is None:
                     vals = _binned(res, V, wv, field, key)
-                    nprof = res[('a05tw', V, 'unsplit', 'true')]['count'] if ('a05tw', V, 'unsplit', 'true') in res \
-                        else res[('a05', V, 'unsplit', 'true')]['count']
                 else:
                     rb = res[('a05b', V, 'unsplit', wv)]
                     vals = np.where(rb['count'][j] > 0, rb[field][j], np.nan)
+                if j is None:
+                    nprof = res[('a05tw', V, 'unsplit', 'true')]['count'] if ('a05tw', V, 'unsplit', 'true') in res \
+                        else res[('a05', V, 'unsplit', 'true')]['count']
+                else:
                     nprof = res[('a05b', V, 'unsplit', 'true')]['nprof'][j]
-                vmax = lims[('a06' if an == '06' else key, V, j)] if (('a06' if an == '06' else key), V, j) in lims \
-                    else lims[('a06' if an == '06' else key, V)]
+                lkey = ('a06' if an == '06' else key, V) + (() if j is None else (j,))
+                if an == '06' and part == 'mean':
+                    lkey = ('a06mean', V) + (() if j is None else (j,))
+                vmax = lims.get(lkey) or lims.get(lkey[:2]) or _p98([vals])
                 norm = mcolors.Normalize(0, vmax)
                 fig = plt.figure(figsize=size)
                 top_y, h = (0.6, 0.32) if two_rows else (0.24, 0.64)
@@ -1394,7 +1539,7 @@ def _make_spatial_map(res, source, fig_dir, active_vars, lims, ctl=''):
                 cb_y = 0.545 if two_rows else 0.10
                 fig.colorbar(plt.cm.ScalarMappable(norm=norm, cmap=cmap),
                              cax=fig.add_axes([0.3, cb_y, 0.4, 0.018 if two_rows else 0.035]),
-                             orientation='horizontal', label=f'{V} {title} (unsplit, {wv})')
+                             orientation='horizontal', label=f'{V} {title} ({wv})')
                 if two_rows:
                     n = np.where(nprof > 0, nprof, np.nan).astype(float)
                     nlim = lims.get(('a06', 'nprof'), None)
@@ -1590,7 +1735,8 @@ def load_results(path):
                 if f'meanterm__{V}__{wv}__mean_depth' in nc.variables:
                     res['meanterm'][(V, wv)] = {'per_depth': g(f'meanterm__{V}__{wv}__mean_depth').astype(float),
                                                 'nbins': g(f'meanterm__{V}__{wv}__nbins_depth'),
-                                                'cost': None}
+                                                'cost': g(f'meanterm__{V}__{wv}__by_bin_depth').astype(float)
+                                                if wv == 'true' else None}
         for V in VARS:
             for sp in SPLIT_MODES:
                 for wv in WEIGHT_VERS:

@@ -19,7 +19,9 @@ Analysis outputs (NetCDF + figures): `~/ecco/yip/insitu_reports/profile_analyses
 ```bash
 ecco-insitu profile-analyze --run <run>/yearly --model-equivalents <equiv>/netCDF --out <analysis dir>  # ~20 min
 ecco-insitu profile-analyze --replot --out <analysis dir>       # figures only, from the saved NetCDF (~1 min)
-ecco-insitu profile-report --site --inputs <analysis dir> --out docs/reports/<name>   # then commit + push
+ecco-insitu profile-report --site --inputs <analysis dir> --out docs/reports/<name>
+ecco-insitu publish-reports docs/reports/<name> [docs/reports/<other>]   # pushes the gh-pages branch
+git push origin main     # or Actions -> docs -> Run workflow: the deploy merges gh-pages into the site
 ```
 
 A full re-analysis is only needed when a calculation changes; label, layout and color changes need only `--replot`.
@@ -39,9 +41,10 @@ A full re-analysis is only needed when a calculation changes; label, layout and 
 2. **Per-depth maps (analyses 05/06): depth bands, not all 97 levels.** Bands: 0–50, 50–100, 100–250, 250–500,
    500–1000, 1000–2000, 2000–4000 m and deeper, plus all depths (`MAP_DEPTH_BANDS` in `compute.py`; changing
    them needs a re-analysis). All 97 levels as images would be ~2 GB per report, too big for GitHub Pages.
-   **To offer all 97 levels:** draw the maps in the browser from per-bin data saved as JSON (a level slider),
-   instead of images: a new map renderer in `report.py`; the per-(bin, level) costs would need saving too
-   (now only per band). Not started.
+   **Done 2026-10-30: the Map explorer** (`viewer.html`, data in `viewer/`; code in
+   `diagnostics/profile_analyses/viewer.py` and `viewer.html`) draws the maps in the browser for any
+   level, 100 m band, 15/30 groups, flagged spikes, 5-year block and cost part, from per-(bin, level, block)
+   sums that `profile-analyze` now saves (`viewer__*` variables). The images remain for the standard bands.
 
 Both are also stated on the report's Notes & errata page.
 
@@ -54,11 +57,10 @@ Both are also stated on the report's Notes & errata page.
 - **Thickness-weighted 05:** confirm the reading (each profile's thickness-weighted mean over its own
   non-empty levels, summed over the profiles in a bin).
 - **AWS:** upload of run 142247's `ecco_arrays` and cleanup of loose files in the bucket.
-- **Move the published reports to a `gh-pages` branch, with the next report update** (agreed 2026-10-29).
-  Each report is ~79 MB of figures (the per-depth-band maps), and committing them to `main` makes the git
-  history grow by that much on every rebuild (`.git` was 211 MB after the 2026-10-29 push). Plan: publish
-  `docs/reports/` from a separate `gh-pages` branch that is replaced on each publish, so `main` stays small;
-  stop tracking `docs/reports/` on `main`. Explain to the user how it works when doing it.
+- **Reports are published from the `gh-pages` branch** (since 2026-10-30): `docs/reports/` is no longer
+  tracked on `main` (ignored); `ecco-insitu publish-reports` replaces `gh-pages` with one commit each time
+  (no history), and the docs workflow (run on `main`) merges it into the site. The old report images are
+  still in `main`'s history (~210 MB `.git`); shrinking that needs a history rewrite (not done; ask first).
 
 ---
 

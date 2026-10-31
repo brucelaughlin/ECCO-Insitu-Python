@@ -107,12 +107,16 @@ _ANALYSIS_DESC = {
         'For each geodesic bin: the cost summed over all depth levels and points, divided by the number '
         'of points (cost per datum), <code>true</code> weights, unsplit. Bottom row: the number of profiles in '
         'each bin (the &ldquo;n&rdquo; behind the per-datum values; for a depth band, profiles with at least one '
-        'point in it). <strong>Depth</strong> row: per depth band. Bins with no data are blank. The color '
+        'point in it). <strong>Cost</strong> row: unsplit, the split&rsquo;s anomaly term, or its mean term '
+        '(per bin, averaged over the bin&rsquo;s levels). <strong>Depth</strong> row: per depth band (unsplit); for any '
+        'depth, cost part or 5-year period use the <strong>Map explorer</strong> (top right). Bins with no data are blank. The color '
         'scale ends at the 98th percentile; higher values use the top color. Click a figure to see it full width.'
     ),
     '07': (
-        'Mean cost per datum (<code>true</code> weights, unsplit) in 5&deg; latitude bands at each depth '
-        'level. The color scale ends at the 98th percentile; higher values use the top color. '
+        'Mean cost per datum (<code>true</code> weights) in 5&deg; latitude bands at each depth level. '
+        '<strong>Cost</strong> row: unsplit, the split&rsquo;s anomaly term, or its mean term (one value per '
+        'geodesic bin and level, averaged over the bins whose centers are in the band). The mean term has its '
+        'own color scale. The color scale ends at the 98th percentile; higher values use the top color. '
         'Right panel: number of points at each level.'
     ),
     '08': (
@@ -483,12 +487,19 @@ anomaly cost summed over classes, its point count, the mean term and its number 
 mean term 1.96488&times;10&#8309; over 589,586 terms). <code>model-cost</code> reproduces the team&rsquo;s v4r6 cost
 bars; neither is yet checked against a model run&rsquo;s own cost output. Because the pooled mean depends on
 which classes are included, a report made with <code>--sources</code> has a different pooled split.</li>
-<li><strong>Decision (2026-10-29): depth bands for the maps of analyses 5 and 6</strong>, not all 97 levels:
-0&ndash;50, 50&ndash;100, 100&ndash;250, 250&ndash;500, 500&ndash;1000, 1000&ndash;2000, 2000&ndash;4000&nbsp;m and deeper, plus
-all depths. Every level as an image would make the report about 2&nbsp;GB, too big for this site. <em>To change
-the bands:</em> <code>MAP_DEPTH_BANDS</code> in <code>compute.py</code> (needs a re-analysis). <em>All 97
-levels</em> would mean drawing the maps in the browser from saved per-bin data instead of images: a bigger
-change (see HANDOFF.md).</li>
+<li><strong>Decision (2026-10-29): depth bands for the map images of analyses 5 and 6</strong>, not all 97
+levels: 0&ndash;50, 50&ndash;100, 100&ndash;250, 250&ndash;500, 500&ndash;1000, 1000&ndash;2000, 2000&ndash;4000&nbsp;m and deeper,
+plus all depths (<code>MAP_DEPTH_BANDS</code> in <code>compute.py</code>; changing them needs a re-analysis).
+<strong>Since 2026-10-30 the Map explorer</strong> (top right) draws the maps in the browser for any single level,
+100&nbsp;m band, 15 or 30 groups of levels, flagged cost spikes, 5-year period, and cost part, from the saved
+per-bin data, so the images only cover the standard bands.</li>
+<li><strong>Map explorer: flagged spikes.</strong> A level is flagged when its mean cost per datum (<code>true</code>
+weights, unsplit or anomaly, levels with at least 30 points) is above 0.5 and at least 1.4 times the median of the
+levels 300&ndash;1000&nbsp;m above and below it. Broad bumps are flagged at each of their levels. These thresholds are
+our choice (<code>_spikes</code> in <code>diagnostics/profile_analyses/viewer.py</code>).</li>
+<li><strong>Map explorer: precision.</strong> Values are stored to 3 significant digits (16-bit floats); values below
+about 6&times;10<sup>&minus;5</sup> lose precision, but they are zero on every color scale. Checked: the explorer&rsquo;s
+data reproduce analysis&nbsp;2 at the levels tested.</li>
 <li><strong>Two small differences from <code>model-cost</code>:</strong> profiles without a geodesic bin (about
 14,000 of 441 million weighted values in run 20261027_142247) have no split cost here; and points whose
 climatology is missing are left out of all costs here, while ECCO keeps them in the model cost
@@ -797,8 +808,12 @@ def _build_interactive_html(data, metas, title):
 
     # panels: one per (source, cost type, analysis, depth band); band 'all' unless the file name has __z<N>
     def band_of(path):
-        m = re.search(r'__z(\d+)$', Path(path).stem)
-        return m.group(1) if m else 'all'
+        """Panel key from the file name: cost part (__anomaly / __mean) and depth band (__z<N>)."""
+        stem = Path(path).stem
+        z = re.search(r'__z(\d+)$', stem)
+        part = re.search(r'__(anomaly|mean)(__z\d+)?$', stem)
+        key = (f'-{part.group(1)}' if part else '') + (f'-z{z.group(1)}' if z else '')
+        return key or 'all'
     panels = []
     bands_seen = set()
     for source in sources:
@@ -811,9 +826,10 @@ def _build_interactive_html(data, metas, title):
                 for path, cap in entries:
                     by_band.setdefault(band_of(path), []).append((path, cap))
                 for band, ents in by_band.items():
-                    if band != 'all':
-                        bands_seen.add(band)
-                    pid = f'p-{source}-{cost_type}-{an}' + ('' if band == 'all' else f'-z{band}')
+                    z = re.search(r'-z(\d+)$', band)
+                    if z:
+                        bands_seen.add(z.group(1))
+                    pid = f'p-{source}-{cost_type}-{an}' + ('' if band == 'all' else band)
                     figs_html = ''.join(
                         f'<figure>'
                         f'<img src="file://{_html.escape(path)}" alt="" loading="lazy" class="zoomable">'
@@ -822,6 +838,8 @@ def _build_interactive_html(data, metas, title):
                         for path, cap in ents
                     )
                     panels.append(f'<div class="panel" id="{_html.escape(pid)}">{figs_html}</div>')
+    part_tabs = ''.join(f'<button class="tab part-tab" data-part="{p}">{lab}</button>' for p, lab in
+                        (('unsplit', 'unsplit'), ('anomaly', 'split: anomaly term'), ('mean', 'split: mean term')))
     band_labels = _map_band_labels(metas)
     band_tabs = '<button class="tab band-tab" data-band="all">all depths</button>' + ''.join(
         f'<button class="tab band-tab" data-band="{b}">{_html.escape(band_labels.get(b, "band " + b))}</button>'
@@ -893,8 +911,9 @@ const DESCS = {json.dumps(desc_data)};
 const EXISTS = {json.dumps(exists)};
 const NO_COST = ['01'];
 const BAND_ANALYSES = ['05', '06'];
+const PART_ANALYSES = ['06', '07'];
 
-let curSource = SOURCES[0], curCost = COST_TYPES[0], curAn = null, curBand = 'all';
+let curSource = SOURCES[0], curCost = COST_TYPES[0], curAn = null, curBand = 'all', curPart = 'unsplit';
 
 function exists(src, ct, an) {{
   return !!EXISTS[src + '|' + ct + '|' + an];
@@ -931,9 +950,15 @@ function render() {{
     t.toggleAttribute('disabled', !ok);
     t.classList.toggle('active', t.dataset.an === curAn);
   }});
-  // depth-band row: only for the map analyses
+  // cost-part row (06, 07) and depth-band row (05, 06; per-band maps are unsplit only)
+  const usePart = PART_ANALYSES.includes(curAn);
+  document.getElementById('part-row').style.display = usePart ? '' : 'none';
+  document.querySelectorAll('.part-tab').forEach(t => t.classList.toggle('active', t.dataset.part === curPart));
+  const part = usePart && curPart !== 'unsplit' ? '-' + curPart : '';
   const bandRow = document.getElementById('band-row');
-  const useBand = BAND_ANALYSES.includes(curAn);
+  const useBand = BAND_ANALYSES.includes(curAn) && !part;
+  document.getElementById('part-note').textContent = (usePart && part && curAn === '06')
+    ? 'all depths only here; other depths, cost parts and periods: Map explorer (top right)' : '';
   if (bandRow) bandRow.style.display = useBand ? '' : 'none';
   document.querySelectorAll('.band-tab').forEach(t =>
     t.classList.toggle('active', t.dataset.band === curBand));
@@ -942,7 +967,7 @@ function render() {{
   if (curAn) {{
     const base = 'p-' + curSource + '-' + curCost + '-' + curAn;
     const el = (useBand && curBand !== 'all' && document.getElementById(base + '-z' + curBand))
-               || document.getElementById(base);
+               || document.getElementById(base + part) || document.getElementById(base);
     if (el) el.classList.add('active');
   }}
   // description side panel
@@ -1004,6 +1029,9 @@ document.querySelectorAll('.cost-tab').forEach(btn =>
 document.querySelectorAll('.an-tab').forEach(btn =>
   btn.addEventListener('click', () => selectAnalysis(btn.dataset.an))
 );
+document.querySelectorAll('.part-tab').forEach(btn =>
+  btn.addEventListener('click', () => {{ curPart = btn.dataset.part; render(); }})
+);
 document.querySelectorAll('.band-tab').forEach(btn =>
   btn.addEventListener('click', () => {{ curBand = btn.dataset.band; render(); }})
 );
@@ -1039,6 +1067,11 @@ document.getElementById('close-notes').addEventListener('click', () => showNotes
   }});
 }});
 
+// the map explorer link, if this site has one (profile-report --site)
+fetch('viewer/index.json', {{method: 'HEAD'}}).then(r => {{
+  if (r.ok) document.getElementById('map-explorer').style.display = '';
+}}).catch(() => {{}});
+
 curAn = firstExisting(curSource, curCost);
 render();
 """
@@ -1057,12 +1090,15 @@ render();
   <span style="color:#ccc">|</span>
   <span class="hdr-link" id="toggle-side-meta">Metadata</span>
   <span style="color:#ccc;font-size:0.8em;margin-left:0.5em">← → cycle sources &nbsp; ↑ ↓ cycle analyses</span>
-  <span class="hdr-link hdr-notes" id="toggle-notes">Notes &amp; errata</span>
+  <a class="hdr-link hdr-notes" id="map-explorer" href="viewer.html" style="display:none">Map explorer</a>
+  <span style="color:#ccc">|</span>
+  <span class="hdr-link" id="toggle-notes" style="color:#888">Notes &amp; errata</span>
 </div>
 <div id="nav">
   <div class="tab-row"><span class="row-label">Source</span>{src_tabs}</div>
   <div class="tab-row"><span class="row-label">Cost type</span>{cost_tabs}<span id="cost-note" class="row-note"></span></div>
   <div class="tab-row"><span class="row-label">Analysis</span>{an_tabs}</div>
+  <div class="tab-row" id="part-row" style="display:none"><span class="row-label">Cost</span>{part_tabs}<span id="part-note" class="row-note"></span></div>
   <div class="tab-row" id="band-row" style="display:none"><span class="row-label">Depth</span>{band_tabs}</div>
 </div>
 <div id="zoom" hidden><img alt=""><span class="zoom-hint">click or Esc to close</span></div>
@@ -1243,8 +1279,33 @@ def compile_report(input_dirs, out_dir, title=None, flat=False, portable=False,
     if site:
         n_figs = len(list((out_dir / 'figures').glob('*.png')))
         print(f'      + figures/ ({n_figs} PNG files)')
-        print(f'      Ready for GitHub Pages — commit out_dir as a docs/ subfolder.')
+        _write_map_explorer(input_dirs, out_dir, title)
+        print(f'      Ready for GitHub Pages (see ecco-insitu publish-reports).')
     return out_dir
+
+
+def _write_map_explorer(input_dirs, out_dir, title):
+    """The interactive map viewer: viewer.html and its data in viewer/ (see viewer.py). One analysis
+    folder only; skipped if the analysis has no viewer data (made before 2026-10-30)."""
+    from ecco_insitu.diagnostics.profile_analyses import viewer
+    if len(input_dirs) != 1:
+        print('      (map explorer: skipped, needs exactly one analysis folder)')
+        return
+    nc = sorted(Path(input_dirs[0]).glob('*/analysis_*.nc'))
+    if not nc:
+        return
+    with netCDF4.Dataset(nc[0]) as ds:
+        if 'viewer__T__unsplit__sum' not in ds.variables:
+            print('      (map explorer: skipped, the analysis has no viewer data; re-run profile-analyze)')
+            return
+    vdir = Path(out_dir) / 'viewer'
+    if vdir.exists():
+        shutil.rmtree(vdir)
+    viewer.write(input_dirs[0], vdir)
+    page = (Path(viewer.__file__).with_name('viewer.html')).read_text()
+    (Path(out_dir) / 'viewer.html').write_text(page.replace('__TITLE__', _html.escape(title)))
+    size = sum(f.stat().st_size for f in vdir.iterdir()) / 1e6
+    print(f'      + viewer.html and viewer/ ({size:.0f} MB): the interactive map explorer')
 
 
 def cli(argv=None):

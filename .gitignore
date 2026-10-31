@@ -33,3 +33,6 @@ dist/
 # --- Sphinx build output ---
 docs/sphinx/_build/
 docs/sphinx/api/generated/
+
+# --- report sites: published from the gh-pages branch (ecco-insitu publish-reports), not main ---
+docs/reports/

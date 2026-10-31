@@ -29,6 +29,7 @@ settings accepts ``--config FILE`` and ``--set key=value``.
 ``profile-analyze``         T/S profiles and cost distributions per obs class (NetCDF + figures)
 ``profile-compare``         overlay comparison of multiple profile-analyze outputs
 ``profile-report``          compile profile-analyze/compare figures into HTML + PDF
+``publish-reports``         publish report sites to GitHub Pages (the gh-pages branch)
 ==========================  =============================================================
 """
 import importlib
@@ -69,6 +70,8 @@ COMMANDS = {
                         'profile analysis comparison: overlay figures from multiple analyze outputs'),
     'profile-report':  ('ecco_insitu.diagnostics.profile_analyses.report', 'cli',
                         'profile analysis report: compile figures into HTML + PDF'),
+    'publish-reports': ('ecco_insitu.diagnostics.profile_analyses.publish', 'cli',
+                        'publish profile-report --site folders to GitHub Pages (gh-pages branch)'),
 }
 
 
