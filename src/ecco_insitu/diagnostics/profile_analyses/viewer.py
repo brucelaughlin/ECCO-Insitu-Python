@@ -89,7 +89,7 @@ results as the report&rsquo;s figures.</p>
   shows the average over every point in those years. Choosing years downloads that class&rsquo;s year-by-year data in 5-year
   pieces, only those the range needs (up to about 20&nbsp;MB per piece for Argo, a few MB for most classes), so the first
   range in a period can take a few seconds; after that, changes are quick.</td></tr>
-<tr><td>&#9664; &#9654; first year / last year</td><td>Move that end of the range by one year. If the two ends would cross,
+<tr><td>&#9664; &#9654; first year / last year</td><td>(Right of the year label.) Move that end of the range by one year. If the two ends would cross,
   the other is pushed along.</td></tr>
 <tr><td>&#9664;&#9664; shift window &#9654;&#9654;</td><td>Move the whole range by one year, keeping its length (e.g. 2012&ndash;2016 &rarr;
   2013&ndash;2017), to slide a fixed-length window through the record or compare neighboring periods. Keyboard: <kbd>[</kbd>

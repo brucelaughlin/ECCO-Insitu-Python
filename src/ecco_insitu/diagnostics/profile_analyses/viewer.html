@@ -21,7 +21,7 @@ select { font-size: 0.86em; padding: 0.15em; max-width: 26em; }
   cursor: pointer; line-height: 1.2; color: #333; }
 .step:hover:not([disabled]) { background: #e8f0fb; border-color: var(--accent); }
 .step[disabled] { opacity: 0.3; cursor: default; }
-.stepgrp { display: inline-flex; flex-direction: column; align-items: center; gap: 1px; }
+.stepgrp { display: inline-flex; flex-direction: column; align-items: center; gap: 1px; margin: 0 0.15em; }
 .stepgrp .cap { font-size: 0.62em; color: #999; }
 #shiftgrp { display: inline-flex; align-items: center; gap: 0.25em; margin: 0 0.8em 0 0.2em; padding-left: 0.8em;
   border-left: 1px solid #ddd; }
@@ -87,14 +87,14 @@ canvas { border: 1px solid #ccc; display: block; }
 <div class="row"><span class="lab">Depth</span><span id="dmodes"></span><select id="dsel"></select></div>
 <div class="row"><span class="lab">Time</span>
   <button class="tab" id="tall">all years</button>
-  <span class="stepgrp"><span><button class="step" data-h="lo" data-d="-1" title="first year: one year earlier">&#9664;</button><button
-    class="step" data-h="lo" data-d="1" title="first year: one year later">&#9654;</button></span><span class="cap">first year</span></span>
   <div id="trange"><div id="ttrack"><div id="tfill"></div></div><div id="tticks"></div>
     <input type="range" id="tlo" min="0" max="34" step="1" value="0">
     <input type="range" id="thi" min="0" max="34" step="1" value="34"></div>
+  <span id="timelab"></span>
+  <span class="stepgrp"><span><button class="step" data-h="lo" data-d="-1" title="first year: one year earlier">&#9664;</button><button
+    class="step" data-h="lo" data-d="1" title="first year: one year later">&#9654;</button></span><span class="cap">first year</span></span>
   <span class="stepgrp"><span><button class="step" data-h="hi" data-d="-1" title="last year: one year earlier">&#9664;</button><button
     class="step" data-h="hi" data-d="1" title="last year: one year later">&#9654;</button></span><span class="cap">last year</span></span>
-  <span id="timelab"></span>
   <span id="shiftgrp"><button class="step" id="shl" title="move the whole window one year earlier (keyboard: [ )">&#9664;&#9664;</button>
     <span class="cap">shift window</span>
     <button class="step" id="shr" title="move the whole window one year later (keyboard: ] )">&#9654;&#9654;</button></span>
