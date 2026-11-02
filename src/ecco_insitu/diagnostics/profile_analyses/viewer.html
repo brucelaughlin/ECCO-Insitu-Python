@@ -90,7 +90,7 @@ canvas { border: 1px solid #ccc; display: block; }
 <div id="legend"><div id="cbarbox"><canvas id="cbar" width="440" height="32"></canvas><span id="cbtxt"></span></div>
   <div class="opts"><label><input type="checkbox" id="logscale"> log color scale</label>
   <label>max <input type="number" id="vmax" step="any" style="width:6em"></label>
-  <button class="tab" id="vauto">auto (98th pct)</button></div></div>
+  <button class="tab" id="vauto">auto (98th pct)</button><span id="scalenote" class="dnote"></span></div></div>
 <div id="info"></div>
 <details id="guide"><summary>Guide: what every option means</summary>__GUIDE__</details>
 <div id="hover"></div>
@@ -197,9 +197,9 @@ function levelsSelected() {
   if (S.dmode === 'level' || S.dmode === 'spike') return [ +S.dsel ];
   return INDEX.groups[S.dmode][S.dsel].levels;
 }
-function computeBins(d, yd) {    // per-bin value for the current selection: Float32Array(10243), NaN = none
+function computeBins(d, yd, allYears) {   // per-bin value for the current selection: Float32Array(10243), NaN = none
   const sum = new Float64Array(10243), cnt = new Float64Array(10243);
-  const useYears = !S.all && S.part !== 'mean';
+  const useYears = !allYears && !S.all && S.part !== 'mean';
   const c = useYears ? yd[S.V] : d[S.V];
   const lv = levelsSelected(), lset = lv ? new Set(lv) : null;
   if (S.part === 'mean') {
@@ -303,12 +303,18 @@ function fmt(x) {
 }
 
 let VALS = null, RENDER_ID = 0;
+const SCALE = {};                       // view key -> automatic color-scale max (98th percentile, all years)
+function scaleKey() {
+  const p = (S.part === 'anomaly') ? 'unsplit' : S.part;   // unsplit and anomaly: same units, same scale
+  return [S.src, S.ct, S.V, p, S.dmode, S.dsel].join('|');
+}
 async function render() {
   const id = ++RENDER_ID;
   if (!INDEX.files[S.src + '|' + S.ct]) { status('no data for ' + S.src + ' ' + S.ct); return; }
   syncControls();
+  let d;
   try {
-    const d = await data(S.src, S.ct);
+    d = await data(S.src, S.ct);
     const yd = (!S.all && S.part !== 'mean') ? await yearData(S.src, S.ct) : null;
     if (id !== RENDER_ID) return;              // a newer selection came in meanwhile
     busy('Updating maps for ' + S.src + ', ' + timeText() + '…'); await paint();
@@ -317,8 +323,20 @@ async function render() {
   } catch (e) { busy(null); status('error: ' + e.message); throw e; }
   status('');
   busy(null);
-  const vmax = S.vmax || p98(VALS);
-  document.getElementById('vmax').placeholder = fmt(p98(VALS));
+  // color scale: fixed for a view (class, cost type, variable, depth selection; unsplit and anomaly share
+  // it), from all years, so moving the time range shows real changes; a typed max overrides it
+  const vk = scaleKey();
+  if (!(vk in SCALE)) {
+    if (S.part === 'unsplit' || S.part === 'anomaly') {
+      const keep = S.part; const both = [];
+      for (const pt of ['unsplit', 'anomaly']) { S.part = pt; both.push(p98(computeBins(d, null, true))); }
+      S.part = keep; SCALE[vk] = Math.max(...both);
+    } else SCALE[vk] = p98(S.part === 'mean' ? VALS : computeBins(d, null, true));
+  }
+  const vmax = S.vmax || SCALE[vk];
+  document.getElementById('vmax').placeholder = fmt(SCALE[vk]);
+  document.getElementById('scalenote').textContent = S.vmax ? 'scale: your max' :
+    (S.part === 'mean' || S.part === 'count' ? 'scale: auto for this view' : 'scale: fixed for this view (from all years), so time changes show');
   for (const view of ['global', 'NH', 'SH']) drawMap(document.getElementById('c_' + view), view, VALS, vmax);
   drawBar(vmax);
   syncControls();
@@ -332,7 +350,7 @@ async function render() {
        (S.V === 'T' ? '&deg;C' : 'psu') + '. A diagnostic of steady offsets and their change over time; it is not part of the cost. ' :
      S.part === 'mean' ? 'Mean term: w&#772;&middot;(V&#772;&minus;V&#772;<sub>ref</sub>)&sup2; per bin and level (own bin means, all years), averaged over the selected levels. ' :
      'Each bin: mean of (&Delta;V/&sigma;)&sup2; over its points in the selected levels and years. ') +
-    'Unsplit and anomaly use the same color scale for the same selection; set <i>max</i> to compare. ' +
+    'The color scale is fixed for this view across years; unsplit and anomaly share it. ' +
     'Hover a bin for its value.';
 }
 function syncControls() {

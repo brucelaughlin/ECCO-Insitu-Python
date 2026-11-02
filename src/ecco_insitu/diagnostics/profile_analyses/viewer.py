@@ -102,10 +102,14 @@ after that it is kept, and changes take well under a second.</p>
 <h4>The maps and the color bar</h4>
 <p><strong>Maps:</strong> global (equal-area projection, starting at the western tip of Australia), and north and south polar
 stereographic views. White = no data in that bin for the selection; gray = land. Hover a bin to see its number and value.</p>
-<p><strong>Color bar:</strong> ticks give the values; by default the scale runs from 0 to the 98th percentile of the bins shown, and
-values above it get the top color (so a few extreme bins don&rsquo;t wash out the rest). <strong>max</strong>: set the top of the scale
-yourself, e.g. to compare two selections on the same scale (the scale otherwise changes with each selection).
-<strong>auto</strong>: back to the 98th percentile. <strong>log color scale</strong>: spreads small values out (covers three powers of
+<p><strong>Color bar:</strong> ticks give the values. The scale runs from 0 to the 98th percentile of the bins, and values above it get
+the top color (so a few extreme bins don&rsquo;t wash out the rest). It is <strong>fixed for a view</strong>: computed once from all
+years for the current obs class, cost type, variable and depth selection, and kept while you move the time range, so
+differences between years are real and not rescaling. Unsplit and anomaly share one scale (same units), so switching
+between them is a fair comparison. It is recomputed when you change the class, cost type, variable or depth, and for
+the mean term, number of points and bias, which have their own scales. The note next to the color bar says which
+applies. <strong>max</strong>: set the top of the scale yourself (kept until you press <strong>auto</strong>), e.g. to compare
+two depths on the same scale. <strong>auto</strong>: back to the automatic scale. <strong>log color scale</strong>: spreads small values out (covers three powers of
 ten below the max).</p>
 
 <h4>Reading it</h4>
