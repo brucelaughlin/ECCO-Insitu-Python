@@ -3,7 +3,13 @@
 A web copy of the original `geodesic_binning` plotting app (`geodesic_binning/plotting/`), with time windows of
 any length. Code: `src/ecco_insitu/diagnostics/bin_viewer/` (`export.py` writes the data and the page,
 `viewer.html` is the page template, `vendor/` holds deck.gl 9.0.38 and d3-delaunay 6.0.4).
-Hosting: Cloudflare R2 (a static bucket; the data are open).
+Hosting: Cloudflare R2 (a static bucket; the data are open), bucket `ecco-bin-viewer`, custom domain
+`www.ecco-insitu-viewer.org` (registered through Cloudflare 2026-11-02).
+
+**Live:** https://www.ecco-insitu-viewer.org/run_20261027_142247/index.html — each run is in its own folder, so the
+folder must be in the address (the bare domain has no page; `/index.html` redirects to the current run).
+The facility's secure network blocks the domain (new, unapproved domains are filtered there, as are all
+`*.r2.dev` addresses); it works from other networks, including the on-site wifi.
 
 ## What matches the original
 
