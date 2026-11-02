@@ -6,10 +6,14 @@ any length. Code: `src/ecco_insitu/diagnostics/bin_viewer/` (`export.py` writes 
 Hosting: Cloudflare R2 (a static bucket; the data are open), bucket `ecco-bin-viewer`, custom domain
 `www.ecco-insitu-viewer.org` (registered through Cloudflare 2026-11-02).
 
-**Live:** https://www.ecco-insitu-viewer.org/run_20261027_142247/index.html — each run is in its own folder, so the
-folder must be in the address (the bare domain has no page; `/index.html` redirects to the current run).
-The facility's secure network blocks the domain (new, unapproved domains are filtered there, as are all
-`*.r2.dev` addresses); it works from other networks, including the on-site wifi.
+**Live** (two copies of the same folder):
+- **GitHub Pages:** https://brucelaughlin.github.io/ecco-bin-viewer/run_20261027_142247/ — repository
+  `brucelaughlin/ecco-bin-viewer`, published with `--github` (below). This is the one the report links to: `github.io`
+  is reachable on the facility's secure network. One run at a time (each publish replaces the branch; the site
+  limit is about 1 GB, and a run is about 820 MB).
+- **Cloudflare R2:** https://www.ecco-insitu-viewer.org/run_20261027_142247/index.html — every run can stay here
+  (10 GB free). The secure network blocks this domain (new, unapproved domains are filtered there, as are all
+  `*.r2.dev` addresses); it works from other networks, including the on-site wifi.
 
 ## What matches the original
 
@@ -44,9 +48,12 @@ storage).
 ## Build and update
 
 ```
-# data + page (about 5 min; ~1.5 GB, of which PFL ~1 GB; each level file is 1-7 MB, loaded on demand)
+# data + page (about 5 min; ~820 MB, of which PFL ~570 MB; each level file is 1-4 MB, loaded on demand)
 python -m ecco_insitu.diagnostics.bin_viewer.export \
     --run <run>/yearly --out ~/ecco/yip/bin_viewer_data/<run name>
+
+# a folder written before 2026-11-02 (format 1): rewrite as format 2 (lossless, about half the size)
+python -m ecco_insitu.diagnostics.bin_viewer.export --out <folder> --convert
 
 # after editing viewer.html: only rewrite index.html
 python -m ecco_insitu.diagnostics.bin_viewer.export --out <folder> --page-only
@@ -72,7 +79,18 @@ cd <folder> && python -m http.server 8765      # then open http://localhost:8765
    ```
 CORS is not needed, because the page and its data are served from the same bucket.
 
-## Upload
+## Publish to GitHub Pages
+
+```
+python -m ecco_insitu.diagnostics.bin_viewer.export --out ~/ecco/yip/bin_viewer_data/<run name> \
+    --github git@github.com:brucelaughlin/ecco-bin-viewer.git [--dry-run]
+```
+Replaces the repository's `main` branch with this one folder (one commit, no history, so nothing piles up).
+First time only: on GitHub, create the empty public repository `ecco-bin-viewer`, then after the first push
+Settings → Pages → Deploy from a branch → `main`, `/ (root)`. Then rebuild the report with
+`--bin-viewer https://brucelaughlin.github.io/ecco-bin-viewer/<run name>/` so its button points at the run.
+
+## Upload to R2
 
 Fill in three things:
 - `<folder>`: the export folder, e.g. `~/ecco/yip/bin_viewer_data/run_20261027_142247` (one per run).

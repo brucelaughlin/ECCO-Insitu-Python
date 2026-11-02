@@ -20,8 +20,9 @@ ecco-insitu profile-analyze --run <run>/yearly --model-equivalents <equiv dir>/n
 # 2b. figures only, from the saved results (minutes): after any change to labels, layout or colors
 ecco-insitu profile-analyze --replot --out <analysis dir>
 
-# 3. the web pages
-ecco-insitu profile-report --site --inputs <analysis dir> --out docs/reports/<report name>
+# 3. the web pages (--bin-viewer: the run's in situ data viewer, published as in docs/bin_viewer.md)
+ecco-insitu profile-report --site --inputs <analysis dir> --out docs/reports/<report name> \
+    --bin-viewer https://brucelaughlin.github.io/ecco-bin-viewer/<run name>/
 
 # 4. publish (section 4)
 ecco-insitu publish-reports docs/reports/<report name> [docs/reports/<other report> ...]
@@ -68,8 +69,12 @@ The report page (`index.html`): tabs for obs class, cost type, and analysis (01�
 11 and 12 supplemental), with extra rows where they apply (**Cost**: unsplit / anomaly / mean term for 06
 and 07; **Depth**: standard depth bands for 05 and 06). Figures share axis and color ranges across cost
 types, and have the same layout in every class. Click a figure to see it full width. The side panel has
-the description and Terminology; **Notes & errata** (top right) has interpretation, data notes, open
-decisions and corrections; **Map explorer** (top right) is the interactive map page (below).
+the description and Terminology. Top right, from left: **Notes & errata** (outlined button: interpretation,
+data notes, open decisions and corrections), **Cost map explorer** (the interactive cost maps, below) and
+**In situ data viewer** (the observations themselves; a web copy of the original geodesic-binning app,
+`docs/bin_viewer.md`). Both explorer buttons open on the class shown in the report; the viewer opens in a
+new tab and links back. The viewer button appears only when the report is built with
+`--bin-viewer <URL>` (step 3 below).
 
 Choices made, all reversible:
 
@@ -82,7 +87,7 @@ Choices made, all reversible:
 | Flagged spikes (2026-10-30) | a level whose mean cost per datum (true; unsplit or anomaly; ≥ 30 points) is > 0.5 and ≥ 1.4× the median of the levels 300–1000 m above and below | `_spikes` in `viewer.py` (rebuild the site only) |
 | Analysis 1 (2026-10-28) | every weighted observation, the same in every cost-type tab | see Notes & errata in the report for the old behavior and how to revert |
 
-## 4. The map explorer
+## 4. The cost map explorer
 
 `viewer.html` draws the maps in the browser instead of loading images, so any combination is available:
 obs class, cost type, variable; cost (unsplit, split anomaly, split mean term, number of points); depth
