@@ -30,6 +30,8 @@ settings accepts ``--config FILE`` and ``--set key=value``.
 ``profile-compare``         overlay comparison of multiple profile-analyze outputs
 ``profile-report``          compile profile-analyze/compare figures into HTML + PDF
 ``publish-reports``         publish report sites to GitHub Pages (the gh-pages branch)
+``provenance``              check a run against the code and inputs it was made from
+``bin-viewer``              geodesic bin viewer: data, page, upload
 ==========================  =============================================================
 """
 import importlib
@@ -47,6 +49,9 @@ COMMANDS = {
     'climatology': ('ecco_insitu.climatology.setup', 'cli', 'check / --build / --prebake the climatology'),
     'wod-flags': ('ecco_insitu.wod_flags', 'cli', 'check / --download / --build the WOD quality-flag files'),
     'config': ('ecco_insitu.config', 'cli', 'print the merged settings'),
+    'provenance': ('ecco_insitu.provenance', 'cli', 'check a run against the code and inputs it was made from'),
+    'bin-viewer': ('ecco_insitu.diagnostics.bin_viewer.export', 'cli',
+                   'geodesic bin viewer (web copy of the original binning app): data, page, upload'),
     'check-files': ('ecco_insitu.diagnostics.check_run_files', 'cli', 'diagnostics: run output complete'),
     'check-arrays': ('ecco_insitu.diagnostics.check_ecco_arrays', 'cli', 'diagnostics: step 13 files correct'),
     'check-qc': ('ecco_insitu.diagnostics.check_run_qc', 'cli', 'diagnostics: scientific checks (slow)'),

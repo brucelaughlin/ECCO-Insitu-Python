@@ -36,3 +36,4 @@ docs/sphinx/api/generated/
 
 # --- report sites: published from the gh-pages branch (ecco-insitu publish-reports), not main ---
 docs/reports/
+docs/cloudflare_R2_api_keys.txt

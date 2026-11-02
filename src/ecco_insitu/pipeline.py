@@ -54,6 +54,7 @@ from ecco_insitu.log import get_logger
 import netCDF4
 import ecco_insitu.tools as tools
 import ecco_insitu.validate as validate_inputs
+import ecco_insitu.provenance as provenance
 import ecco_insitu.wod_flags as wod_flags
 import ecco_insitu.steps.step01 as step01
 import ecco_insitu.steps.step02 as step02
@@ -534,6 +535,8 @@ def NCEI_pipeline(dest_dir, input_dir, n_workers=None, cfg=None):
     used = copy.deepcopy(cfg)
     used['run']['input_dir'] = str(Path(input_dir).resolve())
     config_loader.dump(used, run_root / 'documentation' / 'run_config.yaml')
+    # ... and what the run is made from (commit, uncommitted changes, input fingerprints): provenance.json
+    provenance.write(run_root, used, Path(input_dir).resolve())
 
     prebaked_clim_paths = check_climatologies(climatology_file, prebaked_clim_dir)
 
