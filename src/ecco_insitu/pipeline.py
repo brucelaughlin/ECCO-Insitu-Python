@@ -54,7 +54,7 @@ from ecco_insitu.log import get_logger
 import netCDF4
 import ecco_insitu.tools as tools
 import ecco_insitu.validate as validate_inputs
-import ecco_insitu.provenance as provenance
+import ecco_insitu.run_provenance as provenance
 import ecco_insitu.wod_flags as wod_flags
 import ecco_insitu.steps.step01 as step01
 import ecco_insitu.steps.step02 as step02

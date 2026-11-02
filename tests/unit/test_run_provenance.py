@@ -1,8 +1,8 @@
-"""provenance: input fingerprints detect changed inputs; the record names the commit and saves a patch."""
+"""run_provenance: input fingerprints detect changed inputs; the record names the commit and saves a patch."""
 import json
 import os
 
-import ecco_insitu.provenance as pv
+import ecco_insitu.run_provenance as pv
 
 
 def test_fingerprint_changes_with_inputs(tmp_path):

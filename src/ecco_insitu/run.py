@@ -18,7 +18,7 @@ model-ready files).
       the model-ready profile files (step 13)
   ``documentation/``
       ``run_config.yaml`` (the settings used), ``provenance.json`` (the git commit, any uncommitted
-      changes as ``code.patch``, and fingerprints of every input; see :mod:`ecco_insitu.provenance`),
+      changes as ``code.patch``, and fingerprints of every input; see :mod:`ecco_insitu.run_provenance`),
       ``run_summary.txt`` (what happened to each input file), and step 13's manifest and ``PROFILES_SIZE.h`` / ``data.profiles`` values
 
 - **Log:** everything printed, by every step, is also written to

@@ -49,7 +49,7 @@ COMMANDS = {
     'climatology': ('ecco_insitu.climatology.setup', 'cli', 'check / --build / --prebake the climatology'),
     'wod-flags': ('ecco_insitu.wod_flags', 'cli', 'check / --download / --build the WOD quality-flag files'),
     'config': ('ecco_insitu.config', 'cli', 'print the merged settings'),
-    'provenance': ('ecco_insitu.provenance', 'cli', 'check a run against the code and inputs it was made from'),
+    'provenance': ('ecco_insitu.run_provenance', 'cli', 'check a run against the code and inputs it was made from'),
     'bin-viewer': ('ecco_insitu.diagnostics.bin_viewer.export', 'cli',
                    'geodesic bin viewer (web copy of the original binning app): data, page, upload'),
     'check-files': ('ecco_insitu.diagnostics.check_run_files', 'cli', 'diagnostics: run output complete'),
