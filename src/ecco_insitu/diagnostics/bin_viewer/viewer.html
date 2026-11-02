@@ -69,7 +69,8 @@ select { font-size: 0.85em; }
     <button class="btn" id="tl1" title="last year earlier">&#9664;</button><button class="btn" id="tr1" title="last year later">&#9654;</button>
     <button class="btn" id="shl" title="shift the window one year earlier ([)">&#9664;&#9664;</button><button class="btn" id="shr" title="shift the window one year later (])">&#9654;&#9654;</button></span>
   <span class="grp"><span class="lab">view</span><button class="btn" id="reset" title="reset zoom (9)">reset zoom</button>
-    <button class="btn" id="resetall" title="reset zoom and depth (0)">reset all</button></span>
+    <button class="btn" id="resetall" title="reset zoom and depth (0)">reset all</button>
+    <button class="btn on" id="bathy" title="faint isobaths: 200 (shelf edge, darker), 1000, 2000, 3000, 4000, 5000 m">isobaths</button></span>
   <span class="grp"><span class="lab">max cells/bin</span><select id="cap"><option>250</option><option>500</option><option selected>1000</option><option>2000</option><option>5000</option></select></span>
 </div>
 <div id="titlebox"></div>
@@ -291,6 +292,8 @@ function draw() {
       getLineWidth: d => d.width, lineWidthUnits: 'pixels', stroked: true, filled: true, updateTriggers: {getLineWidth: [vs.zoom]}}),
     new deck.PolygonLayer({id: 'cells', data: cellRows, getPolygon: d => d.poly, getFillColor: d => d.fill,
       getLineColor: [38, 38, 38, 217], getLineWidth: d => d.n === 1 ? 0 : cellLw, lineWidthUnits: 'pixels', stroked: true}),
+    new deck.PathLayer({id: 'bathy', data: SHOW_BATHY ? BATHY : [], getPath: d => d.p,
+      getColor: d => d.d === 200 ? [40, 40, 40, 110] : [60, 60, 60, 60], getWidth: d => d.d === 200 ? 0.7 : 0.5, widthUnits: 'pixels'}),
     new deck.PathLayer({id: 'borders', data: micro && !overBudget ? visible : [],
       getPath: d => d[0].ring, getColor: d => edgeColor(d[1].std, SC), getWidth: borderLw, widthUnits: 'pixels'}),
     new deck.PathLayer({id: 'coast', data: COAST, getPath: d => d, _pathType: 'loop', getColor: [0, 0, 0], getWidth: 0.5 * PT, widthUnits: 'pixels'}),
@@ -364,10 +367,14 @@ function fmt(x) { return Math.abs(x) < 1e-9 ? '0' : (+x.toPrecision(3)).toString
 function busy(m) { const b = document.getElementById('busy'); if (m == null) b.classList.remove('on'); else { document.getElementById('busymsg').textContent = m; b.classList.add('on'); } }
 
 // ---------- land, coast and grid (Natural Earth 10 m land, from the data folder) ----------
-let LAND = [], COAST = [];
+let LAND = [], COAST = [], BATHY = [], SHOW_BATHY = true;
 async function loadCoast() {
   LAND = JSON.parse(new TextDecoder().decode(await gz(DATA_URL + '/land.json')));
   COAST = LAND.flat();
+  try {                                // isobaths: optional (older data folders have none)
+    for (const L of JSON.parse(new TextDecoder().decode(await gz(DATA_URL + '/bathy.json'))))
+      for (const p of L.paths) BATHY.push({p, d: L.depth});
+  } catch (e) { document.getElementById('bathy').disabled = true; }
 }
 function grid(vs) {                 // cartopy-like gridlines and labels, step chosen from the view width
   const [x0, y0, x1, y1] = viewBounds(vs), span = Math.min(x1 - x0, (y1 - y0) * 2);
@@ -390,6 +397,7 @@ function setupControls() {
   const dstep = d => { const lv = INDEX.classes[S.src].levels[S.V], i = lv.indexOf(S.k); S.k = lv[(i + d + lv.length) % lv.length]; fillDepth(); recompute(); };
   document.getElementById('dprev').onclick = () => dstep(-1); document.getElementById('dnext').onclick = () => dstep(1);
   document.getElementById('dsel').onchange = e => { S.k = +e.target.value; recompute(); };
+  document.getElementById('bathy').onclick = e => { SHOW_BATHY = !SHOW_BATHY; e.target.classList.toggle('on', SHOW_BATHY); draw(); };
   document.getElementById('cap').onchange = e => { S.cap = +e.target.value; draw(); };
   document.getElementById('reset').onclick = () => resetZoom();
   document.getElementById('resetall').onclick = () => { S.k = INDEX.classes[S.src].levels[S.V][0]; fillDepth(); resetZoom(); recompute(); };

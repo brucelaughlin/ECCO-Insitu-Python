@@ -12,8 +12,8 @@ Two kinds of files, written to one folder that is uploaded as is (Cloudflare R2,
     2 % of it is ocean, and reduced to its largest piece. Lon/lat degrees. Also each bin's representative
     point (for the bin-mean labels). The polygons don't depend on the data: built once.
 
-``land.json`` (gzip)
-    Natural Earth 10 m land (simplified to 0.02 deg) for drawing.
+``land.json``, ``bathy.json`` (gzip)
+    Natural Earth 10 m land (simplified to 0.02 deg) and isobaths (200, 1000 ... 5000 m), for drawing.
 
 ``<class>/profiles.bin`` + ``<class>/<V>_<level>.bin`` (gzip) + ``index.json``
     Per obs class: for every profile its lon, lat, year and bin (sorted by bin, then year), and for each
@@ -170,6 +170,36 @@ def write_land(out):
     (out / 'land.json').write_bytes(gzip.compress(json.dumps(polys, separators=(',', ':')).encode(), 9))
 
 
+BATHY_LEVELS = {200: 'K_200', 1000: 'J_1000', 2000: 'I_2000', 3000: 'H_3000', 4000: 'G_4000', 5000: 'F_5000'}
+
+
+def write_bathy(out):
+    """Isobaths (Natural Earth 10 m bathymetry outlines, simplified to 0.03 deg) as lon/lat paths (bathy.json, gzip).
+
+    The outlines of Natural Earth's "deeper than d" polygons, split at their seams (edges over 1 deg and the
+    dateline cut), without rings smaller than 0.3 deg.
+    """
+    import cartopy.io.shapereader as shpreader
+    levels = []
+    for d, name in BATHY_LEVELS.items():
+        paths = []
+        for g in shpreader.Reader(shpreader.natural_earth(resolution=LAND_RESOLUTION, category='physical',
+                                                          name=f'bathymetry_{name}')).geometries():
+            g = g.simplify(0.03)
+            for p in (g.geoms if g.geom_type == 'MultiPolygon' else [g]):
+                for r in (p.exterior, *p.interiors):
+                    c = np.round(np.asarray(r.coords), 2)
+                    # split at the polygon seams (long straight edges, the dateline cut) ...
+                    jump = np.r_[True, np.hypot(*np.diff(c, axis=0).T) > 1.0]
+                    for piece in np.split(c, np.nonzero(jump)[0][1:]):
+                        piece = piece[np.abs(piece[:, 0]) < 179.99]
+                        # ... and drop rings smaller than 0.3 deg (seamount clutter)
+                        if len(piece) > 1 and np.ptp(piece, axis=0).max() >= 0.3:
+                            paths.append(piece.tolist())
+        levels.append({'depth': d, 'paths': paths})
+    (out / 'bathy.json').write_bytes(gzip.compress(json.dumps(levels, separators=(',', ':')).encode(), 9))
+
+
 def export_class(src, files, out, tree, kept_bins):
     """Profiles and anomalies of one obs class."""
     t0 = time.time()
@@ -253,7 +283,9 @@ GUIDE_HTML = """
 used every non-missing value. (2) The color limits are computed per class over the whole record, so they stay fixed
 while the time window changes. (3) The original showed one yearly file; this page shows any range of years, of all
 files of the class. (4) If more than CELL_BUDGET cells would be in view, bins stay whole until you zoom further
-(the browser's limit, not the original's). (5) Plain lon/lat map (as the original), drawn with WebGL (deck.gl).</p>
+(the browser's limit, not the original's). (5) Plain lon/lat map (as the original), drawn with WebGL (deck.gl).
+(6) Faint isobaths (200, 1000, 2000, 3000, 4000, 5000 m; Natural Earth), not in the original; the 200 m line (the
+shelf edge) is a little darker. The "isobaths" button turns them off.</p>
 <p>Data: profiles.bin + one file per variable and depth level per class, written by
 <code>ecco_insitu.diagnostics.bin_viewer.export</code>; loaded on demand and cached for the session.</p>
 """
@@ -281,6 +313,8 @@ def run(run_dir, out, sources=None, rebuild_bins=False):
         build_bins(out)
     if not (out / 'land.json').exists():
         write_land(out)
+    if not (out / 'bathy.json').exists():
+        write_bathy(out)
     kept_bins = _kept_bins(out)
     groups = {}
     for f in sorted(run_dir.rglob('*.nc')):
@@ -330,13 +364,16 @@ def cli(argv=None):
     p.add_argument('--sources', nargs='*', default=None, help='obs classes (default: all)')
     p.add_argument('--rebuild-bins', action='store_true', help='rebuild bins.bin even if it exists')
     p.add_argument('--page-only', action='store_true', help='only rewrite index.html (after editing viewer.html)')
+    p.add_argument('--bathy', action='store_true', help='(re)write bathy.json only')
     p.add_argument('--upload', metavar='BUCKET', help='then upload the folder to this R2 bucket')
     p.add_argument('--prefix', default='', help='folder in the bucket (e.g. run_20261027_142247)')
     p.add_argument('--endpoint', help='R2 endpoint, https://<account id>.r2.cloudflarestorage.com')
     p.add_argument('--profile', default='r2', help='aws CLI profile with the R2 API token (default: r2)')
     p.add_argument('--dry-run', action='store_true', help='show what the upload would copy')
     a = p.parse_args(argv)
-    if a.page_only or (a.upload and not a.run):
+    if a.bathy:
+        write_bathy(Path(a.out))
+    if a.page_only or a.bathy or (a.upload and not a.run):
         write_page(Path(a.out))
     else:
         run(a.run, a.out, a.sources, a.rebuild_bins)
