@@ -1,0 +1,457 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Geodesic bin viewer</title>
+<!--
+  A web copy of the original geodesic_binning plotting app (geodesic_binning/plotting), with time windows.
+  Data: written by ecco_insitu.diagnostics.bin_viewer.export; DATA_URL below points at it (Cloudflare R2, or a
+  local folder). Drawing: deck.gl (WebGL); cells: d3-delaunay. Specification of every element: see
+  docs/bin_viewer.md.
+-->
+<script src="vendor/deckgl-9.0.38.min.js"></script>
+<script src="vendor/d3-delaunay-6.0.4.min.js"></script>
+<style>
+:root { --accent: #1a5ca8; --border: #c8c8c8; }
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: Courier, 'Courier New', monospace; background: lightskyblue; color: #111; font-size: 13px; }
+#top { display: flex; gap: 0.6em; align-items: center; flex-wrap: wrap; padding: 0.4em 0.8em; background: #e9f5fd;
+  border-bottom: 1px solid #9cc; font-family: -apple-system, 'Segoe UI', sans-serif; }
+#top .lab { font-size: 0.72em; color: #567; text-transform: uppercase; letter-spacing: 0.05em; }
+.btn { padding: 0.2em 0.55em; border: 1px solid var(--border); border-radius: 4px; background: #fff; cursor: pointer; font-size: 0.85em; }
+.btn.on { background: var(--accent); color: #fff; border-color: var(--accent); }
+.btn[disabled] { opacity: 0.35; cursor: default; }
+.grp { display: inline-flex; gap: 0.2em; align-items: center; padding-right: 0.6em; border-right: 1px solid #cde; }
+select { font-size: 0.85em; }
+#titlebox { text-align: center; font-size: 11px; line-height: 1.35; padding: 0.4em 1em 0.2em; white-space: pre; }
+#stage { position: relative; display: flex; justify-content: center; align-items: stretch; gap: 10px; padding: 0 10px; }
+.cbar { width: 74px; display: flex; flex-direction: column; align-items: center; }
+.cbar canvas { display: block; }
+.cbar .t { font-size: 10px; writing-mode: vertical-rl; transform: rotate(180deg); text-align: center; }
+#mapbox { position: relative; flex: 1; max-width: 1400px; background: lightskyblue; border: 1px solid #333; }
+#map { position: absolute; inset: 0; }
+#legend { position: absolute; top: 6px; right: 6px; background: rgba(255,255,255,0.8); border: 1px solid #aaa;
+  border-radius: 3px; padding: 3px 7px; font-size: 9px; line-height: 1.35; pointer-events: none; z-index: 3; }
+#caption { text-align: center; font-size: 11px; line-height: 1.4; padding: 0.5em 1em 0.3em; max-width: 70em; margin: 0 auto; }
+#keys { text-align: center; font-size: 11px; padding: 0 1em 0.8em; color: #234; }
+#busy { position: absolute; inset: 0; background: rgba(255,255,255,0.55); display: none; z-index: 5;
+  align-items: center; justify-content: center; font-family: -apple-system, 'Segoe UI', sans-serif; }
+#busy.on { display: flex; }
+#busy .box { background: #fff; border: 1px solid #9cc; border-radius: 6px; padding: 0.6em 1em; display: flex; gap: 0.6em; align-items: center; }
+#busy .spin { width: 16px; height: 16px; border: 3px solid #cde; border-top-color: var(--accent); border-radius: 50%; animation: spin .8s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+#trange { position: relative; width: 16em; height: 1.4em; }
+#trange input { position: absolute; left: 0; top: 0.2em; width: 100%; pointer-events: none; -webkit-appearance: none; appearance: none; background: none; }
+#trange input::-webkit-slider-thumb { pointer-events: auto; -webkit-appearance: none; width: 13px; height: 13px; border-radius: 50%; background: var(--accent); cursor: pointer; }
+#trange input::-moz-range-thumb { pointer-events: auto; width: 11px; height: 11px; border-radius: 50%; background: var(--accent); cursor: pointer; }
+#ttrack { position: absolute; left: 6px; right: 6px; top: 0.6em; height: 4px; background: #cde; border-radius: 2px; }
+#tfill { position: absolute; top: 0; height: 4px; background: var(--accent); }
+#tlab { display: inline-block; width: 7.5em; font-weight: 600; font-size: 0.85em; }
+#guide { max-width: 72em; margin: 0 auto 2em; font-family: -apple-system, 'Segoe UI', sans-serif; font-size: 0.86em; line-height: 1.5;
+  background: #fff; border: 1px solid #9cc; border-radius: 4px; padding: 0.5em 1em; }
+#guide summary { cursor: pointer; color: var(--accent); font-weight: 600; }
+#guide table { border-collapse: collapse; margin: 0.4em 0; }
+#guide td, #guide th { border: 1px solid #ddd; padding: 2px 6px; vertical-align: top; text-align: left; }
+</style>
+</head>
+<body>
+<div id="top">
+  <span class="grp"><span class="lab">class</span><select id="src"></select></span>
+  <span class="grp"><span class="lab">variable</span><button class="btn" id="vprev" title="previous variable (3)">&#9664;</button>
+    <b id="vlab">T</b><button class="btn" id="vnext" title="next variable (4)">&#9654;</button></span>
+  <span class="grp"><span class="lab">depth level</span><button class="btn" id="dprev" title="shallower (1)">&#9664;</button>
+    <select id="dsel"></select><button class="btn" id="dnext" title="deeper (2)">&#9654;</button></span>
+  <span class="grp"><span class="lab">time</span><button class="btn" id="tall">all years</button>
+    <div id="trange"><div id="ttrack"><div id="tfill"></div></div>
+      <input type="range" id="tlo" min="0" max="0" value="0"><input type="range" id="thi" min="0" max="0" value="0"></div>
+    <span id="tlab"></span>
+    <button class="btn" id="tl0" title="first year earlier">&#9664;</button><button class="btn" id="tr0" title="first year later">&#9654;</button>
+    <button class="btn" id="tl1" title="last year earlier">&#9664;</button><button class="btn" id="tr1" title="last year later">&#9654;</button>
+    <button class="btn" id="shl" title="shift the window one year earlier ([)">&#9664;&#9664;</button><button class="btn" id="shr" title="shift the window one year later (])">&#9654;&#9654;</button></span>
+  <span class="grp"><span class="lab">view</span><button class="btn" id="reset" title="reset zoom (9)">reset zoom</button>
+    <button class="btn" id="resetall" title="reset zoom and depth (0)">reset all</button></span>
+  <span class="grp"><span class="lab">max cells/bin</span><select id="cap"><option>250</option><option>500</option><option selected>1000</option><option>2000</option><option>5000</option></select></span>
+</div>
+<div id="titlebox"></div>
+<div id="stage">
+  <div class="cbar"><canvas id="cbl"></canvas></div>
+  <div id="mapbox"><div id="map"></div><div id="legend"></div>
+    <div id="busy"><div class="box"><div class="spin"></div><span id="busymsg">loading…</span></div></div></div>
+  <div class="cbar"><canvas id="cbr"></canvas></div>
+</div>
+<div id="caption"></div>
+<div id="keys">Keyboard (mouse over the page): 1 and 2 change depth level, 3 and 4 change variable, 8 resets the depth level,
+  9 resets the zoom, 0 resets both; [ and ] shift the time window. Scroll to zoom, drag to pan.</div>
+<details id="guide"><summary>Guide: how this page works, and how it relates to the original app</summary>__GUIDE__</details>
+<script>
+'use strict';
+const DATA_URL = (new URLSearchParams(location.search)).get('data') || '.';   // the data sit next to this page
+// --- the original app's settings (geodesic_binning_utilities_plotting.generate_new_plot_state_dict) ---
+const ZOOM_THRESHOLD = 10;           // scale factor above which bins split into one cell per profile
+const MICRO_BASE_LW = 0.04;          // cell edge width at the threshold (pt)
+const QF_FACE = [0.05, 0.95], QF_EDGE = [0.05, 0.25, 0.5, 0.75, 0.95, 0.99];
+const PRGN = [__PRGN__], CIVIDIS = [__CIVIDIS__];
+const CELL_BUDGET = 200000;          // cells drawn at once (all bins in view); above it, bins in view stay whole
+const PT = 96 / 72;                  // matplotlib points -> CSS pixels
+
+const S = {src: null, V: 'T', k: 0, all: true, t0: 0, t1: 0, cap: 1000};
+let INDEX, BINS, CLASS = {}, DECK, VIEW = null, GLOBAL_VIEW = null;
+
+// ---------- data ----------
+async function gz(url) {
+  const r = await fetch(url); if (!r.ok) throw new Error(url + ' ' + r.status);
+  return new Uint8Array(await new Response(r.body.pipeThrough(new DecompressionStream('gzip'))).arrayBuffer());
+}
+const F16 = new Float32Array(65536);
+for (let u = 0; u < 65536; u++) { const s = u & 0x8000 ? -1 : 1, e = (u >> 10) & 31, f = u & 1023;
+  F16[u] = e === 0 ? s * 2 ** -14 * f / 1024 : e === 31 ? (f ? NaN : s * Infinity) : s * 2 ** (e - 15) * (1 + f / 1024); }
+function cols(buf, specs) {                // little-endian columns after a uint32 count
+  const n = new DataView(buf.buffer, buf.byteOffset).getUint32(0, true); let o = 4; const out = {n};
+  for (const [name, T, bytes] of specs) {
+    const a = new T(n); new Uint8Array(a.buffer).set(buf.subarray(o, o + bytes * n)); o += bytes * n; out[name] = a;
+  }
+  return out;
+}
+async function loadBins() {
+  const b = await gz(DATA_URL + '/bins.bin'), dv = new DataView(b.buffer, b.byteOffset);
+  const n = dv.getUint32(0, true); let o = 4; const bins = new Map();
+  for (let i = 0; i < n; i++) {
+    const id = dv.getUint16(o, true), nv = dv.getUint16(o + 2, true); o += 4;
+    const rp = [dv.getFloat32(o, true), dv.getFloat32(o + 4, true)]; o += 8;
+    const ring = new Array(nv);
+    for (let j = 0; j < nv; j++) { ring[j] = [dv.getFloat32(o, true), dv.getFloat32(o + 4, true)]; o += 8; }
+    let x0 = 1e9, x1 = -1e9, y0 = 1e9, y1 = -1e9;
+    for (const [x, y] of ring) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
+    bins.set(id, {id, ring, rp, bbox: [x0, y0, x1, y1]});
+  }
+  return bins;
+}
+async function loadClass(src) {
+  if (CLASS[src]) return CLASS[src];
+  busy('Loading ' + src + ' profiles…');
+  const p = cols(await gz(`${DATA_URL}/${src}/profiles.bin`),
+    [['lon', Float32Array, 4], ['lat', Float32Array, 4], ['year', Uint16Array, 2], ['bin', Uint16Array, 2]]);
+  CLASS[src] = {p, levels: {}, scale: {}};
+  return CLASS[src];
+}
+async function loadLevel(src, V, k) {
+  const c = CLASS[src], key = V + k;
+  if (!c.levels[key]) {
+    busy(`Loading ${src} ${V} at ${INDEX.depth[k]} m…`);
+    const raw = cols(await gz(`${DATA_URL}/${src}/${V}_${String(k).padStart(2, '0')}.bin`), [['ix', Uint32Array, 4], ['v', Uint16Array, 2]]);
+    const v = new Float32Array(raw.n); for (let i = 0; i < raw.n; i++) v[i] = F16[raw.v[i]];
+    c.levels[key] = {ix: raw.ix, v};
+  }
+  return c.levels[key];
+}
+
+// ---------- statistics (as the original: count, mean, np.std with ddof 0) ----------
+function binStats(c, L) {
+  const y0 = S.all ? 0 : +INDEX.years0 + S.t0, y1 = S.all ? 9999 : +INDEX.years0 + S.t1;
+  const per = new Map();                      // bin -> list of values (for cells) and running sums
+  for (let i = 0; i < L.ix.length; i++) {
+    const j = L.ix[i], yr = c.p.year[j]; if (yr < y0 || yr > y1) continue;
+    const b = c.p.bin[j]; if (!BINS.has(b)) continue;
+    let e = per.get(b); if (!e) { e = {vals: [], idx: []}; per.set(b, e); }
+    e.vals.push(L.v[i]); e.idx.push(j);
+  }
+  for (const e of per.values()) {
+    let s = 0; for (const x of e.vals) s += x; e.n = e.vals.length; e.mean = s / e.n;
+    let q = 0; for (const x of e.vals) q += (x - e.mean) ** 2; e.std = Math.sqrt(q / e.n);
+  }
+  return per;
+}
+function quantile(sorted, q) {               // numpy's default (linear) quantile
+  if (!sorted.length) return NaN; const h = (sorted.length - 1) * q, lo = Math.floor(h), hi = Math.ceil(h);
+  return sorted[lo] + (h - lo) * (sorted[hi] - sorted[lo]);
+}
+// Color limits, as the original computes them (face: 5/95 % of all individual values; edge: 25/95 % of the bins'
+// std; both over all depth levels of the variable), per class over the whole record (export.py), so the colors
+// stay fixed while the time window changes.
+function colorScales() {
+  const q = INDEX.classes[S.src].scales[S.V];
+  return {face: [q.face[0], q.face[1]], qface: q.face, edge: [q.edge[1], q.edge[4]], qedge: q.edge};
+}
+
+// ---------- colors (matplotlib PRGn sliced so 0 is white, as the original; cividis) ----------
+function lut(arr, x) { const i = Math.max(0, Math.min(255, Math.round(x * 255))); return [arr[3 * i], arr[3 * i + 1], arr[3 * i + 2]]; }
+function faceColor(v, sc) {
+  const [vmin, vmax] = sc.face, m = Math.max(Math.abs(vmin), Math.abs(vmax));
+  const a = 0.5 + vmin / (2 * m), b = 0.5 + vmax / (2 * m), t = Math.max(0, Math.min(1, (v - vmin) / (vmax - vmin)));
+  return lut(PRGN, a + t * (b - a));
+}
+function edgeColor(v, sc) { const [vmin, vmax] = sc.edge; return lut(CIVIDIS, Math.max(0, Math.min(1, (v - vmin) / (vmax - vmin)))); }
+
+// ---------- cells (the original's _fill_polygon_voronoi: y-stratified seeds, 2 Lloyd steps, clip to the bin) ----------
+function mulberry(seed) { return () => { seed |= 0; seed = seed + 0x6D2B79F5 | 0; let t = Math.imul(seed ^ seed >>> 15, 1 | seed);
+  t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+function inside(pt, ring) { let c = false; for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+  const [xi, yi] = ring[i], [xj, yj] = ring[j];
+  if ((yi > pt[1]) !== (yj > pt[1]) && pt[0] < (xj - xi) * (pt[1] - yi) / (yj - yi) + xi) c = !c; } return c; }
+function clip(subject, clipRing) {           // Sutherland–Hodgman; clipRing must be convex (a Voronoi cell)
+  let out = subject;
+  const n = clipRing.length - (clipRing[0][0] === clipRing.at(-1)[0] && clipRing[0][1] === clipRing.at(-1)[1] ? 1 : 0);
+  const area = r => { let s = 0; for (let i = 0; i < r.length; i++) { const [a, b] = r[i], [c, d] = r[(i + 1) % r.length]; s += a * d - c * b; } return s / 2; };
+  const ccw = area(clipRing.slice(0, n)) > 0;
+  for (let i = 0; i < n && out.length; i++) {
+    const A = clipRing[i], B = clipRing[(i + 1) % n], inp = out; out = [];
+    const side = p => ((B[0] - A[0]) * (p[1] - A[1]) - (B[1] - A[1]) * (p[0] - A[0])) * (ccw ? 1 : -1) >= 0;
+    const X = (p, q) => { const a1 = B[1] - A[1], b1 = A[0] - B[0], c1 = a1 * A[0] + b1 * A[1];
+      const a2 = q[1] - p[1], b2 = p[0] - q[0], c2 = a2 * p[0] + b2 * p[1], d = a1 * b2 - a2 * b1;
+      return [(b2 * c1 - b1 * c2) / d, (a1 * c2 - a2 * c1) / d]; };
+    for (let j = 0; j < inp.length; j++) { const P = inp[j], Q = inp[(j + 1) % inp.length];
+      if (side(Q)) { if (!side(P)) out.push(X(P, Q)); out.push(Q); } else if (side(P)) out.push(X(P, Q)); }
+  }
+  return out;
+}
+function centroid(r) { let a = 0, cx = 0, cy = 0; for (let i = 0; i < r.length; i++) { const [x0, y0] = r[i], [x1, y1] = r[(i + 1) % r.length];
+  const f = x0 * y1 - x1 * y0; a += f; cx += (x0 + x1) * f; cy += (y0 + y1) * f; } a /= 2;
+  return Math.abs(a) < 1e-12 ? r[0] : [cx / (6 * a), cy / (6 * a)]; }
+const RING = b => b.open || (b.open = b.ring.slice(0, -1));   // ring without the closing vertex
+const CELLS = new Map();                      // cache: bin|n -> array of rings (positions only)
+function cellsFor(bin, n) {
+  const key = bin.id + '|' + n; if (CELLS.has(key)) return CELLS.get(key);
+  if (n === 1) { CELLS.set(key, [bin.ring]); return [bin.ring]; }
+  const [x0, y0, x1, y1] = bin.bbox, rnd = mulberry(bin.id * 1000003 + n), h = (y1 - y0) / n;
+  let seeds = [];
+  for (let i = 0; i < n; i++) {               // one seed per horizontal band, inside the bin
+    let p = null;
+    for (let t = 0; t < 64 && !p; t++) { const q = [x0 + rnd() * (x1 - x0), y0 + (i + rnd()) * h]; if (inside(q, bin.ring)) p = q; }
+    for (let t = 0; t < 256 && !p; t++) { const q = [x0 + rnd() * (x1 - x0), y0 + rnd() * (y1 - y0)]; if (inside(q, bin.ring)) p = q; }
+    seeds.push(p || bin.rp);
+  }
+  const m = Math.max(x1 - x0, y1 - y0), box = [x0 - m, y0 - m, x1 + m, y1 + m];
+  const voronoi = pts => { const v = d3.Delaunay.from(pts).voronoi(box);
+    return pts.map((_, i) => { const c = v.cellPolygon(i); return c ? clip(RING(bin), c) : []; }); };
+  for (let it = 0; it < 2; it++) {            // Lloyd relaxation, centroids kept inside the bin
+    seeds = voronoi(seeds).map((c, i) => { if (c.length < 3) return seeds[i]; const g = centroid(c); return inside(g, bin.ring) ? g : seeds[i]; });
+  }
+  const cells = voronoi(seeds).map(c => c.length >= 3 ? c : bin.ring);
+  CELLS.set(key, cells); return cells;
+}
+
+// ---------- view ----------
+function scaleFactor(vs) { return Math.pow(2, vs.zoom - GLOBAL_VIEW.zoom); }   // = sqrt(global area / view area)
+function viewBounds(vs) {
+  const w = document.getElementById('map').clientWidth, h = document.getElementById('map').clientHeight;
+  const s = 1 / Math.pow(2, vs.zoom);                     // degrees per pixel (OrthographicView)
+  return [vs.target[0] - w / 2 * s, vs.target[1] - h / 2 * s, vs.target[0] + w / 2 * s, vs.target[1] + h / 2 * s];
+}
+let STATS = null, SC = null, RENDER = 0;
+async function recompute() {
+  const id = ++RENDER;
+  const c = await loadClass(S.src);
+  const L = await loadLevel(S.src, S.V, S.k);
+  SC = colorScales();
+  if (id !== RENDER) return;
+  busy('Computing…'); await new Promise(r => setTimeout(r, 0));
+  STATS = binStats(c, L);
+  busy(null);
+  draw();
+}
+function draw() {
+  if (!STATS) return;
+  const vs = VIEW, sf = scaleFactor(vs), micro = sf > ZOOM_THRESHOLD, [bx0, by0, bx1, by1] = viewBounds(vs);
+  const inView = b => b.bbox[2] >= bx0 && b.bbox[0] <= bx1 && b.bbox[3] >= by0 && b.bbox[1] <= by1;
+  const counts = [...STATS.values()].map(e => e.n), maxN = counts.length ? Math.max(...counts) : 1;
+  const alpha = n => Math.round(255 * Math.min(1, Math.max(0.4, Math.sqrt(n / maxN))));
+  // edge width: 0.01 pt per profile, 0 for one profile, capped at 0.75 x the smallest bin's size x zoom (as the original)
+  let minDim = Infinity; for (const [b] of STATS) { const B = BINS.get(b), d = Math.min(B.bbox[2] - B.bbox[0], B.bbox[3] - B.bbox[1]); if (d > 0 && d < minDim) minDim = d; }
+  const capPx = 0.75 * minDim * Math.pow(2, GLOBAL_VIEW.zoom) * sf;
+  const binRows = [], cellRows = [], dots = [], labels = [];
+  let budget = CELL_BUDGET, overBudget = false;
+  const visible = [];
+  for (const [b, e] of STATS) { const B = BINS.get(b); if (inView(B)) visible.push([B, e]); }
+  if (micro) { let tot = 0; for (const [, e] of visible) tot += e.n <= S.cap ? e.n : 1; overBudget = tot > CELL_BUDGET; }
+  for (const [b, e] of STATS) {
+    const B = BINS.get(b), fc = faceColor(e.mean, SC), ec = edgeColor(e.std, SC);
+    if (!micro || overBudget || e.n > S.cap || !inView(B)) {
+      binRows.push({poly: B.ring, fill: [...fc, alpha(e.n)], line: ec,
+        width: Math.min(e.n === 1 ? 0 : 0.01 * e.n * PT, capPx)});
+      continue;
+    }
+    // one cell per profile; values sorted ascending, assigned south to north by cell centroid
+    const cells = cellsFor(B, e.n), vals = [...e.vals].sort((x, y) => x - y);
+    const order = cells.map((r, i) => [centroid(r)[1], i]).sort((p, q) => p[0] - q[0]);
+    const a = alpha(e.n);
+    order.forEach(([, ci], rank) => cellRows.push({poly: cells[ci], fill: [...faceColor(vals[rank], SC), a], n: e.n}));
+  }
+  if (micro) {
+    for (const [B, e] of visible) {
+      labels.push({pos: B.rp, text: e.mean.toFixed(2)});
+      for (const j of e.idx) dots.push([CLASS[S.src].p.lon[j], CLASS[S.src].p.lat[j]]);
+    }
+  }
+  const cellLw = MICRO_BASE_LW * (sf / ZOOM_THRESHOLD) * PT, borderLw = Math.min(1.5, Math.max(0.3, 0.6 * sf / ZOOM_THRESHOLD)) * PT;
+  const G = grid(vs);
+  const layers = [
+    new deck.SolidPolygonLayer({id: 'ocean', data: [[[-180, -90], [180, -90], [180, 90], [-180, 90]]], getPolygon: d => d, getFillColor: [255, 255, 255]}),
+    new deck.SolidPolygonLayer({id: 'land', data: LAND, getPolygon: d => d, getFillColor: [140, 115, 85]}),
+    new deck.PolygonLayer({id: 'bins', data: binRows, getPolygon: d => d.poly, getFillColor: d => d.fill, getLineColor: d => d.line,
+      getLineWidth: d => d.width, lineWidthUnits: 'pixels', stroked: true, filled: true, updateTriggers: {getLineWidth: [vs.zoom]}}),
+    new deck.PolygonLayer({id: 'cells', data: cellRows, getPolygon: d => d.poly, getFillColor: d => d.fill,
+      getLineColor: [38, 38, 38, 217], getLineWidth: d => d.n === 1 ? 0 : cellLw, lineWidthUnits: 'pixels', stroked: true}),
+    new deck.PathLayer({id: 'borders', data: micro && !overBudget ? visible : [],
+      getPath: d => d[0].ring, getColor: d => edgeColor(d[1].std, SC), getWidth: borderLw, widthUnits: 'pixels'}),
+    new deck.PathLayer({id: 'coast', data: COAST, getPath: d => d, _pathType: 'loop', getColor: [0, 0, 0], getWidth: 0.5 * PT, widthUnits: 'pixels'}),
+    new deck.PathLayer({id: 'grid', data: G.lines, getPath: d => d, getColor: [128, 128, 128, 128], getWidth: 0.5, widthUnits: 'pixels'}),
+    new deck.TextLayer({id: 'gridlab', data: G.labs, getPosition: d => d.pos, getText: d => d.text, getSize: 10, getColor: [30, 30, 30],
+      getTextAnchor: d => d.a === 'left' ? 'start' : 'middle', getAlignmentBaseline: d => d.a === 'left' ? 'center' : 'bottom',
+      getPixelOffset: d => d.a === 'left' ? [3, 0] : [0, -2], fontFamily: 'Courier, monospace', characterSet: '0123456789.°NSEW-'}),
+    new deck.ScatterplotLayer({id: 'dots', data: dots, getPosition: d => d, getFillColor: [255, 0, 0], getRadius: 1.2, radiusUnits: 'pixels'}),
+    new deck.TextLayer({id: 'labels', data: labels, getPosition: d => d.pos, getText: d => d.text, getSize: 8 * PT,
+      getColor: [255, 255, 255], outlineWidth: 4, outlineColor: [0, 0, 0, 255], fontFamily: 'Courier New, Courier, monospace',
+      fontWeight: 'bold', fontSettings: {sdf: true, fontSize: 96, buffer: 12, radius: 24, cutoff: 0.2}, characterSet: '0123456789.-'}),
+  ];
+  DECK.setProps({layers});
+  legend(visible); titles(sf, micro, overBudget); colorbars();
+}
+function legend(visible) {
+  const el = document.getElementById('legend'), n = visible.map(([, e]) => e.n).sort((a, b) => a - b);
+  if (!n.length) { el.style.display = 'none'; return; }
+  el.style.display = '';
+  const u = [...new Set(n)];
+  el.innerHTML = 'profiles per visible patch:<br>' + (u.length === 1 ? n[0] : u.length === 2 ? `min ${n[0]}<br>max ${n.at(-1)}` :
+    `min ${n[0]}<br>med ${Math.round(quantile(n, 0.5))}<br>max ${n.at(-1)}`);
+}
+function titles(sf, micro, over) {
+  const ci = INDEX.classes[S.src], lv = ci.levels[S.V], nlev = INDEX.depth.length;
+  let tot = 0; for (const e of STATS.values()) tot += e.n;
+  const years = S.all ? `all years (${ci.years[0]}–${ci.years[1]})` : S.t0 === S.t1 ? `${INDEX.years0 + S.t0}` : `${INDEX.years0 + S.t0}–${INDEX.years0 + S.t1}`;
+  document.getElementById('titlebox').textContent =
+    `variable: ${S.V}\n` +
+    `${nlev} total depth levels in file; displaying level ${S.k + 1}/${nlev} (${INDEX.depth[S.k].toFixed(0)}m)\n` +
+    `${lv.length}/${nlev} total depth levels populated; geodesic bins populated at current depth level: ${STATS.size}/${INDEX.n_bins_grid}\n` +
+    `profiles binned at current depth level: ${tot.toLocaleString()}; obs class: ${S.src}; years: ${years}\n` +
+    `current zoom level/zoom threshold for plotting individual profile data: ${sf.toFixed(1)}/${ZOOM_THRESHOLD}` +
+    (over ? `  (over ${CELL_BUDGET.toLocaleString()} cells in view: zoom in further for one cell per profile)` : '');
+  document.getElementById('caption').textContent =
+    `Polygon face colors represent ${S.V} anomalies (low zoom levels: geodesic bin means, higher zoom levels: individual profile values ` +
+    `(unless a geodesic bin contains more than ${S.cap} profiles)).  Edge colors of geodesic bin polygons represent the ${S.V} anomaly ` +
+    `standard deviation of the profiles binned.  At low zoom levels, polygon edge widths scale linearly with the number of profiles ` +
+    `binned.  At higher zoom levels, true profile locations appear as red dots, and geodesic bin anomaly means appear as text within ` +
+    `the geodesic bin polygons.`;
+}
+function colorbars() {
+  const unit = INDEX.units[S.V];
+  bar('cbl', SC.edge, SC.qedge, QF_EDGE, x => edgeColor(x, SC), `${S.V} anomaly std (${unit})`, 'white');
+  bar('cbr', SC.face, SC.qface, QF_FACE, x => faceColor(x, SC), `${S.V} anomaly mean (${unit})`, 'black');
+}
+function bar(id, lim, qs, qf, col, label, qcol) {   // as the original's establish_colorbars
+  const c = document.getElementById(id), r = window.devicePixelRatio || 1, H = document.getElementById('mapbox').clientHeight, W = 74;
+  c.width = W * r; c.height = H * r; c.style.width = W + 'px'; c.style.height = H + 'px';
+  const g = c.getContext('2d'); g.setTransform(r, 0, 0, r, 0, 0);
+  const top = 0, h = H, x0 = 4, w = 16;
+  for (let y = 0; y < h; y++) { const v = lim[1] - ((y + 0.5) / h) * (lim[1] - lim[0]); g.fillStyle = `rgb(${col(v).join(',')})`; g.fillRect(x0, top + y, w, 1.5); }
+  g.strokeStyle = '#000'; g.lineWidth = 0.8; g.strokeRect(x0, top + 0.5, w, h - 1);
+  const ypos = v => top + (lim[1] - v) / (lim[1] - lim[0]) * h;
+  g.font = '10px Courier'; g.fillStyle = '#000'; g.textAlign = 'left'; g.textBaseline = 'middle';
+  for (const t of niceTicks(lim[0], lim[1], 6)) { if (t <= lim[0] || t >= lim[1]) continue; const y = ypos(t);
+    g.beginPath(); g.moveTo(x0 + w, y); g.lineTo(x0 + w + 3.5, y); g.stroke(); g.fillText(fmt(t), x0 + w + 5, y); }
+  qs.forEach((q, i) => { if (q < lim[0] || q > lim[1]) return; let y = ypos(q), base = 'middle', tc = qcol;
+    g.strokeStyle = 'white'; g.lineWidth = 0.3; g.beginPath(); g.moveTo(x0, y); g.lineTo(x0 + w, y); g.stroke();
+    if (y > h - 1.5) { y = h - 2; base = 'bottom'; tc = qcol === 'black' ? (S.V !== 'T' ? 'white' : 'black') : 'white'; }
+    else if (y < 1.5) { y = 2; base = 'top'; tc = qcol === 'black' ? (S.V !== 'T' ? 'black' : 'white') : 'black'; }
+    g.save(); g.fillStyle = tc; g.font = '6.5px Courier'; g.textAlign = 'center'; g.textBaseline = base;
+    g.fillText('↓' + Math.round(100 * qf[i]) + '%', x0 + w / 2, y); g.restore(); });
+  g.strokeStyle = '#000';
+  g.save(); g.translate(W - 8, top + h / 2); g.rotate(-Math.PI / 2); g.textAlign = 'center'; g.textBaseline = 'middle'; g.font = '11px Courier'; g.fillText(label, 0, 0); g.restore();
+}
+function niceTicks(lo, hi, n) { const raw = (hi - lo) / n, mag = 10 ** Math.floor(Math.log10(raw));
+  const st = [1, 2, 2.5, 5, 10].map(m => m * mag).find(s => s >= raw); const out = [];
+  for (let v = Math.ceil(lo / st) * st; v <= hi + 1e-9; v += st) out.push(+v.toPrecision(10)); return out; }
+function fmt(x) { return Math.abs(x) < 1e-9 ? '0' : (+x.toPrecision(3)).toString(); }
+function busy(m) { const b = document.getElementById('busy'); if (m == null) b.classList.remove('on'); else { document.getElementById('busymsg').textContent = m; b.classList.add('on'); } }
+
+// ---------- land, coast and grid (Natural Earth 10 m land, from the data folder) ----------
+let LAND = [], COAST = [];
+async function loadCoast() {
+  LAND = JSON.parse(new TextDecoder().decode(await gz(DATA_URL + '/land.json')));
+  COAST = LAND.flat();
+}
+function grid(vs) {                 // cartopy-like gridlines and labels, step chosen from the view width
+  const [x0, y0, x1, y1] = viewBounds(vs), span = Math.min(x1 - x0, (y1 - y0) * 2);
+  const st = [60, 30, 20, 10, 5, 2, 1, 0.5, 0.25, 0.1].find(d => span / d >= 4) || 0.1;
+  const lines = [], labs = [], f = v => (+v.toFixed(2)).toString() + '°';
+  for (let x = Math.ceil(Math.max(-180, x0) / st) * st; x <= Math.min(180, x1); x += st) {
+    lines.push([[x, -90], [x, 90]]); labs.push({pos: [x, y0], text: x === 0 ? '0°' : f(Math.abs(x)) + (x < 0 ? 'W' : 'E'), a: 'bottom'}); }
+  for (let y = Math.ceil(Math.max(-90, y0) / st) * st; y <= Math.min(90, y1); y += st) {
+    lines.push([[-180, y], [180, y]]); labs.push({pos: [x0, y], text: y === 0 ? '0°' : f(Math.abs(y)) + (y < 0 ? 'S' : 'N'), a: 'left'}); }
+  return {lines, labs};
+}
+
+// ---------- controls ----------
+function setupControls() {
+  const sel = document.getElementById('src');
+  sel.innerHTML = Object.keys(INDEX.classes).map(s => `<option>${s}</option>`).join('');
+  sel.value = S.src; sel.onchange = () => { S.src = sel.value; fixVar(); fillDepth(); fillTime(); recompute(); };
+  const vstep = d => { const vs = INDEX.vars.filter(V => INDEX.classes[S.src].levels[V].length); S.V = vs[(vs.indexOf(S.V) + d + vs.length) % vs.length]; fixDepth(); fillDepth(); recompute(); };
+  document.getElementById('vprev').onclick = () => vstep(-1); document.getElementById('vnext').onclick = () => vstep(1);
+  const dstep = d => { const lv = INDEX.classes[S.src].levels[S.V], i = lv.indexOf(S.k); S.k = lv[(i + d + lv.length) % lv.length]; fillDepth(); recompute(); };
+  document.getElementById('dprev').onclick = () => dstep(-1); document.getElementById('dnext').onclick = () => dstep(1);
+  document.getElementById('dsel').onchange = e => { S.k = +e.target.value; recompute(); };
+  document.getElementById('cap').onchange = e => { S.cap = +e.target.value; draw(); };
+  document.getElementById('reset').onclick = () => resetZoom();
+  document.getElementById('resetall').onclick = () => { S.k = INDEX.classes[S.src].levels[S.V][0]; fillDepth(); resetZoom(); recompute(); };
+  const lo = document.getElementById('tlo'), hi = document.getElementById('thi'); let timer = null;
+  const later = () => { syncTime(); clearTimeout(timer); timer = setTimeout(recompute, 350); };
+  lo.oninput = () => { S.all = false; S.t0 = +lo.value; if (S.t0 > S.t1) S.t1 = S.t0; later(); };
+  hi.oninput = () => { S.all = false; S.t1 = +hi.value; if (S.t1 < S.t0) S.t0 = S.t1; later(); };
+  const N = () => INDEX.years1 - INDEX.years0, cl = (v) => Math.max(0, Math.min(N(), v));
+  const fromAll = () => { if (S.all) { S.all = false; S.t0 = 0; S.t1 = N(); } };
+  document.getElementById('tall').onclick = () => { S.all = true; syncTime(); recompute(); };
+  [['tl0', 0, -1], ['tr0', 0, 1], ['tl1', 1, -1], ['tr1', 1, 1]].forEach(([id, end, d]) => document.getElementById(id).onclick = () => {
+    fromAll(); if (end === 0) { S.t0 = cl(S.t0 + d); if (S.t0 > S.t1) S.t1 = S.t0; } else { S.t1 = cl(S.t1 + d); if (S.t1 < S.t0) S.t0 = S.t1; } later(); });
+  const shift = d => { if (S.all) return; if (S.t0 + d < 0 || S.t1 + d > N()) return; S.t0 += d; S.t1 += d; later(); };
+  document.getElementById('shl').onclick = () => shift(-1); document.getElementById('shr').onclick = () => shift(1);
+  document.addEventListener('keydown', e => {
+    if (e.target.tagName === 'SELECT') return;
+    const k = e.key;
+    if (k === '1') dstep(-1); else if (k === '2') dstep(1); else if (k === '3') vstep(-1); else if (k === '4') vstep(1);
+    else if (k === '8') { S.k = INDEX.classes[S.src].levels[S.V][0]; fillDepth(); recompute(); }
+    else if (k === '9') resetZoom(); else if (k === '0') { S.k = INDEX.classes[S.src].levels[S.V][0]; fillDepth(); resetZoom(); recompute(); }
+    else if (k === '[') shift(-1); else if (k === ']') shift(1);
+  });
+}
+function fixVar() { const lv = INDEX.classes[S.src].levels; if (!lv[S.V].length) S.V = INDEX.vars.find(V => lv[V].length); fixDepth(); }
+function fixDepth() { const lv = INDEX.classes[S.src].levels[S.V]; if (!lv.includes(S.k)) S.k = lv.reduce((a, b) => Math.abs(b - S.k) < Math.abs(a - S.k) ? b : a, lv[0]); }
+function fillDepth() {
+  document.getElementById('vlab').textContent = S.V;
+  const lv = INDEX.classes[S.src].levels[S.V], d = document.getElementById('dsel');
+  d.innerHTML = lv.map(k => `<option value="${k}">${k + 1}: ${INDEX.depth[k]} m</option>`).join(''); d.value = S.k;
+}
+function fillTime() {
+  const ci = INDEX.classes[S.src], N = INDEX.years1 - INDEX.years0, lo = document.getElementById('tlo'), hi = document.getElementById('thi');
+  lo.max = hi.max = N; if (S.all) { S.t0 = ci.years[0] - INDEX.years0; S.t1 = ci.years[1] - INDEX.years0; } syncTime();
+}
+function syncTime() {
+  const N = INDEX.years1 - INDEX.years0, lo = document.getElementById('tlo'), hi = document.getElementById('thi'), f = document.getElementById('tfill');
+  lo.value = S.t0; hi.value = S.t1; document.getElementById('tall').classList.toggle('on', S.all);
+  f.style.left = (S.all ? 0 : 100 * S.t0 / N) + '%'; f.style.width = (S.all ? 100 : 100 * (S.t1 - S.t0) / N) + '%';
+  document.getElementById('tlab').textContent = S.all ? 'all years' : S.t0 === S.t1 ? `${INDEX.years0 + S.t0}` : `${INDEX.years0 + S.t0}–${INDEX.years0 + S.t1}`;
+}
+function resetZoom() { VIEW = {...GLOBAL_VIEW}; DECK.setProps({initialViewState: {...GLOBAL_VIEW, transitionDuration: 0}}); draw(); }
+
+// ---------- start ----------
+async function init() {
+  busy('Loading…');
+  INDEX = await (await fetch(DATA_URL + '/index.json')).json();
+  INDEX.n_bins_grid = (await (await fetch(DATA_URL + '/bins.json')).json()).n_bins_grid;
+  const yrs = Object.values(INDEX.classes).map(c => c.years); INDEX.years0 = Math.min(...yrs.map(y => y[0])); INDEX.years1 = Math.max(...yrs.map(y => y[1]));
+  BINS = await loadBins(); await loadCoast();
+  S.src = INDEX.classes.CTD_WOD ? 'CTD_WOD' : Object.keys(INDEX.classes)[0]; fixVar();
+  const el = document.getElementById('mapbox'), size = () => { const w = el.clientWidth; el.style.height = Math.round(w / 2) + 'px'; };
+  size(); window.addEventListener('resize', () => { size(); draw(); });
+  const z0 = Math.log2(el.clientWidth / 360);   // OrthographicView: zoom 0 = 1 px per degree
+  GLOBAL_VIEW = {target: [0, 0, 0], zoom: z0, minZoom: z0 - 0.5, maxZoom: z0 + 9};
+  VIEW = {...GLOBAL_VIEW};
+  DECK = new deck.DeckGL({container: 'map', views: new deck.OrthographicView({id: 'o', flipY: false}),
+    initialViewState: GLOBAL_VIEW, controller: {doubleClickZoom: false}, getCursor: () => 'crosshair',
+    onViewStateChange: ({viewState}) => { VIEW = viewState; clearTimeout(init.t); init.t = setTimeout(draw, 60); return viewState; }});
+  setupControls(); fillDepth(); fillTime();
+  await recompute();
+}
+init().catch(e => { busy(null); document.getElementById('titlebox').textContent = 'error: ' + e.message; console.error(e); });
+</script>
+</body>
+</html>
