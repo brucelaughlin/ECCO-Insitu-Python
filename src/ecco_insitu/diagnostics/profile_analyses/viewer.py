@@ -92,6 +92,13 @@ results as the report&rsquo;s figures.</p>
 <tr><td>single year</td><td>Locks the handles together, so dragging moves a one-year window.</td></tr>
 </table>
 
+<h4>Loading</h4>
+<p>While data are downloading or the maps are being recomputed, the maps are dimmed and a box in the middle says what is
+happening, with the download progress in MB. While you drag the time handles, the year label follows at once and a blue
+note says the maps will update when you let go; they recompute a moment after you stop. The first time range in a
+period downloads that class&rsquo;s year-by-year data (tens of MB for Argo on a slow connection can take half a minute);
+after that it is kept, and changes take well under a second.</p>
+
 <h4>The maps and the color bar</h4>
 <p><strong>Maps:</strong> global (equal-area projection, starting at the western tip of Australia), and north and south polar
 stereographic views. White = no data in that bin for the selection; gray = land. Hover a bin to see its number and value.</p>

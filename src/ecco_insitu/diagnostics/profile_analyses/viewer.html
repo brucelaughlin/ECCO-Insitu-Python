@@ -30,6 +30,19 @@ select { font-size: 0.86em; padding: 0.15em; max-width: 26em; }
 #timelab { font-size: 0.86em; min-width: 14em; }
 .tbtn { font-size: 0.8em; padding: 0.1em 0.4em; }
 #maps { display: flex; gap: 10px; padding: 0.8em 1em 0.3em; align-items: flex-start; }
+#mapwrap { position: relative; }
+#busy { position: absolute; inset: 0; background: rgba(255,255,255,0.72); display: none; z-index: 5;
+  align-items: center; justify-content: center; }
+#busy.on { display: flex; }
+#busy .box { background: #fff; border: 1px solid #c5d9f1; border-radius: 6px; padding: 0.7em 1.1em;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.15); display: flex; align-items: center; gap: 0.7em; font-size: 0.95em; }
+#busy .spin { width: 18px; height: 18px; border: 3px solid #c5d9f1; border-top-color: var(--accent);
+  border-radius: 50%; animation: spin 0.8s linear infinite; }
+#busy .bar { width: 160px; height: 6px; background: #eee; border-radius: 3px; overflow: hidden; display: none; }
+#busy .bar > div { height: 100%; width: 0; background: var(--accent); }
+@keyframes spin { to { transform: rotate(360deg); } }
+#status { min-height: 1.3em; }
+#status.pending { color: var(--accent); font-weight: 600; }
 .mapbox { position: relative; }
 .mapbox .t { font-size: 0.8em; color: #555; text-align: center; margin-bottom: 2px; }
 canvas { border: 1px solid #ccc; display: block; }
@@ -70,8 +83,10 @@ canvas { border: 1px solid #ccc; display: block; }
     <input type="range" id="thi" min="0" max="34" step="1" value="34"></div>
   <span id="timelab"></span>
   <button class="tab tbtn" id="tone" title="show one year at a time: both handles together">single year</button></div>
-<div id="status">loading…</div>
-<div id="maps"></div>
+<div id="status"></div>
+<div id="mapwrap"><div id="maps"></div>
+  <div id="busy"><div class="box"><div class="spin"></div><div><div id="busymsg">working…</div>
+    <div class="bar" id="busybar"><div></div></div></div></div></div></div>
 <div id="legend"><div id="cbarbox"><canvas id="cbar" width="440" height="32"></canvas><span id="cbtxt"></span></div>
   <div class="opts"><label><input type="checkbox" id="logscale"> log color scale</label>
   <label>max <input type="number" id="vmax" step="any" style="width:6em"></label>
@@ -89,12 +104,30 @@ const S = {src: null, ct: null, V: 'T', part: 'unsplit', dmode: 'level', dsel: 0
            vmax: null, log: false};
 let INDEX, GRID, GRIDS = {}, CACHE = {};
 
-async function getGz(url) {
+async function getGz(url, label, onProgress) {  // download (with progress in the overlay) and gunzip
   const r = await fetch(url);
   if (!r.ok) throw new Error(url + ': ' + r.status);
+  const total = +r.headers.get('content-length') || 0;
+  let got = 0;
+  const counted = new TransformStream({ transform(chunk, ctl) {
+    got += chunk.length;
+    if (onProgress) onProgress(got, total);
+    else if (label) busy(label + ' — ' + (got / 1e6).toFixed(1) + (total ? ' of ' + (total / 1e6).toFixed(1) : '') + ' MB',
+                    total ? got / total : null);
+    ctl.enqueue(chunk); } });
   const ds = new DecompressionStream('gzip');
-  return new Uint8Array(await new Response(r.body.pipeThrough(ds)).arrayBuffer());
+  return new Uint8Array(await new Response(r.body.pipeThrough(counted).pipeThrough(ds)).arrayBuffer());
 }
+// the loading overlay: shown over the maps whenever data is loading or the maps are being recomputed
+function busy(msg, frac) {
+  const b = document.getElementById('busy'), bar = document.getElementById('busybar');
+  if (msg === null) { b.classList.remove('on'); return; }
+  document.getElementById('busymsg').textContent = msg;
+  bar.style.display = frac == null ? 'none' : 'block';
+  if (frac != null) bar.firstElementChild.style.width = Math.round(100 * frac) + '%';
+  b.classList.add('on');
+}
+const paint = () => new Promise(r => requestAnimationFrame(() => setTimeout(r, 0)));  // let the overlay draw
 function f16(u) {               // float16 bits -> number
   const s = (u & 0x8000) ? -1 : 1, e = (u >> 10) & 0x1f, f = u & 0x3ff;
   if (e === 0) return s * Math.pow(2, -14) * (f / 1024);
@@ -124,20 +157,28 @@ function parse(buf, withMean) { // see viewer.py for the layout (little-endian c
 async function data(src, ct) {          // the all-years summary (small): loaded first
   const key = src + '|' + ct;
   if (!CACHE[key]) {
-    status('loading ' + src + ' ' + ct + '…');
-    CACHE[key] = parse(await getGz('viewer/' + INDEX.files[key]), true);
+    const lab = 'Loading ' + src + ', ' + ct;
+    busy(lab + '…'); await paint();
+    const raw = await getGz('viewer/' + INDEX.files[key], lab);
+    busy('Unpacking ' + src + ', ' + ct + '…'); await paint();
+    CACHE[key] = parse(raw, true);
   }
   return CACHE[key];
 }
 const YCACHE = {};
 async function yearData(src, ct) {      // year-by-year data: only the pieces covering the selected years
   const key = src + '|' + ct, need = INDEX.years_files[key].filter(p => p.last >= S.t0 && p.first <= S.t1);
-  for (const p of need) {
-    if (!YCACHE[p.file]) {
-      status('loading ' + src + ' ' + ct + ', years ' + INDEX.blocks[p.first] + '–' + INDEX.blocks[p.last] +
-             ' (first time only; a few seconds for large classes)…');
-      YCACHE[p.file] = parse(await getGz('viewer/' + p.file), false);
-    }
+  const todo = need.filter(p => !YCACHE[p.file]);
+  if (todo.length) {                     // download the missing pieces in parallel, with combined progress
+    const span = INDEX.blocks[todo[0].first] + '–' + INDEX.blocks[todo[todo.length - 1].last];
+    const lab = 'Loading ' + src + ' ' + ct + ', years ' + span + ' (first time only)';
+    busy(lab + '…'); await paint();
+    const got = {}, tot = {};
+    const show = () => { const g = Object.values(got).reduce((a, b) => a + b, 0), t = Object.values(tot).reduce((a, b) => a + b, 0);
+      busy(lab + ' — ' + (g / 1e6).toFixed(1) + (t ? ' of ' + (t / 1e6).toFixed(1) : '') + ' MB', t ? g / t : null); };
+    const raws = await Promise.all(todo.map(p => getGz('viewer/' + p.file, null, (g, t) => { got[p.file] = g; tot[p.file] = t; show(); })));
+    busy('Unpacking years ' + span + '…'); await paint();
+    todo.forEach((p, i) => { YCACHE[p.file] = parse(raws[i], false); });
   }
   const out = {};                        // the needed pieces, joined per variable
   for (const V of ['T', 'S']) {
@@ -148,7 +189,7 @@ async function yearData(src, ct) {      // year-by-year data: only the pieces co
   }
   return out;
 }
-function status(t) { document.getElementById('status').textContent = t || ''; }
+function status(t) { const s = document.getElementById('status'); s.textContent = t || ''; s.className = ''; }
 
 function levelsSelected() {
   const nd = INDEX.depth.length;
@@ -261,13 +302,21 @@ function fmt(x) {
   return (+x.toPrecision(3)).toString();
 }
 
-let VALS = null;
+let VALS = null, RENDER_ID = 0;
 async function render() {
+  const id = ++RENDER_ID;
   if (!INDEX.files[S.src + '|' + S.ct]) { status('no data for ' + S.src + ' ' + S.ct); return; }
-  const d = await data(S.src, S.ct);
-  const yd = (!S.all && S.part !== 'mean') ? await yearData(S.src, S.ct) : null;
+  syncControls();
+  try {
+    const d = await data(S.src, S.ct);
+    const yd = (!S.all && S.part !== 'mean') ? await yearData(S.src, S.ct) : null;
+    if (id !== RENDER_ID) return;              // a newer selection came in meanwhile
+    busy('Updating maps for ' + S.src + ', ' + timeText() + '…'); await paint();
+    if (id !== RENDER_ID) return;
+    VALS = computeBins(d, yd);
+  } catch (e) { busy(null); status('error: ' + e.message); throw e; }
   status('');
-  VALS = computeBins(d, yd);
+  busy(null);
   const vmax = S.vmax || p98(VALS);
   document.getElementById('vmax').placeholder = fmt(p98(VALS));
   for (const view of ['global', 'NH', 'SH']) drawMap(document.getElementById('c_' + view), view, VALS, vmax);
@@ -335,6 +384,7 @@ function hover(e, view) {
     h.textContent = `bin ${b}: ${Number.isFinite(VALS[b]) ? fmt(VALS[b]) : 'no data'}`; } else h.style.display = 'none';
 }
 async function init() {
+  busy('Loading the map explorer…');
   INDEX = await (await fetch(INDEX_URL)).json();
   GRID = await (await fetch(GRID_URL)).json();
   for (const v of ['global', 'NH', 'SH']) {
@@ -370,12 +420,17 @@ async function init() {
   lo.max = hi.max = nb; S.t0 = 0; S.t1 = nb;
   document.getElementById('tticks').innerHTML = INDEX.blocks.map((y, i) =>
     (+y % 5 === 0 && i > 1 && i < nb - 1) || i === 0 || i === nb ? `<span style="left:${100 * i / nb}%">${y}</span>` : '').join('');
-  let single = false;
+  let single = false, timer = null;
   const moved = which => {
     let a = +lo.value, b = +hi.value;
     if (single) { if (which === 'lo') b = a; else a = b; }
     else if (a > b) { if (which === 'lo') b = a; else a = b; }
-    S.t0 = a; S.t1 = b; S.all = false; render();
+    S.t0 = a; S.t1 = b; S.all = false;
+    syncControls();                            // the year label follows the handles at once
+    const st = document.getElementById('status');
+    st.textContent = 'Selected ' + timeText() + ': the maps update when you let go…'; st.className = 'pending';
+    clearTimeout(timer);
+    timer = setTimeout(() => { st.textContent = ''; st.className = ''; render(); }, 350);
   };
   lo.addEventListener('input', () => moved('lo'));
   hi.addEventListener('input', () => moved('hi'));
