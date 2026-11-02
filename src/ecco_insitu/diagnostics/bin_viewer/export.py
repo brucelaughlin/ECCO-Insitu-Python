@@ -320,7 +320,7 @@ def upload(out, bucket, prefix, endpoint, profile='r2', dry_run=False):
     subprocess.run(base + ['--exclude', 'index.html', '--cache-control', 'public, max-age=86400'], check=True)
     subprocess.run(base + ['--exclude', '*', '--include', 'index.html', '--content-type', 'text/html; charset=utf-8',
                            '--cache-control', 'no-cache'], check=True)
-    print(f'Uploaded {out} -> {dest}')
+    print(f'{"Dry run: would upload" if dry_run else "Uploaded"} {out} -> {dest}')
 
 
 def cli(argv=None):

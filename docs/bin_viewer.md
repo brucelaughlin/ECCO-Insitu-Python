@@ -81,6 +81,16 @@ python -m ecco_insitu.diagnostics.bin_viewer.export \
     --upload <bucket> --prefix run_20261027_142247 \
     --endpoint https://<account id>.r2.cloudflarestorage.com --dry-run     # drop --dry-run to copy
 ```
+
+Our setup (bucket `ecco-bin-viewer`, aws profile `r2`), the call used on 2026-11-02:
+```
+python -m ecco_insitu.diagnostics.bin_viewer.export \
+    --out ~/ecco/yip/bin_viewer_data/run_20261027_142247 \
+    --upload ecco-bin-viewer --prefix run_20261027_142247 \
+    --endpoint https://8f82f5593ec279fd7927393a2e4fbb49.r2.cloudflarestorage.com
+```
+For a new run, change the folder and `--prefix` to the new run's name. Older runs stay in the bucket under their
+own prefix.
 `--profile r2` is the default. The page is then at `<public URL>/run_20261027_142247/index.html`, where the public
 URL is the `pub-….r2.dev` address or the custom domain from step 3.
 
