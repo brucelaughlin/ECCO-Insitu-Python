@@ -68,12 +68,21 @@ CORS is not needed, because the page and its data are served from the same bucke
 
 ## Upload
 
+Fill in three things:
+- `<folder>`: the export folder, e.g. `~/ecco/yip/bin_viewer_data/run_20261027_142247` (one per run).
+- `<bucket>`: the R2 bucket name, as created in step 2.
+- `<account id>`: in the Cloudflare dashboard → R2 → bucket → **Settings** → "S3 API". That URL is the whole
+  endpoint (`https://<account id>.r2.cloudflarestorage.com`, without the `/<bucket>` at the end). The account ID
+  is also the long hex string in the dashboard URL (`dash.cloudflare.com/<account id>/...`).
+
 ```
-python -m ecco_insitu.diagnostics.bin_viewer.export --out <folder> \
-    --upload ecco-bin-viewer --prefix <run name> \
-    --endpoint https://<account id>.r2.cloudflarestorage.com [--dry-run]
+python -m ecco_insitu.diagnostics.bin_viewer.export \
+    --out ~/ecco/yip/bin_viewer_data/run_20261027_142247 \
+    --upload <bucket> --prefix run_20261027_142247 \
+    --endpoint https://<account id>.r2.cloudflarestorage.com --dry-run     # drop --dry-run to copy
 ```
-The page is then at `<public URL>/<run name>/index.html`.
+`--profile r2` is the default. The page is then at `<public URL>/run_20261027_142247/index.html`, where the public
+URL is the `pub-….r2.dev` address or the custom domain from step 3.
 
 The data files are uploaded as plain gzip bytes, which the page decompresses itself. The page goes up last, with
 `no-cache`, so a new version shows at once. The data are cached for a day.
