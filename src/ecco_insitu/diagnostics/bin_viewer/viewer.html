@@ -56,6 +56,7 @@ select { font-size: 0.85em; }
 </head>
 <body>
 <div id="top">
+  <a id="back" class="btn" href="#" style="display:none;text-decoration:none;color:#1a5ca8" title="back to the profile report">&larr; report</a>
   <span class="grp"><span class="lab">class</span><select id="src"></select></span>
   <span class="grp"><span class="lab">variable</span><button class="btn" id="vprev" title="previous variable (3)">&#9664;</button>
     <b id="vlab">T</b><button class="btn" id="vnext" title="next variable (4)">&#9654;</button></span>
@@ -86,7 +87,7 @@ select { font-size: 0.85em; }
 <details id="guide"><summary>Guide: how this page works, and how it relates to the original app</summary>__GUIDE__</details>
 <script>
 'use strict';
-const DATA_URL = (new URLSearchParams(location.search)).get('data') || '.';   // the data sit next to this page
+const DATA_URL = '.';   // the data sit next to this page
 // --- the original app's settings (geodesic_binning_utilities_plotting.generate_new_plot_state_dict) ---
 const ZOOM_THRESHOLD = 10;           // scale factor above which bins split into one cell per profile
 const MICRO_BASE_LW = 0.04;          // cell edge width at the threshold (pt)
@@ -106,10 +107,19 @@ async function gz(url) {
 const F16 = new Float32Array(65536);
 for (let u = 0; u < 65536; u++) { const s = u & 0x8000 ? -1 : 1, e = (u >> 10) & 31, f = u & 1023;
   F16[u] = e === 0 ? s * 2 ** -14 * f / 1024 : e === 31 ? (f ? NaN : s * Infinity) : s * 2 ** (e - 15) * (1 + f / 1024); }
-function cols(buf, specs) {                // little-endian columns after a uint32 count
+// Columns after a uint32 count. Format 2 (export.py FORMAT): each column is stored as byte planes (all first
+// bytes, then all second bytes, ...), and columns marked 'delta' as differences from the previous value.
+// Format 1: whole little-endian numbers. Both give exactly the same numbers.
+function cols(buf, specs) {
   const n = new DataView(buf.buffer, buf.byteOffset).getUint32(0, true); let o = 4; const out = {n};
-  for (const [name, T, bytes] of specs) {
-    const a = new T(n); new Uint8Array(a.buffer).set(buf.subarray(o, o + bytes * n)); o += bytes * n; out[name] = a;
+  const planes = (INDEX.format || 1) >= 2;
+  for (const [name, T, bytes, delta] of specs) {
+    const a = new T(n), u8 = new Uint8Array(a.buffer);
+    if (planes) { for (let b = 0; b < bytes; b++) { const src = buf.subarray(o + b * n, o + (b + 1) * n);
+        for (let i = 0; i < n; i++) u8[i * bytes + b] = src[i]; } }
+    else u8.set(buf.subarray(o, o + bytes * n));
+    if (planes && delta) for (let i = 1; i < n; i++) a[i] += a[i - 1];
+    o += bytes * n; out[name] = a;
   }
   return out;
 }
@@ -131,7 +141,7 @@ async function loadClass(src) {
   if (CLASS[src]) return CLASS[src];
   busy('Loading ' + src + ' profiles…');
   const p = cols(await gz(`${DATA_URL}/${src}/profiles.bin`),
-    [['lon', Float32Array, 4], ['lat', Float32Array, 4], ['year', Uint16Array, 2], ['bin', Uint16Array, 2]]);
+    [['lon', Float32Array, 4], ['lat', Float32Array, 4], ['year', Uint16Array, 2], ['bin', Uint16Array, 2, true]]);
   CLASS[src] = {p, levels: {}, scale: {}};
   return CLASS[src];
 }
@@ -139,7 +149,7 @@ async function loadLevel(src, V, k) {
   const c = CLASS[src], key = V + k;
   if (!c.levels[key]) {
     busy(`Loading ${src} ${V} at ${INDEX.depth[k]} m…`);
-    const raw = cols(await gz(`${DATA_URL}/${src}/${V}_${String(k).padStart(2, '0')}.bin`), [['ix', Uint32Array, 4], ['v', Uint16Array, 2]]);
+    const raw = cols(await gz(`${DATA_URL}/${src}/${V}_${String(k).padStart(2, '0')}.bin`), [['ix', Uint32Array, 4, true], ['v', Uint16Array, 2]]);
     const v = new Float32Array(raw.n); for (let i = 0; i < raw.n; i++) v[i] = F16[raw.v[i]];
     c.levels[key] = {ix: raw.ix, v};
   }
@@ -447,7 +457,10 @@ async function init() {
   INDEX.n_bins_grid = (await (await fetch(DATA_URL + '/bins.json')).json()).n_bins_grid;
   const yrs = Object.values(INDEX.classes).map(c => c.years); INDEX.years0 = Math.min(...yrs.map(y => y[0])); INDEX.years1 = Math.max(...yrs.map(y => y[1]));
   BINS = await loadBins(); await loadCoast();
-  S.src = INDEX.classes.CTD_WOD ? 'CTD_WOD' : Object.keys(INDEX.classes)[0]; fixVar();
+  // ?src=<class> opens on that class; ?back=<url> adds a link back to the report that opened the viewer
+  const q = new URLSearchParams(location.search), want = q.get('src'), back = q.get('back');
+  S.src = want && INDEX.classes[want] ? want : INDEX.classes.CTD_WOD ? 'CTD_WOD' : Object.keys(INDEX.classes)[0]; fixVar();
+  if (back && /^https?:\/\//.test(back)) { const a = document.getElementById('back'); a.href = back; a.style.display = ''; }
   const el = document.getElementById('mapbox'), size = () => { const w = el.clientWidth; el.style.height = Math.round(w / 2) + 'px'; };
   size(); window.addEventListener('resize', () => { size(); draw(); });
   const z0 = Math.log2(el.clientWidth / 360);   // OrthographicView: zoom 0 = 1 px per degree

@@ -50,6 +50,7 @@ def code_state(repo=None):
 
 
 def environment():
+    """Python, platform and the versions of the main libraries."""
     import importlib
     import importlib.metadata as md
     import ecco_insitu
@@ -85,6 +86,7 @@ def fingerprint(path):
 
 
 def input_paths(cfg, input_dir):
+    """The input folder plus every existing path in the settings' ``paths`` section."""
     out = {'input_dir': input_dir}
     for k, v in (cfg.get('paths') or {}).items():
         if isinstance(v, str) and v and Path(v).exists():
@@ -131,6 +133,7 @@ def compare(run_root):
 
 
 def cli(argv=None):
+    """``ecco-insitu provenance <run>``: what a run was made from, and whether that still matches."""
     import argparse
     p = argparse.ArgumentParser(description='Check a run against the code and inputs it was made from.')
     p.add_argument('run', help='run folder (the one holding documentation/)')

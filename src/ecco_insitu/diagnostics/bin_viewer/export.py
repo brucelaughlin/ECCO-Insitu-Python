@@ -27,8 +27,11 @@ Two kinds of files, written to one folder that is uploaded as is (Cloudflare R2,
 Layouts (little endian):
     bins.bin:      uint32 n_bins, then per bin: uint16 bin id, uint16 n_vertices, float32 rep lon, rep lat,
                    n_vertices x (float32 lon, float32 lat)
-    profiles.bin:  uint32 n, then columns: float32 lon[n], float32 lat[n], uint16 year[n], uint16 bin[n]
-    <V>_<k>.bin:   uint32 m, then uint32 profile index[m] (into profiles.bin, ascending), float16 anomaly[m]
+    profiles.bin:  uint32 n, then byte planes of: float32 lon[n], float32 lat[n], uint16 year[n],
+                   uint16 bin[n] as differences (sorted by bin, then year)
+    <V>_<k>.bin:   uint32 m, then byte planes of: uint32 profile index[m] (into profiles.bin, ascending) as
+                   differences, float16 anomaly[m]
+    ("byte planes": all first bytes of the column, then all second bytes, ...; lossless; see FORMAT)
 
 Usage::
 
@@ -141,6 +144,95 @@ def build_bins(out):
     print(f'  bins: {kept} kept, dropped {dropped}; {len(blob) / 1e6:.1f} MB raw; {time.time() - t0:.0f}s')
 
 
+# ---- file layout (FORMAT 2) ----
+# Lossless: every number is stored exactly; only the byte order changes, so gzip packs it better. Each
+# column is split into byte planes (all first bytes, then all second bytes, ...); sorted integer columns
+# (profile index, bin) are stored as differences from the previous value. About half the size of the
+# plain layout (FORMAT 1: whole little-endian numbers).
+FORMAT = 2
+
+
+def _planes(a):
+    """Little-endian byte planes of a 1-D array: plane 0 = lowest bytes of every value, ..."""
+    return np.ascontiguousarray(a.astype(a.dtype.newbyteorder('<')).view(np.uint8).reshape(-1, a.itemsize).T).tobytes()
+
+
+def _unplanes(buf, n, dtype):
+    dt = np.dtype(dtype).newbyteorder('<')
+    return np.frombuffer(buf, np.uint8, n * dt.itemsize).reshape(dt.itemsize, n).T.copy().view(dt).ravel()
+
+
+def _delta(a):
+    return np.diff(a.astype(np.int64), prepend=0)
+
+
+def encode_profiles(lon, lat, year, bins):
+    """profiles.bin: uint32 n; byte planes of f32 lon, f32 lat, u16 year, u16 delta(bin) (bins ascending)."""
+    n = len(lon)
+    return gzip.compress(np.uint32(n).tobytes() + _planes(lon.astype('<f4')) + _planes(lat.astype('<f4'))
+                         + _planes(year.astype('<u2')) + _planes(_delta(bins).astype('<u2')), 9)
+
+
+def decode_profiles(blob):
+    """Inverse of :func:`encode_profiles`: lon, lat, year, bin arrays."""
+    b = gzip.decompress(blob)
+    n = int(np.frombuffer(b, '<u4', 1)[0])
+    o, out = 4, []
+    for dt in ('<f4', '<f4', '<u2', '<u2'):
+        w = np.dtype(dt).itemsize * n
+        out.append(_unplanes(b[o:o + w], n, dt))
+        o += w
+    out[3] = np.cumsum(out[3].astype(np.int64)).astype('<u2')
+    return out
+
+
+def encode_level(ix, v):
+    """<V>_<k>.bin: uint32 m; byte planes of u32 delta(profile index) (ascending), f16 anomaly."""
+    return gzip.compress(np.uint32(len(ix)).tobytes() + _planes(_delta(ix).astype('<u4'))
+                         + _planes(v.astype('<f2')), 9)
+
+
+def decode_level(blob):
+    """Inverse of :func:`encode_level`: profile index and float16 anomaly arrays."""
+    b = gzip.decompress(blob)
+    m = int(np.frombuffer(b, '<u4', 1)[0])
+    ix = np.cumsum(_unplanes(b[4:4 + 4 * m], m, '<u4').astype(np.int64)).astype('<u4')
+    return ix, _unplanes(b[4 + 4 * m:4 + 6 * m], m, '<f2')
+
+
+def convert_format1(out):
+    """Rewrite a FORMAT 1 folder as FORMAT 2 in place, checking each file decodes to the same numbers."""
+    out = Path(out)
+    index = json.loads((out / 'index.json').read_text())
+    if index.get('format', 1) >= 2:
+        print('already format 2')
+        return
+    before = after = 0
+    for src in index['classes']:
+        for f in sorted((out / src).glob('*.bin')):
+            old = f.read_bytes()
+            raw = gzip.decompress(old)
+            n = int(np.frombuffer(raw, '<u4', 1)[0])
+            if f.name == 'profiles.bin':
+                cols = [np.frombuffer(raw, dt, n, 4 + off) for dt, off in
+                        (('<f4', 0), ('<f4', 4 * n), ('<u2', 8 * n), ('<u2', 10 * n))]
+                new = encode_profiles(*cols)
+                back = decode_profiles(new)
+            else:
+                cols = [np.frombuffer(raw, '<u4', n, 4), np.frombuffer(raw, '<f2', n, 4 + 4 * n)]
+                new = encode_level(*cols)
+                back = decode_level(new)
+            if not all(a.tobytes() == c.tobytes() for a, c in zip(cols, back)):   # bit-for-bit, NaNs included
+                raise RuntimeError(f'{f}: round trip differs; nothing more converted')
+            f.write_bytes(new)
+            before += len(old)
+            after += len(new)
+        print(f'  {src}: done')
+    index['format'] = FORMAT
+    (out / 'index.json').write_text(json.dumps(index, indent=1))
+    print(f'format 2: {before / 1e6:.0f} MB -> {after / 1e6:.0f} MB, every file checked bit for bit')
+
+
 def _bin_std(bins, v):
     """np.std (ddof 0) of v per bin, for the bins that have values."""
     u, inv, n = np.unique(bins, return_inverse=True, return_counts=True)
@@ -234,9 +326,7 @@ def export_class(src, files, out, tree, kept_bins):
     d = out / src
     d.mkdir(parents=True, exist_ok=True)
     n = len(order)
-    (d / 'profiles.bin').write_bytes(gzip.compress(
-        np.uint32(n).tobytes() + lon[order].astype('<f4').tobytes() + lat[order].astype('<f4').tobytes()
-        + year[order].astype('<u2').tobytes() + b[order].astype('<u2').tobytes(), 6))
+    (d / 'profiles.bin').write_bytes(encode_profiles(lon[order], lat[order], year[order], b[order]))
     levels, scales = {}, {}
     bo, kept = b[order], np.isin(b[order], kept_bins)
     for V in VARS:
@@ -247,8 +337,7 @@ def export_class(src, files, out, tree, kept_bins):
             i = np.nonzero(np.isfinite(col))[0]
             if not len(i):
                 continue
-            (d / f'{V}_{k:02d}.bin').write_bytes(gzip.compress(
-                np.uint32(len(i)).tobytes() + i.astype('<u4').tobytes() + col[i].astype('<f2').tobytes(), 6))
+            (d / f'{V}_{k:02d}.bin').write_bytes(encode_level(i, col[i]))
             have.append(k)
             allv.append(col[i][kept[i]])
             stds.append(_bin_std(bo[i][kept[i]], col[i][kept[i]].astype(np.float64)))
@@ -305,6 +394,7 @@ def write_page(out):
 
 
 def run(run_dir, out, sources=None, rebuild_bins=False):
+    """Write the whole viewer folder for one processed run: bins, land, isobaths, every class, the page."""
     run_dir = common.yearly_dir(run_dir)
     out = Path(out)
     out.mkdir(parents=True, exist_ok=True)
@@ -327,7 +417,7 @@ def run(run_dir, out, sources=None, rebuild_bins=False):
         depth = [float(x) for x in ds['prof_depth'][:]]
     index_path = out / 'index.json'
     index = json.loads(index_path.read_text()) if index_path.exists() else {'classes': {}}
-    index.update({'run': str(run_dir), 'depth': depth, 'vars': list(VARS),
+    index.update({'format': FORMAT, 'run': str(run_dir), 'depth': depth, 'vars': list(VARS),
                   'units': {'T': '°C', 'S': 'psu'},
                   'created': time.strftime('%Y-%m-%dT%H:%M:%S')})
     print('Classes:')
@@ -348,7 +438,9 @@ def upload(out, bucket, prefix, endpoint, profile='r2', dry_run=False):
     """
     import subprocess
     dest = f's3://{bucket}/{prefix.strip("/")}' if prefix else f's3://{bucket}'
-    base = ['aws', 's3', 'sync', str(out), dest, '--endpoint-url', endpoint, '--profile', profile, '--only-show-errors']
+    # --exact-timestamps: also copy files whose size is unchanged but which were rewritten (e.g. --convert)
+    base = ['aws', 's3', 'sync', str(out), dest, '--endpoint-url', endpoint, '--profile', profile, '--only-show-errors',
+            '--exact-timestamps']
     if dry_run:
         base.append('--dryrun')
     subprocess.run(base + ['--exclude', 'index.html', '--cache-control', 'public, max-age=86400'], check=True)
@@ -357,7 +449,58 @@ def upload(out, bucket, prefix, endpoint, profile='r2', dry_run=False):
     print(f'{"Dry run: would upload" if dry_run else "Uploaded"} {out} -> {dest}')
 
 
+GITHUB_LIMIT_MB = 1000         # GitHub Pages site limit (about 1 GB); every file must also be < 100 MB
+
+
+def publish_github(out, remote, dry_run=False):
+    """Replace the viewer repository's main branch with this folder (one commit, force-pushed, no history).
+
+    The repository (e.g. ``git@github.com:<user>/ecco-bin-viewer.git``) serves GitHub Pages from ``main``, root
+    folder; the viewer is then at ``https://<user>.github.io/<repo>/<folder name>/``. One run at a time: the
+    branch is replaced, so older runs go (they stay in the local folders and on R2). Reachable on networks that
+    filter new domains, unlike R2.
+    """
+    import shutil
+    import subprocess
+    import tempfile
+    out = Path(out).resolve()
+    big = [f for f in out.rglob('*') if f.is_file() and f.stat().st_size >= 95e6]
+    size = sum(f.stat().st_size for f in out.rglob('*') if f.is_file()) / 1e6
+    if big:
+        raise SystemExit(f'files over GitHub\'s 100 MB limit: {big[:3]}')
+    if size > GITHUB_LIMIT_MB:
+        raise SystemExit(f'{size:.0f} MB is over the GitHub Pages limit (~{GITHUB_LIMIT_MB} MB)')
+    git = lambda *a, cwd: subprocess.run(['git', *a], cwd=cwd, check=True, capture_output=True, text=True)
+    me = Path(__file__).resolve().parents[4]
+    with tempfile.TemporaryDirectory() as tmp:
+        work = Path(tmp) / 'site'
+        work.mkdir()
+        shutil.copytree(out, work / out.name)
+        (work / '.nojekyll').write_text('')
+        (work / 'index.html').write_text(
+            f'<!DOCTYPE html><meta charset="utf-8"><meta http-equiv="refresh" content="0; url={out.name}/">'
+            f'<a href="{out.name}/">Geodesic bin viewer ({out.name})</a>\n')
+        (work / 'README.md').write_text(
+            'Geodesic bin viewer (the in situ data viewer of the ECCO in situ profile reports). Made by '
+            '`ecco-insitu bin-viewer --github`; this branch is replaced on every publish, so it has no history. '
+            f'Run: {out.name}. Code: https://github.com/brucelaughlin/ECCO-Insitu-Python '
+            '(src/ecco_insitu/diagnostics/bin_viewer).\n')
+        print(f'{remote}: {out.name} ({size:.0f} MB)')
+        if dry_run:
+            print('dry run: nothing pushed')
+            return
+        git('init', '-q', '-b', 'main', cwd=work)
+        git('add', '-A', cwd=work)
+        name = git('config', 'user.name', cwd=me).stdout.strip()
+        email = git('config', 'user.email', cwd=me).stdout.strip()
+        git('-c', f'user.name={name}', '-c', f'user.email={email}', 'commit', '-q', '-m',
+            f'Publish bin viewer: {out.name}', cwd=work)
+        git('push', '-q', '--force', remote, 'main:main', cwd=work)
+    print('pushed. First time only: repository -> Settings -> Pages -> Deploy from a branch -> main, / (root).')
+
+
 def cli(argv=None):
+    """``ecco-insitu bin-viewer``: build, convert, upload (R2) or publish (GitHub Pages) the viewer."""
     p = argparse.ArgumentParser(description='Write the geodesic bin viewer data.')
     p.add_argument('--run', help='processed run folder (or its yearly/)')
     p.add_argument('--out', required=True, help='output folder (uploaded to the host as is)')
@@ -365,15 +508,20 @@ def cli(argv=None):
     p.add_argument('--rebuild-bins', action='store_true', help='rebuild bins.bin even if it exists')
     p.add_argument('--page-only', action='store_true', help='only rewrite index.html (after editing viewer.html)')
     p.add_argument('--bathy', action='store_true', help='(re)write bathy.json only')
+    p.add_argument('--convert', action='store_true', help='rewrite an older (format 1) folder as format 2')
     p.add_argument('--upload', metavar='BUCKET', help='then upload the folder to this R2 bucket')
     p.add_argument('--prefix', default='', help='folder in the bucket (e.g. run_20261027_142247)')
     p.add_argument('--endpoint', help='R2 endpoint, https://<account id>.r2.cloudflarestorage.com')
     p.add_argument('--profile', default='r2', help='aws CLI profile with the R2 API token (default: r2)')
-    p.add_argument('--dry-run', action='store_true', help='show what the upload would copy')
+    p.add_argument('--github', metavar='REMOTE', help='then publish the folder to this GitHub Pages repository '
+                   '(e.g. git@github.com:brucelaughlin/ecco-bin-viewer.git); replaces what is there')
+    p.add_argument('--dry-run', action='store_true', help='show what the upload / publish would do')
     a = p.parse_args(argv)
+    if a.convert:
+        convert_format1(a.out)
     if a.bathy:
         write_bathy(Path(a.out))
-    if a.page_only or a.bathy or (a.upload and not a.run):
+    if a.page_only or a.bathy or a.convert or ((a.upload or a.github) and not a.run):
         write_page(Path(a.out))
     else:
         run(a.run, a.out, a.sources, a.rebuild_bins)
@@ -381,6 +529,8 @@ def cli(argv=None):
         if not a.endpoint:
             p.error('--upload needs --endpoint')
         upload(Path(a.out), a.upload, a.prefix, a.endpoint, a.profile, a.dry_run)
+    if a.github:
+        publish_github(Path(a.out), a.github, a.dry_run)
 
 
 if __name__ == '__main__':

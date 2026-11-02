@@ -109,7 +109,7 @@ _ANALYSIS_DESC = {
         'each bin (the &ldquo;n&rdquo; behind the per-datum values; for a depth band, profiles with at least one '
         'point in it). <strong>Cost</strong> row: unsplit, the split&rsquo;s anomaly term, or its mean term '
         '(per bin, averaged over the bin&rsquo;s levels). <strong>Depth</strong> row: per depth band (unsplit); for any '
-        'depth, cost part or 5-year period use the <strong>Map explorer</strong> (top right). Bins with no data are blank. The color '
+        'depth, cost part or 5-year period use the <strong>Cost map explorer</strong> (top right). Bins with no data are blank. The color '
         'scale ends at the 98th percentile; higher values use the top color. Click a figure to see it full width.'
     ),
     '07': (
@@ -490,22 +490,28 @@ which classes are included, a report made with <code>--sources</code> has a diff
 <li><strong>Decision (2026-10-29): depth bands for the map images of analyses 5 and 6</strong>, not all 97
 levels: 0&ndash;50, 50&ndash;100, 100&ndash;250, 250&ndash;500, 500&ndash;1000, 1000&ndash;2000, 2000&ndash;4000&nbsp;m and deeper,
 plus all depths (<code>MAP_DEPTH_BANDS</code> in <code>compute.py</code>; changing them needs a re-analysis).
-<strong>Since 2026-10-30 the Map explorer</strong> (top right) draws the maps in the browser for any single level,
+<strong>Since 2026-10-30 the Cost map explorer</strong> (top right) draws the maps in the browser for any single level,
 100&nbsp;m band, 15 or 30 groups of levels, flagged cost spikes, 5-year period, and cost part, from the saved
 per-bin data, so the images only cover the standard bands.</li>
-<li><strong>Map explorer: flagged spikes.</strong> A level is flagged when its mean cost per datum (<code>true</code>
+<li><strong>Cost map explorer: flagged spikes.</strong> A level is flagged when its mean cost per datum (<code>true</code>
 weights, unsplit or anomaly, levels with at least 30 points) is above 0.5 and at least 1.4 times the median of the
 levels 300&ndash;1000&nbsp;m above and below it. Broad bumps are flagged at each of their levels. These thresholds are
 our choice (<code>_spikes</code> in <code>diagnostics/profile_analyses/viewer.py</code>).</li>
-<li><strong>Map explorer: the mean-bias diagnostic</strong> (since 2026-10-31). The signed misfit, observation minus
+<li><strong>Cost map explorer: the mean-bias diagnostic</strong> (since 2026-10-31). The signed misfit, observation minus
 reference, averaged per bin over any depths and years, in &deg;C or psu. It is <em>not</em> part of any cost, and is kept
 in its own row. Why: ECCO&rsquo;s mean term uses the offset over the whole assimilation period (that is the window the
 state estimate is fit over), so a per-period mean term would not be ECCO&rsquo;s; but a time-resolved offset shows drift
 (e.g. Argo&rsquo;s North Atlantic 2200&nbsp;m offset against the model grows after 2020; see Data notes). Checked: over all
 years it reproduces the saved per-bin bias to 1&times;10<sup>&minus;6</sup>&nbsp;&deg;C.</li>
-<li><strong>Map explorer: precision.</strong> Values are stored to 3 significant digits (16-bit floats); values below
+<li><strong>Cost map explorer: precision.</strong> Values are stored to 3 significant digits (16-bit floats); values below
 about 6&times;10<sup>&minus;5</sup> lose precision, but they are zero on every color scale. Checked: the explorer&rsquo;s
 data reproduce analysis&nbsp;2 at the levels tested.</li>
+<li><strong>In situ data viewer</strong> (top right, since 2026-11-02): the observations themselves, not costs. A web
+copy of the team&rsquo;s original geodesic-binning app: T and S anomalies (observation minus climatology) per
+geodesic bin, at any depth level and any range of years; zoomed in, one cell per profile with its true location.
+Only values the chain kept (weight&nbsp;&gt;&nbsp;0). Checked: its bin counts, means and standard deviations
+reproduce a direct computation from the yearly files (GLD 2017, level 1). It opens in a new tab on the class
+shown here; its own Guide lists every difference from the original app.</li>
 <li><strong>Two small differences from <code>model-cost</code>:</strong> profiles without a geodesic bin (about
 14,000 of 441 million weighted values in run 20261027_142247) have no split cost here; and points whose
 climatology is missing are left out of all costs here, while ECCO keeps them in the model cost
@@ -642,8 +648,10 @@ code { background: #f0f0f0; padding: 1px 3px; border-radius: 2px; font-size: 0.9
 /* header right-side links */
 .hdr-link { font-size: 0.82em; color: var(--accent); cursor: pointer; white-space: nowrap; }
 .hdr-link:hover { text-decoration: underline; }
-.hdr-notes { color: #888; margin-left: auto; }
-.explorer-btn { margin-left: auto; margin-right: 0.6em; background: var(--accent); color: #fff; text-decoration: none;
+.hdr-right { margin-left: auto; display: flex; align-items: center; gap: 0.5em; }
+.hdr-notes { color: #555; margin-right: 1.6em; padding: 0.3em 0.6em; border: 1px solid #ccc; border-radius: 5px; }
+.hdr-notes:hover { background: #f3f3f3; text-decoration: none; }
+.explorer-btn { background: var(--accent); color: #fff; text-decoration: none;
   font-size: 0.9em; font-weight: 600; padding: 0.35em 0.9em; border-radius: 5px; white-space: nowrap;
   box-shadow: 0 1px 3px rgba(0,0,0,0.2); }
 .explorer-btn:hover { background: #134a8a; }
@@ -812,7 +820,7 @@ def _collect_data(input_dirs):
 
 # ── interactive HTML ───────────────────────────────────────────────────────────
 
-def _build_interactive_html(data, metas, title):
+def _build_interactive_html(data, metas, title, bin_viewer=None):
     sources = sorted(data.keys())
     all_cost_types = sorted({ct for src in data.values() for ct in src.keys()})
     all_analyses = sorted({
@@ -928,6 +936,7 @@ const PART_ANALYSES = ['06', '07'];
 
 let curSource = SOURCES[0], curCost = COST_TYPES[0], curAn = null, curBand = 'all', curPart = 'unsplit';
 let HAS_EXPLORER = false;
+const BIN_VIEWER_URL = {json.dumps(bin_viewer or '')};
 
 function exists(src, ct, an) {{
   return !!EXISTS[src + '|' + ct + '|' + an];
@@ -972,7 +981,7 @@ function render() {{
   const bandRow = document.getElementById('band-row');
   const useBand = BAND_ANALYSES.includes(curAn) && !part;
   document.getElementById('part-note').textContent = (usePart && part && curAn === '06')
-    ? 'all depths only here; other depths, cost parts and periods: Map explorer (top right)' : '';
+    ? 'all depths only here; other depths, cost parts and periods: Cost map explorer (top right)' : '';
   if (bandRow) bandRow.style.display = useBand ? '' : 'none';
   document.querySelectorAll('.band-tab').forEach(t =>
     t.classList.toggle('active', t.dataset.band === curBand));
@@ -981,6 +990,11 @@ function render() {{
     (HAS_EXPLORER && ['05', '06', '07'].includes(curAn)) ? '' : 'none';
   document.getElementById('map-hint-link').href = 'viewer.html?src=' + encodeURIComponent(curSource) +
     '&ct=' + encodeURIComponent(curCost);
+  // both header buttons open on the class shown here
+  document.getElementById('map-explorer').href = 'viewer.html?src=' + encodeURIComponent(curSource) +
+    '&ct=' + encodeURIComponent(curCost);
+  if (BIN_VIEWER) document.getElementById('bin-viewer').href = BIN_VIEWER + '?src=' + encodeURIComponent(curSource) +
+    '&back=' + encodeURIComponent(location.href.split('?')[0].split('#')[0]);
   document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
   if (curAn) {{
     const base = 'p-' + curSource + '-' + curCost + '-' + curAn;
@@ -1085,6 +1099,9 @@ document.getElementById('close-notes').addEventListener('click', () => showNotes
   }});
 }});
 
+// the in situ data viewer (bin viewer), if the report was built with --bin-viewer
+const BIN_VIEWER = BIN_VIEWER_URL;
+if (BIN_VIEWER) document.getElementById('bin-viewer').style.display = '';
 // the map explorer link, if this site has one (profile-report --site)
 fetch('viewer/index.json', {{method: 'HEAD'}}).then(r => {{
   if (r.ok) {{ HAS_EXPLORER = true; document.getElementById('map-explorer').style.display = ''; render(); }}
@@ -1108,9 +1125,13 @@ render();
   <span style="color:#ccc">|</span>
   <span class="hdr-link" id="toggle-side-meta">Metadata</span>
   <span style="color:#ccc;font-size:0.8em;margin-left:0.5em">← → cycle sources &nbsp; ↑ ↓ cycle analyses</span>
-  <a class="explorer-btn" id="map-explorer" href="viewer.html" style="display:none"
-     title="Interactive maps: any depth level or band, any years, unsplit / split / bias">&#x1F5FA;&#xFE0E;&nbsp; Map explorer &rarr;</a>
-  <span class="hdr-link" id="toggle-notes" style="color:#888">Notes &amp; errata</span>
+  <span class="hdr-right">
+    <span class="hdr-link hdr-notes" id="toggle-notes" title="Interpretation notes, decisions and known issues">Notes &amp; errata</span>
+    <a class="explorer-btn" id="map-explorer" href="viewer.html" style="display:none"
+       title="Interactive cost maps: any depth level or band, any years, unsplit / split / bias">Cost map explorer</a>
+    <a class="explorer-btn" id="bin-viewer" href="#" target="_blank" rel="noopener" style="display:none"
+       title="The data themselves: T and S anomalies per geodesic bin, zoom in to every profile (opens in a new tab)">In situ data viewer &#x2197;&#xFE0E;</a>
+  </span>
 </div>
 <div id="nav">
   <div class="tab-row"><span class="row-label">Source</span>{src_tabs}</div>
@@ -1130,7 +1151,7 @@ render();
   <div id="fig-area">
     <div class="map-hint" id="map-hint" style="display:none">These are fixed images for the standard depth bands.
       For any depth level or band, any range of years, the split terms and the mean bias, open the
-      <a href="viewer.html" id="map-hint-link">Map explorer &rarr;</a></div>
+      <a href="viewer.html" id="map-hint-link">Cost map explorer &rarr;</a></div>
     {''.join(panels)}
   </div>
   <div id="side">
@@ -1249,7 +1270,7 @@ def _compile_flat_report(input_dirs, out_dir, title=None):
 # ── public API ─────────────────────────────────────────────────────────────────
 
 def compile_report(input_dirs, out_dir, title=None, flat=False, portable=False,
-                   site=False):
+                   site=False, bin_viewer=None):
     """Compile profile-analyze/compare figures into a report.
 
     Parameters
@@ -1266,6 +1287,10 @@ def compile_report(input_dirs, out_dir, title=None, flat=False, portable=False,
         Copy figures to out_dir/figures/ with relative paths and write
         index.html.  The resulting directory is ready for GitHub Pages or
         any static HTTP host.
+    bin_viewer : str, optional
+        Address of the in situ data viewer (the geodesic bin viewer, ``ecco-insitu bin-viewer``) for this
+        run, e.g. ``https://brucelaughlin.github.io/ecco-bin-viewer/run_20261027_142247/``. Adds the
+        "In situ data viewer" button; it opens on the class shown in the report.
     """
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -1278,7 +1303,7 @@ def compile_report(input_dirs, out_dir, title=None, flat=False, portable=False,
         title = 'Profile Analysis — ' + ', '.join(d.name for d in input_dirs)
 
     data, metas = _collect_data(input_dirs)
-    html = _build_interactive_html(data, metas, title)
+    html = _build_interactive_html(data, metas, title, bin_viewer)
 
     if portable:
         print('Embedding images…', end=' ', flush=True)
@@ -1346,6 +1371,8 @@ def cli(argv=None):
     p.add_argument('--site', action='store_true',
                    help='Copy figures to <out>/figures/ and write index.html with '
                         'relative paths — ready for GitHub Pages or any static host')
+    p.add_argument('--bin-viewer', metavar='URL', default=None,
+                   help='address of this run\'s in situ data viewer (ecco-insitu bin-viewer); adds its button')
     a = p.parse_args(argv)
     compile_report(a.inputs, a.out, a.title, flat=a.flat, portable=a.portable,
-                   site=a.site)
+                   site=a.site, bin_viewer=a.bin_viewer)
