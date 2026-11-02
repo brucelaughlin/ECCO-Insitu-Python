@@ -36,7 +36,8 @@ select { font-size: 0.86em; padding: 0.15em; max-width: 26em; }
   background: var(--accent); border: 2px solid #fff; cursor: pointer; }
 #ttrack { position: absolute; left: 7px; right: 7px; top: 0.75em; height: 4px; background: #ddd; border-radius: 2px; }
 #tfill { position: absolute; top: 0; height: 4px; background: var(--accent); border-radius: 2px; }
-#timelab { font-size: 0.86em; min-width: 6.5em; font-weight: 600; }
+#timelab { font-size: 0.86em; font-weight: 600; display: inline-block; width: 13.5em; white-space: nowrap;
+  overflow: hidden; text-overflow: ellipsis; }   /* fixed width: the buttons after it never move */
 .tbtn { font-size: 0.8em; padding: 0.1em 0.4em; }
 #maps { display: flex; gap: 10px; padding: 0.8em 1em 0.3em; align-items: flex-start; }
 #mapwrap { position: relative; }
@@ -382,7 +383,9 @@ function syncControls() {
   const n = INDEX.blocks.length - 1, f = document.getElementById('tfill');
   f.style.left = (S.all ? 0 : 100 * S.t0 / n) + '%'; f.style.width = (S.all ? 100 : 100 * (S.t1 - S.t0) / n) + '%';
   f.style.opacity = noTime ? 0.25 : 1;
-  document.getElementById('timelab').textContent = noTime ? 'n/a for the mean term (whole record)' : timeText();
+  const tl = document.getElementById('timelab');
+  tl.textContent = noTime ? 'whole record (mean term)' : timeText();
+  tl.title = noTime ? 'The mean term is defined over the whole record, so no time selection' : '';
   const a = S.all ? 0 : S.t0, z = S.all ? n : S.t1;
   const dis = (sel, off) => document.querySelectorAll(sel).forEach(b => b.disabled = noTime || off);
   dis('.step[data-h=lo][data-d="-1"]', a <= 0); dis('.step[data-h=lo][data-d="1"]', a >= n);
