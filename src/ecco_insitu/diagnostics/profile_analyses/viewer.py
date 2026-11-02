@@ -84,12 +84,19 @@ results as the report&rsquo;s figures.</p>
   value and that median, and whether it was flagged in the unsplit or anomaly cost. Use it to find <em>where</em> a peak in
   the report&rsquo;s cost-vs-depth plots (analyses 2 and 9) comes from.</td></tr>
 <tr><td>(list)</td><td>The level, band, group or spike to show.</td></tr>
-<tr><td rowspan="3">Time</td><td>all years</td><td>Every year of the record. Fast: uses a small all-years summary.</td></tr>
+<tr><td rowspan="5">Time</td><td>all years</td><td>Every year of the record. Fast: uses a small all-years summary.</td></tr>
 <tr><td>the two handles</td><td>A range of years: drag the left handle for the first year and the right one for the last. The map
   shows the average over every point in those years. Choosing years downloads that class&rsquo;s year-by-year data in 5-year
   pieces, only those the range needs (up to about 20&nbsp;MB per piece for Argo, a few MB for most classes), so the first
   range in a period can take a few seconds; after that, changes are quick.</td></tr>
-<tr><td>single year</td><td>Locks the handles together, so dragging moves a one-year window.</td></tr>
+<tr><td>&#9664; &#9654; first year / last year</td><td>Move that end of the range by one year. If the two ends would cross,
+  the other is pushed along.</td></tr>
+<tr><td>&#9664;&#9664; shift window &#9654;&#9654;</td><td>Move the whole range by one year, keeping its length (e.g. 2012&ndash;2016 &rarr;
+  2013&ndash;2017), to slide a fixed-length window through the record or compare neighboring periods. Keyboard: <kbd>[</kbd>
+  and <kbd>]</kbd>. Stops at the ends of the record. With the color scale fixed for the view, what changes on the map
+  between steps is real.</td></tr>
+<tr><td>single year</td><td>Locks the handles together, so dragging, the step buttons and the shift buttons all move a one-year
+  window.</td></tr>
 </table>
 
 <h4>Loading</h4>
