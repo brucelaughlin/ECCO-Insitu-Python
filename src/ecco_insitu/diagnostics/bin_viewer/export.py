@@ -746,7 +746,10 @@ groups of levels), besides single levels: in a range each profile counts once, w
 range's levels. (11) With model values exported (<code>--model-equivalents</code>), the anomaly can be relative to the
 model (V &minus; V<sub>model</sub>) instead of the climatology; colors then use the model anomaly's own limits.
 (12) A platform box (Argo float WMO number, ITP, tag, mooring, or WOD ship code) rings that platform's profiles in cyan at any
-zoom; the cost map explorer's platform table links here with it filled in.</p>
+zoom; the cost map explorer's platform table links here with it filled in. (13) Zoomed in, <b>click a profile</b> (a red dot
+or a ring) for its panel: the full profile (observation, climatology, model, neighbors in gray; obs &minus; reference with &plusmn;1&sigma;
+and &plusmn;2&sigma;; levels the chain rejected marked &times;), its platform over time, and the bin's largest misfits. Values there are
+the processed files' to 0.001.</p>
 <p>Data: profiles.bin + one file per variable and depth level per class, written by
 <code>ecco_insitu.diagnostics.bin_viewer.export</code>; loaded on demand and cached for the session.</p>
 """
@@ -841,7 +844,7 @@ def split_for_github(out, remote_name, url):
     return dest / out.name
 
 
-def publish_github(out, remote, dry_run=False, landing=None):
+def publish_github(out, remote, dry_run=False, landing=None, skip_detail=True):
     """Replace the viewer repository's main branch with this folder (one commit, force-pushed, no history).
 
     The repository (e.g. ``git@github.com:<user>/ecco-bin-viewer.git``) serves GitHub Pages from ``main``, root
@@ -852,7 +855,7 @@ def publish_github(out, remote, dry_run=False, landing=None):
     import subprocess
     import tempfile
     out = Path(out).resolve()
-    files = [f for f in out.rglob('*') if f.is_file() and 'detail' not in f.relative_to(out).parts[:1]]   # detail/: own sites
+    files = [f for f in out.rglob('*') if f.is_file() and not (skip_detail and f.relative_to(out).parts[:1] == ('detail',))]
     big = [f for f in files if f.stat().st_size >= 95e6]
     size = sum(f.stat().st_size for f in files) / 1e6
     if big:
@@ -864,7 +867,8 @@ def publish_github(out, remote, dry_run=False, landing=None):
     with tempfile.TemporaryDirectory() as tmp:
         work = Path(tmp) / 'site'
         work.mkdir()
-        shutil.copytree(out, work / out.name, ignore=shutil.ignore_patterns('detail'))  # detail/: own sites
+        # the main site leaves out detail/ (published to its own sites by publish_details, which passes skip_detail=False)
+        shutil.copytree(out, work / out.name, ignore=(lambda d, names: ['detail'] if skip_detail and Path(d) == out else []))
         (work / '.nojekyll').write_text('')
         if not (work / out.name / 'index.html').exists():
             target = landing or f'{out.name}/'
@@ -917,7 +921,7 @@ def publish_details(out, remotes, dry_run=False):
                 for k in range(a, b + 1):
                     shutil.copy2(out / 'detail' / c / f'c{k:04d}.bin', site / 'detail' / c / f'c{k:04d}.bin')
                 urls.setdefault(c, []).append([a, b, url])
-            publish_github(site, remote, dry_run, landing=f'https://{user}.github.io/ecco-bin-viewer/{out.name}/')
+            publish_github(site, remote, dry_run, landing=f'https://{user}.github.io/ecco-bin-viewer/{out.name}/', skip_detail=False)
     index['detail_urls'] = urls
     ip.write_text(json.dumps(index, indent=1))
     print('detail_urls:', urls)

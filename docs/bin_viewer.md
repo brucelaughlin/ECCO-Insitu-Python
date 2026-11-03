@@ -16,6 +16,35 @@ History: 2026-11-02 it was first put on Cloudflare R2 (custom domain `www.ecco-i
 network blocks new domains and all `*.r2.dev` addresses, so it moved to GitHub Pages the same day and R2 was
 emptied and dropped.
 
+## Sites (since 2026-11-03)
+
+| site | holds | about |
+|---|---|---|
+| `ecco-bin-viewer` | the page, bins, maps, climatology anomalies, platforms | 830 MB |
+| `ecco-bin-viewer-model` | anomalies vs the model | 740 MB |
+| `ecco-bin-viewer-detail-a` / `-b` | profile details, PFL (chunks 0–653 / 654–1285) | 540 / 510 MB |
+| `ecco-bin-viewer-detail-c` | profile details, all other classes | 450 MB |
+
+Profile details (`export --details`): every profile's observation, climatology, model, σ and QC code (step 06's
+`prof_Vweight_code`), date, time and description, to 0.001 (σ 0.0001), in chunks of 2000 profiles, loaded only when a
+profile is opened. Checked against the yearly files for 400 random profiles per class (178,000 values; script
+`tests/tools/check_bin_viewer_detail.py`): all within rounding, QC codes, dates and descriptions exact.
+
+Publish all four in one go (the detail sites first, so the page knows where they are):
+```
+python -m ecco_insitu.diagnostics.bin_viewer.export --out <folder> \
+    --github-detail git@github.com:brucelaughlin/ecco-bin-viewer-detail-a.git=PFL:0-653 \
+                    git@github.com:brucelaughlin/ecco-bin-viewer-detail-b.git=PFL:654- \
+                    git@github.com:brucelaughlin/ecco-bin-viewer-detail-c.git=CTD_WOD,GLD_WOD,ITP,MEOP,MRB_WOD,XBT_WOD \
+    --github git@github.com:brucelaughlin/ecco-bin-viewer.git
+```
+
+**The profile panel:** zoomed in, click a red dot (or a cyan platform ring). Tabs: *this profile* (observation,
+climatology, model, gray neighbors from the same bin within ±2 years and other platforms; obs − reference with ±1σ
+and ±2σ bands; rejected levels ×; the values at the map's depth), *this platform over time* (all its profiles as a
+depth-time picture of obs − reference) and *largest misfits here* (the bin's profiles ranked by |Δ|/σ at the
+map's depth; click a row to open one).
+
 ## What matches the original
 
 Everything that the original draws is drawn here in the same way:

@@ -45,6 +45,10 @@ platform table with an apportioned share; data viewer's platform box / `?platfor
 Live check (PFL vs_model mean term 2000–2600 m): peak 2400 m; 98 % of its excess over the neighbors from sampling;
 top cluster 56°N 38°W, 4.1 % of bins, 33.8 % of the term; top floats 6903082 (11.5 %), 6903871, 1902621, 6903085.
 Possible next: ocean-basin names for clusters; per-profile costs (would make platform shares exact).
+Done 2026-11-03 (later): **profile panel** in the data viewer (click a profile: full profile with obs / clim / model /
+neighbors / ±σ / rejected levels; the platform over time; the bin's largest misfits). Detail data on three more sites
+(`ecco-bin-viewer-detail-a/-b/-c`, see docs/bin_viewer.md). Live check: float 6903082 at 2400 m, obs 2.810 vs model
+3.269 °C (−0.459, σ 0.134); its depth-time picture shows a persistent cold layer at 2000–2500 m from 2023.
 5. **Later, only when asked:** click-and-drag a region and rerun the analyses for it.
 
 ### State as of 2026-10-29 (still true unless noted above)
