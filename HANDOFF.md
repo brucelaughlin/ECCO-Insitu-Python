@@ -38,7 +38,13 @@ Done 2026-11-02 (evening): band labels ("2200–2400 m (1 level)"); the cost map
 **same bins at every depth**; the **clicked-bin** panel with a link that opens the data viewer zoomed in on the bin;
 per-float / per-year attribution (`~/ecco/yip/cost_comparisons/pfl_2400m_spike/README.md`: ~40 % of the term from
 north of 45°N, under 10 % of the bins; top 10 floats ~30 %, none over 6 %; 2020–2024 ~80 %).
-Next candidates: a top-contributors table for a depth selection; per-float view inside the explorer.
+Done 2026-11-03: **region selection** (drag a box; region vs rest of the world), the **peak tool** (drag on the depth
+profile or "investigate" under the report's analysis 02: peak, same-bins split of sampling vs signal, clusters of high
+bins, top cluster -> region) and **platforms** (`bin-viewer --platforms` writes `<class>/platforms.bin`; region panel's
+platform table with an apportioned share; data viewer's platform box / `?platform=` rings a platform's profiles).
+Live check (PFL vs_model mean term 2000–2600 m): peak 2400 m; 98 % of its excess over the neighbors from sampling;
+top cluster 56°N 38°W, 4.1 % of bins, 33.8 % of the term; top floats 6903082 (11.5 %), 6903871, 1902621, 6903085.
+Possible next: ocean-basin names for clusters; per-profile costs (would make platform shares exact).
 5. **Later, only when asked:** click-and-drag a region and rerun the analyses for it.
 
 ### State as of 2026-10-29 (still true unless noted above)
