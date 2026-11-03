@@ -72,6 +72,17 @@ canvas { border: 1px solid #ccc; display: block; }
 .dnote { font-size: 0.78em; color: #888; font-style: italic; margin-left: 0.6em; }
 #status { color: #888; font-size: 0.85em; padding: 0 1em; }
 #info { padding: 0.4em 1em 1em; font-size: 0.85em; color: #444; line-height: 1.5; max-width: 70em; }
+#lower { display: flex; gap: 1.2em; padding: 0 1em 1em; flex-wrap: wrap; align-items: flex-start; }
+.panel { border: 1px solid #ddd; border-radius: 5px; padding: 0.5em 0.7em; background: #fcfcfc; }
+.ptitle { font-weight: 600; font-size: 0.9em; margin-bottom: 0.3em; }
+.popts { font-size: 0.82em; display: flex; gap: 0.8em; align-items: center; flex-wrap: wrap; margin-bottom: 0.3em; }
+#binp { min-width: 34em; max-width: 46em; font-size: 0.85em; line-height: 1.45; }
+#binp table { border-collapse: collapse; margin: 0.3em 0; }
+#binp td, #binp th { border: 1px solid #e3e3e3; padding: 1px 6px; text-align: right; }
+#binp th { background: #f3f3f3; }
+#binp td:first-child, #binp th:first-child { text-align: left; }
+#binlinks a { color: var(--accent); font-weight: 600; margin-right: 1em; }
+canvas.clickable { cursor: pointer; }
 #hover { position: fixed; pointer-events: none; background: rgba(255,255,255,0.95); border: 1px solid #aaa;
          padding: 2px 6px; font-size: 0.8em; display: none; }
 </style>
@@ -96,9 +107,9 @@ canvas { border: 1px solid #ccc; display: block; }
     class="step" data-h="lo" data-d="1" title="first year: one year later">&#9654;</button></span><span class="cap">first year</span></span>
   <span class="stepgrp"><span><button class="step" data-h="hi" data-d="-1" title="last year: one year earlier">&#9664;</button><button
     class="step" data-h="hi" data-d="1" title="last year: one year later">&#9654;</button></span><span class="cap">last year</span></span>
-  <span id="shiftgrp"><button class="step" id="shl" title="move the whole window one year earlier (keyboard: [ )">&#9664;&#9664;</button>
+  <span id="shiftgrp"><button class="step" id="shl" title="move the whole window one year earlier">&#9664;&#9664;</button>
     <span class="cap">shift window</span>
-    <button class="step" id="shr" title="move the whole window one year later (keyboard: ] )">&#9654;&#9654;</button></span>
+    <button class="step" id="shr" title="move the whole window one year later">&#9654;&#9654;</button></span>
   <button class="tab tbtn" id="tone" title="show one year at a time: both handles together">single year</button></div>
 <div id="status"></div>
 <div id="mapwrap"><div id="maps"></div>
@@ -109,6 +120,16 @@ canvas { border: 1px solid #ccc; display: block; }
   <label>max <input type="number" id="vmax" step="any" style="width:6em"></label>
   <button class="tab" id="vauto">auto (98th pct)</button><span id="scalenote" class="dnote"></span></div></div>
 <div id="info"></div>
+<div id="lower">
+  <div id="prof" class="panel"><div class="ptitle">Depth profile of the selection <span class="dnote">(each level's mean over bins, as analysis 02)</span></div>
+    <div class="popts"><label title="Draw the curve only over the bins that have data at every level of a depth range, so the curve shows
+changes in the water, not changes in which bins are counted"><input type="checkbox" id="samebins"> same bins at every depth</label>
+      <span id="sbrange">from <select id="sb0"></select> to <select id="sb1"></select></span>
+      <span id="sbnote" class="dnote"></span></div>
+    <canvas id="pcan" width="520" height="430"></canvas></div>
+  <div id="binp" class="panel"><div class="ptitle">Clicked bin</div><div id="bintxt" class="dnote">Click a bin on a map for its breakdown.</div>
+    <canvas id="bcan" width="560" height="200" style="display:none"></canvas><div id="binlinks"></div></div>
+</div>
 <details id="guide"><summary>Guide: what every option means</summary>__GUIDE__</details>
 <div id="hover"></div>
 <script>
@@ -118,7 +139,7 @@ const PARTS = {unsplit: 'cost per datum, unsplit', anomaly: 'cost per datum, spl
                mean: 'split mean term (per bin; all years)', count: 'number of points',
                bias: 'mean bias, observation − reference (diagnostic, not a cost)'};
 const S = {src: null, ct: null, V: 'T', part: 'unsplit', dmode: 'level', dsel: 0, t0: 0, t1: 0, all: true,
-           vmax: null, log: false};
+           vmax: null, log: false, same: false, sb0: 0, sb1: 0};
 let INDEX, GRID, GRIDS = {}, CACHE = {};
 
 async function getGz(url, label, onProgress) {  // download (with progress in the overlay) and gunzip
@@ -206,6 +227,141 @@ async function yearData(src, ct) {      // year-by-year data: only the pieces co
   }
   return out;
 }
+// ---------- the depth profile of the current selection (as analysis 02), optionally over the same bins ----------
+// Each level: mean over bins of the bin's value (unsplit / anomaly / bias: point-weighted over the bin's points;
+// mean term: per bin, as the report's 02). "Same bins": only bins with data at every level from sb0 to sb1.
+function levelBinValues(d, yd) {          // Map level -> {bin -> [sum, weight]} for the current part and years
+  const useYears = !S.all && S.part !== 'mean', c = useYears ? yd[S.V] : d[S.V], out = new Map();
+  const add = (lev, bin, x, w) => { let m = out.get(lev); if (!m) out.set(lev, m = new Map()); const e = m.get(bin); if (e) { e[0] += x * w; e[1] += w; } else m.set(bin, [x * w, w]); };
+  if (S.part === 'mean') { const m = d[S.V].mt; for (let i = 0; i < m.bin.length; i++) if (Number.isFinite(m.v[i])) add(m.lev[i], m.bin[i], m.v[i], 1); }
+  else {
+    const val = S.part === 'anomaly' ? c.ma : S.part === 'bias' ? c.bias : S.part === 'count' ? null : c.mu,
+          t0 = useYears ? S.t0 : 0, t1 = useYears ? S.t1 : 255;
+    for (let i = 0; i < c.bin.length; i++) {
+      if (c.blk[i] < t0 || c.blk[i] > t1) continue;
+      const x = val ? val[i] : c.n[i]; if (!Number.isFinite(x)) continue;
+      add(c.lev[i], c.bin[i], x, val ? c.n[i] : 1);
+    }
+  }
+  return out;
+}
+let PROF = null;
+function profileCurves(d, yd) {
+  const lb = levelBinValues(d, yd), nd = INDEX.depth.length, all = new Float64Array(nd).fill(NaN), nb = new Int32Array(nd);
+  const same = new Float64Array(nd).fill(NaN), nbs = new Int32Array(nd);
+  const k0 = Math.min(+S.sb0, +S.sb1), k1 = Math.max(+S.sb0, +S.sb1);
+  let keep = null;
+  if (S.same) { keep = null; for (let k = k0; k <= k1; k++) { const m = lb.get(k); const ids = new Set(m ? m.keys() : []);
+      keep = keep === null ? ids : new Set([...keep].filter(b => ids.has(b))); } }
+  for (let k = 0; k < nd; k++) {
+    const m = lb.get(k); if (!m) continue;
+    let s = 0, n = 0, ss = 0, ns = 0;
+    for (const [b, [x, w]] of m) { const v = S.part === 'count' ? x : x / w; s += v; n++; if (keep && keep.has(b)) { ss += v; ns++; } }
+    all[k] = s / n; nb[k] = n; if (keep && ns) { same[k] = ss / ns; nbs[k] = ns; }
+  }
+  return {all, nb, same, nbs, nkeep: keep ? keep.size : 0, k0, k1};
+}
+function drawProfile() {
+  const c = document.getElementById('pcan'), g = c.getContext('2d'), W = c.width, H = c.height;
+  g.clearRect(0, 0, W, H);
+  if (!PROF) return;
+  const {all, same, nb, nbs, k0, k1} = PROF, z = INDEX.depth, L = 60, R = 70, T = 10, B = 40;
+  const vals = [...all, ...(S.same ? same : [])].filter(Number.isFinite);
+  if (!vals.length) return;
+  let lo = Math.min(0, ...vals), hi = Math.max(...vals); if (S.part === 'bias') { const m = Math.max(Math.abs(lo), Math.abs(hi)); lo = -m; hi = m; }
+  if (hi === lo) hi = lo + 1;
+  const zmax = Math.max(...z), X = v => L + (W - L - R) * (v - lo) / (hi - lo), Y = d => T + (H - T - B) * d / zmax;
+  g.strokeStyle = '#ccc'; g.lineWidth = 1; g.strokeRect(L, T, W - L - R, H - T - B);
+  g.font = '10px sans-serif'; g.fillStyle = '#444'; g.textAlign = 'right'; g.textBaseline = 'middle';
+  for (let d = 0; d <= zmax; d += 1000) { g.fillText(d + ' m', L - 4, Y(d)); g.strokeStyle = '#eee'; g.beginPath(); g.moveTo(L, Y(d)); g.lineTo(W - R, Y(d)); g.stroke(); }
+  g.textAlign = 'center'; g.textBaseline = 'top';
+  for (const t of niceTicks(lo, hi, 5)) { g.fillText(fmt(t), X(t), H - B + 4); g.strokeStyle = '#eee'; g.beginPath(); g.moveTo(X(t), T); g.lineTo(X(t), H - B); g.stroke(); }
+  g.fillText(PARTS[S.part], (L + W - R) / 2, H - B + 18);
+  if (S.same) { g.fillStyle = 'rgba(26,92,168,0.08)'; g.fillRect(L, Y(z[k0]), W - L - R, Math.max(2, Y(z[k1]) - Y(z[k0]))); }
+  const line = (arr, col, w) => { g.strokeStyle = col; g.lineWidth = w; g.beginPath(); let on = false;
+    for (let k = 0; k < arr.length; k++) { if (!Number.isFinite(arr[k])) { on = false; continue; } const x = X(arr[k]), y = Y(z[k]); if (on) g.lineTo(x, y); else { g.moveTo(x, y); on = true; } } g.stroke(); };
+  line(all, '#c0392b', 1.6); if (S.same) line(same, '#1a5ca8', 2);
+  // number of bins on a log axis at the right edge
+  const nmax = Math.max(...nb, 1), XN = n => W - R + 6 + (R - 12) * Math.log10(Math.max(n, 1)) / Math.log10(Math.max(nmax, 10));
+  g.strokeStyle = '#999'; g.lineWidth = 1; g.beginPath(); let on = false;
+  for (let k = 0; k < nb.length; k++) { if (!nb[k]) { on = false; continue; } if (on) g.lineTo(XN(nb[k]), Y(z[k])); else { g.moveTo(XN(nb[k]), Y(z[k])); on = true; } } g.stroke();
+  g.fillStyle = '#777'; g.textAlign = 'center'; g.fillText('# bins', W - R / 2, H - B + 4); g.fillText('(log)', W - R / 2, H - B + 16);
+  // legend at the bottom left (deep water, where the curves are short of the left edge less often: drawn on a white box)
+  g.font = '11px sans-serif'; g.textAlign = 'left';
+  const leg = [['all bins with data', '#c0392b']]; if (S.same) leg.push([`same ${PROF.nkeep} bins (data at every level ${z[k0]}–${z[k1]} m)`, '#1a5ca8']);
+  const lw = Math.max(...leg.map(([t]) => g.measureText(t).width)) + 30, ly = H - B - 8 - 15 * leg.length;
+  g.fillStyle = 'rgba(255,255,255,0.92)'; g.fillRect(W - R - lw - 6, ly - 4, lw, 15 * leg.length + 6);
+  leg.forEach(([t, col], i) => { g.strokeStyle = col; g.lineWidth = 2; g.beginPath(); g.moveTo(W - R - lw, ly + 6 + 15 * i); g.lineTo(W - R - lw + 18, ly + 6 + 15 * i); g.stroke();
+    g.fillStyle = '#333'; g.textBaseline = 'middle'; g.fillText(t, W - R - lw + 22, ly + 6 + 15 * i); });
+  document.getElementById('sbnote').textContent = S.same ? `${PROF.nkeep} bins have data at every level from ${z[k0]} to ${z[k1]} m` : '';
+}
+
+// ---------- the clicked bin: its values at the selected depths, per level and per year, and links ----------
+let PICK = null;
+function binBreakdown(d, yd, b) {
+  const c = (!S.all && S.part !== 'mean') ? yd[S.V] : d[S.V], cAll = d[S.V], lv = levelsSelected(), lset = lv ? new Set(lv) : null;
+  const perLev = new Map();
+  for (let i = 0; i < cAll.bin.length; i++) { if (cAll.bin[i] !== b) continue;
+    perLev.set(cAll.lev[i], {n: cAll.n[i], mu: cAll.mu[i], ma: cAll.ma[i], bias: cAll.bias[i]}); }
+  const mt = new Map(); const m = d[S.V].mt; for (let i = 0; i < m.bin.length; i++) if (m.bin[i] === b) mt.set(m.lev[i], m.v[i]);
+  return {perLev, mt, lset};
+}
+async function binYears(b) {               // per-year values of the bin at the selected levels (loads all year pieces)
+  const all = S.all, t0 = S.t0, t1 = S.t1; S.all = false; S.t0 = 0; S.t1 = INDEX.blocks.length - 1;
+  const yd = await yearData(S.src, S.ct); S.all = all; S.t0 = t0; S.t1 = t1;
+  const c = yd[S.V], lv = levelsSelected(), lset = lv ? new Set(lv) : null, sum = new Float64Array(INDEX.blocks.length), w = new Float64Array(INDEX.blocks.length);
+  const val = S.part === 'anomaly' ? c.ma : S.part === 'bias' || S.part === 'mean' ? c.bias : S.part === 'count' ? null : c.mu;
+  for (let i = 0; i < c.bin.length; i++) { if (c.bin[i] !== b || (lset && !lset.has(c.lev[i]))) continue;
+    const x = val ? val[i] : c.n[i]; if (!Number.isFinite(x)) continue; sum[c.blk[i]] += val ? x * c.n[i] : x; w[c.blk[i]] += val ? c.n[i] : 1; }
+  return {sum, w, what: S.part === 'mean' ? 'bias' : S.part};
+}
+async function showBin(b) {
+  PICK = b;
+  const d = await data(S.src, S.ct), yd = (!S.all && S.part !== 'mean') ? await yearData(S.src, S.ct) : null;
+  const {perLev, mt, lset} = binBreakdown(d, yd, b), z = INDEX.depth, unit = S.V === 'T' ? '°C' : 'psu';
+  const lon = INDEX.bin_center ? INDEX.bin_center[2 * (b - 1)] : null, lat = INDEX.bin_center ? INDEX.bin_center[2 * (b - 1) + 1] : null;
+  const rows = [...perLev.keys()].sort((a, c) => a - c).filter(k => !lset || lset.has(k));
+  let html = `<b>Bin ${b}</b>` + (lon !== null ? ` (center ${lat.toFixed(1)}°${lat >= 0 ? 'N' : 'S'}, ${Math.abs(lon).toFixed(1)}°${lon >= 0 ? 'E' : 'W'})` : '') +
+    `; ${S.src}, ${S.ct}, ${S.V}; all years.<br>`;
+  if (!rows.length) html += 'No data at the selected depths.';
+  else {
+    html += `<table><tr><th>depth</th><th># points</th><th>unsplit</th><th>anomaly</th><th>mean term</th><th>obs − ref (${unit})</th></tr>`;
+    const shown = rows.length > 14 ? rows.filter((_, i) => i % Math.ceil(rows.length / 14) === 0 || i === rows.length - 1) : rows;
+    for (const k of shown) { const r = perLev.get(k);
+      html += `<tr><td>${z[k]} m</td><td>${r.n}</td><td>${fmt(r.mu)}</td><td>${Number.isFinite(r.ma) ? fmt(r.ma) : '–'}</td><td>${mt.has(k) && Number.isFinite(mt.get(k)) ? fmt(mt.get(k)) : '–'}</td><td>${Number.isFinite(r.bias) ? (r.bias >= 0 ? '+' : '') + r.bias.toFixed(3) : '–'}</td></tr>`; }
+    html += '</table>' + (shown.length < rows.length ? `<span class="dnote">${shown.length} of ${rows.length} levels shown</span><br>` : '');
+    html += '<span class="dnote">Costs: (ΔV/σ)², true weights, over all years. Mean term: per bin and level, as the map&rsquo;s mean term.</span>';
+  }
+  document.getElementById('bintxt').innerHTML = html; document.getElementById('bintxt').className = '';
+  // links: the in situ data viewer at this bin, depth, years and reference
+  const links = document.getElementById('binlinks'); links.innerHTML = '';
+  if (INDEX.bin_viewer && lon !== null) {
+    const q = new URLSearchParams({src: S.src, ref: S.ct === 'vs_model' ? 'model' : 'clim', lon: lon.toFixed(2), lat: lat.toFixed(2), V: S.V});
+    const lv = levelsSelected(); if (lv && lv.length === 1) q.set('k', lv[0]); else if (lv) q.set('levels', lv[0] + '-' + lv[lv.length - 1]);
+    if (!S.all) { q.set('y0', INDEX.blocks[S.t0]); q.set('y1', INDEX.blocks[S.t1]); }
+    q.set('back', location.href.split('#')[0]);
+    links.innerHTML = `<a href="${INDEX.bin_viewer}?${q}">Open the profiles of this bin in the in situ data viewer &rarr;</a>`;
+  }
+  // per-year chart
+  busy('Loading the years of bin ' + b + '…'); await paint();
+  const Y = await binYears(b); busy(null);
+  const cv = document.getElementById('bcan'), g = cv.getContext('2d'), W = cv.width, H = cv.height; cv.style.display = '';
+  g.clearRect(0, 0, W, H);
+  const v = [...Y.sum].map((s, i) => Y.w[i] ? (Y.what === 'count' ? s : s / Y.w[i]) : NaN), ok = v.filter(Number.isFinite);
+  if (!ok.length) return;
+  let lo = Math.min(0, ...ok), hi = Math.max(0, ...ok); if (hi === lo) hi = lo + 1;
+  const pad = 0.08 * (hi - lo); if (lo < 0) lo -= pad; if (hi > 0) hi += pad;
+  const L = 50, R2 = 10, T = 18, B = 24, nb = INDEX.blocks.length, bw = (W - L - R2) / nb;
+  const yv = x => T + (H - T - B) * (hi - x) / (hi - lo);
+  g.font = '10px sans-serif'; g.fillStyle = '#444'; g.textAlign = 'right'; g.textBaseline = 'middle';
+  for (const t of niceTicks(lo, hi, 4)) { g.fillText(fmt(t), L - 4, yv(t)); g.strokeStyle = '#eee'; g.beginPath(); g.moveTo(L, yv(t)); g.lineTo(W - R2, yv(t)); g.stroke(); }
+  for (let i = 0; i < nb; i++) { if (!Number.isFinite(v[i])) continue; g.fillStyle = Y.what === 'bias' ? (v[i] >= 0 ? '#c0392b' : '#2471a3') : '#e67e22';
+    const y0 = yv(Math.max(0, Math.min(v[i], hi))), y1 = yv(Math.min(0, Math.max(v[i], lo))); g.fillRect(L + i * bw + 1, Math.min(y0, y1), bw - 2, Math.max(1, Math.abs(y1 - y0))); }
+  g.textAlign = 'center'; g.textBaseline = 'top'; g.fillStyle = '#444';
+  for (let i = 0; i < nb; i += 5) g.fillText(INDEX.blocks[i], L + (i + 0.5) * bw, H - B + 4);
+  g.textAlign = 'left'; g.fillText(`per year at the selected depths: ${Y.what === 'bias' ? 'obs − ref (' + unit + ')' : PARTS[Y.what]}`, L, 2);
+}
+
 function status(t) { const s = document.getElementById('status'); s.textContent = t || ''; s.className = ''; }
 
 function levelsSelected() {
@@ -311,7 +467,7 @@ function drawBar(vmax) {
       `values above ${fmt(vmax)} use the top color`;
 }
 function fmt(x) {
-  if (x === 0) return '0';
+  if (x === 0 || Math.abs(x) < 1e-12) return '0';
   const a = Math.abs(x);
   if (a >= 1e6) return (x / 1e6).toPrecision(3).replace(/\.?0+$/, '') + 'M';
   if (a >= 1e4) return (x / 1e3).toPrecision(3).replace(/\.?0+$/, '') + 'k';
@@ -356,6 +512,8 @@ async function render() {
     (S.part === 'mean' || S.part === 'count' ? 'scale: auto for this view' : 'scale: fixed for this view (from all years), so time changes show');
   for (const view of ['global', 'NH', 'SH']) drawMap(document.getElementById('c_' + view), view, VALS, vmax);
   drawBar(vmax);
+  PROF = profileCurves(d, (!S.all && S.part !== 'mean') ? await yearData(S.src, S.ct) : null); drawProfile();
+  if (PICK) showBin(PICK);
   syncControls();
   const nb = VALS.filter(Number.isFinite).length;
   const lv = levelsSelected();
@@ -423,7 +581,7 @@ function hover(e, view) {
   const x = Math.floor((e.clientX - r.left) / r.width * GRID[view].nx), y = Math.floor((e.clientY - r.top) / r.height * GRID[view].ny);
   const b = GRIDS[view][y * GRID[view].nx + x], h = document.getElementById('hover');
   if (b > 0 && VALS) { h.style.display = 'block'; h.style.left = e.clientX + 12 + 'px'; h.style.top = e.clientY + 12 + 'px';
-    h.textContent = `bin ${b}: ${Number.isFinite(VALS[b]) ? fmt(VALS[b]) : 'no data'}`; } else h.style.display = 'none';
+    h.textContent = `bin ${b}: ${Number.isFinite(VALS[b]) ? fmt(VALS[b]) : 'no data'} (click for details)`; } else h.style.display = 'none';
 }
 async function init() {
   busy('Loading the map explorer…');
@@ -440,7 +598,20 @@ async function init() {
     maps.appendChild(box);
     box.querySelector('canvas').addEventListener('mousemove', e => hover(e, v));
     box.querySelector('canvas').addEventListener('mouseleave', () => document.getElementById('hover').style.display = 'none');
+    const cv = box.querySelector('canvas'); cv.classList.add('clickable');
+    cv.addEventListener('click', e => { const r = cv.getBoundingClientRect();
+      const x = Math.floor((e.clientX - r.left) / r.width * GRID[v].nx), y = Math.floor((e.clientY - r.top) / r.height * GRID[v].ny);
+      const b = GRIDS[v][y * GRID[v].nx + x]; if (b > 0) showBin(b); });
   }
+  // same-bins controls: default range 2000-2800 m if the grid has it
+  const opt = INDEX.depth.map((z, k) => `<option value="${k}">${z} m</option>`).join('');
+  document.getElementById('sb0').innerHTML = opt; document.getElementById('sb1').innerHTML = opt;
+  const near = m => INDEX.depth.reduce((a, z, k) => Math.abs(z - m) < Math.abs(INDEX.depth[a] - m) ? k : a, 0);
+  S.sb0 = near(2000); S.sb1 = near(2800);
+  document.getElementById('sb0').value = S.sb0; document.getElementById('sb1').value = S.sb1;
+  document.getElementById('samebins').addEventListener('change', e => { S.same = e.target.checked; render(); });
+  document.getElementById('sb0').addEventListener('change', e => { S.sb0 = +e.target.value; if (S.same) render(); });
+  document.getElementById('sb1').addEventListener('change', e => { S.sb1 = +e.target.value; if (S.same) render(); });
   const keys = Object.keys(INDEX.files), srcs = [...new Set(keys.map(k => k.split('|')[0]))], cts = [...new Set(keys.map(k => k.split('|')[1]))];
   const q = new URLSearchParams(location.search);
   S.src = q.get('src') && srcs.includes(q.get('src')) ? q.get('src') : srcs[0];
@@ -498,10 +669,6 @@ async function init() {
   };
   document.getElementById('shl').addEventListener('click', () => shift(-1));
   document.getElementById('shr').addEventListener('click', () => shift(1));
-  document.addEventListener('keydown', e => {
-    if (e.target.tagName === 'INPUT' && e.target.type !== 'range') return;
-    if (e.key === '[') shift(-1); else if (e.key === ']') shift(1);
-  });
   lo.addEventListener('input', () => moved('lo'));
   hi.addEventListener('input', () => moved('hi'));
   document.getElementById('tall').addEventListener('click', () => { S.all = true; S.t0 = 0; S.t1 = nb; single = false;

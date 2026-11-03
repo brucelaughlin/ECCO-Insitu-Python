@@ -119,6 +119,19 @@ applies. <strong>max</strong>: set the top of the scale yourself (kept until you
 two depths on the same scale. <strong>auto</strong>: back to the automatic scale. <strong>log color scale</strong>: spreads small values out (covers three powers of
 ten below the max).</p>
 
+<h4>Below the maps: the depth profile and the clicked bin (since 2026-11-02)</h4>
+<p><b>Depth profile of the selection</b>: for the current class, cost type, variable, cost part and years, the mean over bins at each
+depth level (red), as analysis&nbsp;02 draws it, with the number of bins per level (gray, log scale, right). <b>Same bins at every
+depth</b> adds a blue curve over only the bins that have data at <em>every</em> level of the chosen range (default 2000&ndash;2800&nbsp;m).
+A jump in the red curve that the blue one does not show comes from <em>which bins are counted</em> changing with depth, not from the
+water. (Example: PFL vs_model mean term at 2200&ndash;2400&nbsp;m: red 4.9&ndash;5.6, blue 2.3&ndash;2.4; most floats stop at 2000&nbsp;m,
+so those levels hold far fewer bins, mostly subpolar North Atlantic ones.)</p>
+<p><b>Clicked bin</b>: click any bin on a map. The panel shows its center, and per depth level (the selected levels) the number of
+points, the unsplit and anomaly costs, the mean term, and the mean observation &minus; reference (all years); a bar chart of the
+selected cost part per year (for the mean term: obs &minus; reference per year, since the mean term itself has no years); and a link
+that opens the <b>in situ data viewer</b> on that bin, zoomed in to the individual profiles, at the same class, reference
+(climatology or model), variable, depth and years.</p>
+
 <h4>Reading it</h4>
 <ul>
 <li>Values near 1 mean the misfit is about what the assumed errors &sigma; allow; much larger values point to a poor fit, a
@@ -264,8 +277,9 @@ def _pack_meanterm(nc, V, core_split):
             mt[mi, mk].astype('<f2').tobytes()]
 
 
-def write(analysis_dir, out):
-    """Write the viewer files for one profile-analyze folder into ``out`` (the site's viewer/ folder)."""
+def write(analysis_dir, out, bin_viewer=None):
+    """Write the viewer files for one profile-analyze folder into ``out`` (the site's viewer/ folder).
+    ``bin_viewer``: address of the run's in situ data viewer, for the clicked-bin panel's link."""
     analysis_dir, out = Path(analysis_dir), Path(out)
     out.mkdir(parents=True, exist_ok=True)
     meta = json.loads((analysis_dir / 'meta.json').read_text())
@@ -273,6 +287,14 @@ def write(analysis_dir, out):
     if not (out / 'grid.json').exists():
         _write_grid(out)
     index = {'files': {}, 'spikes': {}, 'core_split': meta.get('core_split', pa.CORE_SPLIT)}
+    # bin centers (lon, lat; bin id = index + 1), for the clicked-bin panel and the link into the data viewer
+    from ecco_insitu import config as config_loader
+    csv = config_loader.get(config_loader.load(), 'paths.geodesic_bin_csv')
+    if csv and Path(csv).exists():
+        ll = np.loadtxt(csv, delimiter=',')
+        index['bin_center'] = np.round(ll[:, :2], 2).ravel().tolist()
+    if bin_viewer:
+        index['bin_viewer'] = bin_viewer.rstrip('/') + '/'
     for src in meta['sources']:
         for ct in meta['cost_types']:
             f = sorted((analysis_dir / src).glob(f'analysis_{src}_*_{ct}.nc'))

@@ -1325,12 +1325,12 @@ def compile_report(input_dirs, out_dir, title=None, flat=False, portable=False,
     if site:
         n_figs = len(list((out_dir / 'figures').glob('*.png')))
         print(f'      + figures/ ({n_figs} PNG files)')
-        _write_map_explorer(input_dirs, out_dir, title)
+        _write_map_explorer(input_dirs, out_dir, title, bin_viewer)
         print(f'      Ready for GitHub Pages (see ecco-insitu publish-reports).')
     return out_dir
 
 
-def _write_map_explorer(input_dirs, out_dir, title):
+def _write_map_explorer(input_dirs, out_dir, title, bin_viewer=None):
     """The interactive map viewer: viewer.html and its data in viewer/ (see viewer.py). One analysis
     folder only; skipped if the analysis has no viewer data (made before 2026-10-30)."""
     from ecco_insitu.diagnostics.profile_analyses import viewer
@@ -1347,7 +1347,7 @@ def _write_map_explorer(input_dirs, out_dir, title):
     vdir = Path(out_dir) / 'viewer'
     if vdir.exists():
         shutil.rmtree(vdir)
-    viewer.write(input_dirs[0], vdir)
+    viewer.write(input_dirs[0], vdir, bin_viewer)
     page = (Path(viewer.__file__).with_name('viewer.html')).read_text()
     (Path(out_dir) / 'viewer.html').write_text(page.replace('__TITLE__', _html.escape(title))
                                                .replace('__GUIDE__', viewer.GUIDE_HTML))

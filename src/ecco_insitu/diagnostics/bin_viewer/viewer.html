@@ -696,7 +696,29 @@ async function init() {
   addMap('S', 'map-S', 'legend-S', binsS, landS, [-r40, -r40, r40, r40], (lon, lat) => polarXY(lon, lat, 'S'), (x, y) => polarLat(x, y, 'S'), polarBathy('S'));
   window.addEventListener('resize', () => { sizeBoxes(); for (const M of MAPS) { const z = homeZoom(M);
     M.home = {...M.home, zoom: z, minZoom: z, maxZoom: z + 9}; if (M.id === 'll') MAIN_Z0 = z; setView(M, M.view, true); } if (STATS) { titles(); colorbars(); } });
-  setupControls(); fillDepth(); fillTime();
+  setupControls();
+  // a link from the cost map explorer's clicked bin: ?src= &ref= &V= &k= or &levels=a-b &y0= &y1= &lon= &lat=
+  // (opens on that class, reference, variable, depth and years, zoomed in on the bin, past the cell threshold)
+  if (q.get('ref') && (INDEX.refs || {})[q.get('ref')] && (q.get('ref') === 'clim' || INDEX.classes[S.src].refs?.[q.get('ref')])) S.ref = q.get('ref');
+  if (q.get('V') && REF().levels[q.get('V')]?.length) S.V = q.get('V');
+  fixRef(); fixVar();
+  if (q.get('k') !== null && REF().levels[S.V].includes(+q.get('k'))) S.k = +q.get('k');
+  else if (q.get('levels')) {
+    const [a, b] = q.get('levels').split('-').map(Number);
+    for (const mode of ['100m', 'bands', '30', '15']) { S.dmode = mode;
+      const g = groupsWithData().find(g => g.levels[0] >= a && g.levels.at(-1) <= b && g.levels.includes(a));
+      if (g && depthGroups(mode)[g.i].levels[0] === a && depthGroups(mode)[g.i].levels.at(-1) === b) { S.g = g.i; break; } S.dmode = 'level'; }
+    if (S.dmode === 'level') S.k = REF().levels[S.V].includes(a) ? a : S.k;
+    document.getElementById('dmode').value = S.dmode;
+  }
+  if (q.get('y0') && q.get('y1')) { S.all = false; S.t0 = +q.get('y0') - INDEX.years0; S.t1 = +q.get('y1') - INDEX.years0; }
+  fillDepth(); if (!q.get('y0')) fillTime(); else { const N = INDEX.years1 - INDEX.years0; document.getElementById('tlo').max = document.getElementById('thi').max = N; syncTime(); }
+  if (q.get('lon') !== null && q.get('lat') !== null) {
+    const lon = +q.get('lon'), lat = +q.get('lat'), M = Math.abs(lat) > 60 ? MAPS[lat > 0 ? 1 : 2] : MAPS[0];
+    const [x, y] = M.proj(lon, lat);
+    setView(M, {...M.home, target: [x, y, 0], zoom: MAIN_Z0 + Math.log2(ZOOM_THRESHOLD * 1.6)}, true);
+    if (M !== MAPS[0]) setTimeout(() => M.el.scrollIntoView({block: 'center'}), 300);
+  }
   await recompute();
 }
 init().catch(e => { busy(null); document.getElementById('titlebox').textContent = 'error: ' + e.message; console.error(e); });

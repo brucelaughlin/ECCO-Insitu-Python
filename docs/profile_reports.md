@@ -120,6 +120,14 @@ The explorer needs a web server (GitHub Pages, or `python -m http.server` in `do
 look); opening `viewer.html` straight from the disk doesn't work, because browsers block file downloads
 from `file://` pages.
 
+
+**Below the maps (since 2026-11-02):** a *depth profile* of the current selection (each level's mean over
+bins, as analysis 02) with a **same bins at every depth** option (only bins with data at every level of a
+chosen range, so sampling changes don't masquerade as signal), and a **clicked bin** panel (click a bin:
+per-level costs, mean term, obs − reference, a per-year chart, and a link that opens the in situ data viewer
+zoomed in on that bin at the same class, reference, depth and years). Attribution example:
+`~/ecco/yip/cost_comparisons/pfl_2400m_spike/README.md`.
+
 ## 5. Publishing through GitHub
 
 ### The pieces
