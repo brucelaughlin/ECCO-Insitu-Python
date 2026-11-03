@@ -1,15 +1,50 @@
 # Handoff Context — ECCO-Insitu-Python
 
-## ⟶ CURRENT STATE (2026-10-29) — read this first
+## ⟶ CURRENT STATE (2026-11-02, evening) — read this first
+
+### What's live
+
+| What | URL | Repo / branch |
+|---|---|---|
+| profile report (only the current run) | https://brucelaughlin.github.io/ECCO-Insitu-Python/profile_report_20261027_142247/ | this repo, `gh-pages` |
+| in situ data viewer (geodesic bin viewer) | https://brucelaughlin.github.io/ecco-bin-viewer/run_20261027_142247/ | `brucelaughlin/ecco-bin-viewer`, `main` |
+| its model-anomaly data | (read by the viewer) | `brucelaughlin/ecco-bin-viewer-model`, `main` |
+
+Report header, left to right: **Notes & errata**, **Cost map explorer** (was "Map explorer"), **In situ data
+viewer** (same tab; the viewer's "← report" goes back). The older report (run 011321) was taken off the site;
+its analysis results are still in `~/ecco/yip/insitu_reports/profile_analyses_20261027/`.
+
+### Done 2026-11-02
+- **Bin viewer** (`src/ecco_insitu/diagnostics/bin_viewer/`, doc `docs/bin_viewer.md`, CLI `ecco-insitu bin-viewer`):
+  web copy of the original geodesic_binning app; time windows; polar maps; depth ranges (each profile = mean of its
+  values in the range); anomaly vs climatology or model; isobaths with labels; sqrt edge widths. Bin stats checked
+  against direct Python (GLD 2017: 0 count diffs; ITP band: diffs < 1e-7). Data: `~/ecco/yip/bin_viewer_data/
+  run_20261027_142247` (+ `_model_site`); lossless "format 2" files. Cloudflare R2 was tried and dropped (the secure
+  network blocks it); bucket emptied. The user still has to delete the bucket/token and turn off domain auto-renew.
+- **Run provenance** (`ecco_insitu/run_provenance.py`): every chain run writes `documentation/provenance.json`
+  (commit, uncommitted changes as `code.patch`, input fingerprints); `ecco-insitu provenance <run>` checks it. Run
+  142247 got a record written afterwards (commit e27bbe0).
+
+### In progress / next (approved by the user 2026-11-02; see memory "attribution tools")
+Prompted by the team's question: what makes the PFL split **mean-term spike at 2200–2400 m** (T vs model, `true`
+weights: 3.55 / 4.90 / 5.57 / 2.62 at 2000 / 2200 / 2400 / 2600 m)?
+**Finding:** mostly a sampling change plus one regional bias. Bins with data: 6470 / 1181 / 1046 / 410. In the 394
+bins that have data at 2800 m the curve is smooth (2.82, 2.29, 2.38, 2.43, 2.88). The bins that stop at 2400 m
+average 7.5 vs 2.4 for deeper ones; the largest are in the subpolar North Atlantic (Irminger / Iceland Basin /
+Labrador Sea, obs 0.4–0.8 °C colder than the model). 30 % of profiles ending at 2400 m are north of 40°N; none of
+those going deeper are. (Inference: model too warm in the Labrador Sea Water layer, seen only by the floats that
+profile a little below 2000 m.) Not yet checked: per-float and per-year concentration.
+1. **Band labels**: below 2000 m levels are 200 m apart, so the 100 m bands look like they skip ("2200–2300" then
+   "2400–2500"); label each band up to the next one ("2200–2400 m (1 level)"), in both explorers.
+2. **Same bins at every depth** option (analysis 02 curves and the explorers).
+3. **Click a bin in the cost map explorer**: its terms, n, mean obs − ref, per-year, profiles with float IDs, and a
+   link into the in situ data viewer at the same depth / years / reference.
+4. Then: top-contributors table; attribution by float and year.
+5. **Later, only when asked:** click-and-drag a region and rerun the analyses for it.
+
+### State as of 2026-10-29 (still true unless noted above)
 
 Everything is on `main` (the `model-cost-slicing` branch was merged and deleted 2026-10-27).
-
-### Published profile reports (GitHub Pages, rebuilt from `docs/reports/` on every push to `main`)
-
-| Report | URL | Run |
-|---|---|---|
-| **current** | https://brucelaughlin.github.io/ECCO-Insitu-Python/profile_report_20261027_142247/ | `profile_files_NCEI_processed_20261027_142247` (WOD flags + XBT cap 2900 m) |
-| older | https://brucelaughlin.github.io/ECCO-Insitu-Python/profile_report_20261027/ | `..._20261027_011321` (WOD flags, no XBT cap) |
 
 Analysis outputs (NetCDF + figures): `~/ecco/yip/insitu_reports/profile_analyses_20261028_142247/` and
 `.../profile_analyses_20261027/`. Model equivalents (monthly-mean v4r6): `~/ecco/yip/ecco_v4r6_model_data/model_equivalents_20261028_142247/`.
@@ -19,7 +54,8 @@ Analysis outputs (NetCDF + figures): `~/ecco/yip/insitu_reports/profile_analyses
 ```bash
 ecco-insitu profile-analyze --run <run>/yearly --model-equivalents <equiv>/netCDF --out <analysis dir>  # ~20 min
 ecco-insitu profile-analyze --replot --out <analysis dir>       # figures only, from the saved NetCDF (~1 min)
-ecco-insitu profile-report --site --inputs <analysis dir> --out docs/reports/<name>
+ecco-insitu profile-report --site --inputs <analysis dir> --out docs/reports/<name> \
+    --bin-viewer https://brucelaughlin.github.io/ecco-bin-viewer/<run name>/
 ecco-insitu publish-reports docs/reports/<name> [docs/reports/<other>]   # pushes the gh-pages branch
 git push origin main     # or Actions -> docs -> Run workflow: the deploy merges gh-pages into the site
 ```
@@ -47,8 +83,6 @@ A full re-analysis is only needed when a calculation changes; label, layout and 
    sums that `profile-analyze` now saves (`viewer__*` variables). The images remain for the standard bands.
 
 Both are also stated on the report's Notes & errata page.
-
-### Pending
 
 - **Team sign-off:** KI-21 (`chain.xbt_max_depth=2900`, applied in run 142247), KI-19 (`chain.wod_flags_extend_levels=2`).
 - **Analysis 04:** the team's spec says "global mean T and S cost through time (after all factors removed)";
