@@ -77,7 +77,7 @@ results as the report&rsquo;s figures.</p>
   has more and closer-spaced levels, dominates).</td></tr>
 <tr><td>single level</td><td>One of the 97 standard depth levels (2&nbsp;m to 6000&nbsp;m); pick it in the list.</td></tr>
 <tr><td>100 m bands</td><td>All levels in a 100&nbsp;m range (0&ndash;100&nbsp;m, 100&ndash;200&nbsp;m, &hellip;). Below 2000&nbsp;m the levels are 200&nbsp;m
-  apart, so some bands are skipped.</td></tr>
+  apart, so the bands there are 200&nbsp;m wide and hold one level each (e.g. 2200&ndash;2400&nbsp;m (1 level)); nothing is skipped.</td></tr>
 <tr><td>15 groups / 30 groups</td><td>The 97 levels split into 15 or 30 consecutive groups of about equal numbers of levels.</td></tr>
 <tr><td>flagged spikes</td><td>Levels where the mean cost per datum of this class stands out: above 0.5 and at least 1.4 times the
   median of the levels 300&ndash;1000&nbsp;m above and below it (levels with at least 30 points). The list gives the level&rsquo;s
@@ -168,14 +168,21 @@ def _write_grid(out):
 
 def _groups(depth):
     """{'100m': [...], '15': [...], '30': [...]}: groups of level indices with labels. 100 m bands: levels
-    with depth in [lo, lo + 100); bands with no level are skipped (below 2000 m the levels are 200 m apart).
-    15 / 30 groups: the 97 levels split into that many consecutive groups."""
+    with depth in [lo, lo + 100); a band with no level is merged into the band above it, so the bands cover the
+    whole water column (below 2000 m the levels are 200 m apart: '2200–2400 m (1 level)', not '2200–2300 m'
+    followed by '2400–2500 m'). 15 / 30 groups: the 97 levels split into that many consecutive groups."""
     d = np.asarray(depth, float)
     out = {'100m': []}
-    for lo in np.arange(0, d.max() + 100, 100):
+    edges = np.arange(0, d.max() + 200, 100)
+    for i, lo in enumerate(edges[:-1]):
         lv = np.nonzero((d >= lo) & (d < lo + 100))[0].tolist()
         if lv:
-            out['100m'].append({'label': f'{int(lo)}–{int(lo + 100)} m', 'levels': lv})
+            out['100m'].append({'lo': float(lo), 'levels': lv})
+    for j, g in enumerate(out['100m']):         # each band runs to the start of the next one
+        hi = out['100m'][j + 1]['lo'] if j + 1 < len(out['100m']) else g['lo'] + 100
+        n = len(g['levels'])
+        g['label'] = f'{int(g["lo"])}–{int(hi)} m' + (f' ({n} level{"s" if n > 1 else ""})' if hi - g['lo'] > 100 else '')
+        g.pop('lo')
     for key, n in GROUPINGS.items():
         parts = np.array_split(np.arange(len(d)), n)
         out[key] = [{'label': f'{d[p[0]]:g}–{d[p[-1]]:g} m', 'levels': p.tolist()} for p in parts]

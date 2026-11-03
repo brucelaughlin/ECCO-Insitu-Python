@@ -195,8 +195,10 @@ function depthGroups(mode) {
     const edges = mode === 'bands' ? BAND_EDGES : [...Array(Math.ceil(Math.max(...d) / 100) + 2).keys()].map(i => i * 100);
     for (let i = 0; i + 1 < edges.length; i++) {
       const lv = d.map((z, k) => [z, k]).filter(([z]) => z >= edges[i] && z < edges[i + 1]).map(([, k]) => k);
-      if (lv.length) out.push({label: edges[i + 1] === Infinity ? `below ${edges[i]} m` : `${edges[i]}–${edges[i + 1]} m`, levels: lv});
+      if (lv.length) out.push({lo: edges[i], hi: edges[i + 1], levels: lv});
+      else if (out.length) out.at(-1).hi = edges[i + 1];   // an empty band joins the one above (no gaps below 2000 m)
     }
+    for (const g of out) g.label = g.hi === Infinity ? `below ${g.lo} m` : `${g.lo}–${g.hi} m`;
   } else {
     const n = +mode, N = d.length;
     for (let i = 0; i < n; i++) {                // as numpy.array_split: the first N % n groups one longer
