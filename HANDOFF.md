@@ -34,12 +34,11 @@ average 7.5 vs 2.4 for deeper ones; the largest are in the subpolar North Atlant
 Labrador Sea, obs 0.4–0.8 °C colder than the model). 30 % of profiles ending at 2400 m are north of 40°N; none of
 those going deeper are. (Inference: model too warm in the Labrador Sea Water layer, seen only by the floats that
 profile a little below 2000 m.) Not yet checked: per-float and per-year concentration.
-1. **Band labels**: below 2000 m levels are 200 m apart, so the 100 m bands look like they skip ("2200–2300" then
-   "2400–2500"); label each band up to the next one ("2200–2400 m (1 level)"), in both explorers.
-2. **Same bins at every depth** option (analysis 02 curves and the explorers).
-3. **Click a bin in the cost map explorer**: its terms, n, mean obs − ref, per-year, profiles with float IDs, and a
-   link into the in situ data viewer at the same depth / years / reference.
-4. Then: top-contributors table; attribution by float and year.
+Done 2026-11-02 (evening): band labels ("2200–2400 m (1 level)"); the cost map explorer's depth profile with
+**same bins at every depth**; the **clicked-bin** panel with a link that opens the data viewer zoomed in on the bin;
+per-float / per-year attribution (`~/ecco/yip/cost_comparisons/pfl_2400m_spike/README.md`: ~40 % of the term from
+north of 45°N, under 10 % of the bins; top 10 floats ~30 %, none over 6 %; 2020–2024 ~80 %).
+Next candidates: a top-contributors table for a depth selection; per-float view inside the explorer.
 5. **Later, only when asked:** click-and-drag a region and rerun the analyses for it.
 
 ### State as of 2026-10-29 (still true unless noted above)
