@@ -852,8 +852,9 @@ def publish_github(out, remote, dry_run=False, landing=None):
     import subprocess
     import tempfile
     out = Path(out).resolve()
-    big = [f for f in out.rglob('*') if f.is_file() and f.stat().st_size >= 95e6]
-    size = sum(f.stat().st_size for f in out.rglob('*') if f.is_file()) / 1e6
+    files = [f for f in out.rglob('*') if f.is_file() and 'detail' not in f.relative_to(out).parts[:1]]   # detail/: own sites
+    big = [f for f in files if f.stat().st_size >= 95e6]
+    size = sum(f.stat().st_size for f in files) / 1e6
     if big:
         raise SystemExit(f'files over GitHub\'s 100 MB limit: {big[:3]}')
     if size > GITHUB_LIMIT_MB:
