@@ -552,6 +552,167 @@ def write_platforms(run_dir, out, sources=None):
               f'{none:,} without one; chain bin = viewer bin for {np.mean(cb[order] == b[order] + 1):.0%}')
 
 
+# ---- profile detail (for the viewer's profile panel) ----
+DETAIL_CHUNK = 2000            # profiles per detail file (consecutive in profiles.bin's order: by bin, then year)
+DETAIL_SCALE = {'obs': 1000, 'clim': 1000, 'model': 1000, 'sig': 10000}   # stored as integers: 0.001, sigma 0.0001
+# per value, a mask byte: bit 0 climatology present, bit 1 model present, bit 2 sigma present
+
+
+def _ordered_rows(src, files, tree):
+    """(file index, row) of every profile in profiles.bin's order (as export_class orders them), and lon/lat."""
+    lon, lat, year, fi, ri = [], [], [], [], []
+    for i, f in enumerate(files):
+        with netCDF4.Dataset(f) as ds:
+            ds.set_auto_mask(False)
+            n = ds.dimensions['iPROF'].size
+            if n == 0:
+                continue
+            lo = ds['prof_lon'][:].astype(np.float64)
+            lon.append(np.where(lo > 180, lo - 360, lo)); lat.append(ds['prof_lat'][:].astype(np.float64))
+            year.append((ds['prof_YYYYMMDD'][:] // 10000).astype(np.int32))
+            fi.append(np.full(n, i, np.int32)); ri.append(np.arange(n, dtype=np.int32))
+    lon, lat, year, fi, ri = map(np.concatenate, (lon, lat, year, fi, ri))
+    good = np.isfinite(lon) & np.isfinite(lat) & (np.abs(lat) <= 90)
+    _, b = tree.query(_sph2cart(lon, lat))
+    order = np.lexsort((year, b + 1))
+    order = order[good[order]]
+    return fi[order], ri[order], lon[order], lat[order]
+
+
+def write_details(run_dir, out, sources=None, estim_dir=None):
+    """``detail/<class>/c<NNNN>.bin``: everything about each profile, for the viewer's profile panel, in chunks of
+    DETAIL_CHUNK profiles in profiles.bin's order (so profile j is in chunk j // DETAIL_CHUNK).
+
+    Per chunk (gzip; little endian): uint32 P (profiles); uint32 date[P] (YYYYMMDD), uint32 time[P] (HHMMSS); then per
+    variable T, S: uint8 n[P] (values per profile), and for the n·P values in profile order: uint8 level, uint8 mask,
+    uint16 QC code (step 06's prof_Vweight_code; 0 = kept), and int32 obs, clim, model, sigma as integers
+    (DETAIL_SCALE), each stored as differences from the previous value of the same profile, as byte planes; then the
+    profiles' prof_descr, one per line (UTF-8). Values are those of the yearly files, rounded to 0.001 (sigma 0.0001).
+    """
+    from ecco_insitu.diagnostics.profile_analyses.compute import EstimIndex
+    run_dir, out = common.yearly_dir(run_dir), Path(out)
+    tree, _ = _geodesic_tree()
+    estim = EstimIndex(estim_dir, run_dir) if estim_dir else None
+    groups = {}
+    for f in sorted(run_dir.rglob('*.nc')):
+        src, _ = common.classify(f, run_dir)
+        if (not sources or src in sources) and (out / src / 'profiles.bin').exists():
+            groups.setdefault(src, []).append(f)
+    info = {}
+    for src, files in sorted(groups.items()):
+        t0 = time.time()
+        fi, ri, lon, lat = _ordered_rows(src, files, tree)
+        plon, plat = decode_profiles((out / src / 'profiles.bin').read_bytes())[:2]
+        if len(plon) != len(fi) or not (np.array_equal(plon, lon.astype('<f4')) and np.array_equal(plat, lat.astype('<f4'))):
+            raise RuntimeError(f'{src}: profile order differs from profiles.bin; re-export the class first')
+        # read every file once: per (file, row) the profile's values (kept as flat arrays per file, with offsets)
+        per = []
+        for i, f in enumerate(files):
+            with netCDF4.Dataset(f) as ds:
+                ds.set_auto_mask(False)
+                n = ds.dimensions['iPROF'].size
+                rec = {'date': ds['prof_YYYYMMDD'][:].astype(np.uint32) if n else np.zeros(0, np.uint32),
+                       'time': ds['prof_HHMMSS'][:].astype(np.uint32) if n and 'prof_HHMMSS' in ds.variables else np.zeros(n, np.uint32),
+                       'descr': [b''.join(x).decode(errors='replace').strip() for x in ds['prof_descr'][:]] if n else []}
+                m = estim.get(f, n, ds.dimensions['iDEPTH'].size) if (estim is not None and n) else None
+                for V in VARS:
+                    if not n or f'prof_{V}' not in ds.variables:
+                        rec[V] = None
+                        continue
+                    v = ds[f'prof_{V}'][:].astype(np.float64)
+                    have = np.isfinite(v) & (np.abs(v) < 900)
+                    def col(name, scale):
+                        if name not in ds.variables:
+                            return np.zeros(int(have.sum()), np.int32), np.zeros(int(have.sum()), bool)
+                        a = ds[name][:].astype(np.float64)[have]
+                        ok = np.isfinite(a) & (np.abs(a) < 900)
+                        return np.where(ok, np.round(np.nan_to_num(a) * scale), 0).astype(np.int32), ok
+                    obs = np.round(v[have] * DETAIL_SCALE['obs']).astype(np.int32)
+                    clim, cok = col(f'prof_{V}clim', DETAIL_SCALE['clim'])
+                    sig, sok = col(f'prof_{V}uncertainty', DETAIL_SCALE['sig'])
+                    if m is not None and m.get(V) is not None:
+                        mv = np.asarray(m[V], np.float64)[have]
+                        mok = np.isfinite(mv) & (mv != 0) & (np.abs(mv) < 900)
+                        mod = np.where(mok, np.round(np.nan_to_num(mv) * DETAIL_SCALE['model']), 0).astype(np.int32)
+                    else:
+                        mod, mok = np.zeros(len(obs), np.int32), np.zeros(len(obs), bool)
+                    code = ds[f'prof_{V}weight_code'][:][have].astype(np.uint16) if f'prof_{V}weight_code' in ds.variables \
+                        else np.zeros(len(obs), np.uint16)
+                    cnt = have.sum(1)
+                    rec[V] = {'cnt': cnt, 'off': np.r_[0, np.cumsum(cnt)], 'lev': np.nonzero(have)[1].astype(np.uint8),
+                              'mask': (cok * 1 + mok * 2 + sok * 4).astype(np.uint8), 'code': code,
+                              'obs': obs, 'clim': clim, 'model': mod, 'sig': sig}
+                per.append(rec)
+        d = out / 'detail' / src
+        d.mkdir(parents=True, exist_ok=True)
+        n_all, nch, size = len(fi), 0, 0
+        for c0 in range(0, n_all, DETAIL_CHUNK):
+            sl = slice(c0, min(c0 + DETAIL_CHUNK, n_all))
+            F, Rw = fi[sl], ri[sl]
+            P = len(F)
+            date = np.array([per[f]['date'][r] for f, r in zip(F, Rw)], '<u4')
+            tim = np.array([per[f]['time'][r] for f, r in zip(F, Rw)], '<u4')
+            blob = [np.uint32(P).tobytes(), _planes(date), _planes(tim)]
+            for V in VARS:
+                cnts, cols = np.zeros(P, np.uint8), {k: [] for k in ('lev', 'mask', 'code', 'obs', 'clim', 'model', 'sig')}
+                for q, (f, r) in enumerate(zip(F, Rw)):
+                    rv = per[f][V]
+                    if rv is None:
+                        continue
+                    a, b2 = rv['off'][r], rv['off'][r + 1]
+                    cnts[q] = b2 - a
+                    for k in cols:
+                        cols[k].append(rv[k][a:b2])
+                cat = {k: (np.concatenate(v) if v else np.zeros(0, np.int32 if k in DETAIL_SCALE else (np.uint16 if k == 'code' else np.uint8)))
+                       for k, v in cols.items()}
+                first = np.r_[0, np.cumsum(cnts.astype(np.int64))[:-1]][cnts > 0]
+                def delta(x):
+                    dd = np.diff(x.astype(np.int64), prepend=0)
+                    dd[first] = x[first]
+                    return dd.astype('<i4')
+                blob += [cnts.tobytes(), cat['lev'].astype('u1').tobytes(), cat['mask'].astype('u1').tobytes(),
+                         _planes(cat['code'].astype('<u2'))] + [_planes(delta(cat[k])) for k in ('obs', 'clim', 'model', 'sig')]
+            blob.append('\n'.join(per[f]['descr'][r] for f, r in zip(F, Rw)).encode())
+            data = gzip.compress(b''.join(blob), 9)
+            (d / f'c{c0 // DETAIL_CHUNK:04d}.bin').write_bytes(data)
+            nch += 1
+            size += len(data)
+        info[src] = {'chunk': DETAIL_CHUNK, 'n_chunks': nch, 'bytes': size}
+        print(f'  {src}: {nch} detail chunks, {size / 1e6:.0f} MB, {time.time() - t0:.0f}s')
+        del per
+    ip = out / 'index.json'
+    index = json.loads(ip.read_text())
+    index.setdefault('detail', {}).update({k: {**v, 'scale': DETAIL_SCALE} for k, v in info.items()})
+    ip.write_text(json.dumps(index, indent=1))
+
+
+def decode_detail(blob):
+    """Inverse of one detail chunk: dict with date, time, descr and per variable the values per profile (floats)."""
+    b = gzip.decompress(blob)
+    P = int(np.frombuffer(b, '<u4', 1)[0])
+    o = 4
+    out = {'date': _unplanes(b[o:o + 4 * P], P, '<u4')}; o += 4 * P
+    out['time'] = _unplanes(b[o:o + 4 * P], P, '<u4'); o += 4 * P
+    for V in VARS:
+        cnt = np.frombuffer(b, 'u1', P, o).astype(np.int64); o += P
+        n = int(cnt.sum())
+        lev = np.frombuffer(b, 'u1', n, o); o += n
+        mask = np.frombuffer(b, 'u1', n, o); o += n
+        code = _unplanes(b[o:o + 2 * n], n, '<u2'); o += 2 * n
+        first = np.r_[0, np.cumsum(cnt)[:-1]]
+        vals = {}
+        for k in ('obs', 'clim', 'model', 'sig'):
+            d = _unplanes(b[o:o + 4 * n], n, '<i4').astype(np.int64); o += 4 * n
+            # undo the per-profile differences: cumulative sum restarted at each profile's first value
+            cs = np.cumsum(d)
+            start = np.repeat(np.r_[0, cs][first[cnt > 0]] - 0, cnt[cnt > 0]) if n else np.zeros(0, np.int64)
+            base = np.repeat(cs[first[cnt > 0]] - d[first[cnt > 0]], cnt[cnt > 0]) if n else np.zeros(0, np.int64)
+            vals[k] = (cs - base) / DETAIL_SCALE[k]
+        out[V] = {'cnt': cnt, 'lev': lev, 'mask': mask, 'code': code, **vals}
+    out['descr'] = b[o:].decode().split('\n')
+    return out
+
+
 GUIDE_HTML = """
 <p>A web copy of the original <code>geodesic_binning</code> plotting app. Everything is drawn as the original draws it
 (colors, color limits, edge widths, the zoom threshold, the cells, dots and labels); the differences are listed below.</p>
@@ -702,7 +863,7 @@ def publish_github(out, remote, dry_run=False, landing=None):
     with tempfile.TemporaryDirectory() as tmp:
         work = Path(tmp) / 'site'
         work.mkdir()
-        shutil.copytree(out, work / out.name)
+        shutil.copytree(out, work / out.name, ignore=shutil.ignore_patterns('detail'))  # detail/: own sites
         (work / '.nojekyll').write_text('')
         if not (work / out.name / 'index.html').exists():
             target = landing or f'{out.name}/'
@@ -730,6 +891,37 @@ def publish_github(out, remote, dry_run=False, landing=None):
     print('pushed. First time only: repository -> Settings -> Pages -> Deploy from a branch -> main, / (root).')
 
 
+def publish_details(out, remotes, dry_run=False):
+    """Publish ``<out>/detail/<class>/`` to GitHub Pages sites: ``remotes`` maps a repository to the classes it holds
+    (each site under ~1 GB). A class too big for one site is split by chunk number: write it as 'PFL:0-699' on one
+    site and 'PFL:700-' on another. Writes the addresses into index.json (``detail_urls``: per class a list of
+    [first chunk, last chunk, address]), so the page reads each chunk from its site; run before the main site."""
+    import shutil
+    import tempfile
+    out = Path(out).resolve()
+    ip = out / 'index.json'
+    index = json.loads(ip.read_text())
+    urls = {}
+    for remote, classes in remotes.items():
+        user, repo = re.match(r'.*[:/]([^/]+)/([^/]+?)(\.git)?$', remote).group(1, 2)
+        url = f'https://{user}.github.io/{repo}/{out.name}'
+        with tempfile.TemporaryDirectory() as tmp:
+            site = Path(tmp) / out.name
+            for spec in classes:
+                c, _, rng = spec.partition(':')
+                n = len(list((out / 'detail' / c).glob('c*.bin')))
+                a, _, b = rng.partition('-') if rng else ('0', '', '')
+                a, b = int(a or 0), int(b) if b else n - 1
+                (site / 'detail' / c).mkdir(parents=True, exist_ok=True)
+                for k in range(a, b + 1):
+                    shutil.copy2(out / 'detail' / c / f'c{k:04d}.bin', site / 'detail' / c / f'c{k:04d}.bin')
+                urls.setdefault(c, []).append([a, b, url])
+            publish_github(site, remote, dry_run, landing=f'https://{user}.github.io/ecco-bin-viewer/{out.name}/')
+    index['detail_urls'] = urls
+    ip.write_text(json.dumps(index, indent=1))
+    print('detail_urls:', urls)
+
+
 def cli(argv=None):
     """``ecco-insitu bin-viewer``: build, convert, or publish (GitHub Pages) the viewer."""
     p = argparse.ArgumentParser(description='Write the geodesic bin viewer data.')
@@ -742,6 +934,8 @@ def cli(argv=None):
     p.add_argument('--page-only', action='store_true', help='only rewrite index.html (after editing viewer.html)')
     p.add_argument('--bathy', action='store_true', help='(re)write bathy.json only')
     p.add_argument('--platforms', action='store_true', help='(re)write <class>/platforms.bin only (needs --run)')
+    p.add_argument('--details', action='store_true', help='(re)write detail/<class>/ only (needs --run; '
+                   'with --model-equivalents, also the model values)')
     p.add_argument('--polar', action='store_true', help='(re)build the polar maps\' bins and land only')
     p.add_argument('--report', metavar='URL', help='the profile report this viewer belongs to (its "← report" '
                    'button); kept in index.json')
@@ -752,6 +946,8 @@ def cli(argv=None):
                    '--split-model) to this repository (e.g. git@github.com:brucelaughlin/ecco-bin-viewer-model.git)')
     p.add_argument('--split-model', nargs=2, metavar=('NAME', 'URL'),
                    help='move the model files to <out>_NAME_site/, for a second GitHub Pages site at URL')
+    p.add_argument('--github-detail', nargs='+', metavar='REMOTE=CLASS[:a-b],...', help='publish detail/ to these sites, '
+                   'e.g. ...-detail-a.git=PFL:0-699 ...-detail-b.git=PFL:700- ...-detail-c.git=CTD_WOD,GLD_WOD,ITP,MEOP,MRB_WOD,XBT_WOD')
     p.add_argument('--dry-run', action='store_true', help='show what the publish would do')
     a = p.parse_args(argv)
     if a.convert:
@@ -764,6 +960,10 @@ def cli(argv=None):
         if not a.run:
             p.error('--platforms needs --run')
         write_platforms(a.run, a.out, a.sources)
+    if a.details:
+        if not a.run:
+            p.error('--details needs --run')
+        write_details(a.run, a.out, a.sources, a.model_equivalents)
     if a.polar:
         build_polar_bins(Path(a.out))
     if a.report:
@@ -771,12 +971,14 @@ def cli(argv=None):
         index = json.loads(ip.read_text())
         index['report_url'] = a.report
         ip.write_text(json.dumps(index, indent=1))
-    if a.page_only or a.platforms or a.bathy or a.polar or a.report or a.convert or a.split_model or (a.github and not a.run):
+    if a.page_only or a.platforms or a.details or a.github_detail or a.bathy or a.polar or a.report or a.convert or a.split_model or (a.github and not a.run):
         write_page(Path(a.out))
     else:
         run(a.run, a.out, a.sources, a.rebuild_bins, a.model_equivalents)
     if a.github and not (a.page_only or a.platforms or a.bathy or a.polar or a.report or a.convert or a.split_model) and a.run:
         pass
+    if a.github_detail:
+        publish_details(a.out, {r.split('=')[0]: r.split('=')[1].split(',') for r in a.github_detail}, a.dry_run)
     if a.github:
         publish_github(Path(a.out), a.github, a.dry_run)
     if a.github_model:

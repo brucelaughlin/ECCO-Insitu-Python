@@ -144,7 +144,7 @@ canvas.clickable { cursor: pointer; }
   <div id="prof" class="panel"><div class="ptitle">Depth profile of the selection <span class="dnote">(each level's mean over bins, as analysis 02)</span></div>
     <div class="popts"><label title="Draw the curve only over the bins that have data at every level of a depth range, so the curve shows
 changes in the water, not changes in which bins are counted"><input type="checkbox" id="samebins"> same bins at every depth</label>
-      <span id="sbrange">from <select id="sb0"></select> to <select id="sb1"></select></span>
+      <span id="sbrange">same-bins range: from <select id="sb0"></select> to <select id="sb1"></select></span>
       <span id="sbnote" class="dnote"></span></div>
     <div class="pmode"><button class="tab" id="peakmode">Find where a peak comes from</button>
       <span class="dnote" id="peakhelp">Click, then drag up or down on the plot across the depths of a bump in the curve.</span></div>
@@ -364,7 +364,7 @@ function drawProfile() {
   g.font = '11px sans-serif'; g.textAlign = 'left';
   const sameTxt = S.same ? ` (of the ${PROF.nkeep} bins with data at every level ${z[k0]}–${z[k1]} m)` : '';
   const leg = PROF.region
-    ? [['all bins with data', 'rgba(192,57,43,0.8)'], ['region' + (ownAxis ? ' (top axis)' : '') + sameTxt + `; faint: under ${MIN_BINS} bins`, '#6c3483'], ['rest of the world' + sameTxt, 'rgba(90,90,90,0.9)']]
+    ? [['all bins with data', 'rgba(192,57,43,0.8)'], ['region' + (ownAxis ? ' (top axis)' : '') + sameTxt + (PROF.nbr.some((n, k) => n > 0 && n < MIN_BINS) ? `; pale where under ${MIN_BINS} bins` : ''), '#6c3483'], ['rest of the world' + sameTxt, 'rgba(90,90,90,0.9)']]
     : [['all bins with data', '#c0392b']].concat(S.same ? [[`same ${PROF.nkeep} bins (data at every level ${z[k0]}–${z[k1]} m)`, '#1a5ca8']] : []);
   const lw = Math.max(...leg.map(([t]) => g.measureText(t).width)) + 30, ly = H - B - 8 - 15 * leg.length;
   g.fillStyle = 'rgba(255,255,255,0.92)'; g.fillRect(W - R - lw - 6, ly - 4, lw, 15 * leg.length + 6);
@@ -384,6 +384,9 @@ let PROFGEOM = null, PEAKBAND = null;   // the plot's depth axis; the depth band
 function hav(la1, lo1, la2, lo2) { const r = Math.PI / 180, a = Math.sin((la2 - la1) * r / 2) ** 2 + Math.cos(la1 * r) * Math.cos(la2 * r) * Math.sin((lo2 - lo1) * r / 2) ** 2; return 12742 * Math.asin(Math.sqrt(a)); }
 async function investigatePeak(zA, zB) {
   PEAKBAND = [Math.min(zA, zB), Math.max(zA, zB)];
+  { // the same-bins range follows the investigated band (its first and last levels), so the two always agree
+    const zz = INDEX.depth, inb = zz.map((x, k) => k).filter(k => zz[k] >= PEAKBAND[0] && zz[k] <= PEAKBAND[1]);
+    if (inb.length) { S.sb0 = inb[0]; S.sb1 = inb[inb.length - 1]; document.getElementById('sb0').value = S.sb0; document.getElementById('sb1').value = S.sb1; } }
   const d = await data(S.src, S.ct), yd = (!S.all && S.part !== 'mean') ? await yearData(S.src, S.ct) : null;
   const z = INDEX.depth, lb = levelBinValues(d, yd), val = (m, b) => { const e = m.get(b); return e ? (S.part === 'count' ? e[0] : e[0] / e[1]) : NaN; };
   const meanOf = (k, keep) => { const m = lb.get(k); if (!m) return [NaN, 0]; let s = 0, n = 0; for (const b of m.keys()) { if (keep && !keep.has(b)) continue; s += val(m, b); n++; } return [n ? s / n : NaN, n]; };

@@ -38,6 +38,17 @@ select { font-size: 0.85em; }
 #legend { position: absolute; top: 6px; right: 6px; background: rgba(255,255,255,0.8); border: 1px solid #aaa;
   border-radius: 3px; padding: 3px 7px; font-size: 9px; line-height: 1.35; pointer-events: none; z-index: 3; }
 #caption { text-align: center; font-size: 11px; line-height: 1.4; padding: 0.5em 1em 0.3em; max-width: 70em; margin: 0 auto; }
+#pp { position: fixed; right: 12px; top: 70px; width: 590px; max-height: calc(100vh - 90px); overflow-y: auto; z-index: 20;
+  background: #fff; border: 1px solid #889; border-radius: 6px; box-shadow: 0 4px 18px rgba(0,0,0,0.25); padding: 0.5em 0.7em;
+  font-family: -apple-system, 'Segoe UI', sans-serif; font-size: 12px; }
+#pphead { display: flex; justify-content: space-between; align-items: center; font-size: 13px; }
+#ppclose { cursor: pointer; font-size: 20px; padding: 0 0.3em; color: #555; }
+#ppmeta { margin: 0.3em 0; line-height: 1.45; color: #234; }
+#pptabs { display: flex; gap: 0.3em; margin: 0.3em 0; }
+#ppopts { font-size: 11px; color: #456; margin-bottom: 0.2em; }
+#pplist table { border-collapse: collapse; width: 100%; } #pplist td, #pplist th { border: 1px solid #e3e3e3; padding: 1px 5px; text-align: right; }
+#pplist th { background: #f3f3f3; } #pplist tr.pick { cursor: pointer; } #pplist tr.pick:hover { background: #eef4fc; }
+#ppfoot { color: #667; font-size: 11px; line-height: 1.4; margin-top: 0.3em; }
 #keys { text-align: center; font-size: 11px; padding: 0 1em 0.8em; color: #234; }
 #busy { position: absolute; inset: 0; background: rgba(255,255,255,0.55); display: none; z-index: 5;
   align-items: center; justify-content: center; font-family: -apple-system, 'Segoe UI', sans-serif; }
@@ -94,11 +105,21 @@ select { font-size: 0.85em; }
   <div class="cbar"><canvas id="cbr"></canvas></div>
 </div>
 <div id="caption"></div>
-<div id="keys">Scroll to zoom, drag to pan; &#8962; home returns every map to its whole view. Scroll down for the polar maps.</div>
+<div id="keys">Scroll to zoom, drag to pan; &#8962; home returns every map to its whole view. Zoomed in, <b>click a red dot</b> (a profile) to see it in full. Scroll down for the polar maps.</div>
 <div class="polar-sec"><div class="polar-title" id="info-N"></div>
   <div class="mapbox polar" id="box-N"><div class="map" id="map-N"></div><div class="legend" id="legend-N"></div></div></div>
 <div class="polar-sec"><div class="polar-title" id="info-S"></div>
   <div class="mapbox polar" id="box-S"><div class="map" id="map-S"></div><div class="legend" id="legend-S"></div></div></div>
+<div id="pp" style="display:none">
+  <div id="pphead"><b id="pptitle">Profile</b><span id="ppclose" title="close">×</span></div>
+  <div id="ppmeta"></div>
+  <div id="pptabs"><button class="btn on" data-t="profile">this profile</button><button class="btn" data-t="float">this platform over time</button>
+    <button class="btn" data-t="list">largest misfits here</button></div>
+  <div id="ppopts"><label><input type="checkbox" id="ppnb" checked> neighbors in gray</label> <span id="ppnote"></span></div>
+  <canvas id="ppc" width="560" height="560"></canvas>
+  <div id="pplist"></div>
+  <div id="ppfoot"></div>
+</div>
 <details id="guide"><summary>Guide: how this page works, and how it relates to the original app</summary>__GUIDE__</details>
 <script>
 'use strict';
@@ -415,14 +436,14 @@ function drawMap(M) {
     const P = CLASS[S.src].p;
     for (const [B, e] of visible) {
       labels.push({pos: B.rp, text: e.mean.toFixed(2)});
-      for (const j of e.idx) dots.push(M.proj(P.lon[j], P.lat[j]));
+      for (const j of e.idx) dots.push({p: M.proj(P.lon[j], P.lat[j]), j});
     }
   }
   // the highlighted platform's profiles (all of them in the time window, any depth with data here), at any zoom
   const platDots = [];
   if (PLATFORM && CLASS[S.src].plat) {
     const P = CLASS[S.src].plat.pi, pr = CLASS[S.src].p, y0 = S.all ? 0 : INDEX.years0 + S.t0, y1 = S.all ? 9999 : INDEX.years0 + S.t1;
-    for (const e of STATS.values()) for (const j of e.idx) if (P[j] === PLATFORM.idx && pr.year[j] >= y0 && pr.year[j] <= y1) platDots.push(M.proj(pr.lon[j], pr.lat[j]));
+    for (const e of STATS.values()) for (const j of e.idx) if (P[j] === PLATFORM.idx && pr.year[j] >= y0 && pr.year[j] <= y1) platDots.push({p: M.proj(pr.lon[j], pr.lat[j]), j});
   }
   const cellLw = MICRO_BASE_LW * (sf / ZOOM_THRESHOLD) * PT, borderLw = Math.min(1.5, Math.max(0.3, 0.6 * sf / ZOOM_THRESHOLD)) * PT;
   const G = M.id === 'll' ? grid(M, vs) : polarGrid(M, vs), [ex0, ey0, ex1, ey1] = M.extent;
@@ -447,8 +468,12 @@ function drawMap(M) {
       getTextAnchor: d => d.a === 'left' ? 'start' : 'middle', getAlignmentBaseline: d => d.a === 'left' ? 'center' : d.a === 'mid' ? 'center' : 'bottom',
       getPixelOffset: d => d.a === 'left' ? [3, 0] : d.a === 'mid' ? [0, 0] : [0, -2], fontFamily: 'Courier, monospace',
       outlineWidth: d => 0, characterSet: '0123456789.°NSEW-'}),
-    new deck.ScatterplotLayer({id: 'dots', data: dots, getPosition: d => d, getFillColor: [255, 0, 0], getRadius: 1.2, radiusUnits: 'pixels'}),
-    new deck.ScatterplotLayer({id: 'plat', data: platDots, getPosition: d => d, stroked: true, filled: false, getLineColor: [0, 200, 230, 255],
+    new deck.ScatterplotLayer({id: 'dots', data: dots, getPosition: d => d.p, getFillColor: [255, 0, 0], getRadius: 1.2, radiusUnits: 'pixels',
+      pickable: true, radiusMinPixels: 1.2, onClick: info => { if (info.object) openProfile(info.object.j); return true; }}),
+    new deck.ScatterplotLayer({id: 'sel', data: PICKED !== null ? dots.filter(d => d.j === PICKED) : [], getPosition: d => d.p, stroked: true, filled: false,
+      getLineColor: [0, 0, 0, 255], getRadius: 6, radiusUnits: 'pixels', getLineWidth: 2, lineWidthUnits: 'pixels'}),
+    new deck.ScatterplotLayer({id: 'plat', data: platDots, getPosition: d => d.p, stroked: true, filled: false, getLineColor: [0, 200, 230, 255],
+      pickable: true, onClick: info => { if (info.object) openProfile(info.object.j); return true; },
       getRadius: 4, radiusUnits: 'pixels', getLineWidth: 1.6, lineWidthUnits: 'pixels'}),
     new deck.TextLayer({id: 'labels', data: labels, getPosition: d => d.pos, getText: d => d.text, getSize: 8 * PT,
       getColor: [255, 255, 255], outlineWidth: 4, outlineColor: [0, 0, 0, 255], fontFamily: 'Courier New, Courier, monospace',
@@ -637,6 +662,10 @@ function setupControls() {
   }
   document.getElementById('plat').onchange = e => setPlatform(e.target.value.trim());
   document.getElementById('platclear').onclick = () => setPlatform('');
+  document.getElementById('ppclose').onclick = () => { document.getElementById('pp').style.display = 'none'; PICKED = null; draw(); };
+  document.querySelectorAll('#pptabs .btn').forEach(b => b.onclick = () => { PPTAB = b.dataset.t;
+    document.querySelectorAll('#pptabs .btn').forEach(x => x.classList.toggle('on', x === b)); showTab(); });
+  document.getElementById('ppnb').onchange = () => showTab();
   document.getElementById('cap').onchange = e => { S.cap = +e.target.value; draw(); };
   document.getElementById('reset').onclick = () => resetZoom();
   document.getElementById('resetall').onclick = () => { S.dmode = 'level'; document.getElementById('dmode').value = 'level';
@@ -693,6 +722,212 @@ function setView(M, v, now) {
 }
 function resetZoom() { for (const M of MAPS) setView(M, M.home, true); if (STATS) titles(); }
 
+// ---------- the profile panel: one profile in full, its platform over time, the largest misfits here ----------
+// Data: detail/<class>/c<NNNN>.bin (export.py write_details), DETAIL_CHUNK profiles each in profiles.bin's order,
+// loaded only when a profile is opened. Values are the yearly files', rounded to 0.001 (sigma 0.0001).
+let PICKED = null, PPTAB = 'profile';
+const paint = () => new Promise(r => requestAnimationFrame(() => setTimeout(r, 0)));   // let the busy overlay draw
+const DCACHE = new Map();
+const DSCALE = {obs: 1000, clim: 1000, model: 1000, sig: 10000};
+// where a class's detail chunk is: index.json detail_urls[src] = [[first chunk, last chunk, address], ...] (the details
+// are on their own GitHub Pages sites, a big class split over two), else next to this page
+const detailBase = (src, c) => { for (const [a, b, u] of (INDEX.detail_urls || {})[src] || []) if (c >= a && c <= b) return u; return DATA_URL; };
+async function detailChunk(src, c) {
+  const key = src + '|' + c; if (DCACHE.has(key)) return DCACHE.get(key);
+  const b = await gz(`${detailBase(src, c)}/detail/${src}/c${String(c).padStart(4, '0')}.bin`);
+  const dv = new DataView(b.buffer, b.byteOffset), P = dv.getUint32(0, true); let o = 4;
+  const pl = (n, bytes, T) => { const a = new T(n), u = new Uint8Array(a.buffer);
+    for (let q = 0; q < bytes; q++) { const sp = b.subarray(o + q * n, o + (q + 1) * n); for (let i = 0; i < n; i++) u[i * bytes + q] = sp[i]; } o += bytes * n; return a; };
+  const out = {P, date: pl(P, 4, Uint32Array), time: pl(P, 4, Uint32Array)};
+  for (const V of ['T', 'S']) {
+    const cnt = b.slice(o, o + P); o += P; let n = 0; for (const x of cnt) n += x;
+    const lev = b.slice(o, o + n); o += n; const mask = b.slice(o, o + n); o += n; const code = pl(n, 2, Uint16Array);
+    const start = new Int32Array(P + 1); for (let i = 0; i < P; i++) start[i + 1] = start[i] + cnt[i];
+    const vals = {};
+    for (const k of ['obs', 'clim', 'model', 'sig']) {
+      const d = pl(n, 4, Int32Array), x = new Float64Array(n);
+      for (let i = 0; i < P; i++) { let acc = 0; for (let q = start[i]; q < start[i + 1]; q++) { acc += d[q]; x[q] = acc / DSCALE[k]; } }
+      vals[k] = x;
+    }
+    out[V] = {cnt, start, lev, mask, code, ...vals};
+  }
+  out.descr = new TextDecoder().decode(b.subarray(o)).split('\n');
+  DCACHE.set(key, out); return out;
+}
+async function profileOf(src, j) {          // one profile: {date, time, descr, T: [{k, obs, clim, model, sig, code}], S: [...]}
+  const C = INDEX.detail[src].chunk, D = await detailChunk(src, Math.floor(j / C)), q = j % C, out = {date: D.date[q], time: D.time[q], descr: D.descr[q]};
+  for (const V of ['T', 'S']) { const X = D[V], rows = [];
+    for (let i = X.start[q]; i < X.start[q + 1]; i++) rows.push({k: X.lev[i], obs: X.obs[i], clim: X.mask[i] & 1 ? X.clim[i] : NaN,
+      model: X.mask[i] & 2 ? X.model[i] : NaN, sig: X.mask[i] & 4 ? X.sig[i] : NaN, code: X.code[i]});
+    out[V] = rows; }
+  return out;
+}
+const QC = {1: 'weight already 0 or missing', 2: 'the data\'s own quality flag', 3: 'value missing', 4: 'value exactly 0', 5: 'outside the legal range',
+  6: 'no climatology value', 7: 'invalid date or time', 8: 'invalid position', 9: 'whole-profile cost vs climatology too large',
+  10: 'this point\'s cost vs climatology too large', 11: 'likely bad conductivity cell', 12: 'XBT deeper than the cutoff'};
+const qcText = c => { const t = []; for (let b = 1; b <= 12; b++) if (c & (1 << (b - 1))) t.push(QC[b]); return t.join('; '); };
+const ymd = d => `${String(d).slice(0, 4)}-${String(d).slice(4, 6)}-${String(d).slice(6, 8)}`;
+const hms = t => { const s = String(t).padStart(6, '0'); return `${s.slice(0, 2)}:${s.slice(2, 4)}`; };
+function neighborsOf(j) {                  // profiles in the same bin, within ±2 years, of other platforms (max 60)
+  const P = CLASS[S.src].p, b = P.bin[j], y = P.year[j], pl = CLASS[S.src].plat, out = [];
+  for (let i = 0; i < P.bin.length && out.length < 400; i++) if (P.bin[i] === b && i !== j && Math.abs(P.year[i] - y) <= 2 && (!pl || pl.pi[i] !== pl.pi[j])) out.push(i);
+  return out.sort(() => Math.random() - 0.5).slice(0, 60);
+}
+async function openProfile(j) {
+  PICKED = j; PPTAB = 'profile'; document.getElementById('pp').style.display = '';
+  document.querySelectorAll('#pptabs .btn').forEach(b => b.classList.toggle('on', b.dataset.t === 'profile'));
+  draw(); await showTab();
+}
+async function showTab() {
+  const j = PICKED; if (j === null) return;
+  const src = S.src, P = CLASS[src].p, pl = CLASS[src].plat, name = pl && pl.pi[j] !== 0xFFFFFFFF ? pl.names[pl.pi[j]] : null;
+  document.getElementById('ppopts').style.display = PPTAB === 'list' ? 'none' : '';
+  if (!INDEX.detail || !INDEX.detail[src]) { document.getElementById('ppmeta').textContent = 'No profile details in this data folder.'; return; }
+  busy('Loading the profile…');
+  const pr = await profileOf(src, j); busy(null);
+  const ref = S.ref === 'clim' ? 'climatology' : 'model', unit = S.V === 'T' ? '°C' : 'psu';
+  document.getElementById('pptitle').textContent = `${src} profile${name ? ' — ' + (pl.kind) + ' ' + name : ''}`;
+  document.getElementById('ppmeta').innerHTML =
+    `${ymd(pr.date)} ${hms(pr.time)} UTC; ${P.lat[j].toFixed(3)}°${P.lat[j] >= 0 ? 'N' : 'S'}, ${Math.abs(P.lon[j]).toFixed(3)}°${P.lon[j] >= 0 ? 'E' : 'W'}; geodesic bin ${P.bin[j]}<br>` +
+    `<span style="color:#667">${pr.descr}</span>` +
+    (name ? ` — <a href="#" id="pphl">ring all of ${name}'s profiles on the map</a>` : '');
+  if (name) document.getElementById('pphl').onclick = e => { e.preventDefault(); setPlatform(name); };
+  const cv = document.getElementById('ppc'), g = cv.getContext('2d'); g.clearRect(0, 0, cv.width, cv.height);
+  document.getElementById('pplist').innerHTML = ''; cv.style.display = '';
+  if (PPTAB === 'profile') await drawOneProfile(g, cv, pr, j, ref, unit);
+  else if (PPTAB === 'float') await drawFloat(g, cv, j, ref, unit, name);
+  else { cv.style.display = 'none'; await listMisfits(j, ref, unit); }
+}
+const REFCOL = {obs: '#111', clim: '#2e86c1', model: '#c0392b'};
+async function drawOneProfile(g, cv, pr, j, ref, unit) {
+  const rows = pr[S.V], z = INDEX.depth, W = cv.width, H = cv.height, L = 52, Rm = 10, T = 36, B = 36, gap = 30, w1 = (W - L - Rm - gap) * 0.55, w2 = W - L - Rm - gap - w1;
+  if (!rows.length) { g.fillText(`No ${S.V} in this profile.`, 20, 40); return; }
+  const refv = r => S.ref === 'clim' ? r.clim : r.model;
+  const zs = rows.map(r => z[r.k]), zmax = Math.max(...zs) * 1.04, Y = d => T + (H - T - B) * d / zmax;
+  // neighbors (gray): same bin, ±2 years, other platforms
+  const nb = document.getElementById('ppnb').checked ? neighborsOf(j) : [], nbr = [];
+  for (const i of nb) { const q = await profileOf(S.src, i); nbr.push(q[S.V]); }
+  const all = [...rows.map(r => r.obs), ...rows.map(refv)].filter(Number.isFinite);
+  for (const q of nbr) for (const r of q) if (z[r.k] <= zmax) all.push(r.obs);
+  let lo = Math.min(...all), hi = Math.max(...all); const pad = 0.05 * (hi - lo || 1); lo -= pad; hi += pad;
+  const X = v => L + w1 * (v - lo) / (hi - lo);
+  const an = rows.map(r => r.obs - refv(r)), aa = an.filter(Number.isFinite), ss = rows.map(r => r.sig).filter(Number.isFinite);
+  let am = Math.max(1e-6, ...aa.map(Math.abs), ...ss.map(x => 2 * x)) * 1.1;
+  const X2 = v => L + w1 + gap + w2 * (v + am) / (2 * am);
+  g.font = '10px sans-serif'; g.fillStyle = '#444'; g.strokeStyle = '#ddd'; g.lineWidth = 1;
+  g.strokeRect(L, T, w1, H - T - B); g.strokeRect(L + w1 + gap, T, w2, H - T - B);
+  g.textAlign = 'right'; g.textBaseline = 'middle';
+  for (const d of niceTicks(0, zmax, 6)) { g.fillText(d + ' m', L - 4, Y(d)); g.strokeStyle = '#f0f0f0'; g.beginPath(); g.moveTo(L, Y(d)); g.lineTo(L + w1, Y(d)); g.moveTo(L + w1 + gap, Y(d)); g.lineTo(W - Rm, Y(d)); g.stroke(); }
+  g.textAlign = 'center'; g.textBaseline = 'top';
+  for (const t of niceTicks(lo, hi, 4)) g.fillText(fmt(t), X(t), H - B + 4);
+  for (const t of niceTicks(-am, am, 4)) g.fillText(fmt(t), X2(t), H - B + 4);
+  g.fillText(`${S.V} (${unit})`, L + w1 / 2, H - B + 18); g.fillText(`obs − ${ref} (${unit})`, L + w1 + gap + w2 / 2, H - B + 18);
+  const path = (pts, col, w, dash) => { g.strokeStyle = col; g.lineWidth = w; g.setLineDash(dash || []); g.beginPath(); let on = false;
+    for (const [x, y] of pts) { if (!Number.isFinite(x)) { on = false; continue; } if (on) g.lineTo(x, y); else { g.moveTo(x, y); on = true; } } g.stroke(); g.setLineDash([]); };
+  for (const q of nbr) path(q.filter(r => z[r.k] <= zmax).map(r => [X(r.obs), Y(z[r.k])]), 'rgba(150,150,150,0.35)', 1);
+  path(rows.map(r => [X(r.clim), Y(z[r.k])]), REFCOL.clim, 1.5, S.ref === 'clim' ? [] : [4, 3]);
+  path(rows.map(r => [X(r.model), Y(z[r.k])]), REFCOL.model, 1.5, S.ref === 'model' ? [] : [4, 3]);
+  path(rows.map(r => [X(r.obs), Y(z[r.k])]), REFCOL.obs, 2);
+  // misfit panel: ±1σ and ±2σ bands, the misfit, rejected levels marked
+  g.fillStyle = 'rgba(46,134,193,0.10)'; g.beginPath();
+  rows.forEach((r, i) => { const x = X2(2 * (r.sig || 0)), y = Y(z[r.k]); i ? g.lineTo(x, y) : g.moveTo(x, y); });
+  [...rows].reverse().forEach(r => g.lineTo(X2(-2 * (r.sig || 0)), Y(z[r.k]))); g.fill();
+  g.fillStyle = 'rgba(46,134,193,0.16)'; g.beginPath();
+  rows.forEach((r, i) => { const x = X2(r.sig || 0), y = Y(z[r.k]); i ? g.lineTo(x, y) : g.moveTo(x, y); });
+  [...rows].reverse().forEach(r => g.lineTo(X2(-(r.sig || 0)), Y(z[r.k]))); g.fill();
+  g.strokeStyle = '#999'; g.beginPath(); g.moveTo(X2(0), T); g.lineTo(X2(0), H - B); g.stroke();
+  path(rows.map(r => [X2(r.obs - refv(r)), Y(z[r.k])]), '#111', 1.8);
+  let nrej = 0;
+  for (const r of rows) if (r.code) { nrej++; const x = X(r.obs), y = Y(z[r.k]); g.strokeStyle = '#d35400'; g.lineWidth = 1.5; g.beginPath(); g.moveTo(x - 3, y - 3); g.lineTo(x + 3, y + 3); g.moveTo(x + 3, y - 3); g.lineTo(x - 3, y + 3); g.stroke();
+    const x2 = X2(Math.max(-am, Math.min(am, r.obs - refv(r)))); g.beginPath(); g.moveTo(x2 - 3, y - 3); g.lineTo(x2 + 3, y + 3); g.moveTo(x2 + 3, y - 3); g.lineTo(x2 - 3, y + 3); g.stroke(); }
+  // the depth shown on the map
+  const lv = currentLevels(); g.strokeStyle = 'rgba(108,52,131,0.7)'; g.setLineDash([3, 3]);
+  for (const k of [lv[0], lv[lv.length - 1]]) { if (z[k] > zmax) continue; g.beginPath(); g.moveTo(L, Y(z[k])); g.lineTo(W - Rm, Y(z[k])); g.stroke(); } g.setLineDash([]);
+  // legend
+  g.textAlign = 'left'; g.textBaseline = 'middle'; g.font = '11px sans-serif';
+  const leg = [['observation', REFCOL.obs, []], ['climatology', REFCOL.clim, S.ref === 'clim' ? [] : [4, 3]], ['model (monthly mean)', REFCOL.model, S.ref === 'model' ? [] : [4, 3]]];
+  if (nbr.length) leg.push([`${nbr.length} neighbors (same bin, ±2 years, other platforms)`, 'rgba(150,150,150,0.8)', []]);
+  let lx = L, ly = 8; leg.forEach(([t, c, d]) => { const wt = g.measureText(t).width + 34; if (lx + wt > W - Rm) { lx = L; ly += 14; }
+    g.strokeStyle = c; g.lineWidth = 2; g.setLineDash(d); g.beginPath(); g.moveTo(lx, ly); g.lineTo(lx + 16, ly); g.stroke(); g.setLineDash([]);
+    g.fillStyle = '#333'; g.fillText(t, lx + 20, ly); lx += wt; });
+  // per-level table of the map's depth, and notes
+  const at = rows.filter(r => lv.includes(r.k)), dv = at.map(r => {
+    const m = r.obs - refv(r), c = Number.isFinite(r.sig) && r.sig > 0 ? (m / r.sig) ** 2 : NaN;
+    return `${z[r.k]} m: obs ${r.obs.toFixed(3)}, ${ref} ${Number.isFinite(refv(r)) ? refv(r).toFixed(3) : '–'}, obs − ${ref} ${Number.isFinite(m) ? (m >= 0 ? '+' : '') + m.toFixed(3) : '–'} ${unit}, ` +
+      `σ ${Number.isFinite(r.sig) ? r.sig.toFixed(3) : '–'}, (Δ/σ)² ${Number.isFinite(c) ? c.toFixed(2) : '–'}${r.code ? '; <b style="color:#d35400">rejected: ' + qcText(r.code) + '</b>' : ''}`; });
+  document.getElementById('ppfoot').innerHTML = (dv.length ? `<b>At the map's depth</b> (purple dashes): ${dv.join('<br>')}<br>` : '') +
+    `Blue bands: ±1σ and ±2σ, the assumed error of the observation (the cost is (Δ/σ)²). ` +
+    (nrej ? `<span style="color:#d35400">×</span> marks the ${nrej} level${nrej > 1 ? 's' : ''} the processing chain rejected (weight 0; reason on hover in the table below is not shown here — see the levels above). ` : 'No level of this profile was rejected. ') +
+    `The model line is the monthly-mean approximation (not the model's value at the profile's exact time). Values are the processed files', to 0.001.`;
+  document.getElementById('ppnote').textContent = nbr.length ? '' : (document.getElementById('ppnb').checked ? 'no other platforms in this bin within ±2 years' : '');
+}
+async function drawFloat(g, cv, j, ref, unit, name) {
+  const pl = CLASS[S.src].plat, P = CLASS[S.src].p;
+  if (!pl || pl.pi[j] === 0xFFFFFFFF) { g.fillText('This profile has no platform ID.', 20, 40); return; }
+  const idx = [], me = pl.pi[j]; for (let i = 0; i < pl.pi.length; i++) if (pl.pi[i] === me) idx.push(i);
+  busy(`Loading ${idx.length} profiles of ${name}…`); await paint();
+  const prs = []; for (const i of idx) { const q = await profileOf(S.src, i); prs.push([i, q]); } busy(null);
+  prs.sort((a, b) => a[1].date - b[1].date || a[1].time - b[1].time);
+  const z = INDEX.depth, W = cv.width, H = cv.height, L = 52, Rm = 70, T = 26, B = 40, refv = r => S.ref === 'clim' ? r.clim : r.model;
+  let zmax = 0, am = 0; for (const [, q] of prs) for (const r of q[S.V]) { zmax = Math.max(zmax, z[r.k]); const m = r.obs - refv(r); if (Number.isFinite(m)) am = Math.max(am, Math.abs(m)); }
+  if (!zmax) { g.fillText(`No ${S.V} in these profiles.`, 20, 40); return; }
+  const vals = []; for (const [, q] of prs) for (const r of q[S.V]) { const m = r.obs - refv(r); if (Number.isFinite(m)) vals.push(Math.abs(m)); }
+  vals.sort((a, b) => a - b); am = Math.max(1e-6, vals[Math.floor(0.98 * (vals.length - 1))] || am);
+  const nP = prs.length, cw = (W - L - Rm) / nP, Y = d => T + (H - T - B) * d / zmax;
+  const RD = [[5,48,97],[67,147,195],[209,229,240],[247,247,247],[253,219,199],[214,96,77],[103,0,31]];
+  const col = x => { const t = Math.max(0, Math.min(1, (x + am) / (2 * am))) * (RD.length - 1), i = Math.min(RD.length - 2, Math.floor(t)), f = t - i;
+    return `rgb(${RD[i].map((c, k) => Math.round(c + f * (RD[i + 1][k] - c))).join(',')})`; };
+  prs.forEach(([i, q], n) => { const rows = q[S.V];
+    rows.forEach((r, m) => { const m2 = r.obs - refv(r); if (!Number.isFinite(m2)) return; const z0 = m ? (z[rows[m - 1].k] + z[r.k]) / 2 : z[r.k], z1 = m + 1 < rows.length ? (z[r.k] + z[rows[m + 1].k]) / 2 : z[r.k];
+      g.fillStyle = col(m2); g.fillRect(L + n * cw, Y(z0), Math.max(1, cw + 0.3), Math.max(1, Y(z1) - Y(z0))); }); });
+  const k = prs.findIndex(([i]) => i === j); if (k >= 0) { g.strokeStyle = '#000'; g.lineWidth = 1.5; g.strokeRect(L + k * cw, T, Math.max(2, cw), H - T - B); }
+  g.strokeStyle = '#999'; g.lineWidth = 1; g.strokeRect(L, T, W - L - Rm, H - T - B);
+  g.font = '10px sans-serif'; g.fillStyle = '#444'; g.textAlign = 'right'; g.textBaseline = 'middle';
+  for (const d of niceTicks(0, zmax, 6)) g.fillText(d + ' m', L - 4, Y(d));
+  g.textAlign = 'center'; g.textBaseline = 'top';
+  // time labels: years if the platform spans several, else months; never closer than 40 px
+  const years = [...new Set(prs.map(([, q]) => String(q.date).slice(0, 4)))], byMonth = years.length < 3;
+  const lab = q => byMonth ? `${String(q.date).slice(0, 4)}-${String(q.date).slice(4, 6)}` : String(q.date).slice(0, 4);
+  let lastX = -1e9, lastLab = '';
+  prs.forEach(([, q], n) => { const t = lab(q); if (t === lastLab) return; lastLab = t; const x = L + n * cw; if (x - lastX < 46) return; lastX = x;
+    g.fillText(t, x + 2, H - B + 4); g.strokeStyle = '#ccc'; g.beginPath(); g.moveTo(x, H - B); g.lineTo(x, H - B + 3); g.stroke(); });
+  g.fillText(`${nP} profiles in time order (the black box: the profile you clicked)`, L + (W - L - Rm) / 2, H - B + 18);
+  for (let q = 0; q < 60; q++) { const x = -am + 2 * am * q / 59; g.fillStyle = col(x); g.fillRect(W - Rm + 18, T + (H - T - B) * (1 - q / 59), 14, (H - T - B) / 59 + 1); }
+  g.fillStyle = '#333'; g.textAlign = 'left'; g.textBaseline = 'middle';
+  for (const t of niceTicks(-am, am, 4)) g.fillText(fmt(t), W - Rm + 35, T + (H - T - B) * (1 - (t + am) / (2 * am)));
+  g.textAlign = 'left'; g.textBaseline = 'middle'; g.font = '11px sans-serif'; g.fillStyle = '#333';
+  g.fillText(`${name}: obs − ${ref} (${unit}), depth against profile number`, L, 12);
+  document.getElementById('ppfoot').innerHTML = `Each column is one profile of ${name}, left to right in time; color is obs − ${ref} (red warmer/saltier, blue colder/fresher; ` +
+    `the scale's ends are the 98th percentile of |obs − ${ref}| over these profiles). A water-mass difference tends to persist from profile to profile; a sensor drift creeps; a single bad profile stands alone. ` +
+    `<a href="#" id="pphl2">Ring its profiles on the map</a> to see its track.`;
+  document.getElementById('pphl2').onclick = e => { e.preventDefault(); setPlatform(name); };
+}
+async function listMisfits(j, ref, unit) {
+  // the bin of the clicked profile (or the visible bins, if few): profiles ranked by |obs − ref| / σ at the map's depth
+  const P = CLASS[S.src].p, b = P.bin[j], lv = currentLevels(), idx = [];
+  const y0 = S.all ? 0 : INDEX.years0 + S.t0, y1 = S.all ? 9999 : INDEX.years0 + S.t1;
+  for (let i = 0; i < P.bin.length; i++) if (P.bin[i] === b && P.year[i] >= y0 && P.year[i] <= y1) idx.push(i);
+  busy(`Loading the ${idx.length} profiles of bin ${b}…`); await paint();
+  const rows = [], refv = r => S.ref === 'clim' ? r.clim : r.model, pl = CLASS[S.src].plat;
+  for (const i of idx) { const q = await profileOf(S.src, i);
+    for (const r of q[S.V]) if (lv.includes(r.k)) { const m = r.obs - refv(r); if (!Number.isFinite(m)) continue;
+      rows.push({i, z: INDEX.depth[r.k], m, s: r.sig, n: Number.isFinite(r.sig) && r.sig > 0 ? Math.abs(m) / r.sig : NaN, code: r.code, date: q.date,
+        plat: pl && pl.pi[i] !== 0xFFFFFFFF ? pl.names[pl.pi[i]] : '–'}); } }
+  busy(null);
+  rows.sort((a, c) => (c.n || 0) - (a.n || 0));
+  let h = `<b>Bin ${b}, ${depthText().replace('displaying ', '')}, ${S.all ? 'all years' : y0 + '–' + y1}: the ${Math.min(25, rows.length)} largest misfits of ${rows.length} values</b> (click a row to open that profile)` +
+    `<table><tr><th>#</th><th>date</th><th>${pl ? pl.kind : 'platform'}</th><th>depth</th><th>obs − ${ref} (${unit})</th><th>σ</th><th>|Δ|/σ</th><th>QC</th></tr>`;
+  rows.slice(0, 25).forEach((r, n) => { h += `<tr class="pick" data-i="${r.i}"><td>${n + 1}</td><td>${ymd(r.date)}</td><td>${r.plat}</td><td>${r.z} m</td>` +
+    `<td>${(r.m >= 0 ? '+' : '') + r.m.toFixed(3)}</td><td>${Number.isFinite(r.s) ? r.s.toFixed(3) : '–'}</td><td><b>${Number.isFinite(r.n) ? r.n.toFixed(1) : '–'}</b></td>` +
+    `<td style="text-align:left">${r.code ? '<span style="color:#d35400">rejected</span>' : 'kept'}</td></tr>`; });
+  h += '</table>';
+  document.getElementById('pplist').innerHTML = h;
+  document.querySelectorAll('#pplist tr.pick').forEach(tr => tr.addEventListener('click', () => { PICKED = +tr.dataset.i; PPTAB = 'profile';
+    document.querySelectorAll('#pptabs .btn').forEach(b2 => b2.classList.toggle('on', b2.dataset.t === 'profile')); draw(); showTab(); }));
+  document.getElementById('ppfoot').innerHTML = `|Δ|/σ: how many assumed errors the observation is from the ${ref}; above 3 is unusual, above 10 is rejected by the chain (vs the climatology). ` +
+    `"rejected": the chain set this value's weight to 0 (it does not enter the cost).`;
+}
+
 // ---------- start ----------
 function homeZoom(M) {                  // the zoom at which the map's whole view fills its box
   const [ex0, ey0, ex1, ey1] = M.extent;
@@ -711,7 +946,8 @@ function addMap(id, elId, legendId, bins, land, extent, proj, latOf, bathy) {
   M.home = {target: [(extent[0] + extent[2]) / 2, (extent[1] + extent[3]) / 2, 0], zoom: z, minZoom: z, maxZoom: z + 9};
   M.view = {...M.home};
   M.deck = new deck.DeckGL({container: M.el, views: new deck.OrthographicView({id: 'o-' + id, flipY: false}),
-    viewState: M.home, controller: {doubleClickZoom: false, scrollZoom: {smooth: false}}, getCursor: () => 'crosshair',
+    viewState: M.home, controller: {doubleClickZoom: false, scrollZoom: {smooth: false}},
+    getCursor: ({isHovering, isDragging}) => isDragging ? 'grabbing' : isHovering ? 'pointer' : 'crosshair',
     onViewStateChange: ({viewState}) => setView(M, viewState)});
   MAPS.push(M);
   for (const b of bins.keys()) ANY_BIN.add(b);
