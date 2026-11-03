@@ -1,7 +1,7 @@
 """
 Data for the geodesic bin viewer, a web copy of the original ``geodesic_binning`` plotting app.
 
-Two kinds of files, written to one folder that is uploaded as is (Cloudflare R2, or any static host):
+Two kinds of files, written to one folder that is published as is (GitHub Pages, or any static host):
 
 ``bins.bin`` (gzip) + ``bins.json``
     The geodesic bin polygons, built exactly as the original binning step builds them
@@ -47,6 +47,7 @@ See docs/bin_viewer.md.
 """
 import argparse
 import gzip
+import re
 import json
 import time
 from pathlib import Path
@@ -565,30 +566,11 @@ def run(run_dir, out, sources=None, rebuild_bins=False, estim_dir=None):
     return out
 
 
-def upload(out, bucket, prefix, endpoint, profile='r2', dry_run=False):
-    """Copy the folder to an S3-compatible bucket (Cloudflare R2) with the aws CLI.
-
-    The data files are gzip bytes the page decompresses itself, so they are uploaded without Content-Encoding;
-    the page is uploaded last, so it never points at data that isn't there yet.
-    """
-    import subprocess
-    dest = f's3://{bucket}/{prefix.strip("/")}' if prefix else f's3://{bucket}'
-    # --exact-timestamps: also copy files whose size is unchanged but which were rewritten (e.g. --convert)
-    base = ['aws', 's3', 'sync', str(out), dest, '--endpoint-url', endpoint, '--profile', profile, '--only-show-errors',
-            '--exact-timestamps']
-    if dry_run:
-        base.append('--dryrun')
-    subprocess.run(base + ['--exclude', 'index.html', '--cache-control', 'public, max-age=86400'], check=True)
-    subprocess.run(base + ['--exclude', '*', '--include', 'index.html', '--content-type', 'text/html; charset=utf-8',
-                           '--cache-control', 'no-cache'], check=True)
-    print(f'{"Dry run: would upload" if dry_run else "Uploaded"} {out} -> {dest}')
-
-
 GITHUB_LIMIT_MB = 1000         # GitHub Pages site limit (about 1 GB); every file must also be < 100 MB
 
 
 def split_for_github(out, remote_name, url):
-    """Move the model level files (``<class>/model/``) of ``out`` to a sibling folder for a second GitHub Pages
+    """Move the model level files (``<class>/model/``) of ``out`` to ``<out>_<name>_site/<out name>/``, for a second GitHub Pages
     site, and record its address in index.json (``ref_urls``), so the page reads them from there.
 
     The two folders are then published separately (``--github`` on each, to two repositories), keeping each site
@@ -596,7 +578,7 @@ def split_for_github(out, remote_name, url):
     """
     import shutil
     out = Path(out)
-    dest = out.parent / f'{out.name}__{remote_name}'
+    dest = out.parent / f'{out.name}_{remote_name}_site'
     for d in sorted(out.glob('*/model')):
         target = dest / out.name / d.parent.name / 'model'
         target.parent.mkdir(parents=True, exist_ok=True)
@@ -612,13 +594,12 @@ def split_for_github(out, remote_name, url):
     return dest / out.name
 
 
-def publish_github(out, remote, dry_run=False):
+def publish_github(out, remote, dry_run=False, landing=None):
     """Replace the viewer repository's main branch with this folder (one commit, force-pushed, no history).
 
     The repository (e.g. ``git@github.com:<user>/ecco-bin-viewer.git``) serves GitHub Pages from ``main``, root
     folder; the viewer is then at ``https://<user>.github.io/<repo>/<folder name>/``. One run at a time: the
-    branch is replaced, so older runs go (they stay in the local folders and on R2). Reachable on networks that
-    filter new domains, unlike R2.
+    branch is replaced, so older runs go (they stay in the local folders).
     """
     import shutil
     import subprocess
@@ -637,9 +618,13 @@ def publish_github(out, remote, dry_run=False):
         work.mkdir()
         shutil.copytree(out, work / out.name)
         (work / '.nojekyll').write_text('')
+        if not (work / out.name / 'index.html').exists():
+            target = landing or f'{out.name}/'
+        else:
+            target = f'{out.name}/'
         (work / 'index.html').write_text(
-            f'<!DOCTYPE html><meta charset="utf-8"><meta http-equiv="refresh" content="0; url={out.name}/">'
-            f'<a href="{out.name}/">Geodesic bin viewer ({out.name})</a>\n')
+            f'<!DOCTYPE html><meta charset="utf-8"><meta http-equiv="refresh" content="0; url={target}">'
+            f'<a href="{target}">Geodesic bin viewer ({out.name})</a>\n')
         (work / 'README.md').write_text(
             'Geodesic bin viewer (the in situ data viewer of the ECCO in situ profile reports). Made by '
             '`ecco-insitu bin-viewer --github`; this branch is replaced on every publish, so it has no history. '
@@ -660,12 +645,12 @@ def publish_github(out, remote, dry_run=False):
 
 
 def cli(argv=None):
-    """``ecco-insitu bin-viewer``: build, convert, upload (R2) or publish (GitHub Pages) the viewer."""
+    """``ecco-insitu bin-viewer``: build, convert, or publish (GitHub Pages) the viewer."""
     p = argparse.ArgumentParser(description='Write the geodesic bin viewer data.')
     p.add_argument('--model-equivalents', metavar='DIR', default=None,
                    help='also V - model (the folder profile-analyze --model-equivalents reads)')
     p.add_argument('--run', help='processed run folder (or its yearly/)')
-    p.add_argument('--out', required=True, help='output folder (uploaded to the host as is)')
+    p.add_argument('--out', required=True, help='output folder (published as is)')
     p.add_argument('--sources', nargs='*', default=None, help='obs classes (default: all)')
     p.add_argument('--rebuild-bins', action='store_true', help='rebuild bins.bin even if it exists')
     p.add_argument('--page-only', action='store_true', help='only rewrite index.html (after editing viewer.html)')
@@ -674,15 +659,13 @@ def cli(argv=None):
     p.add_argument('--report', metavar='URL', help='the profile report this viewer belongs to (its "← report" '
                    'button); kept in index.json')
     p.add_argument('--convert', action='store_true', help='rewrite an older (format 1) folder as format 2')
-    p.add_argument('--upload', metavar='BUCKET', help='then upload the folder to this R2 bucket')
-    p.add_argument('--prefix', default='', help='folder in the bucket (e.g. run_20261027_142247)')
-    p.add_argument('--endpoint', help='R2 endpoint, https://<account id>.r2.cloudflarestorage.com')
-    p.add_argument('--profile', default='r2', help='aws CLI profile with the R2 API token (default: r2)')
     p.add_argument('--github', metavar='REMOTE', help='then publish the folder to this GitHub Pages repository '
                    '(e.g. git@github.com:brucelaughlin/ecco-bin-viewer.git); replaces what is there')
+    p.add_argument('--github-model', metavar='REMOTE', help='with --github: also publish <out>_model_site/ (made by '
+                   '--split-model) to this repository (e.g. git@github.com:brucelaughlin/ecco-bin-viewer-model.git)')
     p.add_argument('--split-model', nargs=2, metavar=('NAME', 'URL'),
-                   help='move the model files to a sibling folder <out>__NAME, for a second GitHub Pages site at URL')
-    p.add_argument('--dry-run', action='store_true', help='show what the upload / publish would do')
+                   help='move the model files to <out>_NAME_site/, for a second GitHub Pages site at URL')
+    p.add_argument('--dry-run', action='store_true', help='show what the publish would do')
     a = p.parse_args(argv)
     if a.convert:
         convert_format1(a.out)
@@ -697,16 +680,19 @@ def cli(argv=None):
         index = json.loads(ip.read_text())
         index['report_url'] = a.report
         ip.write_text(json.dumps(index, indent=1))
-    if a.page_only or a.bathy or a.polar or a.report or a.convert or a.split_model or ((a.upload or a.github) and not a.run):
+    if a.page_only or a.bathy or a.polar or a.report or a.convert or a.split_model or (a.github and not a.run):
         write_page(Path(a.out))
     else:
         run(a.run, a.out, a.sources, a.rebuild_bins, a.model_equivalents)
-    if a.upload:
-        if not a.endpoint:
-            p.error('--upload needs --endpoint')
-        upload(Path(a.out), a.upload, a.prefix, a.endpoint, a.profile, a.dry_run)
     if a.github:
         publish_github(Path(a.out), a.github, a.dry_run)
+    if a.github_model:
+        out = Path(a.out).resolve()
+        model = out.parent / f'{out.name}_model_site' / out.name
+        if not model.is_dir():
+            p.error(f'{model} not found: run --split-model first')
+        user, repo = re.match(r'.*[:/]([^/]+)/([^/]+?)(\.git)?$', a.github).group(1, 2)
+        publish_github(model, a.github_model, a.dry_run, landing=f'https://{user}.github.io/{repo}/{out.name}/')
 
 
 if __name__ == '__main__':

@@ -3,17 +3,18 @@
 A web copy of the original `geodesic_binning` plotting app (`geodesic_binning/plotting/`), with time windows of
 any length. Code: `src/ecco_insitu/diagnostics/bin_viewer/` (`export.py` writes the data and the page,
 `viewer.html` is the page template, `vendor/` holds deck.gl 9.0.38 and d3-delaunay 6.0.4).
-Hosting: Cloudflare R2 (a static bucket; the data are open), bucket `ecco-bin-viewer`, custom domain
-`www.ecco-insitu-viewer.org` (registered through Cloudflare 2026-11-02).
+Hosting: two GitHub Pages sites (each under GitHub's 1 GB site limit; github.io is reachable on the facility's
+secure network):
+- **`brucelaughlin/ecco-bin-viewer`**: the page, bins, maps, and the anomalies relative to the climatology.
+  **Live:** https://brucelaughlin.github.io/ecco-bin-viewer/run_20261027_142247/
+- **`brucelaughlin/ecco-bin-viewer-model`**: the anomalies relative to the model (~740 MB); the page reads them
+  from there (`ref_urls` in `index.json`; GitHub Pages allows cross-site reads).
 
-**Live** (two copies of the same folder):
-- **GitHub Pages:** https://brucelaughlin.github.io/ecco-bin-viewer/run_20261027_142247/ — repository
-  `brucelaughlin/ecco-bin-viewer`, published with `--github` (below). This is the one the report links to: `github.io`
-  is reachable on the facility's secure network. One run at a time (each publish replaces the branch; the site
-  limit is about 1 GB, and a run is about 820 MB).
-- **Cloudflare R2:** https://www.ecco-insitu-viewer.org/run_20261027_142247/index.html — every run can stay here
-  (10 GB free). The secure network blocks this domain (new, unapproved domains are filtered there, as are all
-  `*.r2.dev` addresses); it works from other networks, including the on-site wifi.
+One run at a time: each publish replaces both sites. Older runs stay in their local folders.
+
+History: 2026-11-02 it was first put on Cloudflare R2 (custom domain `www.ecco-insitu-viewer.org`); the secure
+network blocks new domains and all `*.r2.dev` addresses, so it moved to GitHub Pages the same day and R2 was
+emptied and dropped.
 
 ## What matches the original
 
@@ -40,15 +41,32 @@ storage).
    original's logic to weight > 0 reproduces the page exactly.
 2. **Color limits per class over the whole record**, so colors stay fixed when the time window changes. The
    original computed them from the one file it showed.
-3. **Time windows.** "All years", or any range of whole years (slider, the ◀ ▶ buttons, `[` `]` to shift).
+3. **Time windows.** "All years", or any range of whole years (the slider and the ◀ ▶ buttons).
 4. **Cell budget.** If more than 200,000 cells would be in view, bins stay whole until you zoom further (the
    title says so). Also a "max cells/bin" selector (the original's 1000 is the default).
-5. Small: land is drawn from Natural Earth 10 m simplified to 0.02°; gridline labels are simpler than cartopy's.
+5. **Edge widths** (2026-11-02): 0.1 px × √(profile count), growing with √(zoom factor), at most 25 % of the
+   bin's own size. The original's 0.01 pt per profile, capped by the smallest bin on the map, made every bin
+   above ~60 profiles look the same on the world map; now busy regions (e.g. XBT shipping lanes) stand out.
+6. **Polar maps** below the world map (Arctic, Southern Ocean; polar stereographic, the 40° circle at the
+   edges), with their own bins built the original's way in polar coordinates, so bins at the poles and across
+   the dateline are whole.
+7. **Depth ranges** (standard bands, 100 m bands, 15 or 30 groups), as in the cost map explorer: each profile
+   counts once, with the mean of its values at the range's levels. Checked against Python (ITP, 250–500 m band:
+   0 count differences, mean differences < 10⁻⁷).
+8. **Anomaly vs the model** as well as the climatology, from the model equivalents the cost analyses use; model
+   values of 0 or missing are left out (as in the costs).
+9. **Isobaths** (Natural Earth, 200–5000 m) with depth labels; a "← report" button; a home button; the view
+   cannot be panned off the map. No keyboard shortcuts.
+10. Small: land is drawn from Natural Earth 10 m simplified to 0.02°; gridline labels are simpler than cartopy's.
+
+The zoom threshold for cells, dots and labels is the original's: zoom factor √(world area / view area) above 10
+(on the world map, a view of about 36° × 18°); the polar maps use the same factor, so the switch happens at the
+same on-screen bin size.
 
 ## Build and update
 
 ```
-# data + page (about 5 min; ~820 MB, of which PFL ~570 MB; each level file is 1-4 MB, loaded on demand)
+# data + page (about 9 min with model values; ~1.55 GB, split over two sites below; level files 1-4 MB, loaded on demand)
 python -m ecco_insitu.diagnostics.bin_viewer.export \
     --run <run>/yearly --out ~/ecco/yip/bin_viewer_data/<run name>
 
@@ -62,61 +80,29 @@ python -m ecco_insitu.diagnostics.bin_viewer.export --out <folder> --page-only
 cd <folder> && python -m http.server 8765      # then open http://localhost:8765/
 ```
 
-## Cloudflare R2: one-time setup (by hand, in the Cloudflare dashboard)
-
-1. Create a Cloudflare account (free). Under **R2 Object Storage**, enable R2. This needs a card on file; the free
-   tier is 10 GB of storage with no transfer fees, so this site costs nothing.
-2. **Create bucket**, e.g. `ecco-bin-viewer`.
-3. Public access, pick one:
-   - Quick: bucket → Settings → **Public Development URL** → Allow. This gives a `https://pub-….r2.dev` address.
-     It is rate-limited, which is fine for a few users.
-   - Proper: bucket → Settings → **Custom Domains** → connect a domain you have on Cloudflare (about $10 a year).
-4. **API token**: R2 → **Manage API tokens** → Create → "Object Read & Write", limited to this bucket. Note the
-   Access Key ID, the Secret Access Key, and the endpoint `https://<account id>.r2.cloudflarestorage.com`.
-5. Store the token as its own aws CLI profile. Keep it apart from the team's AWS credentials:
-   ```
-   aws configure --profile r2        # key id, secret; region: auto; output: json
-   ```
-CORS is not needed, because the page and its data are served from the same bucket.
-
 ## Publish to GitHub Pages
 
 ```
-python -m ecco_insitu.diagnostics.bin_viewer.export --out ~/ecco/yip/bin_viewer_data/<run name> \
-    --github git@github.com:brucelaughlin/ecco-bin-viewer.git [--dry-run]
+B=~/ecco/yip/bin_viewer_data; R=<run name>
+# the data, with model anomalies; the report it belongs to (its "← report" button)
+python -m ecco_insitu.diagnostics.bin_viewer.export --run <run>/yearly --out $B/$R \
+    --model-equivalents <model equivalents>/netCDF
+python -m ecco_insitu.diagnostics.bin_viewer.export --out $B/$R \
+    --report https://brucelaughlin.github.io/ECCO-Insitu-Python/<report name>/
+# move the model files to their own site's folder ($B/${R}_model_site/), and point the page at that site
+python -m ecco_insitu.diagnostics.bin_viewer.export --out $B/$R \
+    --split-model model https://brucelaughlin.github.io/ecco-bin-viewer-model/$R
+# publish both sites (add --dry-run to check sizes first)
+python -m ecco_insitu.diagnostics.bin_viewer.export --out $B/$R \
+    --github git@github.com:brucelaughlin/ecco-bin-viewer.git \
+    --github-model git@github.com:brucelaughlin/ecco-bin-viewer-model.git
 ```
-Replaces the repository's `main` branch with this one folder (one commit, no history, so nothing piles up).
-First time only: on GitHub, create the empty public repository `ecco-bin-viewer`, then after the first push
-Settings → Pages → Deploy from a branch → `main`, `/ (root)`. Then rebuild the report with
+Each publish replaces the repository's `main` branch with one commit (no history, so nothing piles up). GitHub
+Pages is already switched on for both repositories (Settings → Pages → Deploy from a branch → `main`, `/ (root)`);
+a new repository would need that once. Then rebuild the report with
 `--bin-viewer https://brucelaughlin.github.io/ecco-bin-viewer/<run name>/` so its button points at the run.
 
-## Upload to R2
+GitHub's limits (docs.github.com, "GitHub Pages limits", checked 2026-11-02): published site at most 1 GB; soft
+bandwidth limit 100 GB a month per site; 10 builds an hour; no stated limit on the number of project sites; not
+for commercial use. Split one viewer over a few sites at most.
 
-Fill in three things:
-- `<folder>`: the export folder, e.g. `~/ecco/yip/bin_viewer_data/run_20261027_142247` (one per run).
-- `<bucket>`: the R2 bucket name, as created in step 2.
-- `<account id>`: in the Cloudflare dashboard → R2 → bucket → **Settings** → "S3 API". That URL is the whole
-  endpoint (`https://<account id>.r2.cloudflarestorage.com`, without the `/<bucket>` at the end). The account ID
-  is also the long hex string in the dashboard URL (`dash.cloudflare.com/<account id>/...`).
-
-```
-python -m ecco_insitu.diagnostics.bin_viewer.export \
-    --out ~/ecco/yip/bin_viewer_data/run_20261027_142247 \
-    --upload <bucket> --prefix run_20261027_142247 \
-    --endpoint https://<account id>.r2.cloudflarestorage.com --dry-run     # drop --dry-run to copy
-```
-
-Our setup (bucket `ecco-bin-viewer`, aws profile `r2`), the call used on 2026-11-02:
-```
-python -m ecco_insitu.diagnostics.bin_viewer.export \
-    --out ~/ecco/yip/bin_viewer_data/run_20261027_142247 \
-    --upload ecco-bin-viewer --prefix run_20261027_142247 \
-    --endpoint https://8f82f5593ec279fd7927393a2e4fbb49.r2.cloudflarestorage.com
-```
-For a new run, change the folder and `--prefix` to the new run's name. Older runs stay in the bucket under their
-own prefix.
-`--profile r2` is the default. The page is then at `<public URL>/run_20261027_142247/index.html`, where the public
-URL is the `pub-….r2.dev` address or the custom domain from step 3.
-
-The data files are uploaded as plain gzip bytes, which the page decompresses itself. The page goes up last, with
-`no-cache`, so a new version shows at once. The data are cached for a day.
