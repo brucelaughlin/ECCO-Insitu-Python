@@ -81,6 +81,9 @@ select { font-size: 0.85em; }
   <span class="grp"><span class="lab">view</span><button class="btn" id="reset" title="every map back to its whole view">&#8962;&#xFE0E; home</button>
     <button class="btn" id="resetall" title="whole views and the first depth level">reset all</button>
     <button class="btn on" id="bathy" title="faint isobaths: 200 (shelf edge, darker), 1000, 2000, 3000, 4000, 5000 m">isobaths</button></span>
+  <span class="grp" id="platgrp" title="Mark every profile of one platform (Argo float, ITP, tag, mooring, ship code) with cyan rings, at any zoom">
+    <span class="lab" id="platlab">platform</span><input id="plat" list="platlist" placeholder="e.g. 6903082" size="13"><datalist id="platlist"></datalist>
+    <button class="btn" id="platclear" title="no platform">×</button><span id="platinfo" style="font-size:0.75em;color:#345"></span></span>
   <span class="grp"><span class="lab">max cells/bin</span><select id="cap"><option>250</option><option>500</option><option selected>1000</option><option>2000</option><option>5000</option></select></span>
 </div>
 <div id="titlebox"></div>
@@ -163,6 +166,37 @@ async function loadBins(name) {
     bins.set(id, {id, ring, rp, bbox: [x0, y0, x1, y1]});
   }
   return bins;
+}
+// platforms (export.py write_platforms): per profile, its platform index; optional (older folders have none)
+async function loadPlatforms(src) {
+  const c = CLASS[src]; if (c.plat !== undefined) return c.plat;
+  try {
+    const raw = cols(await gz(`${DATA_URL}/${src}/platforms.bin`), [['cb', Uint16Array, 2], ['pi', Uint32Array, 4]]);
+    const meta = await unzip(`${DATA_URL}/${src}/platforms.json`);
+    const byName = new Map(meta.names.map((n, i) => [n, i]));
+    c.plat = {pi: raw.pi, names: meta.names, kind: meta.kind, byName};
+  } catch (e) { c.plat = null; }
+  return c.plat;
+}
+let PLATFORM = null;                    // {name, idx, n, years}: the highlighted platform of the current class
+function fillPlatforms() {
+  const P = CLASS[S.src]?.plat, list = document.getElementById('platlist');
+  document.getElementById('platgrp').style.display = P ? '' : 'none';
+  if (!P) return;
+  document.getElementById('platlab').textContent = P.kind;
+  list.innerHTML = P.names.length <= 20000 ? P.names.slice(0, 20000).map(n => `<option value="${n}">`).join('') : '';
+}
+function setPlatform(name) {
+  const P = CLASS[S.src]?.plat, info = document.getElementById('platinfo');
+  PLATFORM = null; info.textContent = '';
+  if (P && name && P.byName.has(name)) {
+    const idx = P.byName.get(name), pr = CLASS[S.src].p; let n = 0, y0 = 9999, y1 = 0;
+    for (let j = 0; j < P.pi.length; j++) if (P.pi[j] === idx) { n++; if (pr.year[j] < y0) y0 = pr.year[j]; if (pr.year[j] > y1) y1 = pr.year[j]; }
+    PLATFORM = {name, idx, n, y0, y1};
+    info.textContent = `${n.toLocaleString()} profiles, ${y0}–${y1}; cyan rings where it has a value at this depth`;
+  } else if (name) info.textContent = 'not found in this class';
+  document.getElementById('plat').value = PLATFORM ? name : (name || '');
+  draw();
 }
 async function loadClass(src) {
   if (CLASS[src]) return CLASS[src];
@@ -338,6 +372,7 @@ let STATS = null, SC = null, RENDER = 0, ANY_BIN = new Set();
 async function recompute() {
   const id = ++RENDER;
   const c = await loadClass(S.src);
+  await loadPlatforms(S.src); fillPlatforms();
   const L = await loadRange(S.src, S.V, currentLevels());
   SC = colorScales();
   if (id !== RENDER) return;
@@ -383,6 +418,12 @@ function drawMap(M) {
       for (const j of e.idx) dots.push(M.proj(P.lon[j], P.lat[j]));
     }
   }
+  // the highlighted platform's profiles (all of them in the time window, any depth with data here), at any zoom
+  const platDots = [];
+  if (PLATFORM && CLASS[S.src].plat) {
+    const P = CLASS[S.src].plat.pi, pr = CLASS[S.src].p, y0 = S.all ? 0 : INDEX.years0 + S.t0, y1 = S.all ? 9999 : INDEX.years0 + S.t1;
+    for (const e of STATS.values()) for (const j of e.idx) if (P[j] === PLATFORM.idx && pr.year[j] >= y0 && pr.year[j] <= y1) platDots.push(M.proj(pr.lon[j], pr.lat[j]));
+  }
   const cellLw = MICRO_BASE_LW * (sf / ZOOM_THRESHOLD) * PT, borderLw = Math.min(1.5, Math.max(0.3, 0.6 * sf / ZOOM_THRESHOLD)) * PT;
   const G = M.id === 'll' ? grid(M, vs) : polarGrid(M, vs), [ex0, ey0, ex1, ey1] = M.extent;
   M.deck.setProps({layers: [
@@ -407,6 +448,8 @@ function drawMap(M) {
       getPixelOffset: d => d.a === 'left' ? [3, 0] : d.a === 'mid' ? [0, 0] : [0, -2], fontFamily: 'Courier, monospace',
       outlineWidth: d => 0, characterSet: '0123456789.°NSEW-'}),
     new deck.ScatterplotLayer({id: 'dots', data: dots, getPosition: d => d, getFillColor: [255, 0, 0], getRadius: 1.2, radiusUnits: 'pixels'}),
+    new deck.ScatterplotLayer({id: 'plat', data: platDots, getPosition: d => d, stroked: true, filled: false, getLineColor: [0, 200, 230, 255],
+      getRadius: 4, radiusUnits: 'pixels', getLineWidth: 1.6, lineWidthUnits: 'pixels'}),
     new deck.TextLayer({id: 'labels', data: labels, getPosition: d => d.pos, getText: d => d.text, getSize: 8 * PT,
       getColor: [255, 255, 255], outlineWidth: 4, outlineColor: [0, 0, 0, 255], fontFamily: 'Courier New, Courier, monospace',
       fontWeight: 'bold', fontSettings: {sdf: true, fontSize: 96, buffer: 12, radius: 24, cutoff: 0.2}, characterSet: '0123456789.-'}),
@@ -568,7 +611,7 @@ function polarGrid(M, vs) {            // circles of latitude and meridians; one
 function setupControls() {
   const sel = document.getElementById('src');
   sel.innerHTML = Object.keys(INDEX.classes).map(s => `<option>${s}</option>`).join('');
-  sel.value = S.src; sel.onchange = () => { S.src = sel.value; fixRef(); fixVar(); fillDepth(); fillTime(); recompute(); };
+  sel.value = S.src; sel.onchange = () => { S.src = sel.value; PLATFORM = null; document.getElementById('plat').value = ''; document.getElementById('platinfo').textContent = ''; fixRef(); fixVar(); fillDepth(); fillTime(); recompute(); };
   const vstep = d => { const vs = INDEX.vars.filter(V => REF().levels[V].length); S.V = vs[(vs.indexOf(S.V) + d + vs.length) % vs.length]; fixDepth(); fillDepth(); recompute(); };
   document.getElementById('vprev').onclick = () => vstep(-1); document.getElementById('vnext').onclick = () => vstep(1);
   const dstep = d => {
@@ -592,6 +635,8 @@ function setupControls() {
       S.ref = b.dataset.ref; box.querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b));
       fixVar(); fillDepth(); recompute(); });
   }
+  document.getElementById('plat').onchange = e => setPlatform(e.target.value.trim());
+  document.getElementById('platclear').onclick = () => setPlatform('');
   document.getElementById('cap').onchange = e => { S.cap = +e.target.value; draw(); };
   document.getElementById('reset').onclick = () => resetZoom();
   document.getElementById('resetall').onclick = () => { S.dmode = 'level'; document.getElementById('dmode').value = 'level';
@@ -720,6 +765,7 @@ async function init() {
     if (M !== MAPS[0]) setTimeout(() => M.el.scrollIntoView({block: 'center'}), 300);
   }
   await recompute();
+  if (q.get('platform')) setPlatform(q.get('platform'));
 }
 init().catch(e => { busy(null); document.getElementById('titlebox').textContent = 'error: ' + e.message; console.error(e); });
 </script>

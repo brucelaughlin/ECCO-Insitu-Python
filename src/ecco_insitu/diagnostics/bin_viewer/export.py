@@ -468,6 +468,90 @@ def export_class(src, files, out, tree, kept_bins, estim=None):
     return info
 
 
+def platform_of(src, descr):
+    """The platform a profile comes from, from its ``prof_descr`` ('' if none):
+
+    - PFL: the Argo float (WMO number), e.g. 'ARGO-PFL-aoml//D5902328-1' -> '5902328';
+    - ITP: the ITP number, e.g. 'ITP2_itp31grd0001_nk' -> 'itp31';
+    - MEOP: the tag deployment, e.g. 'MEOP-D00050144-4/hd2bb-9340' -> 'D00050144 (hd2bb)';
+    - MRB_WOD: the mooring number, e.g. 'WOD-MRB//15116734_23005_RESEAR' -> '23005' (99999 = unknown);
+    - other WOD classes: the platform / ship code after the cast number, e.g. 'WOD-XBT//12284221:ONFC_2120234'
+      -> 'ONFC', 'WOD-GLD//10880467:CO_61859_200' -> 'CO' (coarse: a ship or program, not one instrument).
+    """
+    d = descr.strip()
+    if src == 'PFL':
+        m = re.search(r'//[DRA]?(\d+)-', d)
+        return m.group(1) if m else ''
+    if src == 'ITP':
+        m = re.search(r'itp(\d+)', d)
+        return f'itp{m.group(1)}' if m else ''
+    if src == 'MEOP':
+        m = re.match(r'MEOP-(D\d+)-\d+/([^-\s]+)', d)
+        return f'{m.group(1)} ({m.group(2)})' if m else ''
+    if src == 'MRB_WOD':
+        m = re.search(r'//\d+_(\d+)_', d)
+        return m.group(1) if m and m.group(1) != '99999' else ''
+    m = re.search(r'//\d+:([^_]*)', d)
+    return m.group(1).strip() if m and m.group(1).strip() else ''
+
+
+def write_platforms(run_dir, out, sources=None):
+    """``<class>/platforms.bin`` (+ ``platforms.json``): per profile, in profiles.bin's order, the chain's geodesic bin
+    (``prof_bin_id_a``, the bins of the cost analyses) and the platform (:func:`platform_of`), for the cost explorer's
+    platform tables and the viewer's platform highlight.
+
+    Reads the yearly files in the same order as :func:`export_class` and checks each class's lon/lat against
+    profiles.bin, so the two files line up profile for profile. Layout: uint32 n; byte planes of uint16 chain
+    bin, uint32 platform index (0xFFFFFFFF = none); platforms.json: the platform names, then the label of the
+    platform kind for this class.
+    """
+    run_dir, out = common.yearly_dir(run_dir), Path(out)
+    tree, _ = _geodesic_tree()
+    groups = {}
+    for f in sorted(run_dir.rglob('*.nc')):
+        src, _ = common.classify(f, run_dir)
+        if (not sources or src in sources) and (out / src / 'profiles.bin').exists():
+            groups.setdefault(src, []).append(f)
+    kinds = {'PFL': 'Argo float (WMO)', 'ITP': 'ITP', 'MEOP': 'tag deployment', 'MRB_WOD': 'mooring',
+             'XBT_WOD': 'ship / platform code', 'CTD_WOD': 'ship / platform code', 'GLD_WOD': 'glider / program code'}
+    for src, files in sorted(groups.items()):
+        lon, lat, year, cb, plat = [], [], [], [], []
+        for f in files:
+            with netCDF4.Dataset(f) as ds:
+                ds.set_auto_mask(False)
+                if ds.dimensions['iPROF'].size == 0:
+                    continue
+                lo = ds['prof_lon'][:].astype(np.float64)
+                lon.append(np.where(lo > 180, lo - 360, lo)); lat.append(ds['prof_lat'][:].astype(np.float64))
+                year.append((ds['prof_YYYYMMDD'][:] // 10000).astype(np.int32))
+                cb.append(ds['prof_bin_id_a'][:].astype(np.int64))
+                plat += [platform_of(src, b''.join(x).decode(errors='replace')) for x in ds['prof_descr'][:]]
+        lon, lat, year, cb = map(np.concatenate, (lon, lat, year, cb))
+        plat = np.array(plat, dtype=object)
+        good = np.isfinite(lon) & np.isfinite(lat) & (np.abs(lat) <= 90)
+        _, b = tree.query(_sph2cart(lon, lat))
+        order = np.lexsort((year, b + 1))
+        order = order[good[order]]
+        plon, plat_ = decode_profiles((out / src / 'profiles.bin').read_bytes())[:2]
+        if len(plon) != len(order) or not (np.array_equal(plon, lon[order].astype('<f4'))
+                                           and np.array_equal(plat_, lat[order].astype('<f4'))):
+            raise RuntimeError(f'{src}: profile order differs from profiles.bin; re-export the class first')
+        names, idx = np.unique(plat[order].astype(str), return_inverse=True)
+        idx = idx.astype(np.uint32)
+        if '' in names:                          # 'no platform' -> 0xFFFFFFFF, and drop '' from the names
+            e = int(np.nonzero(names == '')[0][0])
+            idx = np.where(idx == e, 0xFFFFFFFF, np.where(idx > e, idx - 1, idx)).astype(np.uint32)
+            names = names[names != '']
+        n = len(order)
+        (out / src / 'platforms.bin').write_bytes(gzip.compress(
+            np.uint32(n).tobytes() + _planes(np.clip(cb[order], 0, 65535).astype('<u2')) + _planes(idx.astype('<u4')), 9))
+        (out / src / 'platforms.json').write_bytes(gzip.compress(json.dumps(
+            {'kind': kinds.get(src, 'platform'), 'names': names.tolist()}).encode(), 9))
+        none = int((idx == 0xFFFFFFFF).sum())
+        print(f'  {src}: {n:,} profiles, {len(names):,} platforms ({kinds.get(src, "platform")}); '
+              f'{none:,} without one; chain bin = viewer bin for {np.mean(cb[order] == b[order] + 1):.0%}')
+
+
 GUIDE_HTML = """
 <p>A web copy of the original <code>geodesic_binning</code> plotting app. Everything is drawn as the original draws it
 (colors, color limits, edge widths, the zoom threshold, the cells, dots and labels); the differences are listed below.</p>
@@ -499,7 +583,9 @@ the dateline are whole; each zooms and pans on its own, with the same zoom thres
 every control is a button. (10) Depth ranges as in the cost map explorer (standard bands, 100 m bands, 15 or 30
 groups of levels), besides single levels: in a range each profile counts once, with the mean of its values at the
 range's levels. (11) With model values exported (<code>--model-equivalents</code>), the anomaly can be relative to the
-model (V &minus; V<sub>model</sub>) instead of the climatology; colors then use the model anomaly's own limits.</p>
+model (V &minus; V<sub>model</sub>) instead of the climatology; colors then use the model anomaly's own limits.
+(12) A platform box (Argo float WMO number, ITP, tag, mooring, or WOD ship code) rings that platform's profiles in cyan at any
+zoom; the cost map explorer's platform table links here with it filled in.</p>
 <p>Data: profiles.bin + one file per variable and depth level per class, written by
 <code>ecco_insitu.diagnostics.bin_viewer.export</code>; loaded on demand and cached for the session.</p>
 """
@@ -655,6 +741,7 @@ def cli(argv=None):
     p.add_argument('--rebuild-bins', action='store_true', help='rebuild bins.bin even if it exists')
     p.add_argument('--page-only', action='store_true', help='only rewrite index.html (after editing viewer.html)')
     p.add_argument('--bathy', action='store_true', help='(re)write bathy.json only')
+    p.add_argument('--platforms', action='store_true', help='(re)write <class>/platforms.bin only (needs --run)')
     p.add_argument('--polar', action='store_true', help='(re)build the polar maps\' bins and land only')
     p.add_argument('--report', metavar='URL', help='the profile report this viewer belongs to (its "← report" '
                    'button); kept in index.json')
@@ -673,6 +760,10 @@ def cli(argv=None):
         split_for_github(a.out, *a.split_model)
     if a.bathy:
         write_bathy(Path(a.out))
+    if a.platforms:
+        if not a.run:
+            p.error('--platforms needs --run')
+        write_platforms(a.run, a.out, a.sources)
     if a.polar:
         build_polar_bins(Path(a.out))
     if a.report:
@@ -680,10 +771,12 @@ def cli(argv=None):
         index = json.loads(ip.read_text())
         index['report_url'] = a.report
         ip.write_text(json.dumps(index, indent=1))
-    if a.page_only or a.bathy or a.polar or a.report or a.convert or a.split_model or (a.github and not a.run):
+    if a.page_only or a.platforms or a.bathy or a.polar or a.report or a.convert or a.split_model or (a.github and not a.run):
         write_page(Path(a.out))
     else:
         run(a.run, a.out, a.sources, a.rebuild_bins, a.model_equivalents)
+    if a.github and not (a.page_only or a.platforms or a.bathy or a.polar or a.report or a.convert or a.split_model) and a.run:
+        pass
     if a.github:
         publish_github(Path(a.out), a.github, a.dry_run)
     if a.github_model:

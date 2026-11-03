@@ -148,6 +148,24 @@ depth or years. With a region:</p>
 <p><b>Caution:</b> a region drawn around the darkest bins will always carry a large share. Judge it by its share of the term
 <em>relative to</em> its share of bins and points, and by the rest-of-the-world curve, not by the share alone.</p>
 
+<h4>Peak: where does a bump in the depth profile come from? (since 2026-11-03)</h4>
+<p>Drag up or down on the depth-profile plot over a depth range (or follow &ldquo;investigate&rdquo; under analysis&nbsp;02 in the report).
+The page runs three fixed steps and reports the numbers; it does not interpret them:</p>
+<ol>
+<li><b>Peak</b>: the level with the largest value of the curve in the range, its number of bins, and the levels just above and below.</li>
+<li><b>Same bins</b>: the same over only the bins with data at the peak <em>and</em> both neighbors. The part of the peak&rsquo;s excess over
+  its neighbors that disappears is due to <em>which bins are counted</em> changing with depth; the rest is in a fixed set of bins.</li>
+<li><b>Where</b>: the top 10&nbsp;% of bins at the peak, grouped into clusters of neighbors (bin centers within 600&nbsp;km), each with its
+  share of bins and of the summed value. The largest cluster becomes the region (the region panel and its tables fill in); click
+  another cluster to switch. A cluster holds only the high bins; widen the region by dragging on the maps.</li>
+</ol>
+<p><b>Platforms in the region</b> (in the region panel): the region&rsquo;s platforms (Argo floats by WMO number, ITPs, seal tags,
+moorings; for WOD ship classes the ship or platform code, which is coarser), with profiles, years, share of the region&rsquo;s value
+and mean obs&nbsp;&minus;&nbsp;reference. The explorer stores costs per bin, level and year, not per profile, so a platform&rsquo;s share
+is apportioned: each (bin, year)&rsquo;s value is divided among its platforms by their numbers of profiles there (with a value at the
+selected depths). It is exact where a platform is alone in a bin and year. &ldquo;show profiles&rdquo; opens the in situ data viewer with
+that platform&rsquo;s profiles ringed in cyan.</p>
+
 <h4>Reading it</h4>
 <ul>
 <li>Values near 1 mean the misfit is about what the assumed errors &sigma; allow; much larger values point to a poor fit, a

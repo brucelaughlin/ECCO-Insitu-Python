@@ -990,6 +990,8 @@ function render() {{
     (HAS_EXPLORER && ['05', '06', '07'].includes(curAn)) ? '' : 'none';
   document.getElementById('map-hint-link').href = 'viewer.html?src=' + encodeURIComponent(curSource) +
     '&ct=' + encodeURIComponent(curCost);
+  document.getElementById('peak-hint').style.display = (HAS_EXPLORER && curAn === '02') ? '' : 'none';
+  updatePeakLink();
   // both header buttons open on the class shown here
   document.getElementById('map-explorer').href = 'viewer.html?src=' + encodeURIComponent(curSource) +
     '&ct=' + encodeURIComponent(curCost);
@@ -1102,6 +1104,13 @@ document.getElementById('close-notes').addEventListener('click', () => showNotes
 // the in situ data viewer (bin viewer), if the report was built with --bin-viewer
 const BIN_VIEWER = BIN_VIEWER_URL;
 if (BIN_VIEWER) document.getElementById('bin-viewer').style.display = '';
+// analysis 02: the "investigate a peak" link into the explorer
+function updatePeakLink() {{
+  const g = id => document.getElementById(id).value;
+  document.getElementById('peak-link').href = 'viewer.html?src=' + encodeURIComponent(curSource) + '&ct=' + encodeURIComponent(curCost) +
+    '&part=' + g('peak-part') + '&V=' + g('peak-v') + '&peak=' + (+g('peak-a')) + '-' + (+g('peak-b'));
+}}
+['peak-part', 'peak-v', 'peak-a', 'peak-b'].forEach(id => document.getElementById(id).addEventListener('change', updatePeakLink));
 // the map explorer link, if this site has one (profile-report --site)
 fetch('viewer/index.json', {{method: 'HEAD'}}).then(r => {{
   if (r.ok) {{ HAS_EXPLORER = true; document.getElementById('map-explorer').style.display = ''; render(); }}
@@ -1152,6 +1161,12 @@ render();
     <div class="map-hint" id="map-hint" style="display:none">These are fixed images for the standard depth bands.
       For any depth level or band, any range of years, the split terms and the mean bias, open the
       <a href="viewer.html" id="map-hint-link">Cost map explorer &rarr;</a></div>
+    <div class="map-hint" id="peak-hint" style="display:none">A peak in these curves? <b>Investigate it:</b> the explorer finds the
+      largest value in a depth range, separates sampling from signal, and shows where it comes from.
+      <select id="peak-part"><option value="unsplit">unsplit</option><option value="anomaly">anomaly term</option><option value="mean" selected>mean term</option></select>
+      <select id="peak-v"><option>T</option><option>S</option></select>
+      from <input id="peak-a" type="number" value="2000" step="100" style="width:5em"> to <input id="peak-b" type="number" value="2600" step="100" style="width:5em"> m
+      <a href="viewer.html" id="peak-link">investigate &rarr;</a></div>
     {''.join(panels)}
   </div>
   <div id="side">
