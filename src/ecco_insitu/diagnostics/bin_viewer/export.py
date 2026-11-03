@@ -12,6 +12,9 @@ Two kinds of files, written to one folder that is uploaded as is (Cloudflare R2,
     2 % of it is ocean, and reduced to its largest piece. Lon/lat degrees. Also each bin's representative
     point (for the bin-mean labels). The polygons don't depend on the data: built once.
 
+``bins_N.bin``, ``bins_S.bin``, ``land_N.json``, ``land_S.json`` (gzip)
+    The polar maps: the bins and land of each cap, in polar stereographic map units (:func:`build_polar_bins`).
+
 ``land.json``, ``bathy.json`` (gzip)
     Natural Earth 10 m land (simplified to 0.02 deg) and isobaths (200, 1000 ... 5000 m), for drawing.
 
@@ -250,6 +253,101 @@ def _kept_bins(out):
     return np.array(ids)
 
 
+# ---- polar maps ----
+# Polar stereographic (true scale at the pole), on a sphere; units: km / KM_PER_UNIT, so one unit is about
+# one degree at the equator and the page's zoom thresholds mean the same distance on every map.
+EARTH_KM = 6371.0
+KM_PER_UNIT = 111.195
+POLAR_MIN_LAT = 20         # a cap's bins: those with any point poleward of this (the square map's corners
+                           # reach about 23 deg when the 40 deg circle fills its width)
+
+
+def polar_xy(lon, lat, hemi):
+    """Polar stereographic x, y (map units) of lon/lat degrees; hemi 'N' or 'S' (as cartopy's Stereographic)."""
+    lo, la = np.radians(lon), np.radians(lat)
+    if hemi == 'N':
+        r = 2 * EARTH_KM * np.tan(np.pi / 4 - la / 2)
+        return r * np.sin(lo) / KM_PER_UNIT, -r * np.cos(lo) / KM_PER_UNIT
+    r = 2 * EARTH_KM * np.tan(np.pi / 4 + la / 2)
+    return r * np.sin(lo) / KM_PER_UNIT, r * np.cos(lo) / KM_PER_UNIT
+
+
+def build_polar_bins(out):
+    """The bins of both polar caps, built as the original builds bins but in polar stereographic space.
+
+    Same steps as :func:`build_bins` (0.1 deg grid points of each bin, convex hull, clip to land, drop below
+    2 % ocean, largest piece), with the grid points projected first, so bins around the poles and across the
+    dateline are whole (the lon/lat map drops those). Writes bins_N.bin, bins_S.bin (same layout as
+    bins.bin, in map units) and land_N.json, land_S.json (projected land rings, for drawing).
+    """
+    import cartopy.crs as ccrs
+    import cartopy.io.shapereader as shpreader
+    from scipy.spatial import ConvexHull
+    import shapely
+    from shapely import affinity
+    from shapely.geometry import Polygon, box
+    from shapely.ops import unary_union
+    from shapely.prepared import prep
+
+    t0 = time.time()
+    tree, nbins = _geodesic_tree()
+    lons = np.arange(-180, 180, ANGULAR_PRECISION)
+    lats = np.arange(-90, 90 + ANGULAR_PRECISION / 2, ANGULAR_PRECISION)
+    LON, LAT = np.meshgrid(lons, lats)
+    LON, LAT = LON.ravel(), LAT.ravel()
+    _, idx = tree.query(_sph2cart(LON, LAT))
+    globe = ccrs.Globe(ellipse=None, semimajor_axis=EARTH_KM * 1000, semiminor_axis=EARTH_KM * 1000)
+    land_ll = list(shpreader.Reader(shpreader.natural_earth(resolution=LAND_RESOLUTION, category='physical',
+                                                            name='land')).geometries())
+    for hemi, sign in (('N', 1), ('S', -1)):
+        crs = ccrs.Stereographic(central_latitude=90 * sign, central_longitude=0, globe=globe)
+        # land in map units: the part of the hemisphere poleward of 10 deg, projected by cartopy (handles the pole)
+        cap = box(-180, 10, 180, 90) if sign > 0 else box(-180, -90, 180, -10)
+        parts = [g.intersection(cap) for g in land_ll]
+        proj = [crs.project_geometry(g, ccrs.PlateCarree()) for g in parts if not g.is_empty]
+        land = unary_union([shapely.make_valid(g).buffer(0) for g in proj if not g.is_empty])
+        land = affinity.scale(land, 1 / (KM_PER_UNIT * 1000), 1 / (KM_PER_UNIT * 1000), origin=(0, 0))
+        land_p = prep(land)
+        sel = (LAT * sign) >= POLAR_MIN_LAT - 2
+        ids = np.unique(idx[sel])
+        order = np.argsort(idx, kind='stable')
+        idx_s = idx[order]
+        starts = np.searchsorted(idx_s, np.arange(nbins + 1))
+        chunks, kept = [], 0
+        for b in ids:
+            j = order[starts[b]:starts[b + 1]]
+            if (LAT[j] * sign).max() < POLAR_MIN_LAT or len(j) < 3:
+                continue
+            x, y = polar_xy(LON[j], LAT[j], hemi)
+            pts = np.c_[x, y]
+            try:
+                poly = Polygon(pts[ConvexHull(pts).vertices])
+            except Exception:
+                continue
+            ocean = poly.difference(land) if land_p.intersects(poly) else poly
+            if ocean.is_empty or ocean.area / poly.area < MIN_OCEAN_FRACTION:
+                continue
+            if ocean.geom_type == 'MultiPolygon':
+                ocean = max(ocean.geoms, key=lambda g: g.area)
+            if ocean.geom_type != 'Polygon':
+                continue
+            xy = np.asarray(ocean.exterior.coords, np.float32)
+            rp = ocean.representative_point()
+            chunks += [np.array([b + 1, len(xy)], '<u2').tobytes(), np.array([rp.x, rp.y], '<f4').tobytes(),
+                       xy.astype('<f4').tobytes()]
+            kept += 1
+        (out / f'bins_{hemi}.bin').write_bytes(gzip.compress(np.uint32(kept).tobytes() + b''.join(chunks), 9))
+        rings = []
+        for g in (land.geoms if land.geom_type == 'MultiPolygon' else [land]):
+            g = g.simplify(0.02)
+            if g.is_empty:
+                continue
+            for q in (g.geoms if g.geom_type == 'MultiPolygon' else [g]):
+                rings.append([np.round(np.asarray(r.coords), 3).tolist() for r in (q.exterior, *q.interiors)])
+        (out / f'land_{hemi}.json').write_bytes(gzip.compress(json.dumps(rings, separators=(',', ':')).encode(), 9))
+        print(f'  polar {hemi}: {kept} bins; {time.time() - t0:.0f}s')
+
+
 def write_land(out):
     """Natural Earth 10 m land, simplified to 0.02 deg, as rings of lon/lat (land.json, gzip)."""
     import cartopy.io.shapereader as shpreader
@@ -292,11 +390,13 @@ def write_bathy(out):
     (out / 'bathy.json').write_bytes(gzip.compress(json.dumps(levels, separators=(',', ':')).encode(), 9))
 
 
-def export_class(src, files, out, tree, kept_bins):
-    """Profiles and anomalies of one obs class."""
+def export_class(src, files, out, tree, kept_bins, estim=None):
+    """Profiles and anomalies of one obs class: V - V_clim always, and V - V_model if ``estim`` (an
+    :class:`ecco_insitu.diagnostics.profile_analyses.compute.EstimIndex`) is given (in ``<class>/model/``)."""
     t0 = time.time()
     lon, lat, year, nlev = [], [], [], None
-    vals = {V: [] for V in VARS}            # per file: (n_prof, n_lev) float32 anomaly, NaN = none
+    refs = ('clim', 'model') if estim is not None else ('clim',)
+    vals = {(r, V): [] for r in refs for V in VARS}   # per file: (n_prof, n_lev) float32 anomaly, NaN = none
     for f in files:
         with netCDF4.Dataset(f) as ds:
             ds.set_auto_mask(False)
@@ -308,15 +408,22 @@ def export_class(src, files, out, tree, kept_bins):
             lon.append(lo); lat.append(ds['prof_lat'][:].astype(np.float64))
             year.append((ds['prof_YYYYMMDD'][:] // 10000).astype(np.int32))
             nlev = ds.dimensions['iDEPTH'].size
+            model = estim.get(f, n, nlev) if estim is not None else None
             for V in VARS:
                 if f'prof_{V}' not in ds.variables:
-                    vals[V].append(np.full((n, nlev), np.nan, np.float32))
+                    for r in refs:
+                        vals[r, V].append(np.full((n, nlev), np.nan, np.float32))
                     continue
                 v = ds[f'prof_{V}'][:].astype(np.float64)
                 c = ds[f'prof_{V}clim'][:].astype(np.float64)
                 w = ds[f'prof_{V}weight'][:].astype(np.float64)
-                ok = (w > 0) & (w < 1e20) & (np.abs(v) < 900) & (np.abs(c) < 900)
-                vals[V].append(np.where(ok, v - c, np.nan).astype(np.float32))
+                ok = (w > 0) & (w < 1e20) & (np.abs(v) < 900)
+                vals['clim', V].append(np.where(ok & (np.abs(c) < 900), v - c, np.nan).astype(np.float32))
+                if estim is not None:
+                    # the model's value at the profile; 0 or missing = no model value (as the cost analyses)
+                    m = model[V] if model is not None and model.get(V) is not None else np.full((n, nlev), np.nan)
+                    good = ok & np.isfinite(m) & (m != 0) & (np.abs(m) < 900)
+                    vals['model', V].append(np.where(good, v - m, np.nan).astype(np.float32))
     lon, lat, year = np.concatenate(lon), np.concatenate(lat), np.concatenate(year)
     good = np.isfinite(lon) & np.isfinite(lat) & (np.abs(lat) <= 90)
     _, b = tree.query(_sph2cart(lon, lat))
@@ -327,30 +434,37 @@ def export_class(src, files, out, tree, kept_bins):
     d.mkdir(parents=True, exist_ok=True)
     n = len(order)
     (d / 'profiles.bin').write_bytes(encode_profiles(lon[order], lat[order], year[order], b[order]))
-    levels, scales = {}, {}
     bo, kept = b[order], np.isin(b[order], kept_bins)
-    for V in VARS:
-        A = np.concatenate(vals[V])[order]
-        have, allv, stds = [], [], []
-        for k in range(nlev):
-            col = A[:, k]
-            i = np.nonzero(np.isfinite(col))[0]
-            if not len(i):
-                continue
-            (d / f'{V}_{k:02d}.bin').write_bytes(encode_level(i, col[i]))
-            have.append(k)
-            allv.append(col[i][kept[i]])
-            stds.append(_bin_std(bo[i][kept[i]], col[i][kept[i]].astype(np.float64)))
-        levels[V] = have
-        if have:
-            allv, stds = np.concatenate(allv), np.concatenate(stds)
-            scales[V] = {'face': [float(x) for x in np.quantile(allv, QF_FACE)],
-                         'edge': [float(x) for x in np.quantile(stds, QF_EDGE)]}
-    size = sum(p.stat().st_size for p in d.iterdir()) / 1e6
-    print(f'  {src}: {n:,} profiles, levels T {len(levels["T"])} S {len(levels["S"])}, {size:.0f} MB, '
-          f'{time.time() - t0:.0f}s')
-    return {'n_profiles': int(n), 'levels': levels, 'scales': scales,
-            'years': [int(year[order].min()), int(year[order].max())]}
+    info = {'n_profiles': int(n), 'years': [int(year[order].min()), int(year[order].max())]}
+    for r in refs:
+        dr = d if r == 'clim' else d / r       # climatology files at the top (as before), others in a subfolder
+        dr.mkdir(exist_ok=True)
+        levels, scales = {}, {}
+        for V in VARS:
+            A = np.concatenate(vals[r, V])[order]
+            have, allv, stds = [], [], []
+            for k in range(nlev):
+                col = A[:, k]
+                i = np.nonzero(np.isfinite(col))[0]
+                if not len(i):
+                    continue
+                (dr / f'{V}_{k:02d}.bin').write_bytes(encode_level(i, col[i]))
+                have.append(k)
+                allv.append(col[i][kept[i]])
+                stds.append(_bin_std(bo[i][kept[i]], col[i][kept[i]].astype(np.float64)))
+            levels[V] = have
+            if have:
+                allv, stds = np.concatenate(allv), np.concatenate(stds)
+                scales[V] = {'face': [float(x) for x in np.quantile(allv, QF_FACE)],
+                             'edge': [float(x) for x in np.quantile(stds, QF_EDGE)]}
+        if r == 'clim':
+            info.update(levels=levels, scales=scales)
+        else:
+            info.setdefault('refs', {})[r] = {'levels': levels, 'scales': scales}
+        print(f'  {src} vs {r}: levels T {len(levels["T"])} S {len(levels["S"])}')
+    size = sum(f.stat().st_size for f in d.rglob('*') if f.is_file()) / 1e6
+    print(f'  {src}: {n:,} profiles, {size:.0f} MB, {time.time() - t0:.0f}s')
+    return info
 
 
 GUIDE_HTML = """
@@ -362,7 +476,9 @@ GUIDE_HTML = """
   time window; PRGn, cut so white is 0; limits = 5 % / 95 % quantiles of all values of the variable (all depth levels)</td></tr>
 <tr><td>bin face opacity</td><td>sqrt(count / largest count), between 0.4 and 1</td></tr>
 <tr><td>bin edge color</td><td>standard deviation (ddof 0) of the anomalies in the bin; cividis, 25 % to 95 % quantiles of the bins' std</td></tr>
-<tr><td>bin edge width</td><td>0.01 pt per profile (none for one profile), capped so edges never cover the smallest bin</td></tr>
+<tr><td>bin edge width</td><td>0.1 px &times; sqrt(profile count) (none for one profile), growing with the square root
+  of the zoom factor; at most 25 % of the bin's own size (the original: 0.01 pt per profile, capped by the smallest bin;
+  changed 2026-11-02 so busy regions, e.g. XBT shipping lanes, stand out zoomed out)</td></tr>
 <tr><td>zoom level</td><td>sqrt(global area / view area); above 10 each bin with at most <i>max cells/bin</i> profiles splits into
   one cell per profile (Voronoi, 2 Lloyd steps), values sorted low to high from south to north; red dots are the true
   profile locations; numbers are the bin means</td></tr>
@@ -376,7 +492,13 @@ files of the class. (4) If more than CELL_BUDGET cells would be in view, bins st
 (6) Faint isobaths (200, 1000, 2000, 3000, 4000, 5000 m; Natural Earth), not in the original; the 200 m line (the
 shelf edge) is a little darker; each is labeled with its depth in meters along the line. The "isobaths" button
 turns them off. (7) The view stays on the map: you can't pan past its edges or zoom out past it; "home" (or 9)
-returns to the whole map.</p>
+returns to the whole map. (8) Below the world map, an Arctic and a Southern Ocean map (polar stereographic, the 40&deg;
+circle at the edges), with their own bins built the same way in polar coordinates, so bins around the poles and across
+the dateline are whole; each zooms and pans on its own, with the same zoom threshold. (9) No keyboard shortcuts:
+every control is a button. (10) Depth ranges as in the cost map explorer (standard bands, 100 m bands, 15 or 30
+groups of levels), besides single levels: in a range each profile counts once, with the mean of its values at the
+range's levels. (11) With model values exported (<code>--model-equivalents</code>), the anomaly can be relative to the
+model (V &minus; V<sub>model</sub>) instead of the climatology; colors then use the model anomaly's own limits.</p>
 <p>Data: profiles.bin + one file per variable and depth level per class, written by
 <code>ecco_insitu.diagnostics.bin_viewer.export</code>; loaded on demand and cached for the session.</p>
 """
@@ -395,7 +517,7 @@ def write_page(out):
     shutil.copytree(here / 'vendor', out / 'vendor', dirs_exist_ok=True)
 
 
-def run(run_dir, out, sources=None, rebuild_bins=False):
+def run(run_dir, out, sources=None, rebuild_bins=False, estim_dir=None):
     """Write the whole viewer folder for one processed run: bins, land, isobaths, every class, the page."""
     run_dir = common.yearly_dir(run_dir)
     out = Path(out)
@@ -407,6 +529,8 @@ def run(run_dir, out, sources=None, rebuild_bins=False):
         write_land(out)
     if not (out / 'bathy.json').exists():
         write_bathy(out)
+    if not (out / 'bins_N.bin').exists():
+        build_polar_bins(out)
     kept_bins = _kept_bins(out)
     groups = {}
     for f in sorted(run_dir.rglob('*.nc')):
@@ -414,17 +538,26 @@ def run(run_dir, out, sources=None, rebuild_bins=False):
         if not sources or src in sources:
             groups.setdefault(src, []).append(f)
     tree, _ = _geodesic_tree()
+    estim = None
+    if estim_dir:
+        from ecco_insitu.diagnostics.profile_analyses.compute import EstimIndex
+        estim = EstimIndex(estim_dir, run_dir)
     depth = None
     with netCDF4.Dataset(next(iter(groups.values()))[0]) as ds:
         depth = [float(x) for x in ds['prof_depth'][:]]
     index_path = out / 'index.json'
-    index = json.loads(index_path.read_text()) if index_path.exists() else {'classes': {}}
+    index = json.loads(index_path.read_text()) if index_path.exists() else {'classes': {}}   # keeps report_url
     index.update({'format': FORMAT, 'run': str(run_dir), 'depth': depth, 'vars': list(VARS),
                   'units': {'T': '°C', 'S': 'psu'},
                   'created': time.strftime('%Y-%m-%dT%H:%M:%S')})
     print('Classes:')
     for src, files in sorted(groups.items()):
-        index['classes'][src] = export_class(src, files, out, tree, kept_bins)
+        index['classes'][src] = export_class(src, files, out, tree, kept_bins, estim)
+    if estim_dir:
+        name = Path(estim_dir).name if Path(estim_dir).name != 'netCDF' else Path(estim_dir).parent.name
+        index['refs'] = {'clim': 'climatology', 'model': f'model ({name})'}
+    else:
+        index['refs'] = {'clim': 'climatology'}
     index_path.write_text(json.dumps(index, indent=1))
     total = sum(p.stat().st_size for p in out.rglob('*') if p.is_file()) / 1e6
     write_page(out)
@@ -452,6 +585,31 @@ def upload(out, bucket, prefix, endpoint, profile='r2', dry_run=False):
 
 
 GITHUB_LIMIT_MB = 1000         # GitHub Pages site limit (about 1 GB); every file must also be < 100 MB
+
+
+def split_for_github(out, remote_name, url):
+    """Move the model level files (``<class>/model/``) of ``out`` to a sibling folder for a second GitHub Pages
+    site, and record its address in index.json (``ref_urls``), so the page reads them from there.
+
+    The two folders are then published separately (``--github`` on each, to two repositories), keeping each site
+    under the 1 GB limit. Returns the new folder.
+    """
+    import shutil
+    out = Path(out)
+    dest = out.parent / f'{out.name}__{remote_name}'
+    for d in sorted(out.glob('*/model')):
+        target = dest / out.name / d.parent.name / 'model'
+        target.parent.mkdir(parents=True, exist_ok=True)
+        if target.exists():
+            shutil.rmtree(target)
+        shutil.move(str(d), str(target))
+    (dest / out.name / '.nojekyll').write_text('')
+    ip = out / 'index.json'
+    index = json.loads(ip.read_text())
+    index.setdefault('ref_urls', {})['model'] = url.rstrip('/')
+    ip.write_text(json.dumps(index, indent=1))
+    print(f'model files moved to {dest / out.name}; index.json points the page at {url}')
+    return dest / out.name
 
 
 def publish_github(out, remote, dry_run=False):
@@ -504,12 +662,17 @@ def publish_github(out, remote, dry_run=False):
 def cli(argv=None):
     """``ecco-insitu bin-viewer``: build, convert, upload (R2) or publish (GitHub Pages) the viewer."""
     p = argparse.ArgumentParser(description='Write the geodesic bin viewer data.')
+    p.add_argument('--model-equivalents', metavar='DIR', default=None,
+                   help='also V - model (the folder profile-analyze --model-equivalents reads)')
     p.add_argument('--run', help='processed run folder (or its yearly/)')
     p.add_argument('--out', required=True, help='output folder (uploaded to the host as is)')
     p.add_argument('--sources', nargs='*', default=None, help='obs classes (default: all)')
     p.add_argument('--rebuild-bins', action='store_true', help='rebuild bins.bin even if it exists')
     p.add_argument('--page-only', action='store_true', help='only rewrite index.html (after editing viewer.html)')
     p.add_argument('--bathy', action='store_true', help='(re)write bathy.json only')
+    p.add_argument('--polar', action='store_true', help='(re)build the polar maps\' bins and land only')
+    p.add_argument('--report', metavar='URL', help='the profile report this viewer belongs to (its "← report" '
+                   'button); kept in index.json')
     p.add_argument('--convert', action='store_true', help='rewrite an older (format 1) folder as format 2')
     p.add_argument('--upload', metavar='BUCKET', help='then upload the folder to this R2 bucket')
     p.add_argument('--prefix', default='', help='folder in the bucket (e.g. run_20261027_142247)')
@@ -517,16 +680,27 @@ def cli(argv=None):
     p.add_argument('--profile', default='r2', help='aws CLI profile with the R2 API token (default: r2)')
     p.add_argument('--github', metavar='REMOTE', help='then publish the folder to this GitHub Pages repository '
                    '(e.g. git@github.com:brucelaughlin/ecco-bin-viewer.git); replaces what is there')
+    p.add_argument('--split-model', nargs=2, metavar=('NAME', 'URL'),
+                   help='move the model files to a sibling folder <out>__NAME, for a second GitHub Pages site at URL')
     p.add_argument('--dry-run', action='store_true', help='show what the upload / publish would do')
     a = p.parse_args(argv)
     if a.convert:
         convert_format1(a.out)
+    if a.split_model:
+        split_for_github(a.out, *a.split_model)
     if a.bathy:
         write_bathy(Path(a.out))
-    if a.page_only or a.bathy or a.convert or ((a.upload or a.github) and not a.run):
+    if a.polar:
+        build_polar_bins(Path(a.out))
+    if a.report:
+        ip = Path(a.out) / 'index.json'
+        index = json.loads(ip.read_text())
+        index['report_url'] = a.report
+        ip.write_text(json.dumps(index, indent=1))
+    if a.page_only or a.bathy or a.polar or a.report or a.convert or a.split_model or ((a.upload or a.github) and not a.run):
         write_page(Path(a.out))
     else:
-        run(a.run, a.out, a.sources, a.rebuild_bins)
+        run(a.run, a.out, a.sources, a.rebuild_bins, a.model_equivalents)
     if a.upload:
         if not a.endpoint:
             p.error('--upload needs --endpoint')

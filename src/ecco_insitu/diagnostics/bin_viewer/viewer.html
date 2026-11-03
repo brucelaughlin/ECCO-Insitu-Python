@@ -29,7 +29,12 @@ select { font-size: 0.85em; }
 .cbar canvas { display: block; }
 .cbar .t { font-size: 10px; writing-mode: vertical-rl; transform: rotate(180deg); text-align: center; }
 #mapbox { position: relative; flex: 1; max-width: 1400px; background: lightskyblue; border: 1px solid #333; }
-#map { position: absolute; inset: 0; }
+#map, .map { position: absolute; inset: 0; }
+.mapbox.polar { position: relative; margin: 0 auto; background: lightskyblue; border: 1px solid #333; }
+.polar-sec { padding: 1.2em 10px 0.4em; }
+.polar-title { text-align: center; font-size: 11px; line-height: 1.4; padding-bottom: 0.3em; white-space: pre; }
+.legend { position: absolute; top: 6px; right: 6px; background: rgba(255,255,255,0.8); border: 1px solid #aaa;
+  border-radius: 3px; padding: 3px 7px; font-size: 9px; line-height: 1.35; pointer-events: none; z-index: 3; }
 #legend { position: absolute; top: 6px; right: 6px; background: rgba(255,255,255,0.8); border: 1px solid #aaa;
   border-radius: 3px; padding: 3px 7px; font-size: 9px; line-height: 1.35; pointer-events: none; z-index: 3; }
 #caption { text-align: center; font-size: 11px; line-height: 1.4; padding: 0.5em 1em 0.3em; max-width: 70em; margin: 0 auto; }
@@ -58,19 +63,23 @@ select { font-size: 0.85em; }
 <div id="top">
   <a id="back" class="btn" href="#" style="display:none;text-decoration:none;color:#1a5ca8" title="back to the profile report">&larr; report</a>
   <span class="grp"><span class="lab">class</span><select id="src"></select></span>
-  <span class="grp"><span class="lab">variable</span><button class="btn" id="vprev" title="previous variable (3)">&#9664;</button>
-    <b id="vlab">T</b><button class="btn" id="vnext" title="next variable (4)">&#9654;</button></span>
-  <span class="grp"><span class="lab">depth level</span><button class="btn" id="dprev" title="shallower (1)">&#9664;</button>
-    <select id="dsel"></select><button class="btn" id="dnext" title="deeper (2)">&#9654;</button></span>
+  <span class="grp" id="refgrp" style="display:none"><span class="lab">anomaly vs</span><span id="refs"></span></span>
+  <span class="grp"><span class="lab">variable</span><button class="btn" id="vprev" title="previous variable">&#9664;</button>
+    <b id="vlab">T</b><button class="btn" id="vnext" title="next variable">&#9654;</button></span>
+  <span class="grp"><span class="lab">depth</span><select id="dmode" title="single levels, or ranges of levels (each profile: the mean of its values in the range)">
+      <option value="level">single level</option><option value="bands">standard bands</option><option value="100m">100 m bands</option>
+      <option value="15">15 groups</option><option value="30">30 groups</option></select>
+    <button class="btn" id="dprev" title="shallower">&#9664;</button>
+    <select id="dsel"></select><button class="btn" id="dnext" title="deeper">&#9654;</button></span>
   <span class="grp"><span class="lab">time</span><button class="btn" id="tall">all years</button>
     <div id="trange"><div id="ttrack"><div id="tfill"></div></div>
       <input type="range" id="tlo" min="0" max="0" value="0"><input type="range" id="thi" min="0" max="0" value="0"></div>
     <span id="tlab"></span>
     <button class="btn" id="tl0" title="first year earlier">&#9664;</button><button class="btn" id="tr0" title="first year later">&#9654;</button>
     <button class="btn" id="tl1" title="last year earlier">&#9664;</button><button class="btn" id="tr1" title="last year later">&#9654;</button>
-    <button class="btn" id="shl" title="shift the window one year earlier ([)">&#9664;&#9664;</button><button class="btn" id="shr" title="shift the window one year later (])">&#9654;&#9654;</button></span>
-  <span class="grp"><span class="lab">view</span><button class="btn" id="reset" title="back to the whole map (9)">&#8962;&#xFE0E; home</button>
-    <button class="btn" id="resetall" title="whole map and first depth level (0)">reset all</button>
+    <button class="btn" id="shl" title="shift the window one year earlier">&#9664;&#9664;</button><button class="btn" id="shr" title="shift the window one year later">&#9654;&#9654;</button></span>
+  <span class="grp"><span class="lab">view</span><button class="btn" id="reset" title="every map back to its whole view">&#8962;&#xFE0E; home</button>
+    <button class="btn" id="resetall" title="whole views and the first depth level">reset all</button>
     <button class="btn on" id="bathy" title="faint isobaths: 200 (shelf edge, darker), 1000, 2000, 3000, 4000, 5000 m">isobaths</button></span>
   <span class="grp"><span class="lab">max cells/bin</span><select id="cap"><option>250</option><option>500</option><option selected>1000</option><option>2000</option><option>5000</option></select></span>
 </div>
@@ -82,8 +91,11 @@ select { font-size: 0.85em; }
   <div class="cbar"><canvas id="cbr"></canvas></div>
 </div>
 <div id="caption"></div>
-<div id="keys">Keyboard (mouse over the page): 1 and 2 change depth level, 3 and 4 change variable, 8 resets the depth level,
-  9 goes home (the whole map), 0 also resets the depth; [ and ] shift the time window. Scroll to zoom, drag to pan.</div>
+<div id="keys">Scroll to zoom, drag to pan; &#8962; home returns every map to its whole view. Scroll down for the polar maps.</div>
+<div class="polar-sec"><div class="polar-title" id="info-N"></div>
+  <div class="mapbox polar" id="box-N"><div class="map" id="map-N"></div><div class="legend" id="legend-N"></div></div></div>
+<div class="polar-sec"><div class="polar-title" id="info-S"></div>
+  <div class="mapbox polar" id="box-S"><div class="map" id="map-S"></div><div class="legend" id="legend-S"></div></div></div>
 <details id="guide"><summary>Guide: how this page works, and how it relates to the original app</summary>__GUIDE__</details>
 <script>
 'use strict';
@@ -93,11 +105,26 @@ const ZOOM_THRESHOLD = 10;           // scale factor above which bins split into
 const MICRO_BASE_LW = 0.04;          // cell edge width at the threshold (pt)
 const QF_FACE = [0.05, 0.95], QF_EDGE = [0.05, 0.25, 0.5, 0.75, 0.95, 0.99];
 const PRGN = [__PRGN__], CIVIDIS = [__CIVIDIS__];
+// Bin edge width (zoomed out): EDGE_K * sqrt(profile count) px (none for one profile), times sqrt(zoom factor),
+// so edges thicken a little as you zoom in; capped at EDGE_CAP of the bin's own size on screen, so an edge never
+// covers its bin. (The original: 0.01 pt per profile, capped by the smallest bin of all, which on the world map
+// made every bin above ~60 profiles look the same.)
+const EDGE_K = 0.1, EDGE_CAP = 0.25;
 const CELL_BUDGET = 200000;          // cells drawn at once (all bins in view); above it, bins in view stay whole
 const PT = 96 / 72;                  // matplotlib points -> CSS pixels
 
-const S = {src: null, V: 'T', k: 0, all: true, t0: 0, t1: 0, cap: 1000};
-let INDEX, BINS, CLASS = {}, DECK, VIEW = null, GLOBAL_VIEW = null;
+const S = {src: null, ref: 'clim', V: 'T', k: 0, dmode: 'level', g: 0, all: true, t0: 0, t1: 0, cap: 1000};
+// the levels and color limits of the current reference (climatology, or the model if exported)
+// Where a reference's level files are: next to this page, or (index.json ref_urls) another site, so the data of one
+// viewer can be spread over several GitHub Pages sites of about 1 GB each (they all allow cross-site reads).
+const refBase = () => (INDEX.ref_urls || {})[S.ref] || DATA_URL;
+const REF = () => S.ref === 'clim' ? INDEX.classes[S.src] : INDEX.classes[S.src].refs[S.ref];
+function fixRef() {                    // a class without model values: back to the climatology
+  if (S.ref !== 'clim' && !INDEX.classes[S.src].refs?.[S.ref]) S.ref = 'clim';
+  document.querySelectorAll('#refs button').forEach(b => { b.classList.toggle('on', b.dataset.ref === S.ref);
+    b.disabled = b.dataset.ref !== 'clim' && !INDEX.classes[S.src].refs?.[b.dataset.ref]; });
+}
+let INDEX, CLASS = {};
 
 // ---------- data ----------
 async function gz(url) {
@@ -123,8 +150,8 @@ function cols(buf, specs) {
   }
   return out;
 }
-async function loadBins() {
-  const b = await gz(DATA_URL + '/bins.bin'), dv = new DataView(b.buffer, b.byteOffset);
+async function loadBins(name) {
+  const b = await gz(DATA_URL + name), dv = new DataView(b.buffer, b.byteOffset);
   const n = dv.getUint32(0, true); let o = 4; const bins = new Map();
   for (let i = 0; i < n; i++) {
     const id = dv.getUint16(o, true), nv = dv.getUint16(o + 2, true); o += 4;
@@ -146,14 +173,59 @@ async function loadClass(src) {
   return CLASS[src];
 }
 async function loadLevel(src, V, k) {
-  const c = CLASS[src], key = V + k;
+  const c = CLASS[src], key = S.ref + V + k;
   if (!c.levels[key]) {
     busy(`Loading ${src} ${V} at ${INDEX.depth[k]} m…`);
-    const raw = cols(await gz(`${DATA_URL}/${src}/${V}_${String(k).padStart(2, '0')}.bin`), [['ix', Uint32Array, 4, true], ['v', Uint16Array, 2]]);
+    const raw = cols(await gz(`${refBase()}/${src}/${S.ref === 'clim' ? '' : S.ref + '/'}${V}_${String(k).padStart(2, '0')}.bin`), [['ix', Uint32Array, 4, true], ['v', Uint16Array, 2]]);
     const v = new Float32Array(raw.n); for (let i = 0; i < raw.n; i++) v[i] = F16[raw.v[i]];
     c.levels[key] = {ix: raw.ix, v};
   }
   return c.levels[key];
+}
+
+// ---------- depth ranges ----------
+// Besides single levels, the ranges of the cost map explorer: the standard bands of the report's maps
+// (0-50, 50-100, 100-250, 250-500, 500-1000, 1000-2000, 2000-4000 m, deeper), 100 m bands, and the 97 levels in
+// 15 or 30 consecutive groups. In a range each profile counts once, with the mean of its values at the
+// range's levels (the levels it has); so counts, cells and dots stay "profiles", as in the original app.
+const BAND_EDGES = [0, 50, 100, 250, 500, 1000, 2000, 4000, Infinity];
+function depthGroups(mode) {
+  const d = INDEX.depth, out = [];
+  if (mode === 'bands' || mode === '100m') {
+    const edges = mode === 'bands' ? BAND_EDGES : [...Array(Math.ceil(Math.max(...d) / 100) + 2).keys()].map(i => i * 100);
+    for (let i = 0; i + 1 < edges.length; i++) {
+      const lv = d.map((z, k) => [z, k]).filter(([z]) => z >= edges[i] && z < edges[i + 1]).map(([, k]) => k);
+      if (lv.length) out.push({label: edges[i + 1] === Infinity ? `below ${edges[i]} m` : `${edges[i]}–${edges[i + 1]} m`, levels: lv});
+    }
+  } else {
+    const n = +mode, N = d.length;
+    for (let i = 0; i < n; i++) {                // as numpy.array_split: the first N % n groups one longer
+      const a = i * Math.floor(N / n) + Math.min(i, N % n), b = a + Math.floor(N / n) + (i < N % n ? 1 : 0);
+      out.push({label: `${(+d[a]).toFixed(0)}–${(+d[b - 1]).toFixed(0)} m`, levels: [...Array(b - a).keys()].map(j => a + j)});
+    }
+  }
+  return out;
+}
+function groupsWithData() {           // the current mode's groups that have at least one level with values
+  const have = new Set(REF().levels[S.V]);
+  return depthGroups(S.dmode).map((g, i) => ({...g, i, levels: g.levels.filter(k => have.has(k))})).filter(g => g.levels.length);
+}
+async function loadRange(src, V, levels) {   // per profile: the mean of its values at these levels
+  if (levels.length === 1) return loadLevel(src, V, levels[0]);
+  const c = CLASS[src], key = S.ref + V + 'r' + levels.join(',');
+  if (c.levels[key]) return c.levels[key];
+  const sum = new Map();
+  for (const k of levels) { const L = await loadLevel(src, V, k);
+    for (let i = 0; i < L.ix.length; i++) { const j = L.ix[i], e = sum.get(j); if (e) { e[0] += L.v[i]; e[1]++; } else sum.set(j, [L.v[i], 1]); } }
+  const ix = Uint32Array.from([...sum.keys()].sort((a, b) => a - b)), v = new Float32Array(ix.length);
+  for (let i = 0; i < ix.length; i++) { const e = sum.get(ix[i]); v[i] = e[0] / e[1]; }
+  return (c.levels[key] = {ix, v});
+}
+function currentLevels() { return S.dmode === 'level' ? [S.k] : (groupsWithData().find(g => g.i === S.g) || {levels: [S.k]}).levels; }
+function depthText() {
+  if (S.dmode === 'level') return `displaying level ${S.k + 1}/${INDEX.depth.length} (${INDEX.depth[S.k].toFixed(0)}m)`;
+  const g = groupsWithData().find(x => x.i === S.g), lv = g ? g.levels : [];
+  return `displaying ${g ? g.label : ''}: levels ${lv[0] + 1}–${lv.at(-1) + 1} (${lv.length} with data); each profile: the mean of its values there`;
 }
 
 // ---------- statistics (as the original: count, mean, np.std with ddof 0) ----------
@@ -162,7 +234,7 @@ function binStats(c, L) {
   const per = new Map();                      // bin -> list of values (for cells) and running sums
   for (let i = 0; i < L.ix.length; i++) {
     const j = L.ix[i], yr = c.p.year[j]; if (yr < y0 || yr > y1) continue;
-    const b = c.p.bin[j]; if (!BINS.has(b)) continue;
+    const b = c.p.bin[j]; if (!ANY_BIN.has(b)) continue;
     let e = per.get(b); if (!e) { e = {vals: [], idx: []}; per.set(b, e); }
     e.vals.push(L.v[i]); e.idx.push(j);
   }
@@ -180,7 +252,7 @@ function quantile(sorted, q) {               // numpy's default (linear) quantil
 // std; both over all depth levels of the variable), per class over the whole record (export.py), so the colors
 // stay fixed while the time window changes.
 function colorScales() {
-  const q = INDEX.classes[S.src].scales[S.V];
+  const q = REF().scales[S.V];
   return {face: [q.face[0], q.face[1]], qface: q.face, edge: [q.edge[1], q.edge[4]], qedge: q.edge};
 }
 
@@ -219,10 +291,9 @@ function centroid(r) { let a = 0, cx = 0, cy = 0; for (let i = 0; i < r.length; 
   const f = x0 * y1 - x1 * y0; a += f; cx += (x0 + x1) * f; cy += (y0 + y1) * f; } a /= 2;
   return Math.abs(a) < 1e-12 ? r[0] : [cx / (6 * a), cy / (6 * a)]; }
 const RING = b => b.open || (b.open = b.ring.slice(0, -1));   // ring without the closing vertex
-const CELLS = new Map();                      // cache: bin|n -> array of rings (positions only)
-function cellsFor(bin, n) {
-  const key = bin.id + '|' + n; if (CELLS.has(key)) return CELLS.get(key);
-  if (n === 1) { CELLS.set(key, [bin.ring]); return [bin.ring]; }
+function cellsFor(bin, n) {                   // cached on the bin (each map has its own bins and coordinates)
+  const cache = bin.cells || (bin.cells = new Map()); if (cache.has(n)) return cache.get(n);
+  if (n === 1) { cache.set(n, [bin.ring]); return [bin.ring]; }
   const [x0, y0, x1, y1] = bin.bbox, rnd = mulberry(bin.id * 1000003 + n), h = (y1 - y0) / n;
   let seeds = [];
   for (let i = 0; i < n; i++) {               // one seed per horizontal band, inside the bin
@@ -238,21 +309,34 @@ function cellsFor(bin, n) {
     seeds = voronoi(seeds).map((c, i) => { if (c.length < 3) return seeds[i]; const g = centroid(c); return inside(g, bin.ring) ? g : seeds[i]; });
   }
   const cells = voronoi(seeds).map(c => c.length >= 3 ? c : bin.ring);
-  CELLS.set(key, cells); return cells;
+  cache.set(n, cells); return cells;
 }
 
-// ---------- view ----------
-function scaleFactor(vs) { return Math.pow(2, vs.zoom - GLOBAL_VIEW.zoom); }   // = sqrt(global area / view area)
-function viewBounds(vs) {
-  const w = document.getElementById('map').clientWidth, h = document.getElementById('map').clientHeight;
-  const s = 1 / Math.pow(2, vs.zoom);                     // degrees per pixel (OrthographicView)
-  return [vs.target[0] - w / 2 * s, vs.target[1] - h / 2 * s, vs.target[0] + w / 2 * s, vs.target[1] + h / 2 * s];
+// ---------- the maps: the world (lon/lat, as the original) and the two polar caps (polar stereographic) ----------
+// Polar map units: km / KM_PER_UNIT (export.py), so one unit is about one degree at the equator and the zoom
+// factor (and its threshold of 10) means the same on-screen bin size on every map.
+const EARTH_KM = 6371.0, KM_PER_UNIT = 111.195, POLAR_EDGE_LAT = 40;   // polar home view: the 40° circle fills the map
+function polarXY(lon, lat, h) {
+  const lo = lon * Math.PI / 180, la = (h === 'N' ? lat : -lat) * Math.PI / 180;
+  const r = 2 * EARTH_KM * Math.tan(Math.PI / 4 - la / 2) / KM_PER_UNIT;
+  return h === 'N' ? [r * Math.sin(lo), -r * Math.cos(lo)] : [r * Math.sin(lo), r * Math.cos(lo)];
 }
-let STATS = null, SC = null, RENDER = 0;
+function polarLat(x, y, h) {
+  const lat = 90 - 2 * Math.atan(Math.hypot(x, y) * KM_PER_UNIT / (2 * EARTH_KM)) * 180 / Math.PI;
+  return h === 'N' ? lat : -lat;
+}
+const MAPS = [];       // {id, el, deck, view, home, extent, bins, land, coast, bathy, proj, latOf, legend}
+let MAIN_Z0 = 0;       // the world map's home zoom: zoom factor = 2^(zoom - MAIN_Z0) on every map
+function scaleFactor(M, vs) { return Math.pow(2, vs.zoom - MAIN_Z0); }
+function viewBounds(M, vs) {
+  const s = 1 / Math.pow(2, vs.zoom), w = M.el.clientWidth / 2 * s, h = M.el.clientHeight / 2 * s;
+  return [vs.target[0] - w, vs.target[1] - h, vs.target[0] + w, vs.target[1] + h];
+}
+let STATS = null, SC = null, RENDER = 0, ANY_BIN = new Set();
 async function recompute() {
   const id = ++RENDER;
   const c = await loadClass(S.src);
-  const L = await loadLevel(S.src, S.V, S.k);
+  const L = await loadRange(S.src, S.V, currentLevels());
   SC = colorScales();
   if (id !== RENDER) return;
   busy('Computing…'); await new Promise(r => setTimeout(r, 0));
@@ -262,97 +346,110 @@ async function recompute() {
 }
 function draw() {
   if (!STATS) return;
-  const vs = VIEW, sf = scaleFactor(vs), micro = sf > ZOOM_THRESHOLD, [bx0, by0, bx1, by1] = viewBounds(vs);
+  for (const M of MAPS) drawMap(M);
+  titles(); colorbars();
+}
+function drawMap(M) {
+  const vs = M.view, sf = scaleFactor(M, vs), micro = sf > ZOOM_THRESHOLD, [bx0, by0, bx1, by1] = viewBounds(M, vs);
   const inView = b => b.bbox[2] >= bx0 && b.bbox[0] <= bx1 && b.bbox[3] >= by0 && b.bbox[1] <= by1;
-  const counts = [...STATS.values()].map(e => e.n), maxN = counts.length ? Math.max(...counts) : 1;
+  let maxN = 1; for (const e of STATS.values()) if (e.n > maxN) maxN = e.n;
   const alpha = n => Math.round(255 * Math.min(1, Math.max(0.4, Math.sqrt(n / maxN))));
-  // edge width: 0.01 pt per profile, 0 for one profile, capped at 0.75 x the smallest bin's size x zoom (as the original)
-  let minDim = Infinity; for (const [b] of STATS) { const B = BINS.get(b), d = Math.min(B.bbox[2] - B.bbox[0], B.bbox[3] - B.bbox[1]); if (d > 0 && d < minDim) minDim = d; }
-  const capPx = 0.75 * minDim * Math.pow(2, GLOBAL_VIEW.zoom) * sf;
-  const binRows = [], cellRows = [], dots = [], labels = [];
-  let budget = CELL_BUDGET, overBudget = false;
-  const visible = [];
-  for (const [b, e] of STATS) { const B = BINS.get(b); if (inView(B)) visible.push([B, e]); }
+  const pxPerUnit = Math.pow(2, vs.zoom), grow = Math.sqrt(sf);
+  const edgeWidth = (B, n) => n <= 1 ? 0 : Math.min(EDGE_K * Math.sqrt(n) * grow,
+    EDGE_CAP * Math.min(B.bbox[2] - B.bbox[0], B.bbox[3] - B.bbox[1]) * pxPerUnit);
+  const binRows = [], cellRows = [], dots = [], labels = [], visible = [];
+  for (const [b, e] of STATS) { const B = M.bins.get(b); if (B && inView(B)) visible.push([B, e]); }
+  let overBudget = false;
   if (micro) { let tot = 0; for (const [, e] of visible) tot += e.n <= S.cap ? e.n : 1; overBudget = tot > CELL_BUDGET; }
   for (const [b, e] of STATS) {
-    const B = BINS.get(b), fc = faceColor(e.mean, SC), ec = edgeColor(e.std, SC);
+    const B = M.bins.get(b); if (!B) continue;
+    const fc = faceColor(e.mean, SC), ec = edgeColor(e.std, SC);
     if (!micro || overBudget || e.n > S.cap || !inView(B)) {
-      binRows.push({poly: B.ring, fill: [...fc, alpha(e.n)], line: ec,
-        width: Math.min(e.n === 1 ? 0 : 0.01 * e.n * PT, capPx)});
+      binRows.push({poly: B.ring, fill: [...fc, alpha(e.n)], line: ec, width: edgeWidth(B, e.n)});
       continue;
     }
-    // one cell per profile; values sorted ascending, assigned south to north by cell centroid
+    // one cell per profile; values sorted ascending, assigned south to north by the latitude of the cell's centroid
     const cells = cellsFor(B, e.n), vals = [...e.vals].sort((x, y) => x - y);
-    const order = cells.map((r, i) => [centroid(r)[1], i]).sort((p, q) => p[0] - q[0]);
+    const order = cells.map((r, i) => { const g = centroid(r); return [M.latOf(g[0], g[1]), i]; }).sort((p, q) => p[0] - q[0]);
     const a = alpha(e.n);
     order.forEach(([, ci], rank) => cellRows.push({poly: cells[ci], fill: [...faceColor(vals[rank], SC), a], n: e.n}));
   }
   if (micro) {
+    const P = CLASS[S.src].p;
     for (const [B, e] of visible) {
       labels.push({pos: B.rp, text: e.mean.toFixed(2)});
-      for (const j of e.idx) dots.push([CLASS[S.src].p.lon[j], CLASS[S.src].p.lat[j]]);
+      for (const j of e.idx) dots.push(M.proj(P.lon[j], P.lat[j]));
     }
   }
   const cellLw = MICRO_BASE_LW * (sf / ZOOM_THRESHOLD) * PT, borderLw = Math.min(1.5, Math.max(0.3, 0.6 * sf / ZOOM_THRESHOLD)) * PT;
-  const G = grid(vs);
-  const layers = [
-    new deck.SolidPolygonLayer({id: 'ocean', data: [[[-180, -90], [180, -90], [180, 90], [-180, 90]]], getPolygon: d => d, getFillColor: [255, 255, 255]}),
-    new deck.SolidPolygonLayer({id: 'land', data: LAND, getPolygon: d => d, getFillColor: [140, 115, 85]}),
+  const G = M.id === 'll' ? grid(M, vs) : polarGrid(M, vs), [ex0, ey0, ex1, ey1] = M.extent;
+  M.deck.setProps({layers: [
+    new deck.SolidPolygonLayer({id: 'ocean', data: [[[ex0, ey0], [ex1, ey0], [ex1, ey1], [ex0, ey1]]], getPolygon: d => d, getFillColor: [255, 255, 255]}),
+    new deck.SolidPolygonLayer({id: 'land', data: M.land, getPolygon: d => d, getFillColor: [140, 115, 85]}),
     new deck.PolygonLayer({id: 'bins', data: binRows, getPolygon: d => d.poly, getFillColor: d => d.fill, getLineColor: d => d.line,
       getLineWidth: d => d.width, lineWidthUnits: 'pixels', stroked: true, filled: true, updateTriggers: {getLineWidth: [vs.zoom]}}),
     new deck.PolygonLayer({id: 'cells', data: cellRows, getPolygon: d => d.poly, getFillColor: d => d.fill,
       getLineColor: [38, 38, 38, 217], getLineWidth: d => d.n === 1 ? 0 : cellLw, lineWidthUnits: 'pixels', stroked: true}),
-    new deck.PathLayer({id: 'bathy', data: SHOW_BATHY ? BATHY : [], getPath: d => d.p,
+    new deck.PathLayer({id: 'bathy', data: SHOW_BATHY ? M.bathy : [], getPath: d => d.p,
       getColor: d => d.d === 200 ? [40, 40, 40, 110] : [60, 60, 60, 60], getWidth: d => d.d === 200 ? 0.7 : 0.5, widthUnits: 'pixels'}),
-    new deck.TextLayer({id: 'bathylab', data: bathyLabels(vs), getPosition: d => d.pos, getText: d => d.text,
+    new deck.TextLayer({id: 'bathylab', data: bathyLabels(M, vs), getPosition: d => d.pos, getText: d => d.text,
       getAngle: d => d.ang, getSize: 9, getColor: d => d.shelf ? [60, 60, 60, 230] : [90, 90, 90, 200],
       outlineWidth: 3, outlineColor: [255, 255, 255, 220], fontFamily: 'Helvetica, Arial, sans-serif',
       fontSettings: {sdf: true, fontSize: 64, buffer: 10, radius: 16, cutoff: 0.2}, characterSet: '0123456789'}),
     new deck.PathLayer({id: 'borders', data: micro && !overBudget ? visible : [],
       getPath: d => d[0].ring, getColor: d => edgeColor(d[1].std, SC), getWidth: borderLw, widthUnits: 'pixels'}),
-    new deck.PathLayer({id: 'coast', data: COAST, getPath: d => d, _pathType: 'loop', getColor: [0, 0, 0], getWidth: 0.5 * PT, widthUnits: 'pixels'}),
+    new deck.PathLayer({id: 'coast', data: M.coast, getPath: d => d, _pathType: 'loop', getColor: [0, 0, 0], getWidth: 0.5 * PT, widthUnits: 'pixels'}),
     new deck.PathLayer({id: 'grid', data: G.lines, getPath: d => d, getColor: [128, 128, 128, 128], getWidth: 0.5, widthUnits: 'pixels'}),
     new deck.TextLayer({id: 'gridlab', data: G.labs, getPosition: d => d.pos, getText: d => d.text, getSize: 10, getColor: [30, 30, 30],
-      getTextAnchor: d => d.a === 'left' ? 'start' : 'middle', getAlignmentBaseline: d => d.a === 'left' ? 'center' : 'bottom',
-      getPixelOffset: d => d.a === 'left' ? [3, 0] : [0, -2], fontFamily: 'Courier, monospace', characterSet: '0123456789.°NSEW-'}),
+      getTextAnchor: d => d.a === 'left' ? 'start' : 'middle', getAlignmentBaseline: d => d.a === 'left' ? 'center' : d.a === 'mid' ? 'center' : 'bottom',
+      getPixelOffset: d => d.a === 'left' ? [3, 0] : d.a === 'mid' ? [0, 0] : [0, -2], fontFamily: 'Courier, monospace',
+      outlineWidth: d => 0, characterSet: '0123456789.°NSEW-'}),
     new deck.ScatterplotLayer({id: 'dots', data: dots, getPosition: d => d, getFillColor: [255, 0, 0], getRadius: 1.2, radiusUnits: 'pixels'}),
     new deck.TextLayer({id: 'labels', data: labels, getPosition: d => d.pos, getText: d => d.text, getSize: 8 * PT,
       getColor: [255, 255, 255], outlineWidth: 4, outlineColor: [0, 0, 0, 255], fontFamily: 'Courier New, Courier, monospace',
       fontWeight: 'bold', fontSettings: {sdf: true, fontSize: 96, buffer: 12, radius: 24, cutoff: 0.2}, characterSet: '0123456789.-'}),
-  ];
-  DECK.setProps({layers});
-  legend(visible); titles(sf, micro, overBudget); colorbars();
+  ]});
+  legend(M, visible);
+  M.state = {sf, overBudget, nBins: [...STATS.keys()].filter(b => M.bins.has(b)).length};
+  if (M.id !== 'll') {
+    const name = M.id === 'N' ? 'Arctic' : 'Southern Ocean', lim = M.id === 'N' ? 'north' : 'south';
+    document.getElementById('info-' + M.id).textContent =
+      `${name}: polar stereographic, the ${POLAR_EDGE_LAT}° circle at the map's edges (${lim} of about 23° in the corners); ` +
+      `bins populated here: ${M.state.nBins}\ncurrent zoom level/zoom threshold for plotting individual profile data: ${sf.toFixed(1)}/${ZOOM_THRESHOLD}` +
+      (overBudget ? `  (over ${CELL_BUDGET.toLocaleString()} cells in view: zoom in further)` : '');
+  }
 }
-function legend(visible) {
-  const el = document.getElementById('legend'), n = visible.map(([, e]) => e.n).sort((a, b) => a - b);
+function legend(M, visible) {
+  const el = M.legend, n = visible.map(([, e]) => e.n).sort((a, b) => a - b);
   if (!n.length) { el.style.display = 'none'; return; }
   el.style.display = '';
   const u = [...new Set(n)];
   el.innerHTML = 'profiles per visible patch:<br>' + (u.length === 1 ? n[0] : u.length === 2 ? `min ${n[0]}<br>max ${n.at(-1)}` :
     `min ${n[0]}<br>med ${Math.round(quantile(n, 0.5))}<br>max ${n.at(-1)}`);
 }
-function titles(sf, micro, over) {
-  const ci = INDEX.classes[S.src], lv = ci.levels[S.V], nlev = INDEX.depth.length;
+function titles() {
+  const ci = INDEX.classes[S.src], lv = REF().levels[S.V], nlev = INDEX.depth.length, W = MAPS[0].state;
   let tot = 0; for (const e of STATS.values()) tot += e.n;
   const years = S.all ? `all years (${ci.years[0]}–${ci.years[1]})` : S.t0 === S.t1 ? `${INDEX.years0 + S.t0}` : `${INDEX.years0 + S.t0}–${INDEX.years0 + S.t1}`;
   document.getElementById('titlebox').textContent =
-    `variable: ${S.V}\n` +
-    `${nlev} total depth levels in file; displaying level ${S.k + 1}/${nlev} (${INDEX.depth[S.k].toFixed(0)}m)\n` +
-    `${lv.length}/${nlev} total depth levels populated; geodesic bins populated at current depth level: ${STATS.size}/${INDEX.n_bins_grid}\n` +
+    `variable: ${S.V}; anomaly relative to the ${S.ref === 'clim' ? 'climatology' : (INDEX.refs || {})[S.ref] || S.ref}\n` +
+    `${nlev} total depth levels in file; ${depthText()}\n` +
+    `${lv.length}/${nlev} total depth levels populated; geodesic bins populated at current depth level: ${W.nBins}/${INDEX.n_bins_grid}\n` +
     `profiles binned at current depth level: ${tot.toLocaleString()}; obs class: ${S.src}; years: ${years}\n` +
-    `current zoom level/zoom threshold for plotting individual profile data: ${sf.toFixed(1)}/${ZOOM_THRESHOLD}` +
-    (over ? `  (over ${CELL_BUDGET.toLocaleString()} cells in view: zoom in further for one cell per profile)` : '');
+    `current zoom level/zoom threshold for plotting individual profile data: ${W.sf.toFixed(1)}/${ZOOM_THRESHOLD}` +
+    (W.overBudget ? `  (over ${CELL_BUDGET.toLocaleString()} cells in view: zoom in further for one cell per profile)` : '');
   document.getElementById('caption').textContent =
     `Polygon face colors represent ${S.V} anomalies (low zoom levels: geodesic bin means, higher zoom levels: individual profile values ` +
     `(unless a geodesic bin contains more than ${S.cap} profiles)).  Edge colors of geodesic bin polygons represent the ${S.V} anomaly ` +
-    `standard deviation of the profiles binned.  At low zoom levels, polygon edge widths scale linearly with the number of profiles ` +
-    `binned.  At higher zoom levels, true profile locations appear as red dots, and geodesic bin anomaly means appear as text within ` +
+    `standard deviation of the profiles binned.  At low zoom levels, polygon edge widths increase with the number of profiles ` +
+    `binned (with its square root).  At higher zoom levels, true profile locations appear as red dots, and geodesic bin anomaly means appear as text within ` +
     `the geodesic bin polygons.`;
 }
 function colorbars() {
   const unit = INDEX.units[S.V];
-  bar('cbl', SC.edge, SC.qedge, QF_EDGE, x => edgeColor(x, SC), `${S.V} anomaly std (${unit})`, 'white');
-  bar('cbr', SC.face, SC.qface, QF_FACE, x => faceColor(x, SC), `${S.V} anomaly mean (${unit})`, 'black');
+  const what = S.ref === 'clim' ? `${S.V} anomaly` : `${S.V} − model`;
+  bar('cbl', SC.edge, SC.qedge, QF_EDGE, x => edgeColor(x, SC), `${what} std (${unit})`, 'white');
+  bar('cbr', SC.face, SC.qface, QF_FACE, x => faceColor(x, SC), `${what} mean (${unit})`, 'black');
 }
 function bar(id, lim, qs, qf, col, label, qcol) {   // as the original's establish_colorbars
   const c = document.getElementById(id), r = window.devicePixelRatio || 1, H = document.getElementById('mapbox').clientHeight, W = 74;
@@ -380,30 +477,39 @@ function niceTicks(lo, hi, n) { const raw = (hi - lo) / n, mag = 10 ** Math.floo
 function fmt(x) { return Math.abs(x) < 1e-9 ? '0' : (+x.toPrecision(3)).toString(); }
 function busy(m) { const b = document.getElementById('busy'); if (m == null) b.classList.remove('on'); else { document.getElementById('busymsg').textContent = m; b.classList.add('on'); } }
 
-// ---------- land, coast and grid (Natural Earth 10 m land, from the data folder) ----------
-let LAND = [], COAST = [], BATHY = [], SHOW_BATHY = true;
-async function loadCoast() {
-  LAND = JSON.parse(new TextDecoder().decode(await gz(DATA_URL + '/land.json')));
-  COAST = LAND.flat();
-  try {                                // isobaths: optional (older data folders have none)
-    for (const L of JSON.parse(new TextDecoder().decode(await gz(DATA_URL + '/bathy.json'))))
-      for (const p of L.paths) {
-        let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9; const cum = new Float32Array(p.length);
-        for (let i = 0; i < p.length; i++) { const [x, y] = p[i];
-          if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y;
-          if (i) cum[i] = cum[i - 1] + Math.hypot(x - p[i - 1][0], y - p[i - 1][1]); }
-        BATHY.push({p, d: L.depth, bbox: [x0, y0, x1, y1], cum});
-      }
-  } catch (e) { document.getElementById('bathy').disabled = true; }
+// ---------- land, coast, isobaths and grid ----------
+let BATHY = [], SHOW_BATHY = true;
+const unzip = async url => JSON.parse(new TextDecoder().decode(await gz(url)));
+function withCum(p, d) {               // a path with its bounding box and running length (for the labels)
+  let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9; const cum = new Float32Array(p.length);
+  for (let i = 0; i < p.length; i++) { const [x, y] = p[i];
+    if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y;
+    if (i) cum[i] = cum[i - 1] + Math.hypot(x - p[i - 1][0], y - p[i - 1][1]); }
+  return {p, d, bbox: [x0, y0, x1, y1], cum};
+}
+async function loadBathy() {           // isobaths: optional (older data folders have none)
+  try { for (const L of await unzip(DATA_URL + '/bathy.json')) for (const p of L.paths) BATHY.push(withCum(p, L.depth)); }
+  catch (e) { document.getElementById('bathy').disabled = true; }
+}
+function polarBathy(h) {               // the isobaths poleward of 15°, projected
+  const sign = h === 'N' ? 1 : -1, out = [];
+  for (const b of BATHY) {
+    if (sign > 0 ? b.bbox[3] < 15 : b.bbox[1] > -15) continue;
+    let run = [];
+    const flush = () => { if (run.length > 1) out.push(withCum(run, b.d)); run = []; };
+    for (const [x, y] of b.p) { if (y * sign >= 15) run.push(polarXY(x, y, h)); else flush(); }
+    flush();
+  }
+  return out;
 }
 // Depth labels along the isobaths, map style: the number written along the line, upright, with a white halo.
 // Thinned: only lines at least ~250 px long on screen, one label per ~450 px of line, and never two labels
 // within ~110 px of each other (screen grid), so the labels stay sparse at every zoom.
-function bathyLabels(vs) {
+function bathyLabels(M, vs) {
   if (!SHOW_BATHY) return [];
-  const [vx0, vy0, vx1, vy1] = viewBounds(vs), px = 1 / Math.pow(2, vs.zoom), step = 450 * px, gap = 110 * px;
+  const [vx0, vy0, vx1, vy1] = viewBounds(M, vs), px = 1 / Math.pow(2, vs.zoom), step = 450 * px, gap = 110 * px;
   const taken = new Set(), out = [];
-  const lines = BATHY.filter(b => { const [x0, y0, x1, y1] = b.bbox;
+  const lines = M.bathy.filter(b => { const [x0, y0, x1, y1] = b.bbox;
     return !(x1 < vx0 || x0 > vx1 || y1 < vy0 || y0 > vy1) && b.cum[b.cum.length - 1] >= 250 * px; });
   lines.sort((a, b) => (a.d === 200 ? -1 : 0) - (b.d === 200 ? -1 : 0) || b.cum[b.cum.length - 1] - a.cum[a.cum.length - 1]);
   for (const b of lines) {
@@ -414,9 +520,9 @@ function bathyLabels(vs) {
       const [ax, ay] = b.p[i - 1], [bx, by] = b.p[i], f = (at - b.cum[i - 1]) / Math.max(1e-9, b.cum[i] - b.cum[i - 1]);
       const x = ax + f * (bx - ax), y = ay + f * (by - ay);
       if (x < vx0 || x > vx1 || y < vy0 || y > vy1) continue;
-      const cell = Math.floor(x / gap) + ',' + Math.floor(y / gap);
-      if (taken.has(cell)) continue;
-      for (let dx = -1; dx <= 1; dx++) for (let dy = -1; dy <= 1; dy++) taken.add((Math.floor(x / gap) + dx) + ',' + (Math.floor(y / gap) + dy));
+      const gx = Math.floor(x / gap), gy = Math.floor(y / gap);
+      if (taken.has(gx + ',' + gy)) continue;
+      for (let dx = -1; dx <= 1; dx++) for (let dy = -1; dy <= 1; dy++) taken.add((gx + dx) + ',' + (gy + dy));
       let ang = Math.atan2(by - ay, bx - ax) * 180 / Math.PI;
       if (ang > 90) ang -= 180; else if (ang < -90) ang += 180;
       out.push({pos: [x, y], text: String(b.d), ang, shelf: b.d === 200});
@@ -425,14 +531,34 @@ function bathyLabels(vs) {
   }
   return out;
 }
-function grid(vs) {                 // cartopy-like gridlines and labels, step chosen from the view width
-  const [x0, y0, x1, y1] = viewBounds(vs), span = Math.min(x1 - x0, (y1 - y0) * 2);
+const degLab = (v, pos, neg) => v === 0 ? '0°' : (+Math.abs(v).toFixed(2)) + '°' + (v < 0 ? neg : pos);
+function grid(M, vs) {                 // cartopy-like gridlines and labels, step chosen from the view width
+  const [x0, y0, x1, y1] = viewBounds(M, vs), span = Math.min(x1 - x0, (y1 - y0) * 2);
   const st = [60, 30, 20, 10, 5, 2, 1, 0.5, 0.25, 0.1].find(d => span / d >= 4) || 0.1;
-  const lines = [], labs = [], f = v => (+v.toFixed(2)).toString() + '°';
+  const lines = [], labs = [];
   for (let x = Math.ceil(Math.max(-180, x0) / st) * st; x <= Math.min(180, x1); x += st) {
-    lines.push([[x, -90], [x, 90]]); labs.push({pos: [x, y0], text: x === 0 ? '0°' : f(Math.abs(x)) + (x < 0 ? 'W' : 'E'), a: 'bottom'}); }
+    lines.push([[x, -90], [x, 90]]); labs.push({pos: [x, y0], text: degLab(x, 'E', 'W'), a: 'bottom'}); }
   for (let y = Math.ceil(Math.max(-90, y0) / st) * st; y <= Math.min(90, y1); y += st) {
-    lines.push([[-180, y], [180, y]]); labs.push({pos: [x0, y], text: y === 0 ? '0°' : f(Math.abs(y)) + (y < 0 ? 'S' : 'N'), a: 'left'}); }
+    lines.push([[-180, y], [180, y]]); labs.push({pos: [x0, y], text: degLab(y, 'N', 'S'), a: 'left'}); }
+  return {lines, labs};
+}
+function polarGrid(M, vs) {            // circles of latitude and meridians; one row of labels each, through the view's center
+  const h = M.id, sign = h === 'N' ? 1 : -1, [x0, y0, x1, y1] = viewBounds(M, vs), span = x1 - x0;
+  const dl = span > 60 ? 10 : span > 25 ? 5 : span > 10 ? 2 : span > 4 ? 1 : 0.5;
+  const dm = span > 60 ? 30 : span > 25 ? 15 : span > 10 ? 5 : span > 4 ? 2 : 1;
+  const lines = [], labs = [], inV = ([x, y]) => x >= x0 && x <= x1 && y >= y0 && y <= y1;
+  const [cx, cy] = vs.target, lonC = h === 'N' ? Math.atan2(cx, -cy) * 180 / Math.PI : Math.atan2(cx, cy) * 180 / Math.PI;
+  const latC = Math.abs(polarLat(cx, cy, h));
+  const lonLab = Math.round(lonC / dm) * dm + dm / 2;                       // latitude labels: between two meridians
+  const latLab = Math.max(20 + dl, Math.min(90 - dl, Math.round(latC / dl) * dl)) - dl / 2;   // meridian labels: between two circles
+  for (let a = 90 - dl; a >= 20 - 1e-9; a -= dl) {
+    const ring = []; for (let lo = -180; lo <= 180; lo += 1) ring.push(polarXY(lo, sign * a, h)); lines.push(ring);
+    const q = polarXY(lonLab, sign * a, h); if (inV(q)) labs.push({pos: q, text: degLab(sign * a, 'N', 'S'), a: 'mid'});
+  }
+  for (let lo = -180; lo < 180; lo += dm) {
+    const ln = []; for (let a = 90 - dl / 4; a >= 20; a -= 0.5) ln.push(polarXY(lo, sign * a, h)); lines.push(ln);
+    const q = polarXY(lo, sign * latLab, h); if (inV(q)) labs.push({pos: q, text: degLab(((lo + 540) % 360) - 180, 'E', 'W'), a: 'mid'});
+  }
   return {lines, labs};
 }
 
@@ -440,16 +566,34 @@ function grid(vs) {                 // cartopy-like gridlines and labels, step c
 function setupControls() {
   const sel = document.getElementById('src');
   sel.innerHTML = Object.keys(INDEX.classes).map(s => `<option>${s}</option>`).join('');
-  sel.value = S.src; sel.onchange = () => { S.src = sel.value; fixVar(); fillDepth(); fillTime(); recompute(); };
-  const vstep = d => { const vs = INDEX.vars.filter(V => INDEX.classes[S.src].levels[V].length); S.V = vs[(vs.indexOf(S.V) + d + vs.length) % vs.length]; fixDepth(); fillDepth(); recompute(); };
+  sel.value = S.src; sel.onchange = () => { S.src = sel.value; fixRef(); fixVar(); fillDepth(); fillTime(); recompute(); };
+  const vstep = d => { const vs = INDEX.vars.filter(V => REF().levels[V].length); S.V = vs[(vs.indexOf(S.V) + d + vs.length) % vs.length]; fixDepth(); fillDepth(); recompute(); };
   document.getElementById('vprev').onclick = () => vstep(-1); document.getElementById('vnext').onclick = () => vstep(1);
-  const dstep = d => { const lv = INDEX.classes[S.src].levels[S.V], i = lv.indexOf(S.k); S.k = lv[(i + d + lv.length) % lv.length]; fillDepth(); recompute(); };
+  const dstep = d => {
+    if (S.dmode === 'level') { const lv = REF().levels[S.V], i = lv.indexOf(S.k); S.k = lv[(i + d + lv.length) % lv.length]; }
+    else { const gs = groupsWithData(), i = gs.findIndex(g => g.i === S.g); S.g = gs[(i + d + gs.length) % gs.length].i; }
+    fillDepth(); recompute(); };
+  document.getElementById('dmode').onchange = e => { S.dmode = e.target.value;
+    if (S.dmode !== 'level') { const gs = groupsWithData(); S.g = (gs.find(g => g.levels.includes(S.k)) || gs[0]).i; }
+    fillDepth(); recompute(); };
   document.getElementById('dprev').onclick = () => dstep(-1); document.getElementById('dnext').onclick = () => dstep(1);
-  document.getElementById('dsel').onchange = e => { S.k = +e.target.value; recompute(); };
+  document.getElementById('dsel').onchange = e => { if (S.dmode === 'level') S.k = +e.target.value; else S.g = +e.target.value; recompute(); };
   document.getElementById('bathy').onclick = e => { SHOW_BATHY = !SHOW_BATHY; e.target.classList.toggle('on', SHOW_BATHY); draw(); };
+  // reference: climatology or model (if the data folder has model values)
+  const refs = INDEX.refs || {clim: 'climatology'};
+  if (Object.keys(refs).length > 1) {
+    document.getElementById('refgrp').style.display = '';
+    const box = document.getElementById('refs');
+    box.innerHTML = Object.entries(refs).map(([r, t]) => `<button class="btn${r === S.ref ? ' on' : ''}" data-ref="${r}" title="${t}">${r === 'clim' ? 'climatology' : 'model'}</button>`).join('');
+    box.querySelectorAll('button').forEach(b => b.onclick = () => {
+      if (!INDEX.classes[S.src].refs?.[b.dataset.ref] && b.dataset.ref !== 'clim') return;
+      S.ref = b.dataset.ref; box.querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b));
+      fixVar(); fillDepth(); recompute(); });
+  }
   document.getElementById('cap').onchange = e => { S.cap = +e.target.value; draw(); };
   document.getElementById('reset').onclick = () => resetZoom();
-  document.getElementById('resetall').onclick = () => { S.k = INDEX.classes[S.src].levels[S.V][0]; fillDepth(); resetZoom(); recompute(); };
+  document.getElementById('resetall').onclick = () => { S.dmode = 'level'; document.getElementById('dmode').value = 'level';
+    S.k = REF().levels[S.V][0]; fillDepth(); resetZoom(); recompute(); };
   const lo = document.getElementById('tlo'), hi = document.getElementById('thi'); let timer = null;
   const later = () => { syncTime(); clearTimeout(timer); timer = setTimeout(recompute, 350); };
   lo.oninput = () => { S.all = false; S.t0 = +lo.value; if (S.t0 > S.t1) S.t1 = S.t0; later(); };
@@ -461,21 +605,19 @@ function setupControls() {
     fromAll(); if (end === 0) { S.t0 = cl(S.t0 + d); if (S.t0 > S.t1) S.t1 = S.t0; } else { S.t1 = cl(S.t1 + d); if (S.t1 < S.t0) S.t0 = S.t1; } later(); });
   const shift = d => { if (S.all) return; if (S.t0 + d < 0 || S.t1 + d > N()) return; S.t0 += d; S.t1 += d; later(); };
   document.getElementById('shl').onclick = () => shift(-1); document.getElementById('shr').onclick = () => shift(1);
-  document.addEventListener('keydown', e => {
-    if (e.target.tagName === 'SELECT') return;
-    const k = e.key;
-    if (k === '1') dstep(-1); else if (k === '2') dstep(1); else if (k === '3') vstep(-1); else if (k === '4') vstep(1);
-    else if (k === '8') { S.k = INDEX.classes[S.src].levels[S.V][0]; fillDepth(); recompute(); }
-    else if (k === '9') resetZoom(); else if (k === '0') { S.k = INDEX.classes[S.src].levels[S.V][0]; fillDepth(); resetZoom(); recompute(); }
-    else if (k === '[') shift(-1); else if (k === ']') shift(1);
-  });
 }
-function fixVar() { const lv = INDEX.classes[S.src].levels; if (!lv[S.V].length) S.V = INDEX.vars.find(V => lv[V].length); fixDepth(); }
-function fixDepth() { const lv = INDEX.classes[S.src].levels[S.V]; if (!lv.includes(S.k)) S.k = lv.reduce((a, b) => Math.abs(b - S.k) < Math.abs(a - S.k) ? b : a, lv[0]); }
+function fixVar() { const lv = REF().levels; if (!lv[S.V].length) S.V = INDEX.vars.find(V => lv[V].length); fixDepth(); }
+function fixDepth() { const lv = REF().levels[S.V]; if (!lv.includes(S.k)) S.k = lv.reduce((a, b) => Math.abs(b - S.k) < Math.abs(a - S.k) ? b : a, lv[0]); }
 function fillDepth() {
   document.getElementById('vlab').textContent = S.V;
-  const lv = INDEX.classes[S.src].levels[S.V], d = document.getElementById('dsel');
-  d.innerHTML = lv.map(k => `<option value="${k}">${k + 1}: ${INDEX.depth[k]} m</option>`).join(''); d.value = S.k;
+  const d = document.getElementById('dsel');
+  if (S.dmode === 'level') {
+    const lv = REF().levels[S.V];
+    d.innerHTML = lv.map(k => `<option value="${k}">${k + 1}: ${INDEX.depth[k]} m</option>`).join(''); d.value = S.k;
+  } else {
+    const gs = groupsWithData(); if (!gs.some(g => g.i === S.g)) S.g = gs[0].i;
+    d.innerHTML = gs.map(g => `<option value="${g.i}">${g.label} (${g.levels.length} levels)</option>`).join(''); d.value = S.g;
+  }
 }
 function fillTime() {
   const ci = INDEX.classes[S.src], N = INDEX.years1 - INDEX.years0, lo = document.getElementById('tlo'), hi = document.getElementById('thi');
@@ -487,46 +629,71 @@ function syncTime() {
   f.style.left = (S.all ? 0 : 100 * S.t0 / N) + '%'; f.style.width = (S.all ? 100 : 100 * (S.t1 - S.t0) / N) + '%';
   document.getElementById('tlab').textContent = S.all ? 'all years' : S.t0 === S.t1 ? `${INDEX.years0 + S.t0}` : `${INDEX.years0 + S.t0}–${INDEX.years0 + S.t1}`;
 }
-// The page owns the view (deck.gl's viewState prop): every change goes through setView, which keeps the map
-// on screen (no panning past the map's edges, no zooming out past the whole map). Home = the whole map.
-function clampView(v) {
-  const el = document.getElementById('map'), s = 1 / Math.pow(2, v.zoom);   // degrees per pixel
-  const zoom = Math.max(GLOBAL_VIEW.zoom, Math.min(GLOBAL_VIEW.maxZoom, v.zoom)), d = 1 / Math.pow(2, zoom);
-  const hw = el.clientWidth / 2 * d, hh = el.clientHeight / 2 * d;
-  const cx = hw >= 180 ? 0 : Math.max(-180 + hw, Math.min(180 - hw, v.target[0]));
-  const cy = hh >= 90 ? 0 : Math.max(-90 + hh, Math.min(90 - hh, v.target[1]));
-  return {...GLOBAL_VIEW, target: [cx, cy, 0], zoom};
+// Each page map owns its view (deck.gl's viewState prop): every change goes through setView, which keeps the map
+// on screen (no panning past the map's edges, no zooming out past its whole view). Home = every whole view.
+function clampView(M, v) {
+  const zoom = Math.max(M.home.zoom, Math.min(M.home.zoom + 9, v.zoom)), d = 1 / Math.pow(2, zoom);
+  const hw = M.el.clientWidth / 2 * d, hh = M.el.clientHeight / 2 * d, [ex0, ey0, ex1, ey1] = M.extent;
+  const cx = 2 * hw >= ex1 - ex0 ? (ex0 + ex1) / 2 : Math.max(ex0 + hw, Math.min(ex1 - hw, v.target[0]));
+  const cy = 2 * hh >= ey1 - ey0 ? (ey0 + ey1) / 2 : Math.max(ey0 + hh, Math.min(ey1 - hh, v.target[1]));
+  return {...M.home, target: [cx, cy, 0], zoom};
 }
-function setView(v, now) {
-  VIEW = clampView(v); DECK.setProps({viewState: VIEW});
-  clearTimeout(setView.t); if (now) draw(); else setView.t = setTimeout(draw, 60);
+function setView(M, v, now) {
+  M.view = clampView(M, v); M.deck.setProps({viewState: M.view});
+  clearTimeout(M.t);
+  const go = () => { if (!STATS) return; drawMap(M); if (M.id === 'll') titles(); };
+  if (now) go(); else M.t = setTimeout(go, 60);
 }
-function resetZoom() { setView(GLOBAL_VIEW, true); }
+function resetZoom() { for (const M of MAPS) setView(M, M.home, true); if (STATS) titles(); }
 
 // ---------- start ----------
+function homeZoom(M) {                  // the zoom at which the map's whole view fills its box
+  const [ex0, ey0, ex1, ey1] = M.extent;
+  return Math.log2(Math.min(M.el.clientWidth / (ex1 - ex0), M.el.clientHeight / (ey1 - ey0)));
+}
+function sizeBoxes() {
+  const main = document.getElementById('mapbox'), w = main.clientWidth;
+  main.style.height = Math.round(w / 2) + 'px';
+  const side = Math.max(320, Math.min(w, window.innerHeight - 70));
+  for (const h of ['N', 'S']) { const b = document.getElementById('box-' + h); b.style.width = side + 'px'; b.style.height = side + 'px'; }
+}
+function addMap(id, elId, legendId, bins, land, extent, proj, latOf, bathy) {
+  const M = {id, el: document.getElementById(elId), legend: document.getElementById(legendId), bins, land,
+    coast: land.flat(), extent, proj, latOf, bathy};
+  const z = homeZoom(M);
+  M.home = {target: [(extent[0] + extent[2]) / 2, (extent[1] + extent[3]) / 2, 0], zoom: z, minZoom: z, maxZoom: z + 9};
+  M.view = {...M.home};
+  M.deck = new deck.DeckGL({container: M.el, views: new deck.OrthographicView({id: 'o-' + id, flipY: false}),
+    viewState: M.home, controller: {doubleClickZoom: false, scrollZoom: {smooth: false}}, getCursor: () => 'crosshair',
+    onViewStateChange: ({viewState}) => setView(M, viewState)});
+  MAPS.push(M);
+  for (const b of bins.keys()) ANY_BIN.add(b);
+  return M;
+}
 async function init() {
   busy('Loading…');
   INDEX = await (await fetch(DATA_URL + '/index.json')).json();
   INDEX.n_bins_grid = (await (await fetch(DATA_URL + '/bins.json')).json()).n_bins_grid;
   const yrs = Object.values(INDEX.classes).map(c => c.years); INDEX.years0 = Math.min(...yrs.map(y => y[0])); INDEX.years1 = Math.max(...yrs.map(y => y[1]));
-  BINS = await loadBins(); await loadCoast();
-  // ?src=<class> opens on that class; ?back=<url> adds a link back to the report that opened the viewer
-  const q = new URLSearchParams(location.search), want = q.get('src'), back = q.get('back');
+  const [bins, land, binsN, binsS, landN, landS] = await Promise.all([loadBins('/bins.bin'), unzip(DATA_URL + '/land.json'),
+    loadBins('/bins_N.bin'), loadBins('/bins_S.bin'), unzip(DATA_URL + '/land_N.json'), unzip(DATA_URL + '/land_S.json'), loadBathy()]);
+  // ?src=<class> opens on that class; the "← report" button goes to the report that opened the viewer (?back=),
+  // else to the run's report (index.json report_url)
+  const q = new URLSearchParams(location.search), want = q.get('src'), back = q.get('back') || INDEX.report_url;
   S.src = want && INDEX.classes[want] ? want : INDEX.classes.CTD_WOD ? 'CTD_WOD' : Object.keys(INDEX.classes)[0]; fixVar();
   if (back && /^https?:\/\//.test(back)) {
     const a = document.getElementById('back'); a.href = back; a.style.display = '';
     // came from the report in this tab: go back to it (the report keeps its place); otherwise open it
-    a.onclick = e => { if (document.referrer && document.referrer.split('?')[0] === back && history.length > 1) { e.preventDefault(); history.back(); } };
+    a.onclick = e => { if (document.referrer && document.referrer.split('?')[0] === back.split('?')[0] && history.length > 1) { e.preventDefault(); history.back(); } };
   }
-  const el = document.getElementById('mapbox'), size = () => { const w = el.clientWidth; el.style.height = Math.round(w / 2) + 'px'; };
-  size(); window.addEventListener('resize', () => { size(); if (DECK) { const z0 = Math.log2(el.clientWidth / 360);
-    GLOBAL_VIEW = {...GLOBAL_VIEW, zoom: z0, minZoom: z0, maxZoom: z0 + 9}; setView(VIEW, true); } });
-  const z0 = Math.log2(el.clientWidth / 360);   // OrthographicView: zoom 0 = 1 px per degree
-  GLOBAL_VIEW = {target: [0, 0, 0], zoom: z0, minZoom: z0, maxZoom: z0 + 9};
-  VIEW = {...GLOBAL_VIEW};
-  DECK = new deck.DeckGL({container: 'map', views: new deck.OrthographicView({id: 'o', flipY: false}),
-    viewState: GLOBAL_VIEW, controller: {doubleClickZoom: false}, getCursor: () => 'crosshair',
-    onViewStateChange: ({viewState}) => setView(viewState)});
+  sizeBoxes();
+  const r40 = Math.hypot(...polarXY(0, POLAR_EDGE_LAT, 'N'));
+  addMap('ll', 'map', 'legend', bins, land, [-180, -90, 180, 90], (lon, lat) => [lon, lat], (x, y) => y, BATHY);
+  MAIN_Z0 = MAPS[0].home.zoom;
+  addMap('N', 'map-N', 'legend-N', binsN, landN, [-r40, -r40, r40, r40], (lon, lat) => polarXY(lon, lat, 'N'), (x, y) => polarLat(x, y, 'N'), polarBathy('N'));
+  addMap('S', 'map-S', 'legend-S', binsS, landS, [-r40, -r40, r40, r40], (lon, lat) => polarXY(lon, lat, 'S'), (x, y) => polarLat(x, y, 'S'), polarBathy('S'));
+  window.addEventListener('resize', () => { sizeBoxes(); for (const M of MAPS) { const z = homeZoom(M);
+    M.home = {...M.home, zoom: z, minZoom: z, maxZoom: z + 9}; if (M.id === 'll') MAIN_Z0 = z; setView(M, M.view, true); } if (STATS) { titles(); colorbars(); } });
   setupControls(); fillDepth(); fillTime();
   await recompute();
 }
