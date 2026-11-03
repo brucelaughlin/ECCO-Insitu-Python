@@ -149,7 +149,8 @@ depth or years. With a region:</p>
 <em>relative to</em> its share of bins and points, and by the rest-of-the-world curve, not by the share alone.</p>
 
 <h4>Peak: where does a bump in the depth profile come from? (since 2026-11-03)</h4>
-<p>Drag up or down on the depth-profile plot over a depth range (or follow &ldquo;investigate&rdquo; under analysis&nbsp;02 in the report).
+<p>Click <b>Find where a peak comes from</b> above the depth-profile plot, then drag up or down across the depths of a bump in the curve
+(or follow &ldquo;investigate&rdquo; under analysis&nbsp;02 in the report). A short plain-language summary comes first.
 The page runs three fixed steps and reports the numbers; it does not interpret them:</p>
 <ol>
 <li><b>Peak</b>: the level with the largest value of the curve in the range, its number of bins, and the levels just above and below.</li>

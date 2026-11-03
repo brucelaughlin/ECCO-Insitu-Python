@@ -39,7 +39,7 @@ select { font-size: 0.86em; padding: 0.15em; max-width: 26em; }
 #timelab { font-size: 0.86em; font-weight: 600; display: inline-block; width: 13.5em; white-space: nowrap;
   overflow: hidden; text-overflow: ellipsis; }   /* fixed width: the buttons after it never move */
 .tbtn { font-size: 0.8em; padding: 0.1em 0.4em; }
-#maps { display: flex; gap: 10px; padding: 0.8em 1em 0.3em; align-items: flex-start; }
+#maps { display: flex; flex-wrap: wrap; gap: 10px; padding: 0.8em 1em 0.3em; align-items: flex-start; justify-content: center; }
 #mapwrap { position: relative; }
 #busy { position: absolute; inset: 0; background: rgba(255,255,255,0.72); display: none; z-index: 5;
   align-items: center; justify-content: center; }
@@ -75,6 +75,9 @@ canvas { border: 1px solid #ccc; display: block; }
 #lower { display: flex; gap: 1.2em; padding: 0 1em 1em; flex-wrap: wrap; align-items: flex-start; }
 .panel { border: 1px solid #ddd; border-radius: 5px; padding: 0.5em 0.7em; background: #fcfcfc; }
 .ptitle { font-weight: 600; font-size: 0.9em; margin-bottom: 0.3em; }
+.pmode { font-size: 0.85em; display: flex; gap: 0.6em; align-items: center; margin: 0.2em 0 0.3em; }
+#peakmode.armed { background: #6c3483; color: #fff; border-color: #6c3483; }
+.explain { background: #f4effa; border-left: 3px solid #6c3483; padding: 0.35em 0.6em; margin: 0.2em 0 0.5em; line-height: 1.5; }
 .popts { font-size: 0.82em; display: flex; gap: 0.8em; align-items: center; flex-wrap: wrap; margin-bottom: 0.3em; }
 #binp { min-width: 34em; max-width: 46em; font-size: 0.85em; line-height: 1.45; }
 #binp table { border-collapse: collapse; margin: 0.3em 0; }
@@ -143,8 +146,9 @@ canvas.clickable { cursor: pointer; }
 changes in the water, not changes in which bins are counted"><input type="checkbox" id="samebins"> same bins at every depth</label>
       <span id="sbrange">from <select id="sb0"></select> to <select id="sb1"></select></span>
       <span id="sbnote" class="dnote"></span></div>
-    <canvas id="pcan" width="520" height="430" title="Drag up or down over a depth range to investigate the largest value in it"></canvas>
-    <div class="dnote">Drag up or down on the plot over a depth range: the largest value in it is investigated below.</div></div>
+    <div class="pmode"><button class="tab" id="peakmode">Find where a peak comes from</button>
+      <span class="dnote" id="peakhelp">Click, then drag up or down on the plot across the depths of a bump in the curve.</span></div>
+    <canvas id="pcan" width="520" height="430"></canvas></div>
   <div id="peakp" class="panel" style="display:none"><div class="ptitle">Peak <span class="dnote">(the steps are fixed; the numbers are for you to read)</span></div>
     <div id="peaktxt"></div></div>
   <div id="regp" class="panel" style="display:none"><div class="ptitle">Region vs the rest <span class="dnote">(current class, cost type, variable, cost part, depths, years)</span></div>
@@ -306,7 +310,8 @@ function drawProfile() {
   g.clearRect(0, 0, W, H);
   if (!PROF) return;
   const {all, same, nb, nbs, k0, k1} = PROF, z = INDEX.depth, L = 60, R = 70, T = 10, B = 40;
-  const vals = [...all, ...(S.same ? same : []), ...(PROF.region ? [...PROF.reg, ...PROF.rest] : [])].filter(Number.isFinite);
+  // the axis fits the curve being read (all bins / same bins / rest); the region curve may run off the right edge
+  const vals = [...all, ...(S.same ? same : []), ...(PROF.region ? PROF.rest : [])].filter(Number.isFinite);
   if (!vals.length) return;
   let lo = Math.min(0, ...vals), hi = Math.max(...vals); if (S.part === 'bias') { const m = Math.max(Math.abs(lo), Math.abs(hi)); lo = -m; hi = m; }
   if (hi === lo) hi = lo + 1;
@@ -319,20 +324,35 @@ function drawProfile() {
   for (const t of niceTicks(lo, hi, 5)) { g.fillText(fmt(t), X(t), H - B + 4); g.strokeStyle = '#eee'; g.beginPath(); g.moveTo(X(t), T); g.lineTo(X(t), H - B); g.stroke(); }
   g.fillText(PARTS[S.part], (L + W - R) / 2, H - B + 18);
   if (S.same) { g.fillStyle = 'rgba(26,92,168,0.08)'; g.fillRect(L, Y(z[k0]), W - L - R, Math.max(2, Y(z[k1]) - Y(z[k0]))); }
+  if (PEAKBAND) { const [a, b] = [Math.min(...PEAKBAND), Math.max(...PEAKBAND)];
+    g.fillStyle = 'rgba(108,52,131,0.12)'; g.fillRect(L, Y(a), W - L - R, Math.max(2, Y(b) - Y(a)));
+    g.strokeStyle = '#6c3483'; g.setLineDash([4, 3]); g.strokeRect(L + 0.5, Y(a), W - L - R - 1, Math.max(2, Y(b) - Y(a))); g.setLineDash([]);
+    g.fillStyle = '#6c3483'; g.font = '11px sans-serif'; g.textAlign = 'left'; g.textBaseline = 'top';
+    g.fillText(`investigated: ${Math.round(a)}–${Math.round(b)} m`, L + 4, Y(b) + 3); }
   const line = (arr, col, w) => { g.strokeStyle = col; g.lineWidth = w; g.beginPath(); let on = false;
     for (let k = 0; k < arr.length; k++) { if (!Number.isFinite(arr[k])) { on = false; continue; } const x = X(arr[k]), y = Y(z[k]); if (on) g.lineTo(x, y); else { g.moveTo(x, y); on = true; } } g.stroke(); };
   // with a region: the curves are over the region's bins and the rest's bins (with "same bins": of those, the
   // bins with data at every level of the range); levels with fewer than MIN_BINS region bins are drawn faint
   if (PROF.region) {
     const faint = (arr, nn) => arr.map((v, k) => nn[k] >= MIN_BINS ? v : NaN);
-    line(PROF.rest, 'rgba(90,90,90,0.9)', 1.6); line(PROF.reg, 'rgba(108,52,131,0.3)', 2); line(faint(PROF.reg, PROF.nbr), '#6c3483', 2.4);
-    line(all, 'rgba(192,57,43,0.55)', 1.2);
+    const clipX = arr => arr.map(v => Number.isFinite(v) ? Math.min(v, hi) : v);
+    g.save(); g.beginPath(); g.rect(L, T, W - L - R, H - T - B); g.clip();
+    line(PROF.rest, 'rgba(90,90,90,0.9)', 1.6); line(clipX(PROF.reg), 'rgba(108,52,131,0.3)', 2); line(clipX(faint(PROF.reg, PROF.nbr)), '#6c3483', 2.4);
+    line(all, 'rgba(192,57,43,0.8)', 1.4);
+    g.restore();
+    const off = PROF.reg.map((v, k) => v > hi ? k : -1).filter(k => k >= 0);
+    if (off.length) { const kmax = off.reduce((a, k) => PROF.reg[k] > PROF.reg[a] ? k : a, off[0]);
+      g.fillStyle = '#6c3483'; g.font = '10px sans-serif'; g.textAlign = 'right'; g.textBaseline = 'middle';
+      g.fillText(`purple off scale → up to ${fmt(PROF.reg[kmax])} at ${z[kmax]} m`, W - R - 4, Y(Math.min(...off.map(k => z[k]))) - 10); }
   } else { line(all, '#c0392b', 1.6); if (S.same) line(same, '#1a5ca8', 2); }
   // number of bins on a log axis at the right edge
   const nmax = Math.max(...nb, 1), XN = n => W - R + 6 + (R - 12) * Math.log10(Math.max(n, 1)) / Math.log10(Math.max(nmax, 10));
   g.strokeStyle = '#999'; g.lineWidth = 1; g.beginPath(); let on = false;
   for (let k = 0; k < nb.length; k++) { if (!nb[k]) { on = false; continue; } if (on) g.lineTo(XN(nb[k]), Y(z[k])); else { g.moveTo(XN(nb[k]), Y(z[k])); on = true; } } g.stroke();
   g.fillStyle = '#777'; g.textAlign = 'center'; g.fillText('# bins', W - R / 2, H - B + 4); g.fillText('(log)', W - R / 2, H - B + 16);
+  g.font = '9px sans-serif'; g.textBaseline = 'bottom';
+  for (let t = 1; t <= Math.max(nmax, 10); t *= 10) { const x = XN(t); g.strokeStyle = '#bbb'; g.beginPath(); g.moveTo(x, T); g.lineTo(x, T + 4); g.stroke();
+    g.fillText(t >= 1000 ? (t / 1000) + 'k' : String(t), x, T + 14); }
   // legend at the bottom left (deep water, where the curves are short of the left edge less often: drawn on a white box)
   g.font = '11px sans-serif'; g.textAlign = 'left';
   const sameTxt = S.same ? ` (of the ${PROF.nkeep} bins with data at every level ${z[k0]}–${z[k1]} m)` : '';
@@ -353,9 +373,10 @@ function drawProfile() {
 // peak, the high ones grouped into clusters of neighboring bins (centers within CLUSTER_KM), each cluster's share
 // of bins and of the summed value. The largest cluster becomes the region.
 const CLUSTER_KM = 600, HIGH_Q = 0.9;
-let PROFGEOM = null;                    // the profile plot's depth axis, for mouse -> depth
+let PROFGEOM = null, PEAKBAND = null;   // the plot's depth axis; the depth band being / last investigated                    // the profile plot's depth axis, for mouse -> depth
 function hav(la1, lo1, la2, lo2) { const r = Math.PI / 180, a = Math.sin((la2 - la1) * r / 2) ** 2 + Math.cos(la1 * r) * Math.cos(la2 * r) * Math.sin((lo2 - lo1) * r / 2) ** 2; return 12742 * Math.asin(Math.sqrt(a)); }
 async function investigatePeak(zA, zB) {
+  PEAKBAND = [Math.min(zA, zB), Math.max(zA, zB)];
   const d = await data(S.src, S.ct), yd = (!S.all && S.part !== 'mean') ? await yearData(S.src, S.ct) : null;
   const z = INDEX.depth, lb = levelBinValues(d, yd), val = (m, b) => { const e = m.get(b); return e ? (S.part === 'count' ? e[0] : e[0] / e[1]) : NaN; };
   const meanOf = (k, keep) => { const m = lb.get(k); if (!m) return [NaN, 0]; let s = 0, n = 0; for (const b of m.keys()) { if (keep && !keep.has(b)) continue; s += val(m, b); n++; } return [n ? s / n : NaN, n]; };
@@ -387,7 +408,13 @@ async function investigatePeak(zA, zB) {
       return {bins: c, s, lat: Math.atan2(zz, Math.hypot(x, y)) * 180 / Math.PI, lon: Math.atan2(y, x) * 180 / Math.PI}; })
     .sort((a, b) => additive ? b.s - a.s : Math.abs(b.s) - Math.abs(a.s));
   const pc = (a, b) => b ? (100 * a / b).toFixed(1) + ' %' : '–', dir = (la, lo2) => `${Math.abs(la).toFixed(0)}°${la >= 0 ? 'N' : 'S'} ${Math.abs(lo2).toFixed(0)}°${lo2 >= 0 ? 'E' : 'W'}`;
-  let h = `<b>${S.src}, ${S.ct}, ${S.V}: ${PARTS[S.part]}; ${timeText()}.</b><ol>` +
+  const big = cls[0], samp = Number.isFinite(fromSampling) ? Math.round(100 * fromSampling) : null;
+  let h = `<div class="explain"><b>In short:</b> between ${Math.round(lo)} and ${Math.round(hi)} m the curve is highest at <b>${z[kp]} m</b>. ` +
+    (samp === null ? '' : samp >= 50
+      ? `Most of that bump (${samp} %) is <b>not</b> a change in the water: fewer bins have data at that depth than at the depths around it, and the ones that do are not typical. `
+      : `Most of that bump (${100 - samp} %) is <b>in the water</b>: it is still there when only the same bins are compared at every depth. `) +
+    (additive && big ? `The bins with the highest values are mostly in <b>${dir(big.lat, big.lon)}</b> (${pc(big.bins.length, bins.length)} of the bins, ${pc(big.s, tot)} of the total); that area is now outlined in purple on the maps, and the region panel shows its numbers and its platforms.` : '') +
+    `</div><b>${S.src}, ${S.ct}, ${S.V}: ${PARTS[S.part]}; ${timeText()}.</b> The steps:<ol>` +
     `<li><b>Peak:</b> ${z[kp]} m, ${fmt(vp)} over ${np} bins` + (Number.isFinite(base) ? `; the levels around it (${ku !== undefined ? z[ku] + ' m: ' + fmt(vu) + ', ' + nu + ' bins' : ''}${ku !== undefined && kd !== undefined ? '; ' : ''}${kd !== undefined ? z[kd] + ' m: ' + fmt(vd) + ', ' + nd + ' bins' : ''}) average ${fmt(base)}.` : '.') + '</li>' +
     `<li><b>Same bins:</b> over the ${keep.size} bins with data at the peak and both neighbors, the peak is ${fmt(sp)} and its neighbors ${fmt(sbase)}` +
       (Number.isFinite(fromSampling) ? `: <b>${(100 * fromSampling).toFixed(0)} %</b> of the peak's excess over its neighbors comes from which bins are counted at each level, ${(100 * (1 - fromSampling)).toFixed(0)} % remains in a fixed set of bins.` : '.') + '</li>' +
@@ -396,8 +423,8 @@ async function investigatePeak(zA, zB) {
   h += `<table><tr><th>cluster</th><th>center</th><th>bins</th><th>share of bins</th>${additive ? '<th>share of the summed value</th>' : '<th>mean</th>'}</tr>`;
   cls.slice(0, 8).forEach((c, i) => { h += `<tr class="pick" data-i="${i}"><td>${i + 1}</td><td>${dir(c.lat, c.lon)}</td><td>${c.bins.length}</td><td>${pc(c.bins.length, bins.length)}</td>` +
     (additive ? `<td><b>${pc(c.s, tot)}</b></td>` : `<td>${fmt(c.s / c.bins.length)}</td>`) + '</tr>'; });
-  h += '</table><span class="dnote">Click a cluster to make it the region (outlined in purple, region panel below). The largest one is selected now. ' +
-    'A cluster holds only the high bins; drag on the maps to widen the region to its surroundings.</span>';
+  h += '</table><span class="dnote">Click a row to outline a different cluster instead. The outline holds only the high bins; to include their ' +
+    'surroundings, use "select region" above the maps and drag a box.</span>';
   out.innerHTML = h;
   out.querySelectorAll('tr.pick').forEach(r => r.addEventListener('click', () => { REGION = new Set(cls[+r.dataset.i].bins); regionChanged(); }));
   if (S.dmode !== 'level' || +S.dsel !== kp) { S.dmode = 'level'; S.dsel = kp; fillDepthSelect(); document.getElementById('dsel').value = kp; }
@@ -687,11 +714,16 @@ function drawMap(canvas, view, vals, vmax) {
     if (!Number.isFinite(v)) { px[q] = px[q + 1] = px[q + 2] = 255; px[q + 3] = 255; continue; }
     const [r, gg, bb] = color(scale(v, vmax)); px[q] = r; px[q + 1] = gg; px[q + 2] = bb; px[q + 3] = 255;
   }
-  if (REGION && REGION.size) {                // the region's outline: pixels in it next to pixels outside it
+  if (REGION && REGION.size) {                // the region's outline: 2 px purple inside its edge, 1 px white outside it
+    const inR = (xx, yy) => xx >= 0 && yy >= 0 && xx < nx && yy < ny && g[yy * nx + xx] > 0 && REGION.has(g[yy * nx + xx]);
+    const set = (p, r, gg, bb) => { const q = 4 * p; px[q] = r; px[q + 1] = gg; px[q + 2] = bb; px[q + 3] = 255; };
     for (let y = 0; y < ny; y++) for (let x = 0; x < nx; x++) {
-      const p = y * nx + x, b = g[p]; if (b <= 0 || !REGION.has(b)) continue;
-      const out = (xx, yy) => xx < 0 || yy < 0 || xx >= nx || yy >= ny || !REGION.has(g[yy * nx + xx]);
-      if (out(x + 1, y) || out(x - 1, y) || out(x, y + 1) || out(x, y - 1)) { const q = 4 * p; px[q] = 108; px[q + 1] = 52; px[q + 2] = 131; px[q + 3] = 255; }
+      const p = y * nx + x, me = inR(x, y);
+      let near1 = false, near2 = false;
+      for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) { if (inR(x + dx, y + dy) === me) continue;
+        if (Math.abs(dx) <= 1 && Math.abs(dy) <= 1) near1 = true; else near2 = true; }
+      if (me && (near1 || near2)) set(p, 108, 52, 131);
+      else if (!me && near1) set(p, 255, 255, 255);
     }
   }
   ctx.putImageData(img, 0, 0);
@@ -898,12 +930,21 @@ async function init() {
   const near = m => INDEX.depth.reduce((a, z, k) => Math.abs(z - m) < Math.abs(INDEX.depth[a] - m) ? k : a, 0);
   S.sb0 = near(2000); S.sb1 = near(2800);
   document.getElementById('sb0').value = S.sb0; document.getElementById('sb1').value = S.sb1;
-  { const pc = document.getElementById('pcan'); let y0 = null;
-    const zAt = e => { const r = pc.getBoundingClientRect(), y = (e.clientY - r.top) / r.height * pc.height, G = PROFGEOM; return G ? Math.max(0, (y - G.T) / (G.H - G.T - G.B) * G.zmax) : 0; };
-    pc.style.cursor = 'ns-resize';
-    pc.addEventListener('mousedown', e => { y0 = zAt(e); e.preventDefault(); });
+  { // the peak tool: only when its button is on. Dragging shades the depth band; releasing investigates it.
+    const pc = document.getElementById('pcan'), btn = document.getElementById('peakmode'), help = document.getElementById('peakhelp');
+    let armed = false, y0 = null;
+    const setArmed = on => { armed = on; btn.classList.toggle('armed', on); pc.style.cursor = on ? 'ns-resize' : 'default';
+      btn.textContent = on ? 'Cancel' : 'Find where a peak comes from';
+      help.textContent = on ? 'Now drag up or down on the plot across the depths of the bump (release to investigate).'
+                            : 'Click, then drag up or down on the plot across the depths of a bump in the curve.'; };
+    btn.addEventListener('click', () => setArmed(!armed));
+    const zAt = e => { const r = pc.getBoundingClientRect(), y = (e.clientY - r.top) / r.height * pc.height, G = PROFGEOM;
+      return G ? Math.max(0, Math.min(G.zmax, (y - G.T) / (G.H - G.T - G.B) * G.zmax)) : 0; };
+    pc.addEventListener('mousedown', e => { if (!armed) return; y0 = zAt(e); e.preventDefault(); });
+    pc.addEventListener('mousemove', e => { if (y0 === null) return; PEAKBAND = [y0, zAt(e)]; drawProfile(); });
     window.addEventListener('mouseup', e => { if (y0 === null) return; const y1 = zAt(e), a = y0; y0 = null;
-      investigatePeak(Math.abs(y1 - a) < 30 ? a - 150 : a, Math.abs(y1 - a) < 30 ? a + 150 : y1); }); }
+      const lo = Math.abs(y1 - a) < 30 ? a - 150 : Math.min(a, y1), hi = Math.abs(y1 - a) < 30 ? a + 150 : Math.max(a, y1);
+      PEAKBAND = [lo, hi]; setArmed(false); investigatePeak(lo, hi); }); }
   document.getElementById('regmode').addEventListener('click', e => { REGMODE = !REGMODE; e.target.classList.toggle('armed', REGMODE);
     e.target.textContent = REGMODE ? 'selecting: drag on a map (click here when done)' : 'select region';
     document.querySelectorAll('#maps canvas').forEach(c => c.style.cursor = REGMODE ? 'crosshair' : 'pointer'); });
@@ -981,14 +1022,13 @@ async function init() {
   document.getElementById('vmax').addEventListener('change', e => { S.vmax = +e.target.value || null; render(); });
   document.getElementById('vauto').addEventListener('click', () => { S.vmax = null; document.getElementById('vmax').value = ''; render(); });
   // fit the three maps (same height) to the window width
+  // the global map across the whole width, the two polar maps side by side below it (each half the width)
   const fit = () => {
-    const avail = document.getElementById('maps').clientWidth - 2 * 10 - 32 - 6;
-    const ratio = ['global', 'NH', 'SH'].reduce((a, v) => a + GRID[v].nx / GRID[v].ny, 0);
-    const H = Math.max(120, Math.min(420, Math.floor(avail / ratio)));
-    for (const v of ['global', 'NH', 'SH']) {
-      const c = document.getElementById('c_' + v);
-      c.style.height = H + 'px'; c.style.width = Math.round(H * GRID[v].nx / GRID[v].ny) + 'px';
-    }
+    const avail = document.getElementById('maps').clientWidth - 32 - 4;
+    const gw = Math.max(600, avail), gc = document.getElementById('c_global');
+    gc.style.width = gw + 'px'; gc.style.height = Math.round(gw * GRID.global.ny / GRID.global.nx) + 'px';
+    const pw = Math.max(300, Math.floor((avail - 10) / 2));
+    for (const v of ['NH', 'SH']) { const c = document.getElementById('c_' + v); c.style.width = pw + 'px'; c.style.height = Math.round(pw * GRID[v].ny / GRID[v].nx) + 'px'; }
   };
   fit(); window.addEventListener('resize', fit);
   document.getElementById('open-guide').addEventListener('click', () => {
