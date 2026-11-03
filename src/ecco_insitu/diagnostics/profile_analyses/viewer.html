@@ -309,12 +309,19 @@ function drawProfile() {
   const c = document.getElementById('pcan'), g = c.getContext('2d'), W = c.width, H = c.height;
   g.clearRect(0, 0, W, H);
   if (!PROF) return;
-  const {all, same, nb, nbs, k0, k1} = PROF, z = INDEX.depth, L = 60, R = 70, T = 10, B = 40;
-  // the axis fits the curve being read (all bins / same bins / rest); the region curve may run off the right edge
+  const {all, same, nb, nbs, k0, k1} = PROF, z = INDEX.depth, L = 60, R = 70, B = 40;
+  // the bottom axis fits the main curves (all bins / same bins / rest of the world). If the region's curve would run
+  // past it, the region gets its own axis along the top (purple), so nothing is cut off and nothing is squashed.
   const vals = [...all, ...(S.same ? same : []), ...(PROF.region ? PROF.rest : [])].filter(Number.isFinite);
   if (!vals.length) return;
   let lo = Math.min(0, ...vals), hi = Math.max(...vals); if (S.part === 'bias') { const m = Math.max(Math.abs(lo), Math.abs(hi)); lo = -m; hi = m; }
   if (hi === lo) hi = lo + 1;
+  const rv = PROF.region ? PROF.reg.filter(Number.isFinite) : [];
+  const ownAxis = rv.length > 0 && (Math.max(...rv) > hi * 1.02 || Math.min(...rv) < lo - 0.02 * (hi - lo));
+  let rlo = lo, rhi = hi;
+  if (ownAxis) { rlo = Math.min(0, ...rv); rhi = Math.max(...rv);
+    if (S.part === 'bias') { const m = Math.max(Math.abs(rlo), Math.abs(rhi)); rlo = -m; rhi = m; } if (rhi === rlo) rhi = rlo + 1; }
+  const T = ownAxis ? 32 : 10;
   const zmax = Math.max(...z), X = v => L + (W - L - R) * (v - lo) / (hi - lo), Y = d => T + (H - T - B) * d / zmax;
   PROFGEOM = {T, B, H, zmax};
   g.strokeStyle = '#ccc'; g.lineWidth = 1; g.strokeRect(L, T, W - L - R, H - T - B);
@@ -329,21 +336,21 @@ function drawProfile() {
     g.strokeStyle = '#6c3483'; g.setLineDash([4, 3]); g.strokeRect(L + 0.5, Y(a), W - L - R - 1, Math.max(2, Y(b) - Y(a))); g.setLineDash([]);
     g.fillStyle = '#6c3483'; g.font = '11px sans-serif'; g.textAlign = 'left'; g.textBaseline = 'top';
     g.fillText(`investigated: ${Math.round(a)}–${Math.round(b)} m`, L + 4, Y(b) + 3); }
-  const line = (arr, col, w) => { g.strokeStyle = col; g.lineWidth = w; g.beginPath(); let on = false;
-    for (let k = 0; k < arr.length; k++) { if (!Number.isFinite(arr[k])) { on = false; continue; } const x = X(arr[k]), y = Y(z[k]); if (on) g.lineTo(x, y); else { g.moveTo(x, y); on = true; } } g.stroke(); };
+  const XR = v => L + (W - L - R) * (v - rlo) / (rhi - rlo);          // the region's axis (= X without its own axis)
+  const line = (arr, col, w, xf = X) => { g.strokeStyle = col; g.lineWidth = w; g.beginPath(); let on = false;
+    for (let k = 0; k < arr.length; k++) { if (!Number.isFinite(arr[k])) { on = false; continue; } const x = xf(arr[k]), y = Y(z[k]); if (on) g.lineTo(x, y); else { g.moveTo(x, y); on = true; } } g.stroke(); };
+  if (ownAxis) {                                     // the region's axis along the top, in purple
+    g.font = '10px sans-serif'; g.fillStyle = '#6c3483'; g.strokeStyle = '#6c3483'; g.lineWidth = 1; g.textAlign = 'center'; g.textBaseline = 'bottom';
+    g.beginPath(); g.moveTo(L, T); g.lineTo(W - R, T); g.stroke();
+    for (const t of niceTicks(rlo, rhi, 5)) { const x = XR(t); g.beginPath(); g.moveTo(x, T); g.lineTo(x, T - 4); g.stroke(); g.fillText(fmt(t), x, T - 5); }
+    g.textAlign = 'left'; g.fillText('purple curve (region): this top axis; the other curves: the bottom axis', L, T - 18);
+  }
   // with a region: the curves are over the region's bins and the rest's bins (with "same bins": of those, the
   // bins with data at every level of the range); levels with fewer than MIN_BINS region bins are drawn faint
   if (PROF.region) {
     const faint = (arr, nn) => arr.map((v, k) => nn[k] >= MIN_BINS ? v : NaN);
-    const clipX = arr => arr.map(v => Number.isFinite(v) ? Math.min(v, hi) : v);
-    g.save(); g.beginPath(); g.rect(L, T, W - L - R, H - T - B); g.clip();
-    line(PROF.rest, 'rgba(90,90,90,0.9)', 1.6); line(clipX(PROF.reg), 'rgba(108,52,131,0.3)', 2); line(clipX(faint(PROF.reg, PROF.nbr)), '#6c3483', 2.4);
-    line(all, 'rgba(192,57,43,0.8)', 1.4);
-    g.restore();
-    const off = PROF.reg.map((v, k) => v > hi ? k : -1).filter(k => k >= 0);
-    if (off.length) { const kmax = off.reduce((a, k) => PROF.reg[k] > PROF.reg[a] ? k : a, off[0]);
-      g.fillStyle = '#6c3483'; g.font = '10px sans-serif'; g.textAlign = 'right'; g.textBaseline = 'middle';
-      g.fillText(`purple off scale → up to ${fmt(PROF.reg[kmax])} at ${z[kmax]} m`, W - R - 4, Y(Math.min(...off.map(k => z[k]))) - 10); }
+    line(PROF.rest, 'rgba(90,90,90,0.9)', 1.6); line(all, 'rgba(192,57,43,0.8)', 1.4);
+    line(PROF.reg, 'rgba(108,52,131,0.3)', 2, XR); line(faint(PROF.reg, PROF.nbr), '#6c3483', 2.4, XR);
   } else { line(all, '#c0392b', 1.6); if (S.same) line(same, '#1a5ca8', 2); }
   // number of bins on a log axis at the right edge
   const nmax = Math.max(...nb, 1), XN = n => W - R + 6 + (R - 12) * Math.log10(Math.max(n, 1)) / Math.log10(Math.max(nmax, 10));
@@ -357,7 +364,7 @@ function drawProfile() {
   g.font = '11px sans-serif'; g.textAlign = 'left';
   const sameTxt = S.same ? ` (of the ${PROF.nkeep} bins with data at every level ${z[k0]}–${z[k1]} m)` : '';
   const leg = PROF.region
-    ? [['all bins with data', 'rgba(192,57,43,0.55)'], ['region' + sameTxt + (`; faint: under ${MIN_BINS} bins`), '#6c3483'], ['rest of the world' + sameTxt, 'rgba(90,90,90,0.9)']]
+    ? [['all bins with data', 'rgba(192,57,43,0.8)'], ['region' + (ownAxis ? ' (top axis)' : '') + sameTxt + `; faint: under ${MIN_BINS} bins`, '#6c3483'], ['rest of the world' + sameTxt, 'rgba(90,90,90,0.9)']]
     : [['all bins with data', '#c0392b']].concat(S.same ? [[`same ${PROF.nkeep} bins (data at every level ${z[k0]}–${z[k1]} m)`, '#1a5ca8']] : []);
   const lw = Math.max(...leg.map(([t]) => g.measureText(t).width)) + 30, ly = H - B - 8 - 15 * leg.length;
   g.fillStyle = 'rgba(255,255,255,0.92)'; g.fillRect(W - R - lw - 6, ly - 4, lw, 15 * leg.length + 6);
