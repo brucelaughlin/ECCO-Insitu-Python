@@ -132,6 +132,22 @@ selected cost part per year (for the mean term: obs &minus; reference per year, 
 that opens the <b>in situ data viewer</b> on that bin, zoomed in to the individual profiles, at the same class, reference
 (climatology or model), variable, depth and years.</p>
 
+<h4>Region: is it here? (since 2026-11-03)</h4>
+<p>Click <b>select region</b>, then drag a box on any map: its bins join the region (outlined in purple); shift-drag removes bins,
+shift-click adds or removes one bin. The region is a set of bins, so it stays when you change class, cost type, variable,
+depth or years. With a region:</p>
+<ul>
+<li>the depth profile shows the <b>region</b> (purple; faint where it has fewer than 5 bins), the <b>rest of the world</b> (gray) and all
+  bins (light red). If a feature disappears from the rest-of-the-world curve, the region accounts for it. With &ldquo;same bins&rdquo;
+  on, both curves use only bins with data at every level of the range.</li>
+<li>a table: the region&rsquo;s share of the bins with data, of the points, and of the <b>summed</b> cost (or count), at the
+  selected depths and years, and how many times its share of bins that is. (Not shown for the mean bias, which doesn&rsquo;t add up.)</li>
+<li>per year: the region (bars; faint with fewer than 5 bins) against the rest of the world (line).</li>
+<li>the region&rsquo;s ten largest bins; click a row for that bin&rsquo;s breakdown and the link to its profiles.</li>
+</ul>
+<p><b>Caution:</b> a region drawn around the darkest bins will always carry a large share. Judge it by its share of the term
+<em>relative to</em> its share of bins and points, and by the rest-of-the-world curve, not by the share alone.</p>
+
 <h4>Reading it</h4>
 <ul>
 <li>Values near 1 mean the misfit is about what the assumed errors &sigma; allow; much larger values point to a poor fit, a

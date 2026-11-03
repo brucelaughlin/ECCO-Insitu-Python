@@ -83,6 +83,13 @@ canvas { border: 1px solid #ccc; display: block; }
 #binp td:first-child, #binp th:first-child { text-align: left; }
 #binlinks a { color: var(--accent); font-weight: 600; margin-right: 1em; }
 canvas.clickable { cursor: pointer; }
+#regp { min-width: 34em; max-width: 46em; font-size: 0.85em; line-height: 1.45; }
+#regp table { border-collapse: collapse; margin: 0.3em 0; }
+#regp td, #regp th { border: 1px solid #e3e3e3; padding: 1px 6px; text-align: right; }
+#regp th { background: #f3f3f3; } #regp td:first-child, #regp th:first-child { text-align: left; }
+#regp tr.pick { cursor: pointer; } #regp tr.pick:hover { background: #eef4fc; }
+#regbox { position: fixed; border: 1.5px dashed #6c3483; background: rgba(108,52,131,0.08); pointer-events: none; display: none; z-index: 6; }
+.tab.armed { background: #6c3483; color: #fff; border-color: #6c3483; }
 #hover { position: fixed; pointer-events: none; background: rgba(255,255,255,0.95); border: 1px solid #aaa;
          padding: 2px 6px; font-size: 0.8em; display: none; }
 </style>
@@ -120,6 +127,10 @@ canvas.clickable { cursor: pointer; }
   <label>max <input type="number" id="vmax" step="any" style="width:6em"></label>
   <button class="tab" id="vauto">auto (98th pct)</button><span id="scalenote" class="dnote"></span></div></div>
 <div id="info"></div>
+<div class="row" id="regrow"><span class="lab">Region</span>
+  <button class="tab" id="regmode" title="Drag a box on any map to add its bins to the region; shift-drag removes them; shift-click adds or removes one bin">select region</button>
+  <button class="tab" id="regclear">clear</button>
+  <span id="regtxt" class="dnote">No region. Click "select region", then drag a box on a map (shift-drag removes, shift-click toggles one bin).</span></div>
 <div id="lower">
   <div id="prof" class="panel"><div class="ptitle">Depth profile of the selection <span class="dnote">(each level's mean over bins, as analysis 02)</span></div>
     <div class="popts"><label title="Draw the curve only over the bins that have data at every level of a depth range, so the curve shows
@@ -127,11 +138,13 @@ changes in the water, not changes in which bins are counted"><input type="checkb
       <span id="sbrange">from <select id="sb0"></select> to <select id="sb1"></select></span>
       <span id="sbnote" class="dnote"></span></div>
     <canvas id="pcan" width="520" height="430"></canvas></div>
+  <div id="regp" class="panel" style="display:none"><div class="ptitle">Region vs the rest <span class="dnote">(current class, cost type, variable, cost part, depths, years)</span></div>
+    <div id="regsum"></div><canvas id="rcan" width="560" height="190"></canvas><div id="regtop"></div></div>
   <div id="binp" class="panel"><div class="ptitle">Clicked bin</div><div id="bintxt" class="dnote">Click a bin on a map for its breakdown.</div>
     <canvas id="bcan" width="560" height="200" style="display:none"></canvas><div id="binlinks"></div></div>
 </div>
 <details id="guide"><summary>Guide: what every option means</summary>__GUIDE__</details>
-<div id="hover"></div>
+<div id="hover"></div><div id="regbox"></div>
 <script>
 'use strict';
 const INDEX_URL = 'viewer/index.json', GRID_URL = 'viewer/grid.json';
@@ -245,6 +258,16 @@ function levelBinValues(d, yd) {          // Map level -> {bin -> [sum, weight]}
   }
   return out;
 }
+// ---------- region: a set of bins (geographic, so it stays when class or cost type change) ----------
+let REGION = null, REGMODE = false;
+const MIN_BINS = 5;                      // curves / bars with fewer bins (or points) than this are drawn faint
+function regionText() {
+  const t = document.getElementById('regtxt');
+  t.textContent = REGION && REGION.size ? `${REGION.size} bins selected (outlined in purple). Drag to add, shift-drag to remove, shift-click toggles one bin.`
+    : 'No region. Click "select region", then drag a box on a map (shift-drag removes, shift-click toggles one bin).';
+}
+function regionChanged() { regionText(); render(); }
+
 let PROF = null;
 function profileCurves(d, yd) {
   const lb = levelBinValues(d, yd), nd = INDEX.depth.length, all = new Float64Array(nd).fill(NaN), nb = new Int32Array(nd);
@@ -253,20 +276,28 @@ function profileCurves(d, yd) {
   let keep = null;
   if (S.same) { keep = null; for (let k = k0; k <= k1; k++) { const m = lb.get(k); const ids = new Set(m ? m.keys() : []);
       keep = keep === null ? ids : new Set([...keep].filter(b => ids.has(b))); } }
+  const reg = new Float64Array(nd).fill(NaN), rest = new Float64Array(nd).fill(NaN), nbr = new Int32Array(nd), nbo = new Int32Array(nd);
+  const R_ = REGION && REGION.size ? REGION : null;
   for (let k = 0; k < nd; k++) {
     const m = lb.get(k); if (!m) continue;
-    let s = 0, n = 0, ss = 0, ns = 0;
-    for (const [b, [x, w]] of m) { const v = S.part === 'count' ? x : x / w; s += v; n++; if (keep && keep.has(b)) { ss += v; ns++; } }
+    let s = 0, n = 0, ss = 0, ns = 0, sr = 0, nr = 0, so = 0, no = 0;
+    for (const [b, [x, w]] of m) {
+      const v = S.part === 'count' ? x : x / w;
+      if (keep && !keep.has(b)) { s += v; n++; continue; }
+      s += v; n++; if (keep) { ss += v; ns++; }
+      if (R_) { if (R_.has(b)) { sr += v; nr++; } else { so += v; no++; } }
+    }
     all[k] = s / n; nb[k] = n; if (keep && ns) { same[k] = ss / ns; nbs[k] = ns; }
+    if (R_) { if (nr) { reg[k] = sr / nr; nbr[k] = nr; } if (no) { rest[k] = so / no; nbo[k] = no; } }
   }
-  return {all, nb, same, nbs, nkeep: keep ? keep.size : 0, k0, k1};
+  return {all, nb, same, nbs, nkeep: keep ? keep.size : 0, k0, k1, reg, rest, nbr, nbo, region: !!R_};
 }
 function drawProfile() {
   const c = document.getElementById('pcan'), g = c.getContext('2d'), W = c.width, H = c.height;
   g.clearRect(0, 0, W, H);
   if (!PROF) return;
   const {all, same, nb, nbs, k0, k1} = PROF, z = INDEX.depth, L = 60, R = 70, T = 10, B = 40;
-  const vals = [...all, ...(S.same ? same : [])].filter(Number.isFinite);
+  const vals = [...all, ...(S.same ? same : []), ...(PROF.region ? [...PROF.reg, ...PROF.rest] : [])].filter(Number.isFinite);
   if (!vals.length) return;
   let lo = Math.min(0, ...vals), hi = Math.max(...vals); if (S.part === 'bias') { const m = Math.max(Math.abs(lo), Math.abs(hi)); lo = -m; hi = m; }
   if (hi === lo) hi = lo + 1;
@@ -280,7 +311,13 @@ function drawProfile() {
   if (S.same) { g.fillStyle = 'rgba(26,92,168,0.08)'; g.fillRect(L, Y(z[k0]), W - L - R, Math.max(2, Y(z[k1]) - Y(z[k0]))); }
   const line = (arr, col, w) => { g.strokeStyle = col; g.lineWidth = w; g.beginPath(); let on = false;
     for (let k = 0; k < arr.length; k++) { if (!Number.isFinite(arr[k])) { on = false; continue; } const x = X(arr[k]), y = Y(z[k]); if (on) g.lineTo(x, y); else { g.moveTo(x, y); on = true; } } g.stroke(); };
-  line(all, '#c0392b', 1.6); if (S.same) line(same, '#1a5ca8', 2);
+  // with a region: the curves are over the region's bins and the rest's bins (with "same bins": of those, the
+  // bins with data at every level of the range); levels with fewer than MIN_BINS region bins are drawn faint
+  if (PROF.region) {
+    const faint = (arr, nn) => arr.map((v, k) => nn[k] >= MIN_BINS ? v : NaN);
+    line(PROF.rest, 'rgba(90,90,90,0.9)', 1.6); line(PROF.reg, 'rgba(108,52,131,0.3)', 2); line(faint(PROF.reg, PROF.nbr), '#6c3483', 2.4);
+    line(all, 'rgba(192,57,43,0.55)', 1.2);
+  } else { line(all, '#c0392b', 1.6); if (S.same) line(same, '#1a5ca8', 2); }
   // number of bins on a log axis at the right edge
   const nmax = Math.max(...nb, 1), XN = n => W - R + 6 + (R - 12) * Math.log10(Math.max(n, 1)) / Math.log10(Math.max(nmax, 10));
   g.strokeStyle = '#999'; g.lineWidth = 1; g.beginPath(); let on = false;
@@ -288,12 +325,81 @@ function drawProfile() {
   g.fillStyle = '#777'; g.textAlign = 'center'; g.fillText('# bins', W - R / 2, H - B + 4); g.fillText('(log)', W - R / 2, H - B + 16);
   // legend at the bottom left (deep water, where the curves are short of the left edge less often: drawn on a white box)
   g.font = '11px sans-serif'; g.textAlign = 'left';
-  const leg = [['all bins with data', '#c0392b']]; if (S.same) leg.push([`same ${PROF.nkeep} bins (data at every level ${z[k0]}–${z[k1]} m)`, '#1a5ca8']);
+  const sameTxt = S.same ? ` (of the ${PROF.nkeep} bins with data at every level ${z[k0]}–${z[k1]} m)` : '';
+  const leg = PROF.region
+    ? [['all bins with data', 'rgba(192,57,43,0.55)'], ['region' + sameTxt + (`; faint: under ${MIN_BINS} bins`), '#6c3483'], ['rest of the world' + sameTxt, 'rgba(90,90,90,0.9)']]
+    : [['all bins with data', '#c0392b']].concat(S.same ? [[`same ${PROF.nkeep} bins (data at every level ${z[k0]}–${z[k1]} m)`, '#1a5ca8']] : []);
   const lw = Math.max(...leg.map(([t]) => g.measureText(t).width)) + 30, ly = H - B - 8 - 15 * leg.length;
   g.fillStyle = 'rgba(255,255,255,0.92)'; g.fillRect(W - R - lw - 6, ly - 4, lw, 15 * leg.length + 6);
   leg.forEach(([t, col], i) => { g.strokeStyle = col; g.lineWidth = 2; g.beginPath(); g.moveTo(W - R - lw, ly + 6 + 15 * i); g.lineTo(W - R - lw + 18, ly + 6 + 15 * i); g.stroke();
     g.fillStyle = '#333'; g.textBaseline = 'middle'; g.fillText(t, W - R - lw + 22, ly + 6 + 15 * i); });
   document.getElementById('sbnote').textContent = S.same ? `${PROF.nkeep} bins have data at every level from ${z[k0]} to ${z[k1]} m` : '';
+}
+
+// ---------- the region panel: shares, per-year region vs rest, the region's top bins ----------
+async function drawRegion(d) {
+  const box = document.getElementById('regp');
+  if (!REGION || !REGION.size) { box.style.display = 'none'; return; }
+  box.style.display = '';
+  const yd = (!S.all && S.part !== 'mean') ? await yearData(S.src, S.ct) : null;
+  const lb = levelBinValues(d, yd), lv = levelsSelected(), lset = lv ? new Set(lv) : null;
+  // per bin over the selected levels: sum of the bin's level values (the map value is their mean), points, levels
+  const per = new Map();
+  // points per bin come from the cost records (the mean term has one value per bin and level, no points)
+  const pts = new Map(), cc = (!S.all && S.part !== 'mean') ? yd[S.V] : d[S.V];
+  for (let i = 0; i < cc.bin.length; i++) { if (lset && !lset.has(cc.lev[i])) continue; if (!S.all && S.part !== 'mean' && (cc.blk[i] < S.t0 || cc.blk[i] > S.t1)) continue;
+    pts.set(cc.bin[i], (pts.get(cc.bin[i]) || 0) + cc.n[i]); }
+  for (const [k, m] of lb) { if (lset && !lset.has(k)) continue;
+    for (const [b, [x, w]] of m) { const v = S.part === 'count' ? x : x / w; const e = per.get(b) || [0, 0, 0]; e[0] += v; e[2] += 1; per.set(b, e); } }
+  for (const [b, e] of per) e[1] = pts.get(b) || 0;
+  const tot = {s: 0, n: 0, pts: 0}, rg = {s: 0, n: 0, pts: 0};
+  for (const [b, [sv, pts, nl]] of per) { tot.s += sv; tot.n += nl; tot.pts += pts; if (REGION.has(b)) { rg.s += sv; rg.n += nl; rg.pts += pts; } }
+  const nbT = per.size, nbR = [...per.keys()].filter(b => REGION.has(b)).length;
+  const pc = (a, b) => b ? (100 * a / b).toFixed(1) + ' %' : '–', mean = (s, n) => n ? fmt(s / n) : '–';
+  const what = S.part === 'count' ? '# points' : S.part === 'bias' ? 'obs − ref' : S.part === 'mean' ? 'mean term' : S.part + ' cost';
+  const additive = S.part !== 'bias';
+  let h = `<table><tr><th></th><th>bins with data</th><th>points</th><th>mean per bin and level</th>${additive ? '<th>share of the summed ' + what + '</th>' : ''}</tr>` +
+    `<tr><td>region</td><td>${nbR} (${pc(nbR, nbT)})</td><td>${Math.round(rg.pts).toLocaleString()} (${pc(rg.pts, tot.pts)})</td><td>${mean(rg.s, rg.n)}</td>${additive ? '<td><b>' + pc(rg.s, tot.s) + '</b></td>' : ''}</tr>` +
+    `<tr><td>rest of the world</td><td>${nbT - nbR}</td><td>${Math.round(tot.pts - rg.pts).toLocaleString()}</td><td>${mean(tot.s - rg.s, tot.n - rg.n)}</td>${additive ? '<td>' + pc(tot.s - rg.s, tot.s) + '</td>' : ''}</tr>` +
+    `<tr><td>all</td><td>${nbT}</td><td>${Math.round(tot.pts).toLocaleString()}</td><td>${mean(tot.s, tot.n)}</td>${additive ? '<td>100 %</td>' : ''}</tr></table>`;
+  if (additive && nbR) { const ratio = (rg.s / tot.s) / (nbR / nbT);
+    h += `<span class="dnote">The region holds ${pc(nbR, nbT)} of the bins with data and ${pc(rg.s, tot.s)} of the summed ${what}: ` +
+      `${ratio.toFixed(1)}× its share of bins. A region drawn around the darkest bins will always look important; ` +
+      `compare its share of the term with its share of bins and points, and check the rest-of-the-world curve.</span>`; }
+  if (nbR < MIN_BINS) h += `<br><span class="dnote" style="color:#b03a2e">Only ${nbR} bins with data here: noisy.</span>`;
+  document.getElementById('regsum').innerHTML = h;
+  // the region's top bins
+  const top = [...per].filter(([b]) => REGION.has(b)).sort((a, b) => b[1][0] - a[1][0]).slice(0, 10);
+  let t = `<table><tr><th>bin</th><th>center</th><th>points</th><th>${what} (mean over levels)</th>${additive ? '<th>share of all</th>' : ''}</tr>`;
+  for (const [b, [sv, pts, nl]] of top) { const lo = INDEX.bin_center ? INDEX.bin_center[2 * (b - 1)] : NaN, la = INDEX.bin_center ? INDEX.bin_center[2 * (b - 1) + 1] : NaN;
+    t += `<tr class="pick" data-b="${b}"><td>${b}</td><td>${la.toFixed(1)}°${la >= 0 ? 'N' : 'S'} ${Math.abs(lo).toFixed(1)}°${lo >= 0 ? 'E' : 'W'}</td><td>${Math.round(pts)}</td><td>${fmt(sv / nl)}</td>${additive ? '<td>' + pc(sv, tot.s) + '</td>' : ''}</tr>`; }
+  t += '</table><span class="dnote">The region\'s largest bins at the selected depths (click a row for its breakdown).</span>';
+  document.getElementById('regtop').innerHTML = t;
+  document.querySelectorAll('#regtop tr.pick').forEach(r => r.addEventListener('click', () => showBin(+r.dataset.b)));
+  // per year: region vs rest (the mean term has no years: obs − ref instead)
+  const all = S.all, t0 = S.t0, t1 = S.t1; S.all = false; S.t0 = 0; S.t1 = INDEX.blocks.length - 1;
+  busy('Loading the years for the region…'); await paint();
+  const yAll = await yearData(S.src, S.ct); S.all = all; S.t0 = t0; S.t1 = t1; busy(null);
+  const c = yAll[S.V], val = S.part === 'anomaly' ? c.ma : (S.part === 'bias' || S.part === 'mean') ? c.bias : S.part === 'count' ? null : c.mu;
+  const nb = INDEX.blocks.length, sr = new Float64Array(nb), wr = new Float64Array(nb), so = new Float64Array(nb), wo = new Float64Array(nb), br = new Array(nb).fill(0).map(() => new Set());
+  for (let i = 0; i < c.bin.length; i++) { if (lset && !lset.has(c.lev[i])) continue;
+    const x = val ? val[i] : c.n[i]; if (!Number.isFinite(x)) continue; const w = val ? c.n[i] : 1;
+    if (REGION.has(c.bin[i])) { sr[c.blk[i]] += x * w; wr[c.blk[i]] += w; br[c.blk[i]].add(c.bin[i]); } else { so[c.blk[i]] += x * w; wo[c.blk[i]] += w; } }
+  const cnt = S.part === 'count';
+  const vr = [...sr].map((s, i) => wr[i] ? (cnt ? s : s / wr[i]) : NaN), vo = [...so].map((s, i) => wo[i] ? (cnt ? s : s / wo[i]) : NaN);
+  const cv = document.getElementById('rcan'), g = cv.getContext('2d'), W = cv.width, H = cv.height; g.clearRect(0, 0, W, H);
+  const okv = [...vr, ...(cnt ? [] : vo)].filter(Number.isFinite); if (!okv.length) return;
+  let lo = Math.min(0, ...okv), hi = Math.max(0, ...okv); if (hi === lo) hi = lo + 1; const pad = 0.08 * (hi - lo); if (lo < 0) lo -= pad; if (hi > 0) hi += pad;
+  const L = 50, R2 = 10, T = 18, B = 24, bw = (W - L - R2) / nb, yv = x => T + (H - T - B) * (hi - x) / (hi - lo);
+  g.font = '10px sans-serif'; g.fillStyle = '#444'; g.textAlign = 'right'; g.textBaseline = 'middle';
+  for (const tk of niceTicks(lo, hi, 4)) { g.fillText(fmt(tk), L - 4, yv(tk)); g.strokeStyle = '#eee'; g.beginPath(); g.moveTo(L, yv(tk)); g.lineTo(W - R2, yv(tk)); g.stroke(); }
+  for (let i = 0; i < nb; i++) { if (!Number.isFinite(vr[i])) continue; g.fillStyle = br[i].size >= MIN_BINS ? '#6c3483' : 'rgba(108,52,131,0.3)';
+    const a = yv(Math.max(0, Math.min(vr[i], hi))), b2 = yv(Math.min(0, Math.max(vr[i], lo))); g.fillRect(L + i * bw + 1, Math.min(a, b2), bw - 2, Math.max(1, Math.abs(b2 - a))); }
+  if (!cnt) { g.strokeStyle = 'rgba(90,90,90,0.9)'; g.lineWidth = 1.5; g.beginPath(); let on = false;
+    for (let i = 0; i < nb; i++) { if (!Number.isFinite(vo[i])) { on = false; continue; } const x = L + (i + 0.5) * bw, y = yv(vo[i]); if (on) g.lineTo(x, y); else { g.moveTo(x, y); on = true; } } g.stroke(); }
+  g.textAlign = 'center'; g.textBaseline = 'top'; g.fillStyle = '#444';
+  for (let i = 0; i < nb; i += 5) g.fillText(INDEX.blocks[i], L + (i + 0.5) * bw, H - B + 4);
+  g.textAlign = 'left'; g.fillText(`per year at the selected depths: ${S.part === 'mean' ? 'obs − ref' : PARTS[S.part]} — bars: region (faint: under ${MIN_BINS} bins)` + (cnt ? '' : '; line: rest of the world'), L, 2);
 }
 
 // ---------- the clicked bin: its values at the selected depths, per level and per year, and links ----------
@@ -422,6 +528,13 @@ function drawMap(canvas, view, vals, vmax) {
     if (!Number.isFinite(v)) { px[q] = px[q + 1] = px[q + 2] = 255; px[q + 3] = 255; continue; }
     const [r, gg, bb] = color(scale(v, vmax)); px[q] = r; px[q + 1] = gg; px[q + 2] = bb; px[q + 3] = 255;
   }
+  if (REGION && REGION.size) {                // the region's outline: pixels in it next to pixels outside it
+    for (let y = 0; y < ny; y++) for (let x = 0; x < nx; x++) {
+      const p = y * nx + x, b = g[p]; if (b <= 0 || !REGION.has(b)) continue;
+      const out = (xx, yy) => xx < 0 || yy < 0 || xx >= nx || yy >= ny || !REGION.has(g[yy * nx + xx]);
+      if (out(x + 1, y) || out(x - 1, y) || out(x, y + 1) || out(x, y - 1)) { const q = 4 * p; px[q] = 108; px[q + 1] = 52; px[q + 2] = 131; px[q + 3] = 255; }
+    }
+  }
   ctx.putImageData(img, 0, 0);
   ctx.strokeStyle = 'rgba(120,120,120,0.8)'; ctx.lineWidth = 0.6;
   for (const poly of GRID[view].coast) {
@@ -513,6 +626,7 @@ async function render() {
   for (const view of ['global', 'NH', 'SH']) drawMap(document.getElementById('c_' + view), view, VALS, vmax);
   drawBar(vmax);
   PROF = profileCurves(d, (!S.all && S.part !== 'mean') ? await yearData(S.src, S.ct) : null); drawProfile();
+  drawRegion(d);
   if (PICK) showBin(PICK);
   syncControls();
   const nb = VALS.filter(Number.isFinite).length;
@@ -599,9 +713,25 @@ async function init() {
     box.querySelector('canvas').addEventListener('mousemove', e => hover(e, v));
     box.querySelector('canvas').addEventListener('mouseleave', () => document.getElementById('hover').style.display = 'none');
     const cv = box.querySelector('canvas'); cv.classList.add('clickable');
-    cv.addEventListener('click', e => { const r = cv.getBoundingClientRect();
-      const x = Math.floor((e.clientX - r.left) / r.width * GRID[v].nx), y = Math.floor((e.clientY - r.top) / r.height * GRID[v].ny);
-      const b = GRIDS[v][y * GRID[v].nx + x]; if (b > 0) showBin(b); });
+    const pix = e => { const r = cv.getBoundingClientRect();
+      return [Math.max(0, Math.min(GRID[v].nx - 1, Math.floor((e.clientX - r.left) / r.width * GRID[v].nx))),
+              Math.max(0, Math.min(GRID[v].ny - 1, Math.floor((e.clientY - r.top) / r.height * GRID[v].ny)))]; };
+    let drag = null;
+    cv.addEventListener('mousedown', e => { if (!REGMODE) return; e.preventDefault(); drag = {x: e.clientX, y: e.clientY, p: pix(e), rm: e.shiftKey}; });
+    window.addEventListener('mousemove', e => { if (!drag) return; const bx = document.getElementById('regbox');
+      bx.style.display = 'block'; bx.style.left = Math.min(drag.x, e.clientX) + 'px'; bx.style.top = Math.min(drag.y, e.clientY) + 'px';
+      bx.style.width = Math.abs(e.clientX - drag.x) + 'px'; bx.style.height = Math.abs(e.clientY - drag.y) + 'px';
+      bx.style.borderColor = drag.rm ? '#b03a2e' : '#6c3483'; });
+    window.addEventListener('mouseup', e => { if (!drag) return; document.getElementById('regbox').style.display = 'none';
+      const [x0, y0] = drag.p, [x1, y1] = pix(e), rm = drag.rm, small = Math.abs(e.clientX - drag.x) < 4 && Math.abs(e.clientY - drag.y) < 4; drag = null;
+      if (small) return;                         // a click, handled below
+      REGION = REGION || new Set();
+      for (let y = Math.min(y0, y1); y <= Math.max(y0, y1); y++) for (let x = Math.min(x0, x1); x <= Math.max(x0, x1); x++) {
+        const b = GRIDS[v][y * GRID[v].nx + x]; if (b > 0) { if (rm) REGION.delete(b); else REGION.add(b); } }
+      regionChanged(); });
+    cv.addEventListener('click', e => { const [x, y] = pix(e), b = GRIDS[v][y * GRID[v].nx + x]; if (b <= 0) return;
+      if (e.shiftKey) { REGION = REGION || new Set(); if (REGION.has(b)) REGION.delete(b); else REGION.add(b); regionChanged(); }
+      else if (!REGMODE) showBin(b); });
   }
   // same-bins controls: default range 2000-2800 m if the grid has it
   const opt = INDEX.depth.map((z, k) => `<option value="${k}">${z} m</option>`).join('');
@@ -609,6 +739,10 @@ async function init() {
   const near = m => INDEX.depth.reduce((a, z, k) => Math.abs(z - m) < Math.abs(INDEX.depth[a] - m) ? k : a, 0);
   S.sb0 = near(2000); S.sb1 = near(2800);
   document.getElementById('sb0').value = S.sb0; document.getElementById('sb1').value = S.sb1;
+  document.getElementById('regmode').addEventListener('click', e => { REGMODE = !REGMODE; e.target.classList.toggle('armed', REGMODE);
+    e.target.textContent = REGMODE ? 'selecting: drag on a map (click here when done)' : 'select region';
+    document.querySelectorAll('#maps canvas').forEach(c => c.style.cursor = REGMODE ? 'crosshair' : 'pointer'); });
+  document.getElementById('regclear').addEventListener('click', () => { REGION = null; regionChanged(); });
   document.getElementById('samebins').addEventListener('change', e => { S.same = e.target.checked; render(); });
   document.getElementById('sb0').addEventListener('change', e => { S.sb0 = +e.target.value; if (S.same) render(); });
   document.getElementById('sb1').addEventListener('change', e => { S.sb1 = +e.target.value; if (S.same) render(); });
