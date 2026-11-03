@@ -69,8 +69,8 @@ select { font-size: 0.85em; }
     <button class="btn" id="tl0" title="first year earlier">&#9664;</button><button class="btn" id="tr0" title="first year later">&#9654;</button>
     <button class="btn" id="tl1" title="last year earlier">&#9664;</button><button class="btn" id="tr1" title="last year later">&#9654;</button>
     <button class="btn" id="shl" title="shift the window one year earlier ([)">&#9664;&#9664;</button><button class="btn" id="shr" title="shift the window one year later (])">&#9654;&#9654;</button></span>
-  <span class="grp"><span class="lab">view</span><button class="btn" id="reset" title="reset zoom (9)">reset zoom</button>
-    <button class="btn" id="resetall" title="reset zoom and depth (0)">reset all</button>
+  <span class="grp"><span class="lab">view</span><button class="btn" id="reset" title="back to the whole map (9)">&#8962;&#xFE0E; home</button>
+    <button class="btn" id="resetall" title="whole map and first depth level (0)">reset all</button>
     <button class="btn on" id="bathy" title="faint isobaths: 200 (shelf edge, darker), 1000, 2000, 3000, 4000, 5000 m">isobaths</button></span>
   <span class="grp"><span class="lab">max cells/bin</span><select id="cap"><option>250</option><option>500</option><option selected>1000</option><option>2000</option><option>5000</option></select></span>
 </div>
@@ -83,7 +83,7 @@ select { font-size: 0.85em; }
 </div>
 <div id="caption"></div>
 <div id="keys">Keyboard (mouse over the page): 1 and 2 change depth level, 3 and 4 change variable, 8 resets the depth level,
-  9 resets the zoom, 0 resets both; [ and ] shift the time window. Scroll to zoom, drag to pan.</div>
+  9 goes home (the whole map), 0 also resets the depth; [ and ] shift the time window. Scroll to zoom, drag to pan.</div>
 <details id="guide"><summary>Guide: how this page works, and how it relates to the original app</summary>__GUIDE__</details>
 <script>
 'use strict';
@@ -304,6 +304,10 @@ function draw() {
       getLineColor: [38, 38, 38, 217], getLineWidth: d => d.n === 1 ? 0 : cellLw, lineWidthUnits: 'pixels', stroked: true}),
     new deck.PathLayer({id: 'bathy', data: SHOW_BATHY ? BATHY : [], getPath: d => d.p,
       getColor: d => d.d === 200 ? [40, 40, 40, 110] : [60, 60, 60, 60], getWidth: d => d.d === 200 ? 0.7 : 0.5, widthUnits: 'pixels'}),
+    new deck.TextLayer({id: 'bathylab', data: bathyLabels(vs), getPosition: d => d.pos, getText: d => d.text,
+      getAngle: d => d.ang, getSize: 9, getColor: d => d.shelf ? [60, 60, 60, 230] : [90, 90, 90, 200],
+      outlineWidth: 3, outlineColor: [255, 255, 255, 220], fontFamily: 'Helvetica, Arial, sans-serif',
+      fontSettings: {sdf: true, fontSize: 64, buffer: 10, radius: 16, cutoff: 0.2}, characterSet: '0123456789'}),
     new deck.PathLayer({id: 'borders', data: micro && !overBudget ? visible : [],
       getPath: d => d[0].ring, getColor: d => edgeColor(d[1].std, SC), getWidth: borderLw, widthUnits: 'pixels'}),
     new deck.PathLayer({id: 'coast', data: COAST, getPath: d => d, _pathType: 'loop', getColor: [0, 0, 0], getWidth: 0.5 * PT, widthUnits: 'pixels'}),
@@ -383,8 +387,43 @@ async function loadCoast() {
   COAST = LAND.flat();
   try {                                // isobaths: optional (older data folders have none)
     for (const L of JSON.parse(new TextDecoder().decode(await gz(DATA_URL + '/bathy.json'))))
-      for (const p of L.paths) BATHY.push({p, d: L.depth});
+      for (const p of L.paths) {
+        let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9; const cum = new Float32Array(p.length);
+        for (let i = 0; i < p.length; i++) { const [x, y] = p[i];
+          if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y;
+          if (i) cum[i] = cum[i - 1] + Math.hypot(x - p[i - 1][0], y - p[i - 1][1]); }
+        BATHY.push({p, d: L.depth, bbox: [x0, y0, x1, y1], cum});
+      }
   } catch (e) { document.getElementById('bathy').disabled = true; }
+}
+// Depth labels along the isobaths, map style: the number written along the line, upright, with a white halo.
+// Thinned: only lines at least ~250 px long on screen, one label per ~450 px of line, and never two labels
+// within ~110 px of each other (screen grid), so the labels stay sparse at every zoom.
+function bathyLabels(vs) {
+  if (!SHOW_BATHY) return [];
+  const [vx0, vy0, vx1, vy1] = viewBounds(vs), px = 1 / Math.pow(2, vs.zoom), step = 450 * px, gap = 110 * px;
+  const taken = new Set(), out = [];
+  const lines = BATHY.filter(b => { const [x0, y0, x1, y1] = b.bbox;
+    return !(x1 < vx0 || x0 > vx1 || y1 < vy0 || y0 > vy1) && b.cum[b.cum.length - 1] >= 250 * px; });
+  lines.sort((a, b) => (a.d === 200 ? -1 : 0) - (b.d === 200 ? -1 : 0) || b.cum[b.cum.length - 1] - a.cum[a.cum.length - 1]);
+  for (const b of lines) {
+    const L = b.cum[b.cum.length - 1];
+    let i = 1;
+    for (let at = step / 2; at < L; at += step) {
+      while (i < b.cum.length - 1 && b.cum[i] < at) i++;
+      const [ax, ay] = b.p[i - 1], [bx, by] = b.p[i], f = (at - b.cum[i - 1]) / Math.max(1e-9, b.cum[i] - b.cum[i - 1]);
+      const x = ax + f * (bx - ax), y = ay + f * (by - ay);
+      if (x < vx0 || x > vx1 || y < vy0 || y > vy1) continue;
+      const cell = Math.floor(x / gap) + ',' + Math.floor(y / gap);
+      if (taken.has(cell)) continue;
+      for (let dx = -1; dx <= 1; dx++) for (let dy = -1; dy <= 1; dy++) taken.add((Math.floor(x / gap) + dx) + ',' + (Math.floor(y / gap) + dy));
+      let ang = Math.atan2(by - ay, bx - ax) * 180 / Math.PI;
+      if (ang > 90) ang -= 180; else if (ang < -90) ang += 180;
+      out.push({pos: [x, y], text: String(b.d), ang, shelf: b.d === 200});
+      if (out.length > 300) return out;
+    }
+  }
+  return out;
 }
 function grid(vs) {                 // cartopy-like gridlines and labels, step chosen from the view width
   const [x0, y0, x1, y1] = viewBounds(vs), span = Math.min(x1 - x0, (y1 - y0) * 2);
@@ -448,7 +487,21 @@ function syncTime() {
   f.style.left = (S.all ? 0 : 100 * S.t0 / N) + '%'; f.style.width = (S.all ? 100 : 100 * (S.t1 - S.t0) / N) + '%';
   document.getElementById('tlab').textContent = S.all ? 'all years' : S.t0 === S.t1 ? `${INDEX.years0 + S.t0}` : `${INDEX.years0 + S.t0}–${INDEX.years0 + S.t1}`;
 }
-function resetZoom() { VIEW = {...GLOBAL_VIEW}; DECK.setProps({initialViewState: {...GLOBAL_VIEW, transitionDuration: 0}}); draw(); }
+// The page owns the view (deck.gl's viewState prop): every change goes through setView, which keeps the map
+// on screen (no panning past the map's edges, no zooming out past the whole map). Home = the whole map.
+function clampView(v) {
+  const el = document.getElementById('map'), s = 1 / Math.pow(2, v.zoom);   // degrees per pixel
+  const zoom = Math.max(GLOBAL_VIEW.zoom, Math.min(GLOBAL_VIEW.maxZoom, v.zoom)), d = 1 / Math.pow(2, zoom);
+  const hw = el.clientWidth / 2 * d, hh = el.clientHeight / 2 * d;
+  const cx = hw >= 180 ? 0 : Math.max(-180 + hw, Math.min(180 - hw, v.target[0]));
+  const cy = hh >= 90 ? 0 : Math.max(-90 + hh, Math.min(90 - hh, v.target[1]));
+  return {...GLOBAL_VIEW, target: [cx, cy, 0], zoom};
+}
+function setView(v, now) {
+  VIEW = clampView(v); DECK.setProps({viewState: VIEW});
+  clearTimeout(setView.t); if (now) draw(); else setView.t = setTimeout(draw, 60);
+}
+function resetZoom() { setView(GLOBAL_VIEW, true); }
 
 // ---------- start ----------
 async function init() {
@@ -460,15 +513,20 @@ async function init() {
   // ?src=<class> opens on that class; ?back=<url> adds a link back to the report that opened the viewer
   const q = new URLSearchParams(location.search), want = q.get('src'), back = q.get('back');
   S.src = want && INDEX.classes[want] ? want : INDEX.classes.CTD_WOD ? 'CTD_WOD' : Object.keys(INDEX.classes)[0]; fixVar();
-  if (back && /^https?:\/\//.test(back)) { const a = document.getElementById('back'); a.href = back; a.style.display = ''; }
+  if (back && /^https?:\/\//.test(back)) {
+    const a = document.getElementById('back'); a.href = back; a.style.display = '';
+    // came from the report in this tab: go back to it (the report keeps its place); otherwise open it
+    a.onclick = e => { if (document.referrer && document.referrer.split('?')[0] === back && history.length > 1) { e.preventDefault(); history.back(); } };
+  }
   const el = document.getElementById('mapbox'), size = () => { const w = el.clientWidth; el.style.height = Math.round(w / 2) + 'px'; };
-  size(); window.addEventListener('resize', () => { size(); draw(); });
+  size(); window.addEventListener('resize', () => { size(); if (DECK) { const z0 = Math.log2(el.clientWidth / 360);
+    GLOBAL_VIEW = {...GLOBAL_VIEW, zoom: z0, minZoom: z0, maxZoom: z0 + 9}; setView(VIEW, true); } });
   const z0 = Math.log2(el.clientWidth / 360);   // OrthographicView: zoom 0 = 1 px per degree
-  GLOBAL_VIEW = {target: [0, 0, 0], zoom: z0, minZoom: z0 - 0.5, maxZoom: z0 + 9};
+  GLOBAL_VIEW = {target: [0, 0, 0], zoom: z0, minZoom: z0, maxZoom: z0 + 9};
   VIEW = {...GLOBAL_VIEW};
   DECK = new deck.DeckGL({container: 'map', views: new deck.OrthographicView({id: 'o', flipY: false}),
-    initialViewState: GLOBAL_VIEW, controller: {doubleClickZoom: false}, getCursor: () => 'crosshair',
-    onViewStateChange: ({viewState}) => { VIEW = viewState; clearTimeout(init.t); init.t = setTimeout(draw, 60); return viewState; }});
+    viewState: GLOBAL_VIEW, controller: {doubleClickZoom: false}, getCursor: () => 'crosshair',
+    onViewStateChange: ({viewState}) => setView(viewState)});
   setupControls(); fillDepth(); fillTime();
   await recompute();
 }

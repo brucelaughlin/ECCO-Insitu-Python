@@ -72,8 +72,8 @@ types, and have the same layout in every class. Click a figure to see it full wi
 the description and Terminology. Top right, from left: **Notes & errata** (outlined button: interpretation,
 data notes, open decisions and corrections), **Cost map explorer** (the interactive cost maps, below) and
 **In situ data viewer** (the observations themselves; a web copy of the original geodesic-binning app,
-`docs/bin_viewer.md`). Both explorer buttons open on the class shown in the report; the viewer opens in a
-new tab and links back. The viewer button appears only when the report is built with
+`docs/bin_viewer.md`). Both explorer buttons open on the class shown in the report, in the same tab; the
+viewer's "← report" button goes back to it. The viewer button appears only when the report is built with
 `--bin-viewer <URL>` (step 3 below).
 
 Choices made, all reversible:

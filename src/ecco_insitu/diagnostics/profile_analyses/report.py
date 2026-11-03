@@ -510,8 +510,8 @@ data reproduce analysis&nbsp;2 at the levels tested.</li>
 copy of the team&rsquo;s original geodesic-binning app: T and S anomalies (observation minus climatology) per
 geodesic bin, at any depth level and any range of years; zoomed in, one cell per profile with its true location.
 Only values the chain kept (weight&nbsp;&gt;&nbsp;0). Checked: its bin counts, means and standard deviations
-reproduce a direct computation from the yearly files (GLD 2017, level 1). It opens in a new tab on the class
-shown here; its own Guide lists every difference from the original app.</li>
+reproduce a direct computation from the yearly files (GLD 2017, level 1). It opens on the class shown here, and
+its &larr;&nbsp;report button comes back; its own Guide lists every difference from the original app.</li>
 <li><strong>Two small differences from <code>model-cost</code>:</strong> profiles without a geodesic bin (about
 14,000 of 441 million weighted values in run 20261027_142247) have no split cost here; and points whose
 climatology is missing are left out of all costs here, while ECCO keeps them in the model cost
@@ -1129,8 +1129,8 @@ render();
     <span class="hdr-link hdr-notes" id="toggle-notes" title="Interpretation notes, decisions and known issues">Notes &amp; errata</span>
     <a class="explorer-btn" id="map-explorer" href="viewer.html" style="display:none"
        title="Interactive cost maps: any depth level or band, any years, unsplit / split / bias">Cost map explorer</a>
-    <a class="explorer-btn" id="bin-viewer" href="#" target="_blank" rel="noopener" style="display:none"
-       title="The data themselves: T and S anomalies per geodesic bin, zoom in to every profile (opens in a new tab)">In situ data viewer &#x2197;&#xFE0E;</a>
+    <a class="explorer-btn" id="bin-viewer" href="#" style="display:none"
+       title="The data themselves: T and S anomalies per geodesic bin, zoom in to every profile">In situ data viewer</a>
   </span>
 </div>
 <div id="nav">

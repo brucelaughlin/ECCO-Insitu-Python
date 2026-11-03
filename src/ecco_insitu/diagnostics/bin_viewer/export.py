@@ -374,7 +374,9 @@ while the time window changes. (3) The original showed one yearly file; this pag
 files of the class. (4) If more than CELL_BUDGET cells would be in view, bins stay whole until you zoom further
 (the browser's limit, not the original's). (5) Plain lon/lat map (as the original), drawn with WebGL (deck.gl).
 (6) Faint isobaths (200, 1000, 2000, 3000, 4000, 5000 m; Natural Earth), not in the original; the 200 m line (the
-shelf edge) is a little darker. The "isobaths" button turns them off.</p>
+shelf edge) is a little darker; each is labeled with its depth in meters along the line. The "isobaths" button
+turns them off. (7) The view stays on the map: you can't pan past its edges or zoom out past it; "home" (or 9)
+returns to the whole map.</p>
 <p>Data: profiles.bin + one file per variable and depth level per class, written by
 <code>ecco_insitu.diagnostics.bin_viewer.export</code>; loaded on demand and cached for the session.</p>
 """
