@@ -955,7 +955,7 @@ function availableCosts(src) {{
   return COST_TYPES.filter(ct => ANALYSES.some(an => exists(src, ct, an)));
 }}
 
-function render() {{
+var render = function () {{
   // source tabs
   document.querySelectorAll('.src-tab').forEach(t =>
     t.classList.toggle('active', t.dataset.src === curSource)
@@ -1012,7 +1012,7 @@ function render() {{
   const d = DESCS[curAn] || ['', ''];
   document.getElementById('desc-title').textContent = d[0];
   document.getElementById('desc-body').innerHTML = d[1];
-}}
+}};
 
 function selectSource(src) {{
   // keep the cost type and analysis if this source has them
@@ -1120,7 +1120,20 @@ fetch('viewer/index.json', {{method: 'HEAD'}}).then(r => {{
   if (r.ok) {{ HAS_EXPLORER = true; document.getElementById('map-explorer').style.display = ''; render(); }}
 }}).catch(() => {{}});
 
-curAn = firstExisting(curSource, curCost);
+// the address holds the view (?src=&ct=&an=&band=&part=), so a view can be linked (the questions page does)
+{{
+  const q = new URLSearchParams(location.search);
+  if (q.get('src') && SOURCES.includes(q.get('src'))) curSource = q.get('src');
+  if (q.get('ct') && COST_TYPES.includes(q.get('ct'))) curCost = q.get('ct');
+  if (q.get('band')) curBand = q.get('band');
+  if (q.get('part')) curPart = q.get('part');
+  curAn = q.get('an') && exists(curSource, curCost, q.get('an')) ? q.get('an') : firstExisting(curSource, curCost);
+}}
+const renderInner = render;
+render = function () {{ renderInner();
+  const q = new URLSearchParams({{src: curSource, ct: curCost}}); if (curAn) q.set('an', curAn);
+  if (curBand && curBand !== 'all') q.set('band', curBand); if (curPart && curPart !== 'unsplit') q.set('part', curPart);
+  history.replaceState(null, '', location.pathname + '?' + q.toString()); }};
 render();
 """
 
@@ -1139,6 +1152,7 @@ render();
   <span class="hdr-link" id="toggle-side-meta">Metadata</span>
   <span style="color:#ccc;font-size:0.8em;margin-left:0.5em">← → cycle sources &nbsp; ↑ ↓ cycle analyses</span>
   <span class="hdr-right">
+    <a class="hdr-link hdr-notes" href="questions.html" title="Common questions, each opening a page set up to answer it" style="color:#fff;background:#6c3483;border-color:#6c3483">What do you want to know?</a>
     <a class="hdr-link hdr-notes" href="guide.html" title="How to use the report, the explorer and the data viewer; how the attribution works">Guide</a>
     <span class="hdr-link hdr-notes" id="toggle-notes" title="This run's findings, decisions and corrections" style="margin-right:1.6em">Notes &amp; errata</span>
     <a class="explorer-btn" id="map-explorer" href="viewer.html" style="display:none"
@@ -1349,6 +1363,12 @@ def compile_report(input_dirs, out_dir, title=None, flat=False, portable=False,
         from ecco_insitu.diagnostics.profile_analyses import guide
         (out_dir / 'guide.html').write_text(guide.page(title, bin_viewer), encoding='utf-8')
         print('      + guide.html: the user guide (how the pages and the attribution work)')
+        from ecco_insitu.diagnostics.profile_analyses import questions
+        idx = json.loads((out_dir / 'viewer' / 'index.json').read_text()) if (out_dir / 'viewer' / 'index.json').exists() else {}
+        srcs = sorted({k.split('|')[0] for k in idx.get('files', {})}) or sorted({m.get('source', '') for _, m in metas})
+        cts = sorted({k.split('|')[1] for k in idx.get('files', {})}) or ['vs_clim']
+        (out_dir / 'questions.html').write_text(questions.page(title, srcs, cts, idx.get('depth', []), bin_viewer), encoding='utf-8')
+        print('      + questions.html: common questions as links to preset views')
         print(f'      Ready for GitHub Pages (see ecco-insitu publish-reports).')
     return out_dir
 
