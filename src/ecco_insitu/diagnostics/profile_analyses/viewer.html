@@ -72,6 +72,17 @@ canvas { border: 1px solid #ccc; display: block; }
 .dnote { font-size: 0.78em; color: #888; font-style: italic; margin-left: 0.6em; }
 #status { color: #888; font-size: 0.85em; padding: 0 1em; }
 #info { padding: 0.4em 1em 1em; font-size: 0.85em; color: #444; line-height: 1.5; max-width: 70em; }
+details.tool { margin: 0.4em 1em 0.2em; border: 1px solid #ddd2ea; border-radius: 6px; background: #faf8fc; }
+details.tool > summary { cursor: pointer; padding: 0.45em 0.8em; font-size: 0.9em; list-style: none; }
+details.tool > summary::-webkit-details-marker { display: none; }
+details.tool > summary::before { content: '▶ '; color: #6c3483; font-size: 0.8em; }
+details.tool[open] > summary::before { content: '▼ '; }
+#toolrow { display: flex; gap: 1.2em; padding: 0 0.8em 0.7em; flex-wrap: nowrap; align-items: flex-start; }
+#toolrow #prof { flex: 0 0 auto; max-width: 575px; }
+#toolrow #prof .rangebox { max-width: 545px; }
+#toolrow #peakp { flex: 1 1 auto; min-width: 26em; }
+#peaknotice { margin: 0.3em 1em 0; padding: 0.4em 0.8em; background: #f4effa; border-left: 3px solid #6c3483; font-size: 0.86em; line-height: 1.5; }
+#peaknotice button { margin-left: 0.6em; }
 #lower { display: flex; gap: 1.2em; padding: 0 1em 1em; flex-wrap: wrap; align-items: flex-start; }
 .panel { border: 1px solid #ddd; border-radius: 5px; padding: 0.5em 0.7em; background: #fcfcfc; }
 .ptitle { font-weight: 600; font-size: 0.9em; margin-bottom: 0.3em; }
@@ -130,6 +141,24 @@ canvas.clickable { cursor: pointer; }
     <button class="step" id="shr" title="move the whole window one year later">&#9654;&#9654;</button></span>
   <button class="tab tbtn" id="tone" title="show one year at a time: both handles together">single year</button></div>
 <div id="status"></div>
+<details id="peaktool" class="tool"><summary><b>Optional: depth profile and peak attribution</b>
+  <span class="dnote">&mdash; not needed for the maps. Open to see the selection&rsquo;s cost against depth (as analysis&nbsp;02), choose a
+  depth range around a bump, and find where it comes from (<a href="guide.html#attribution">how it works</a>).</span></summary>
+  <div id="toolrow">
+  <div id="prof" class="panel"><div class="ptitle">Depth profile of the selection <span class="dnote" id="profnote">(as analysis 02)</span></div>
+    <div class="rangebox"><b>Depth range</b> (the shaded band on the plot): from <select id="sb0"></select> to <select id="sb1"></select>
+      <div class="dnote">Set it with the menus, or on the plot: drag the band's top or bottom edge (the handles), drag inside it to move it,
+        or drag across an empty part of the plot to draw a new one. Nothing happens until you use it:</div>
+      <div class="rangeuse"><button class="tab primary" id="peakgo">Investigate the peak in this range</button>
+        <label title="Draw a second curve over only the bins that have data at every level of the range, so it shows changes in the water,
+not changes in which bins are counted"><input type="checkbox" id="samebins"> also draw the curve over the same bins at every depth of the range</label>
+        <button class="tab" id="sbupdate" style="display:none" title="The band moved since the blue curve was drawn">redraw the blue curve for this range</button></div>
+      <span id="sbnote" class="dnote"></span></div>
+    <canvas id="pcan" width="520" height="430"></canvas></div>
+  <div id="peakp" class="panel" style="display:none"><div class="ptitle">Peak <span class="dnote">(the steps are fixed; the numbers are for you to read; <a href="guide.html#attribution">how it works</a>)</span></div>
+    <div id="peaktxt"></div></div>
+  </div></details>
+<div id="peaknotice" style="display:none"></div>
 <div id="mapwrap"><div id="maps"></div>
   <div id="busy"><div class="box"><div class="spin"></div><div><div id="busymsg">working…</div>
     <div class="bar" id="busybar"><div></div></div></div></div></div></div>
@@ -143,18 +172,6 @@ canvas.clickable { cursor: pointer; }
   <button class="tab" id="regclear">clear</button>
   <span id="regtxt" class="dnote">No region. Click "select region", then drag a box on a map (shift-drag removes, shift-click toggles one bin).</span></div>
 <div id="lower">
-  <div id="prof" class="panel"><div class="ptitle">Depth profile of the selection <span class="dnote" id="profnote">(as analysis 02)</span></div>
-    <div class="rangebox"><b>Depth range</b> (the shaded band on the plot): from <select id="sb0"></select> to <select id="sb1"></select>
-      <div class="dnote">Set it with the menus, or on the plot: drag the band's top or bottom edge (the handles), drag inside it to move it,
-        or drag across an empty part of the plot to draw a new one. Nothing happens until you use it:</div>
-      <div class="rangeuse"><button class="tab primary" id="peakgo">Investigate the peak in this range</button>
-        <label title="Draw a second curve over only the bins that have data at every level of the range, so it shows changes in the water,
-not changes in which bins are counted"><input type="checkbox" id="samebins"> also draw the curve over the same bins at every depth of the range</label>
-        <button class="tab" id="sbupdate" style="display:none" title="The band moved since the blue curve was drawn">redraw the blue curve for this range</button></div>
-      <span id="sbnote" class="dnote"></span></div>
-    <canvas id="pcan" width="520" height="430"></canvas></div>
-  <div id="peakp" class="panel" style="display:none"><div class="ptitle">Peak <span class="dnote">(the steps are fixed; the numbers are for you to read; <a href="guide.html#attribution">how it works</a>)</span></div>
-    <div id="peaktxt"></div></div>
   <div id="regp" class="panel" style="display:none"><div class="ptitle">Region vs the rest <span class="dnote">(current class, cost type, variable, cost part, depths, years)</span></div>
     <div id="regsum"></div><canvas id="rcan" width="560" height="190"></canvas><div id="regtop"></div><div id="regplat"></div></div>
   <div id="binp" class="panel"><div class="ptitle">Clicked bin</div><div id="bintxt" class="dnote">Click a bin on a map for its breakdown.</div>
@@ -355,8 +372,10 @@ function drawProfile() {
     for (const y of [ya, yb]) { g.fillStyle = '#6c3483'; g.beginPath(); g.moveTo(L - 1, y - 6); g.lineTo(L + 9, y); g.lineTo(L - 1, y + 6); g.closePath(); g.fill();
       g.beginPath(); g.moveTo(W - R + 1, y - 6); g.lineTo(W - R - 9, y); g.lineTo(W - R + 1, y + 6); g.closePath(); g.fill();
       g.fillRect((L + W - R) / 2 - 14, y - 2, 28, 4); }
-    g.fillStyle = '#6c3483'; g.font = '11px sans-serif'; g.textAlign = 'left'; g.textBaseline = 'bottom';
-    g.fillText(`range ${za}–${zb} m` + (PEAKDONE && PEAKDONE[0] === r0 && PEAKDONE[1] === r1 ? ' (investigated below)' : ''), L + 12, ya - 2);
+    g.font = '11px sans-serif'; g.textAlign = 'right'; g.textBaseline = 'bottom';
+    const lab = `range ${za}–${zb} m` + (PEAKDONE && PEAKDONE[0] === r0 && PEAKDONE[1] === r1 ? ' (investigated: see the right)' : '');
+    const tw = g.measureText(lab).width; g.fillStyle = 'rgba(255,255,255,0.85)'; g.fillRect(W - R - 10 - tw - 3, ya - 15, tw + 6, 14);
+    g.fillStyle = '#6c3483'; g.fillText(lab, W - R - 10, ya - 2);
     RANGEPX = {ya, yb}; }
   const XR = v => L + (W - L - R) * (v - rlo) / (rhi - rlo);          // the region's axis (= X without its own axis)
   const line = (arr, col, w, xf = X) => { g.strokeStyle = col; g.lineWidth = w; g.beginPath(); let on = false;
@@ -407,6 +426,7 @@ const CLUSTER_KM = 600, HIGH_Q = 0.9;
 let PROFGEOM = null, PEAKBAND = null, RANGEPX = null, PEAKDONE = null;   // PEAKDONE: [k0, k1] last investigated   // the plot's depth axis; the depth band being / last investigated                    // the profile plot's depth axis, for mouse -> depth
 function hav(la1, lo1, la2, lo2) { const r = Math.PI / 180, a = Math.sin((la2 - la1) * r / 2) ** 2 + Math.cos(la1 * r) * Math.cos(la2 * r) * Math.sin((lo2 - lo1) * r / 2) ** 2; return 12742 * Math.asin(Math.sqrt(a)); }
 async function investigatePeak(zA, zB) {
+  document.getElementById('peaktool').open = true;          // the tool opens (e.g. from the report's "investigate" link)
   PEAKBAND = [Math.min(zA, zB), Math.max(zA, zB)];
   { // the depth range (menus, band) shows exactly what is investigated
     const zz = INDEX.depth, inb = zz.map((x, k) => k).filter(k => zz[k] >= PEAKBAND[0] && zz[k] <= PEAKBAND[1]);
@@ -467,7 +487,19 @@ async function investigatePeak(zA, zB) {
     'surroundings, use "select region" above the maps and drag a box.</span>';
   out.innerHTML = h;
   out.querySelectorAll('tr.pick').forEach(r => r.addEventListener('click', () => { REGION = new Set(cls[+r.dataset.i].bins); regionChanged(); }));
+  // the maps show the peak level (the clusters are the high bins there); say so above the maps, with a way back
+  const prevDepth = {dmode: S.dmode, dsel: S.dsel};
   if (S.dmode !== 'level' || +S.dsel !== kp) { S.dmode = 'level'; S.dsel = kp; fillDepthSelect(); document.getElementById('dsel').value = kp; }
+  const nt = document.getElementById('peaknotice');
+  nt.innerHTML = `<b>The maps now show ${z[kp]} m</b>, the peak level of ${Math.round(lo)}–${Math.round(hi)} m (the depth row above was set to it); ` +
+    `the purple outline is the largest cluster of high bins <i>at that level</i>.` +
+    (prevDepth.dmode !== 'level' || +prevDepth.dsel !== kp ? `<button class="tab" id="peakback">back to the depth you had</button>` : '') +
+    `<button class="tab" id="peakclear">clear the outline</button>`;
+  nt.style.display = '';
+  const pb = document.getElementById('peakback');
+  if (pb) pb.onclick = () => { S.dmode = prevDepth.dmode; S.dsel = prevDepth.dsel; fillDepthSelect(); document.getElementById('dsel').value = S.dsel;
+    nt.style.display = 'none'; render(); };
+  document.getElementById('peakclear').onclick = () => { REGION = null; nt.style.display = 'none'; regionChanged(); };
   REGION = new Set(cls[0].bins); regionChanged();
 }
 
@@ -1181,7 +1213,7 @@ async function init() {
   await render();
   // ?peak=<from>-<to> (meters): investigate the largest value of the profile in that range (link from the report)
   if (q.get('peak')) { const [a, b] = q.get('peak').split('-').map(Number); if (Number.isFinite(a) && Number.isFinite(b)) {
-    await investigatePeak(a, b); document.getElementById('peakp').scrollIntoView({block: 'start'}); } }
+    await investigatePeak(a, b); document.getElementById('peaktool').scrollIntoView({block: 'start'}); } }
 }
 init().catch(e => status('error: ' + e.message));
 </script>

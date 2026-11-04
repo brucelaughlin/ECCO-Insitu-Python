@@ -69,7 +69,8 @@ diagnostic (obs &minus; reference, not a cost), depth (all, one level, 100&nbsp;
 (all years, or any range; the mean term has no years).</p>
 <p><b>Maps:</b> the global map (equal area) and the two polar maps; each bin colored by the selection. Hover a bin for its value;
 <b>click a bin</b> for its breakdown (the &ldquo;Clicked bin&rdquo; panel: per level, per year, and a link to its profiles).</p>
-<p><b>Depth profile of the selection:</b> the curve analysis&nbsp;02 draws, for the current class, cost type, variable, part and years:
+<p><b>Optional: depth profile and peak attribution</b> (the folded panel between the buttons and the maps; not needed for the maps).
+Open it for the <b>depth profile of the selection</b>: the curve analysis&nbsp;02 draws, for the current class, cost type, variable, part and years:
 for costs, at each level the mean over all its values (cost per datum); for the mean term, the mean over bins; for &ldquo;# points&rdquo;,
 the number of values. On the right, the number of bins per level (log scale).</p>
 <p><b>Depth range</b> (the shaded band on the profile): set it with the from/to menus or on the plot &mdash; drag the band&rsquo;s top or
@@ -149,6 +150,10 @@ carries 8&times; its share. A large share from many bins is ordinary; a large sh
 cluster if their centers are within 600&nbsp;km (chained, so a cluster can be long). Each cluster gets its center (the mean
 direction of its bins&rsquo; centers), its number of bins, its share of the bins and its share of the summed value at the peak. The
 largest cluster is outlined on the maps and becomes the region; click another row to switch.</p>
+<p><b>What depth the maps show:</b> the clusters are the high bins <em>at the peak level</em>, so the maps switch to that single level (the
+depth row at the top changes to it) and a note above the maps says so, with buttons to go back to the depth you had and to clear the
+outline. The outline is a set of bins, so it stays if you change the depth afterwards; only its meaning (&ldquo;high at the peak level&rdquo;)
+is tied to that level.</p>
 <p><b>Names</b> are descriptive only: the smallest Natural Earth sea, gulf or bay containing most of the cluster&rsquo;s bin centers;
 otherwise a coarse hand-drawn box (e.g. &ldquo;subpolar North Atlantic&rdquo;, &ldquo;Brazil Basin&rdquo;, &ldquo;Antarctic Circumpolar Current
 (south of Australia)&rdquo;); otherwise the ocean. The coordinates are always shown next to the name.</p>
