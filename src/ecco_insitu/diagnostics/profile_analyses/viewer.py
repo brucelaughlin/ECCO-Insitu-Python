@@ -168,8 +168,12 @@ otherwise a coarse hand-drawn box (e.g. &ldquo;subpolar North Atlantic&rdquo;, &
 moorings; for WOD ship classes the ship or platform code, which is coarser), with profiles, years, share of the region&rsquo;s value
 and mean obs&nbsp;&minus;&nbsp;reference. The explorer stores costs per bin, level and year, not per profile, so a platform&rsquo;s share
 is apportioned: each (bin, year)&rsquo;s value is divided among its platforms by their numbers of profiles there (with a value at the
-selected depths). It is exact where a platform is alone in a bin and year. &ldquo;show profiles&rdquo; opens the in situ data viewer with
-that platform&rsquo;s profiles ringed in cyan.</p>
+selected depths). It is exact where a platform is alone in a bin and year. <b>Since 2026-11-04</b> the table is computed profile by profile
+instead, from the in situ data viewer&rsquo;s profile details: each profile&rsquo;s own cost, or for the mean term w&#772;&middot;(mean misfit)&middot;(its
+misfit)/n, so the parts add up to the term (a profile pulling against its bin&rsquo;s mean gets a negative part). Rebuilt this way the mean term
+agrees with the analysis to 0.14&nbsp;% of its total (PFL vs model, 2400&nbsp;m; the rest is the details&rsquo; rounding to 0.001). The apportioned
+split is used only if the details can&rsquo;t be loaded. &ldquo;show profiles&rdquo; opens the in situ data viewer with that platform&rsquo;s profiles
+ringed in cyan.</p>
 
 <h4>Reading it</h4>
 <ul>

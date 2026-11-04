@@ -492,11 +492,93 @@ async function profilesWithData(P, src, lv) {   // Set of profile indices with a
   busy(null);
   return (P.has[key] = out);
 }
+// Exact platform shares, from the data viewer's profile details (every profile's obs, reference, sigma and QC code):
+//  - unsplit cost: each kept value's own (obs − ref)² / σ² (true weights), summed per platform;
+//  - mean term of a bin and level: J = w̄ (mean misfit)², w̄ = 1 / max(s/n, s/9), s = mean σ² over the bin's kept values
+//    (as cost_profiles.F; true weights = 1/σ²). Profile i's part is w̄ · (mean misfit) · misfit_i / n: the parts add up to
+//    J exactly; a profile pulling the other way gets a negative part;
+//  - anomaly term: each kept value's (misfit − bin mean misfit)² / σ².
+// Falls back to the apportioned split (below) if the details can't be loaded.
+async function detailRows(src, js) {        // per profile index: rows [{k, m: obs − ref, s2: σ², kept}] for S.V
+  const vi = (await platformsOf(src)).vi, info = vi.detail && vi.detail[src]; if (!info) return null;
+  const C = info.chunk, urls = (vi.detail_urls || {})[src] || [], scale = info.scale || {obs: 1000, clim: 1000, model: 1000, sig: 10000};
+  const base = c => { for (const [a, b, u] of urls) if (c >= a && c <= b) return u; return INDEX.bin_viewer.replace(/\/$/, ''); };
+  const byChunk = new Map(); for (const j of js) { const c = Math.floor(j / C); if (!byChunk.has(c)) byChunk.set(c, []); byChunk.get(c).push(j); }
+  const out = new Map(), useModel = S.ct === 'vs_model';
+  let done = 0; const tot = byChunk.size;
+  for (const [c, list] of byChunk) {
+    busy(`Loading profile details for the region (${++done} of ${tot})…`, done / tot); if (done % 5 === 1) await paint();
+    const b = await getGz(`${base(c)}/detail/${src}/c${String(c).padStart(4, '0')}.bin`);
+    const dv = new DataView(b.buffer, b.byteOffset), P = dv.getUint32(0, true); let o = 4 + 8 * P;
+    const pl = (n, bytes, T) => { const a = new T(n), u = new Uint8Array(a.buffer);
+      for (let q = 0; q < bytes; q++) { const sp = b.subarray(o + q * n, o + (q + 1) * n); for (let i = 0; i < n; i++) u[i * bytes + q] = sp[i]; } o += bytes * n; return a; };
+    for (const V of ['T', 'S']) {
+      const cnt = b.slice(o, o + P); o += P; let n = 0; for (const x of cnt) n += x;
+      const lev = b.slice(o, o + n); o += n; const mask = b.slice(o, o + n); o += n; const code = pl(n, 2, Uint16Array);
+      const cols = {}; for (const k of ['obs', 'clim', 'model', 'sig']) cols[k] = pl(n, 4, Int32Array);
+      if (V !== S.V) continue;
+      const start = new Int32Array(P + 1); for (let i = 0; i < P; i++) start[i + 1] = start[i] + cnt[i];
+      for (const j of list) { const q = j % C, rows = []; const acc = {obs: 0, clim: 0, model: 0, sig: 0};
+        for (let i = start[q]; i < start[q + 1]; i++) { for (const k in acc) acc[k] += cols[k][i];
+          const refOk = useModel ? (mask[i] & 2) : (mask[i] & 1), sig = acc.sig / scale.sig;
+          if (!refOk || !(mask[i] & 4) || !(sig > 0)) continue;
+          rows.push({k: lev[i], m: acc.obs / scale.obs - (useModel ? acc.model / scale.model : acc.clim / scale.clim), s2: sig * sig, kept: code[i] === 0}); }
+        out.set(j, rows); }
+    }
+  }
+  busy(null);
+  return out;
+}
+function renderPlatformTable(el, P, X) {
+  const unit = S.V === 'T' ? '°C' : 'psu', ref = S.ct === 'vs_model' ? 'model' : 'climatology';
+  const rows = [...X.share].filter(([pi]) => pi !== 0xFFFFFFFF).sort((a, b) => b[1] - a[1]).slice(0, 12);
+  const nPlat = [...X.nprof.keys()].filter(k => k !== 0xFFFFFFFF).length, what = S.part === 'mean' ? 'mean term' : S.part === 'anomaly' ? 'anomaly cost' : S.part === 'count' ? 'points' : 'unsplit cost';
+  let h = `<div class="ptitle" style="margin-top:0.6em">Platforms in the region <span class="dnote">(${P.kind}; ${nPlat} with kept data at the selected depths; computed profile by profile)</span></div>` +
+    `<table><tr><th>${P.kind}</th><th>profiles</th><th>years</th><th>share of the region's ${what}</th><th>mean obs − ${ref} (${unit})</th><th></th></tr>`;
+  for (const [pi, x] of rows) { const nm = P.names[pi], ys = X.yrs.get(pi) || ['–', '–'], mb = X.mw.get(pi) ? X.mis.get(pi) / X.mw.get(pi) : NaN;
+    const q = new URLSearchParams({src: S.src, ref: S.ct === 'vs_model' ? 'model' : 'clim', V: S.V, platform: nm});
+    const lvv = levelsSelected(); if (lvv && lvv.length === 1) q.set('k', lvv[0]); q.set('back', location.href.split('#')[0]);
+    h += `<tr><td>${nm}</td><td>${X.nprof.get(pi) || 0}</td><td>${ys[0]}–${ys[1]}</td><td><b>${X.total ? (100 * x / X.total).toFixed(1) + ' %' : '–'}</b></td>` +
+      `<td>${Number.isFinite(mb) ? (mb >= 0 ? '+' : '') + mb.toFixed(3) : '–'}</td><td><a href="${INDEX.bin_viewer}?${q}">show profiles</a></td></tr>`; }
+  h += '</table><span class="dnote">Computed profile by profile from every profile\'s own values (the in situ data viewer\'s profile details, ' +
+    'rounded to 0.001), kept values only; rebuilt this way, the mean term agrees with the analysis to 0.14 % of its total (PFL vs model, 2400 m). ' +
+    (S.part === 'mean' ? 'For the mean term w̄·(mean misfit)² of each bin and level, a profile\'s part is w̄·(mean misfit)·(its misfit)/n, so the parts add up to the term; a profile pulling against the bin\'s mean gets a negative part. '
+                       : S.part === 'anomaly' ? 'Each value\'s (misfit − its bin\'s mean misfit)²/σ². ' : S.part === 'count' ? '' : 'Each value\'s (obs − ref)²/σ² (true weights). ') +
+    '"show profiles" opens the in situ data viewer with that platform\'s profiles ringed.</span>';
+  el.innerHTML = h;
+}
+async function regionPlatformsExact(d, P) {
+  const lv = levelsSelected(), lset = lv ? new Set(lv) : null, y0 = +INDEX.blocks[0];
+  const inT = j => S.all || S.part === 'mean' || (P.year[j] - y0 >= S.t0 && P.year[j] - y0 <= S.t1);
+  const js = []; for (let j = 0; j < P.cb.length; j++) if (REGION.has(P.cb[j]) && inT(j)) js.push(j);
+  if (!js.length) return null;
+  const rows = await detailRows(S.src, js); if (!rows) return null;
+  // per (bin, level): the kept values with their profile
+  const cells = new Map();
+  for (const j of js) for (const r of rows.get(j) || []) { if (!r.kept || (lset && !lset.has(r.k))) continue;
+    const key = P.cb[j] * 128 + r.k; if (!cells.has(key)) cells.set(key, []); cells.get(key).push([j, r.m, r.s2]); }
+  const share = new Map(), mis = new Map(), mw = new Map(), nprof = new Map(), yrs = new Map(), add = (m, k, x) => m.set(k, (m.get(k) || 0) + x);
+  let total = 0;
+  for (const vals of cells.values()) {
+    const n = vals.length; let mean = 0, s = 0; for (const [, m, s2] of vals) { mean += m; s += s2; } mean /= n; s /= n;
+    const wbar = 1 / Math.max(s / n, s / 9);
+    for (const [j, m, s2] of vals) {
+      const pi = P.pi[j], c = S.part === 'mean' ? wbar * mean * m / n : S.part === 'anomaly' ? (m - mean) ** 2 / s2 : S.part === 'count' ? 1 : m * m / s2;
+      add(share, pi, c); total += c; add(mis, pi, m); add(mw, pi, 1); }
+  }
+  for (const j of js) { if (!(rows.get(j) || []).some(r => r.kept && (!lset || lset.has(r.k)))) continue;
+    const pi = P.pi[j]; add(nprof, pi, 1); const ys = yrs.get(pi) || [9999, 0]; ys[0] = Math.min(ys[0], P.year[j]); ys[1] = Math.max(ys[1], P.year[j]); yrs.set(pi, ys); }
+  return {share, total, mis, mw, nprof, yrs, ncell: cells.size};
+}
 async function regionPlatforms(d) {
   const el = document.getElementById('regplat'); el.innerHTML = '';
   if (!REGION || !REGION.size) return;
   const P = await platformsOf(S.src);
   if (!P) { el.innerHTML = '<span class="dnote">(Platform table: needs the in situ data viewer\'s platform files.)</span>'; return; }
+  if (S.part !== 'bias') {
+    let X = null; try { X = await regionPlatformsExact(d, P); } catch (e) { console.warn(e); busy(null); }
+    if (X) { renderPlatformTable(el, P, X); return; }
+  }
   const y0 = +INDEX.blocks[0], lv = levelsSelected(), lset = lv ? new Set(lv) : null;
   const withData = await profilesWithData(P, S.src, lv);
   // profiles per (bin, year) cell and per platform, in the region and the time window
