@@ -89,6 +89,7 @@ select { font-size: 0.85em; }
     <button class="btn" id="tl0" title="first year earlier">&#9664;</button><button class="btn" id="tr0" title="first year later">&#9654;</button>
     <button class="btn" id="tl1" title="last year earlier">&#9664;</button><button class="btn" id="tr1" title="last year later">&#9654;</button>
     <button class="btn" id="shl" title="shift the window one year earlier">&#9664;&#9664;</button><button class="btn" id="shr" title="shift the window one year later">&#9654;&#9654;</button></span>
+  <span class="grp"><button class="btn" id="copylink" title="Copy a link that opens exactly this view">copy link</button></span>
   <span class="grp"><span class="lab">view</span><button class="btn" id="reset" title="every map back to its whole view">&#8962;&#xFE0E; home</button>
     <button class="btn" id="resetall" title="whole views and the first depth level">reset all</button>
     <button class="btn on" id="bathy" title="faint isobaths: 200 (shelf edge, darker), 1000, 2000, 3000, 4000, 5000 m">isobaths</button></span>
@@ -497,7 +498,24 @@ function legend(M, visible) {
   el.innerHTML = 'profiles per visible patch:<br>' + (u.length === 1 ? n[0] : u.length === 2 ? `min ${n[0]}<br>max ${n.at(-1)}` :
     `min ${n[0]}<br>med ${Math.round(quantile(n, 0.5))}<br>max ${n.at(-1)}`);
 }
+// ---------- the address holds the whole view (class, reference, variable, depth, years, platform, map position) ----------
+// k=<level> or dmode=<mode>&g=<group>; y0/y1 (absent: all years); platform; view=<map>,<x>,<y>,<zoom factor>; back kept.
+let ADDR_T = null;
+function writeAddress() {
+  clearTimeout(ADDR_T);
+  ADDR_T = setTimeout(() => {
+    const old = new URLSearchParams(location.search), q = new URLSearchParams({src: S.src, ref: S.ref, V: S.V});
+    if (S.dmode === 'level') q.set('k', S.k); else { q.set('dmode', S.dmode); q.set('g', S.g); }
+    if (!S.all) { q.set('y0', INDEX.years0 + S.t0); q.set('y1', INDEX.years0 + S.t1); }
+    if (PLATFORM) q.set('platform', PLATFORM.name);
+    const M = MAPS.find(m => m.view.zoom > m.home.zoom + 0.01) || MAPS[0];
+    if (M.view.zoom > M.home.zoom + 0.01) q.set('view', `${M.id},${M.view.target[0].toFixed(2)},${M.view.target[1].toFixed(2)},${scaleFactor(M, M.view).toFixed(2)}`);
+    if (old.get('back')) q.set('back', old.get('back'));
+    history.replaceState(null, '', location.pathname + '?' + q.toString());
+  }, 400);
+}
 function titles() {
+  writeAddress();
   const ci = INDEX.classes[S.src], lv = REF().levels[S.V], nlev = INDEX.depth.length, W = MAPS[0].state;
   let tot = 0; for (const e of STATS.values()) tot += e.n;
   const years = S.all ? `all years (${ci.years[0]}–${ci.years[1]})` : S.t0 === S.t1 ? `${INDEX.years0 + S.t0}` : `${INDEX.years0 + S.t0}–${INDEX.years0 + S.t1}`;
@@ -666,6 +684,9 @@ function setupControls() {
   document.querySelectorAll('#pptabs .btn').forEach(b => b.onclick = () => { PPTAB = b.dataset.t;
     document.querySelectorAll('#pptabs .btn').forEach(x => x.classList.toggle('on', x === b)); showTab(); });
   document.getElementById('ppnb').onchange = () => showTab();
+  document.getElementById('copylink').onclick = async e => { clearTimeout(ADDR_T); writeAddress(); await new Promise(r => setTimeout(r, 450));
+    try { await navigator.clipboard.writeText(location.href); e.target.textContent = 'copied'; } catch (err) { prompt('Copy this link:', location.href); }
+    setTimeout(() => e.target.textContent = 'copy link', 1500); };
   document.getElementById('cap').onchange = e => { S.cap = +e.target.value; draw(); };
   document.getElementById('reset').onclick = () => resetZoom();
   document.getElementById('resetall').onclick = () => { S.dmode = 'level'; document.getElementById('dmode').value = 'level';
@@ -717,7 +738,7 @@ function clampView(M, v) {
 function setView(M, v, now) {
   M.view = clampView(M, v); M.deck.setProps({viewState: M.view});
   clearTimeout(M.t);
-  const go = () => { if (!STATS) return; drawMap(M); if (M.id === 'll') titles(); };
+  const go = () => { if (!STATS) return; drawMap(M); if (M.id === 'll') titles(); else writeAddress(); };
   if (now) go(); else M.t = setTimeout(go, 60);
 }
 function resetZoom() { for (const M of MAPS) setView(M, M.home, true); if (STATS) titles(); }
@@ -1000,6 +1021,11 @@ async function init() {
     setView(M, {...M.home, target: [x, y, 0], zoom: MAIN_Z0 + Math.log2(ZOOM_THRESHOLD * 1.6)}, true);
     if (M !== MAPS[0]) setTimeout(() => M.el.scrollIntoView({block: 'center'}), 300);
   }
+  if (q.get('dmode') && q.get('g') !== null && ['bands', '100m', '15', '30'].includes(q.get('dmode'))) {
+    S.dmode = q.get('dmode'); S.g = +q.get('g'); document.getElementById('dmode').value = S.dmode; fillDepth(); }
+  if (q.get('view')) { const [id, x, y, f] = q.get('view').split(','), M = MAPS.find(m => m.id === id);
+    if (M && Number.isFinite(+x) && Number.isFinite(+y) && +f > 0) { setView(M, {...M.home, target: [+x, +y, 0], zoom: MAIN_Z0 + Math.log2(+f)}, true);
+      if (M !== MAPS[0]) setTimeout(() => M.el.scrollIntoView({block: 'center'}), 300); } }
   await recompute();
   if (q.get('platform')) setPlatform(q.get('platform'));
 }

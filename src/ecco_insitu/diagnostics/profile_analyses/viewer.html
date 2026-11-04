@@ -118,6 +118,7 @@ canvas.clickable { cursor: pointer; }
 </head>
 <body>
 <div id="header"><h1>Cost map explorer — __TITLE__</h1><a href="index.html">&larr; back to the report</a><a href="guide.html">user guide</a>
+  <button class="tab" id="copylink" title="Copy a link that opens exactly this view (settings, depth, years, region)">copy link to this view</button>
   <span class="hdr-guide" id="open-guide">Guide: what every option means</span></div>
 <div class="row"><span class="lab">Source</span><span id="srcs"></span></div>
 <div class="row"><span class="lab">Cost type</span><span id="cts"></span></div>
@@ -300,7 +301,7 @@ function regionText() {
   t.textContent = REGION && REGION.size ? `${REGION.size} bins selected (outlined in purple). Drag to add, shift-drag to remove, shift-click toggles one bin.`
     : 'No region. Click "select region", then drag a box on a map (shift-drag removes, shift-click toggles one bin).';
 }
-function regionChanged() { regionText(); render(); }
+function regionChanged() { regionText(); render(); }   // render() writes the address
 
 // How a level's value is formed from its bins, as analysis 02: the mean term is one value per bin, so bins count
 // equally; costs and the bias are per point, so a level's value is the point-weighted mean (sum over bins of the
@@ -942,6 +943,25 @@ function scaleKey() {
   const p = (S.part === 'anomaly') ? 'unsplit' : S.part;   // unsplit and anomaly: same units, same scale
   return [S.src, S.ct, S.V, p, S.dmode, S.dsel].join('|');
 }
+// ---------- the address holds the whole view, so any view can be bookmarked, copied or sent ----------
+// src, ct, V, part, depth (all | k<level> | <mode>:<group> | spike:<level>), years (all | <y0>-<y1>), region (bin ids,
+// ranges compressed), range (<from>-<to> m, the depth band) and same (1 = the same-bins curve on), log, max.
+function regionCode(R) { if (!R || !R.size) return ''; const a = [...R].sort((x, y) => x - y), out = [];
+  for (let i = 0; i < a.length; i++) { let j = i; while (j + 1 < a.length && a[j + 1] === a[j] + 1) j++; out.push(j > i ? `${a[i]}-${a[j]}` : `${a[i]}`); i = j; }
+  return out.join('.'); }
+function regionDecode(t) { const R = new Set(); for (const part of (t || '').split('.')) { if (!part) continue;
+  const [a, b] = part.split('-').map(Number); if (Number.isFinite(a)) for (let x = a; x <= (Number.isFinite(b) ? b : a); x++) R.add(x); } return R; }
+function viewQuery() {
+  const q = new URLSearchParams({src: S.src, ct: S.ct, V: S.V, part: S.part});
+  q.set('depth', S.dmode === 'all' ? 'all' : S.dmode === 'level' ? 'k' + S.dsel : `${S.dmode}:${S.dsel}`);
+  q.set('years', S.all || S.part === 'mean' ? 'all' : `${INDEX.blocks[S.t0]}-${INDEX.blocks[S.t1]}`);
+  const z = INDEX.depth; q.set('range', `${z[Math.min(+S.sb0, +S.sb1)]}-${z[Math.max(+S.sb0, +S.sb1)]}`);
+  if (S.same) q.set('same', '1'); if (S.log) q.set('log', '1'); if (S.vmax) q.set('max', String(S.vmax));
+  const rc = regionCode(REGION); if (rc) q.set('region', rc);
+  return q;
+}
+function writeAddress() { const q = viewQuery(); history.replaceState(null, '', location.pathname + '?' + q.toString() + location.hash); }
+
 async function render() {
   const id = ++RENDER_ID;
   if (!INDEX.files[S.src + '|' + S.ct]) { status('no data for ' + S.src + ' ' + S.ct); return; }
@@ -957,6 +977,7 @@ async function render() {
   } catch (e) { busy(null); status('error: ' + e.message); throw e; }
   status('');
   busy(null);
+  writeAddress();
   // color scale: fixed for a view (class, cost type, variable, depth selection; unsplit and anomaly share
   // it), from all years, so moving the time range shows real changes; a typed max overrides it
   const vk = scaleKey();
@@ -1207,9 +1228,27 @@ async function init() {
     for (const v of ['NH', 'SH']) { const c = document.getElementById('c_' + v); c.style.width = pw + 'px'; c.style.height = Math.round(pw * GRID[v].ny / GRID[v].nx) + 'px'; }
   };
   fit(); window.addEventListener('resize', fit);
+  document.getElementById('copylink').addEventListener('click', async e => { writeAddress();
+    try { await navigator.clipboard.writeText(location.href); e.target.textContent = 'link copied'; }
+    catch (err) { prompt('Copy this link:', location.href); }
+    setTimeout(() => e.target.textContent = 'copy link to this view', 1800); });
   document.getElementById('open-guide').addEventListener('click', () => {
     const g = document.getElementById('guide'); g.open = true; g.scrollIntoView({behavior: 'smooth'}); });
-  S.dmode = 'all'; fillDepthSelect();
+  S.dmode = 'all';
+  { // depth, years, range, same bins, region, log, max from the address
+    const d = q.get('depth');
+    if (d && d !== 'all') { if (/^k\d+$/.test(d)) { S.dmode = 'level'; S.dsel = +d.slice(1); }
+      else { const [m, v] = d.split(':'); if (['100m', '15', '30', 'spike'].includes(m)) { S.dmode = m; S.dsel = +v; } } }
+    const y = q.get('years'); if (y && y !== 'all') { const [a, b] = y.split('-'), ia = INDEX.blocks.indexOf(a), ib = INDEX.blocks.indexOf(b);
+      if (ia >= 0 && ib >= 0) { S.all = false; S.t0 = Math.min(ia, ib); S.t1 = Math.max(ia, ib); } }
+    const rg = q.get('range'); if (rg) { const [a, b] = rg.split('-').map(Number), near = m => INDEX.depth.reduce((x, zz, k) => Math.abs(zz - m) < Math.abs(INDEX.depth[x] - m) ? k : x, 0);
+      if (Number.isFinite(a) && Number.isFinite(b)) { S.sb0 = near(a); S.sb1 = near(b); document.getElementById('sb0').value = S.sb0; document.getElementById('sb1').value = S.sb1; } }
+    if (q.get('same') === '1') { S.same = true; S.sbApplied = [S.sb0, S.sb1]; document.getElementById('samebins').checked = true; document.getElementById('peaktool').open = true; }
+    if (q.get('log') === '1') { S.log = true; document.getElementById('logscale').checked = true; }
+    if (q.get('max')) { S.vmax = +q.get('max') || null; if (S.vmax) document.getElementById('vmax').value = S.vmax; }
+    if (q.get('region')) { REGION = regionDecode(q.get('region')); regionText(); }
+  }
+  fillDepthSelect(); if (S.dmode !== 'all') document.getElementById('dsel').value = S.dsel;
   await render();
   // ?peak=<from>-<to> (meters): investigate the largest value of the profile in that range (link from the report)
   if (q.get('peak')) { const [a, b] = q.get('peak').split('-').map(Number); if (Number.isFinite(a) && Number.isFinite(b)) {
