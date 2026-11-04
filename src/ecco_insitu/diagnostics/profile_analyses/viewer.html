@@ -149,7 +149,8 @@ canvas.clickable { cursor: pointer; }
         or drag across an empty part of the plot to draw a new one. Nothing happens until you use it:</div>
       <div class="rangeuse"><button class="tab primary" id="peakgo">Investigate the peak in this range</button>
         <label title="Draw a second curve over only the bins that have data at every level of the range, so it shows changes in the water,
-not changes in which bins are counted"><input type="checkbox" id="samebins"> also draw the curve over the same bins at every depth of the range</label></div>
+not changes in which bins are counted"><input type="checkbox" id="samebins"> also draw the curve over the same bins at every depth of the range</label>
+        <button class="tab" id="sbupdate" style="display:none" title="The band moved since the blue curve was drawn">redraw the blue curve for this range</button></div>
       <span id="sbnote" class="dnote"></span></div>
     <canvas id="pcan" width="520" height="430"></canvas></div>
   <div id="peakp" class="panel" style="display:none"><div class="ptitle">Peak <span class="dnote">(the steps are fixed; the numbers are for you to read; <a href="guide.html#attribution">how it works</a>)</span></div>
@@ -301,7 +302,7 @@ let PROF = null;
 function profileCurves(d, yd) {
   const lb = levelBinValues(d, yd), nd = INDEX.depth.length, all = new Float64Array(nd).fill(NaN), nb = new Int32Array(nd);
   const same = new Float64Array(nd).fill(NaN), nbs = new Int32Array(nd);
-  const k0 = Math.min(+S.sb0, +S.sb1), k1 = Math.max(+S.sb0, +S.sb1);
+  const ap = S.sbApplied || [S.sb0, S.sb1], k0 = Math.min(+ap[0], +ap[1]), k1 = Math.max(+ap[0], +ap[1]);
   let keep = null;
   if (S.same) { keep = null; for (let k = k0; k <= k1; k++) { const m = lb.get(k); const ids = new Set(m ? m.keys() : []);
       keep = keep === null ? ids : new Set([...keep].filter(b => ids.has(b))); } }
@@ -346,14 +347,16 @@ function drawProfile() {
   for (const t of niceTicks(lo, hi, 5)) { g.fillText(fmt(t), X(t), H - B + 4); g.strokeStyle = '#eee'; g.beginPath(); g.moveTo(X(t), T); g.lineTo(X(t), H - B); g.stroke(); }
   g.fillText(PARTS[S.part], (L + W - R) / 2, H - B + 18);
   // the depth range: a shaded band from the first to the last selected level, with a handle at each edge
-  { const za = z[k0], zb = z[k1], ya = Y(za), yb = Math.max(Y(zb), ya + 3);
+  { // drawn from the current selection (S.sb0 / S.sb1), so it follows a drag live; the curves are not recomputed
+    const r0 = Math.min(+S.sb0, +S.sb1), r1 = Math.max(+S.sb0, +S.sb1);
+    const za = z[r0], zb = z[r1], ya = Y(za), yb = Math.max(Y(zb), ya + 3);
     g.fillStyle = 'rgba(108,52,131,0.10)'; g.fillRect(L, ya, W - L - R, yb - ya);
     g.strokeStyle = '#6c3483'; g.lineWidth = 1.5; g.beginPath(); g.moveTo(L, ya); g.lineTo(W - R, ya); g.moveTo(L, yb); g.lineTo(W - R, yb); g.stroke();
     for (const y of [ya, yb]) { g.fillStyle = '#6c3483'; g.beginPath(); g.moveTo(L - 1, y - 6); g.lineTo(L + 9, y); g.lineTo(L - 1, y + 6); g.closePath(); g.fill();
       g.beginPath(); g.moveTo(W - R + 1, y - 6); g.lineTo(W - R - 9, y); g.lineTo(W - R + 1, y + 6); g.closePath(); g.fill();
       g.fillRect((L + W - R) / 2 - 14, y - 2, 28, 4); }
     g.fillStyle = '#6c3483'; g.font = '11px sans-serif'; g.textAlign = 'left'; g.textBaseline = 'bottom';
-    g.fillText(`range ${za}–${zb} m` + (PEAKDONE && PEAKDONE[0] === k0 && PEAKDONE[1] === k1 ? ' (investigated below)' : ''), L + 12, ya - 2);
+    g.fillText(`range ${za}–${zb} m` + (PEAKDONE && PEAKDONE[0] === r0 && PEAKDONE[1] === r1 ? ' (investigated below)' : ''), L + 12, ya - 2);
     RANGEPX = {ya, yb}; }
   const XR = v => L + (W - L - R) * (v - rlo) / (rhi - rlo);          // the region's axis (= X without its own axis)
   const line = (arr, col, w, xf = X) => { g.strokeStyle = col; g.lineWidth = w; g.beginPath(); let on = false;
@@ -381,7 +384,7 @@ function drawProfile() {
     g.fillText(t >= 1000 ? (t / 1000) + 'k' : String(t), x, T + 14); }
   // legend at the bottom left (deep water, where the curves are short of the left edge less often: drawn on a white box)
   g.font = '11px sans-serif'; g.textAlign = 'left';
-  const sameTxt = S.same ? ` (of the ${PROF.nkeep} bins with data at every level ${z[k0]}–${z[k1]} m)` : '';
+  const sameTxt = S.same ? ` (of the ${PROF.nkeep} bins with data at every level ${z[k0]}–${z[k1]} m)` : '';   // k0/k1: the applied range
   const leg = PROF.region
     ? [['all bins with data', 'rgba(192,57,43,0.8)'], ['region' + (ownAxis ? ' (top axis)' : '') + sameTxt + (PROF.nbr.some((n, k) => n > 0 && n < MIN_BINS) ? `; pale where under ${MIN_BINS} bins` : ''), '#6c3483'], ['rest of the world' + sameTxt, 'rgba(90,90,90,0.9)']]
     : [['all bins with data', '#c0392b']].concat(S.same ? [[`same ${PROF.nkeep} bins (data at every level ${z[k0]}–${z[k1]} m)`, '#1a5ca8']] : []);
@@ -408,7 +411,7 @@ async function investigatePeak(zA, zB) {
   { // the depth range (menus, band) shows exactly what is investigated
     const zz = INDEX.depth, inb = zz.map((x, k) => k).filter(k => zz[k] >= PEAKBAND[0] && zz[k] <= PEAKBAND[1]);
     if (inb.length) { S.sb0 = inb[0]; S.sb1 = inb[inb.length - 1]; document.getElementById('sb0').value = S.sb0; document.getElementById('sb1').value = S.sb1; }
-    PEAKDONE = [S.sb0, S.sb1]; }
+    PEAKDONE = [S.sb0, S.sb1]; if (S.same) S.sbApplied = [S.sb0, S.sb1]; }
   const d = await data(S.src, S.ct), yd = (!S.all && S.part !== 'mean') ? await yearData(S.src, S.ct) : null;
   const z = INDEX.depth, lb = levelBinValues(d, yd), val = (m, b) => { const e = m.get(b); return e ? contrib(e) : NaN; };   // a bin's contribution
   const meanOf = (k, keep) => { const m = lb.get(k); if (!m) return [NaN, 0]; const [v, n] = agg(m, keep); return [v, n]; };
@@ -1074,18 +1077,25 @@ async function init() {
       drawProfile(); });
     pc.addEventListener('mousedown', e => { const y = yOf(e), kind = grip(y); e.preventDefault();
       drag = {kind, y0: y, kAt: nearestK(zAt(y)), k0: +S.sb0, k1: +S.sb1, moved: false}; if (kind === 'move') pc.style.cursor = 'grabbing'; });
-    window.addEventListener('mouseup', () => { if (!drag) return; const moved = drag.moved; drag = null; pc.style.cursor = 'crosshair'; if (moved && S.same) render(); });
+    window.addEventListener('mouseup', () => { if (!drag) return; drag = null; pc.style.cursor = 'crosshair'; rangeChanged(); });
     document.getElementById('peakgo').addEventListener('click', async () => {
-      await investigatePeak(z[Math.min(+S.sb0, +S.sb1)], z[Math.max(+S.sb0, +S.sb1)]);
+      if (S.same) { S.sbApplied = [S.sb0, S.sb1]; await render(); }
+      await investigatePeak(z[Math.min(+S.sb0, +S.sb1)], z[Math.max(+S.sb0, +S.sb1)]); rangeChanged();
       document.getElementById('peakp').scrollIntoView({behavior: 'smooth', block: 'nearest'}); });
     pc.style.cursor = 'crosshair'; }
   document.getElementById('regmode').addEventListener('click', e => { REGMODE = !REGMODE; e.target.classList.toggle('armed', REGMODE);
     e.target.textContent = REGMODE ? 'selecting: drag on a map (click here when done)' : 'select region';
     document.querySelectorAll('#maps canvas').forEach(c => c.style.cursor = REGMODE ? 'crosshair' : 'pointer'); });
   document.getElementById('regclear').addEventListener('click', () => { REGION = null; regionChanged(); });
-  document.getElementById('samebins').addEventListener('change', e => { S.same = e.target.checked; render(); });
-  document.getElementById('sb0').addEventListener('change', e => { S.sb0 = +e.target.value; if (S.same) render(); else drawProfile(); });
-  document.getElementById('sb1').addEventListener('change', e => { S.sb1 = +e.target.value; if (S.same) render(); else drawProfile(); });
+  // the same-bins curve: drawn for the range when the box is ticked, and redrawn for a new range only when asked
+  // (the "update" button that appears, or "Investigate"), so moving the band itself never recomputes anything
+  const rangeChanged = () => { const ap = S.sbApplied || [S.sb0, S.sb1], stale = S.same && (+ap[0] !== +S.sb0 || +ap[1] !== +S.sb1);
+    document.getElementById('sbupdate').style.display = stale ? '' : 'none'; drawProfile(); };
+  window.rangeChanged = rangeChanged;
+  document.getElementById('samebins').addEventListener('change', e => { S.same = e.target.checked; S.sbApplied = [S.sb0, S.sb1]; render().then(rangeChanged); });
+  document.getElementById('sbupdate').addEventListener('click', () => { S.sbApplied = [S.sb0, S.sb1]; render().then(rangeChanged); });
+  document.getElementById('sb0').addEventListener('change', e => { S.sb0 = +e.target.value; rangeChanged(); });
+  document.getElementById('sb1').addEventListener('change', e => { S.sb1 = +e.target.value; rangeChanged(); });
   const keys = Object.keys(INDEX.files), srcs = [...new Set(keys.map(k => k.split('|')[0]))], cts = [...new Set(keys.map(k => k.split('|')[1]))];
   const q = new URLSearchParams(location.search);
   S.src = q.get('src') && srcs.includes(q.get('src')) ? q.get('src') : srcs[0];

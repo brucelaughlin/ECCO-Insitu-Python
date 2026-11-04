@@ -77,7 +77,9 @@ bottom edge (the handles), drag inside to move it, drag across an empty part to 
 itself. It is used by:</p>
 <ul><li><b>Investigate the peak in this range</b> (the peak tool), and</li>
 <li><b>also draw the curve over the same bins at every depth of the range</b>: a second, blue curve over only the bins that have data
-at every level of the range (section <a href="#samebins">Same bins</a>).</li></ul>
+at every level of the range (section <a href="#samebins">Same bins</a>). If you move the band afterwards, the blue curve keeps its old range
+until you press &ldquo;redraw the blue curve for this range&rdquo; (or Investigate).</li></ul>
+<p>Moving the band only moves the band: the curves and maps are recomputed only by those buttons.</p>
 <p><b>Region</b>: &ldquo;select region&rdquo;, then drag a box on any map (shift-drag removes bins, shift-click toggles one bin). The region is
 outlined in purple and the region panel opens (section <a href="#region">Region vs the rest</a>).</p>
 """),
