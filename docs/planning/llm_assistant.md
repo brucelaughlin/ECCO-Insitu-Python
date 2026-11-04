@@ -16,11 +16,14 @@ answers with supporting plots. Status: **waiting on the institution's AI-service
   depth, where and at what depth the cost is high, split vs unsplit, cost against time, per-bin maps, zonal means,
   outliers, and attribution of peaks.
 
-## Built regardless (useful with or without an LLM; also the assistant's "actions")
+## Built regardless (useful with or without an LLM; also the assistant's "actions") — done 2026-11-04
 
-1. A "what do you want to know?" start page: common questions as buttons opening preset views.
-2. Every view as a link (all explorer and viewer settings in the address).
-3. A simple / expert mode that hides most option rows by default.
+1. `questions.html` ("What do you want to know?"): 21 questions from the ten analyses' themes, each a preset view
+   (`diagnostics/profile_analyses/questions.py`; the list is the natural starting set of assistant actions).
+2. Every view as a link: the report (`?src=&ct=&an=&band=&part=`), the cost map explorer (`?src=&ct=&V=&part=
+   &depth=&years=&range=&same=&region=&log=&max=`, plus `peak=` to run the peak tool) and the data viewer
+   (`?src=&ref=&V=&k=|dmode=&g=&y0=&y1=&platform=&view=`). An assistant can answer with these links and embed them.
+3. Simple / expert mode in the explorer.
 
 ## Message for the AI-service contact (fill in the brackets)
 

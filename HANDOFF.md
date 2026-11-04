@@ -45,6 +45,12 @@ platform table with an apportioned share; data viewer's platform box / `?platfor
 Live check (PFL vs_model mean term 2000–2600 m): peak 2400 m; 98 % of its excess over the neighbors from sampling;
 top cluster 56°N 38°W, 4.1 % of bins, 33.8 % of the term; top floats 6903082 (11.5 %), 6903871, 1902621, 6903085.
 Possible next: ocean-basin names for clusters; per-profile costs (would make platform shares exact).
+Done 2026-11-04 (later): **Guide** page (`guide.html`, from `guide.py`: the manual and the attribution method with
+formulas); **questions page** (`questions.html`, from `questions.py`: 21 questions → preset views); **every view as a
+link** (report, explorer and data viewer keep their state in the address; copy-link buttons); explorer **simple /
+expert mode**; the depth profile and peak tool moved **above the maps** (optional, folded); explorer curves now use
+analysis 02's averaging (restore point `before-attribution-fix-2026-11-04`). **LLM assistant idea**: waiting on the
+institution's AI-service team, see `docs/planning/llm_assistant.md` (the questions page and links are its actions).
 Done 2026-11-04 (restore point before: tag `before-range-redesign-2026-11-04`): **one depth range** in the cost
 explorer (shaded band with handles, from/to menus; a click does nothing; "Investigate the peak in this range" button;
 the same-bins checkbox uses the same range); **cluster names** (Natural Earth seas + coarse basin boxes + oceans);
