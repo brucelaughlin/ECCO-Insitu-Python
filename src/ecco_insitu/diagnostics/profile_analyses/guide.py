@@ -21,6 +21,9 @@ SECTIONS = [
 <tr><td><b>In situ data viewer</b></td><td>The observations themselves: anomalies per geodesic bin, every profile when zoomed in, the
   profile panel</td><td>look at the profiles and platforms behind a feature</td></tr>
 </table>
+<p><b>Not sure where to start?</b> The <a href="questions.html">What do you want to know?</a> page lists common questions; each opens a page
+already set up to answer it. <b>Every view is a link:</b> the address of the explorer and of the data viewer holds all their settings
+(use &ldquo;copy link&rdquo;), so you can bookmark a view or send it to someone.</p>
 <p>A typical path: a bump in an analysis&nbsp;02 curve &rarr; &ldquo;investigate&rdquo; (below the figure) &rarr; the explorer finds the peak,
 separates sampling from signal, outlines the bins that carry it and lists their platforms &rarr; &ldquo;show profiles&rdquo; opens the
 data viewer on one platform &rarr; click a profile to see it whole. Section&nbsp;<a href="#attribution">Attribution</a> explains each step.</p>
@@ -64,6 +67,9 @@ so the tabs can be compared by eye.</p>
 and depth range, and runs the peak tool there (section <a href="#peak">The peak tool</a>).</p>
 """),
     ('explorer', 'The cost map explorer', """
+<p><b>Simple / expert</b> (top right): simple shows the everyday choices; expert adds the mean-bias diagnostic, depth bands and groups,
+flagged spikes, single year, the log color scale and regions. A link that uses an expert option opens in expert mode; your choice is
+remembered in this browser.</p>
 <p><b>Rows of buttons</b> (top): class, cost type, variable, cost part (unsplit, anomaly, mean term, number of points), the mean-bias
 diagnostic (obs &minus; reference, not a cost), depth (all, one level, 100&nbsp;m bands, groups of levels, flagged spikes) and time
 (all years, or any range; the mean term has no years).</p>

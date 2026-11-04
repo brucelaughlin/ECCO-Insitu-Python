@@ -83,6 +83,11 @@ details.tool[open] > summary::before { content: '▼ '; }
 #toolrow #peakp { flex: 1 1 auto; min-width: 26em; }
 #peaknotice { margin: 0.3em 1em 0; padding: 0.4em 0.8em; background: #f4effa; border-left: 3px solid #6c3483; font-size: 0.86em; line-height: 1.5; }
 #peaknotice button { margin-left: 0.6em; }
+body.simple .x { display: none !important; }
+body.simple #dmodes .tab[data-v="100m"], body.simple #dmodes .tab[data-v="15"], body.simple #dmodes .tab[data-v="30"],
+body.simple #dmodes .tab[data-v="spike"] { display: none; }
+#modesw { margin-left: auto; display: inline-flex; gap: 0.2em; align-items: center; }
+#modesw .tab { font-size: 0.8em; padding: 0.15em 0.55em; }
 #lower { display: flex; gap: 1.2em; padding: 0 1em 1em; flex-wrap: wrap; align-items: flex-start; }
 .panel { border: 1px solid #ddd; border-radius: 5px; padding: 0.5em 0.7em; background: #fcfcfc; }
 .ptitle { font-weight: 600; font-size: 0.9em; margin-bottom: 0.3em; }
@@ -119,12 +124,14 @@ canvas.clickable { cursor: pointer; }
 <body>
 <div id="header"><h1>Cost map explorer — __TITLE__</h1><a href="index.html">&larr; back to the report</a><a href="guide.html">user guide</a>
   <button class="tab" id="copylink" title="Copy a link that opens exactly this view (settings, depth, years, region)">copy link to this view</button>
-  <span class="hdr-guide" id="open-guide">Guide: what every option means</span></div>
+  <span class="hdr-guide" id="open-guide">Guide: what every option means</span>
+  <span id="modesw" title="Simple: the everyday choices only. Expert: every option (the bias diagnostic, depth bands and groups, flagged spikes,
+single year, log scale, regions)"><button class="tab" data-m="simple">simple</button><button class="tab" data-m="expert">expert</button></span></div>
 <div class="row"><span class="lab">Source</span><span id="srcs"></span></div>
 <div class="row"><span class="lab">Cost type</span><span id="cts"></span></div>
 <div class="row"><span class="lab">Variable</span><span id="vars"></span></div>
 <div class="row"><span class="lab">Cost</span><span id="parts"></span></div>
-<div class="row diag"><span class="lab">Diagnostic</span><span id="diags"></span>
+<div class="row diag x"><span class="lab">Diagnostic</span><span id="diags"></span>
   <span class="dnote">not a cost term: the signed misfit, shown on its own red–blue scale</span></div>
 <div class="row"><span class="lab">Depth</span><span id="dmodes"></span><select id="dsel"></select></div>
 <div class="row"><span class="lab">Time</span>
@@ -140,7 +147,7 @@ canvas.clickable { cursor: pointer; }
   <span id="shiftgrp"><button class="step" id="shl" title="move the whole window one year earlier">&#9664;&#9664;</button>
     <span class="cap">shift window</span>
     <button class="step" id="shr" title="move the whole window one year later">&#9654;&#9654;</button></span>
-  <button class="tab tbtn" id="tone" title="show one year at a time: both handles together">single year</button></div>
+  <button class="tab tbtn x" id="tone" title="show one year at a time: both handles together">single year</button></div>
 <div id="status"></div>
 <details id="peaktool" class="tool"><summary><b>Optional: depth profile and peak attribution</b>
   <span class="dnote">&mdash; not needed for the maps. Open to see the selection&rsquo;s cost against depth (as analysis&nbsp;02), choose a
@@ -164,11 +171,11 @@ not changes in which bins are counted"><input type="checkbox" id="samebins"> als
   <div id="busy"><div class="box"><div class="spin"></div><div><div id="busymsg">working…</div>
     <div class="bar" id="busybar"><div></div></div></div></div></div></div>
 <div id="legend"><div id="cbarbox"><canvas id="cbar" width="440" height="32"></canvas><span id="cbtxt"></span></div>
-  <div class="opts"><label><input type="checkbox" id="logscale"> log color scale</label>
+  <div class="opts"><label class="x"><input type="checkbox" id="logscale"> log color scale</label>
   <label>max <input type="number" id="vmax" step="any" style="width:6em"></label>
   <button class="tab" id="vauto">auto (98th pct)</button><span id="scalenote" class="dnote"></span></div></div>
 <div id="info"></div>
-<div class="row" id="regrow"><span class="lab">Region</span>
+<div class="row x" id="regrow"><span class="lab">Region</span>
   <button class="tab" id="regmode" title="Drag a box on any map to add its bins to the region; shift-drag removes them; shift-click adds or removes one bin">select region</button>
   <button class="tab" id="regclear">clear</button>
   <span id="regtxt" class="dnote">No region. Click "select region", then drag a box on a map (shift-drag removes, shift-click toggles one bin).</span></div>
@@ -1228,6 +1235,19 @@ async function init() {
     for (const v of ['NH', 'SH']) { const c = document.getElementById('c_' + v); c.style.width = pw + 'px'; c.style.height = Math.round(pw * GRID[v].ny / GRID[v].nx) + 'px'; }
   };
   fit(); window.addEventListener('resize', fit);
+  // simple / expert mode: simple hides the less-used options; a view that uses one of them shows in expert mode
+  const needsExpert = () => S.part === 'bias' || ['100m', '15', '30', 'spike'].includes(S.dmode) || (REGION && REGION.size) || S.log;
+  const setMode = m => { document.body.classList.toggle('simple', m === 'simple');
+    document.querySelectorAll('#modesw .tab').forEach(b => b.classList.toggle('active', b.dataset.m === m));
+    try { localStorage.setItem('explorerMode', m); } catch (e) {} };
+  let saved = null; try { saved = localStorage.getItem('explorerMode'); } catch (e) {}
+  window.initMode = () => setMode(needsExpert() ? 'expert' : (saved || 'simple'));   // called once the address is read
+  document.querySelectorAll('#modesw .tab').forEach(b => b.addEventListener('click', () => {
+    if (b.dataset.m === 'simple' && needsExpert()) {
+      if (!confirm('This view uses expert options (bias diagnostic, depth bands or groups, spikes, a region or the log scale). Switch to simple and reset them?')) return;
+      if (S.part === 'bias') S.part = 'unsplit'; if (['100m', '15', '30', 'spike'].includes(S.dmode)) { S.dmode = 'all'; fillDepthSelect(); }
+      REGION = null; regionText(); S.log = false; document.getElementById('logscale').checked = false; render(); }
+    setMode(b.dataset.m); }));
   document.getElementById('copylink').addEventListener('click', async e => { writeAddress();
     try { await navigator.clipboard.writeText(location.href); e.target.textContent = 'link copied'; }
     catch (err) { prompt('Copy this link:', location.href); }
@@ -1249,10 +1269,12 @@ async function init() {
     if (q.get('region')) { REGION = regionDecode(q.get('region')); regionText(); }
   }
   fillDepthSelect(); if (S.dmode !== 'all') document.getElementById('dsel').value = S.dsel;
+  initMode();
   await render();
-  // ?peak=<from>-<to> (meters): investigate the largest value of the profile in that range (link from the report)
+  // ?peak=<from>-<to> (meters): investigate the largest value of the profile in that range (link from the report);
+  // it outlines a region, so the page switches to expert mode to show the region tools
   if (q.get('peak')) { const [a, b] = q.get('peak').split('-').map(Number); if (Number.isFinite(a) && Number.isFinite(b)) {
-    await investigatePeak(a, b); document.getElementById('peaktool').scrollIntoView({block: 'start'}); } }
+    await investigatePeak(a, b); initMode(); document.getElementById('peaktool').scrollIntoView({block: 'start'}); } }
 }
 init().catch(e => status('error: ' + e.message));
 </script>
