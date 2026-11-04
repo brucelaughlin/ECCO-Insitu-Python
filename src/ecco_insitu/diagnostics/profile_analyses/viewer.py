@@ -162,6 +162,8 @@ The page runs three fixed steps and reports the numbers; it does not interpret t
   share of bins and of the summed value. The largest cluster becomes the region (the region panel and its tables fill in); click
   another cluster to switch. A cluster holds only the high bins; widen the region by dragging on the maps.</li>
 </ol>
+<p>Cluster names are descriptive: the smallest Natural Earth sea, gulf or bay containing most of the cluster&rsquo;s bin centers,
+otherwise a coarse hand-drawn box (e.g. &ldquo;subpolar North Atlantic&rdquo;, &ldquo;Brazil Basin&rdquo;) or the ocean; the center coordinates follow.</p>
 <p><b>Platforms in the region</b> (in the region panel): the region&rsquo;s platforms (Argo floats by WMO number, ITPs, seal tags,
 moorings; for WOD ship classes the ship or platform code, which is coarser), with profiles, years, share of the region&rsquo;s value
 and mean obs&nbsp;&minus;&nbsp;reference. The explorer stores costs per bin, level and year, not per profile, so a platform&rsquo;s share
@@ -314,6 +316,51 @@ def _pack_meanterm(nc, V, core_split):
             mt[mi, mk].astype('<f2').tobytes()]
 
 
+# Named regions for the peak tool's clusters: the smallest Natural Earth 10 m marine area (sea, gulf, bay, ...)
+# containing the bin center, refined for the open oceans by a few hand-drawn boxes for common basins and bands
+# (descriptive only; boxes are coarse). Bins with no name keep their coordinates.
+BASINS = [  # (name, lon0, lon1, lat0, lat1) checked in order, before the Natural Earth oceans
+    ('Irminger Sea', -45, -28, 56, 66), ('Iceland Basin', -28, -10, 54, 64), ('Labrador Sea', -64, -45, 52, 66),
+    ('subpolar North Atlantic', -60, -5, 45, 66), ('Argentine Basin', -60, -30, -55, -35), ('Brazil Basin', -40, -10, -35, -5),
+    ('Angola Basin', -10, 15, -35, -5), ('Drake Passage', -70, -55, -62, -55), ('Weddell Sea', -60, 0, -80, -62),
+    ('Kuroshio Extension', 140, 175, 30, 42), ('Gulf Stream region', -80, -45, 32, 45),
+    ('Antarctic Circumpolar Current (south of Africa)', 0, 60, -62, -40), ('Antarctic Circumpolar Current (south of Australia)', 100, 160, -64, -45),
+    ('Antarctic Circumpolar Current (South Pacific)', -180, -70, -65, -45), ('Antarctic Circumpolar Current (South Pacific)', 160, 180, -65, -45),
+    ('tropical Atlantic', -60, 15, -10, 15), ('tropical Pacific', -180, -80, -10, 10), ('tropical Pacific', 120, 180, -10, 10),
+    ('tropical Indian Ocean', 40, 100, -15, 10),
+]
+
+
+def _bin_names():
+    """A name per bin center (index = bin id - 1), or '' (see BASINS)."""
+    import cartopy.io.shapereader as shpreader
+    from shapely.geometry import Point
+    from shapely.strtree import STRtree
+    from ecco_insitu import config as config_loader
+    csv = config_loader.get(config_loader.load(), 'paths.geodesic_bin_csv')
+    if not csv or not Path(csv).exists():
+        return None
+    ll = np.loadtxt(csv, delimiter=',')
+    recs = list(shpreader.Reader(shpreader.natural_earth(resolution='10m', category='physical',
+                                                         name='geography_marine_polys')).records())
+    geoms = [r.geometry for r in recs]
+    nm = [str(r.attributes['name']).strip().title() if str(r.attributes['name']).isupper() else str(r.attributes['name']).strip()
+          for r in recs]
+    small = [r.attributes['featurecla'] != 'ocean' for r in recs]
+    tree = STRtree(geoms)
+    out = []
+    for lo, la in ll[:, :2]:
+        lo = lo - 360 if lo > 180 else lo
+        p = Point(lo, la)
+        hits = [i for i in tree.query(p) if geoms[i].contains(p)]
+        seas = [i for i in hits if small[i]]
+        if seas:                                   # a named sea, gulf, bay, ... (the smallest)
+            out.append(nm[min(seas, key=lambda i: geoms[i].area)]); continue
+        box = next((n for n, a, b, c, d in BASINS if a <= lo <= b and c <= la <= d), None)
+        out.append(box or (nm[hits[0]] if hits else ''))
+    return out
+
+
 def write(analysis_dir, out, bin_viewer=None):
     """Write the viewer files for one profile-analyze folder into ``out`` (the site's viewer/ folder).
     ``bin_viewer``: address of the run's in situ data viewer, for the clicked-bin panel's link."""
@@ -330,6 +377,11 @@ def write(analysis_dir, out, bin_viewer=None):
     if csv and Path(csv).exists():
         ll = np.loadtxt(csv, delimiter=',')
         index['bin_center'] = np.round(ll[:, :2], 2).ravel().tolist()
+        names = _bin_names()
+        if names:
+            uniq = sorted(set(names))
+            index['bin_names'] = uniq
+            index['bin_name'] = [uniq.index(n) for n in names]
     if bin_viewer:
         index['bin_viewer'] = bin_viewer.rstrip('/') + '/'
     for src in meta['sources']:
