@@ -69,7 +69,7 @@ The report page (`index.html`): tabs for obs class, cost type, and analysis (01â
 11 and 12 supplemental), with extra rows where they apply (**Cost**: unsplit / anomaly / mean term for 06
 and 07; **Depth**: standard depth bands for 05 and 06). Figures share axis and color ranges across cost
 types, and have the same layout in every class. Click a figure to see it full width. The side panel has
-the description and Terminology. Top right, from left: **Notes & errata** (outlined button: interpretation,
+the description and Terminology. Top right, from left: **Guide** (`guide.html`, the user manual: every page, and how the attribution tools work, with the formulas; written from `diagnostics/profile_analyses/guide.py`), **Notes & errata** (outlined button: interpretation,
 data notes, open decisions and corrections), **Cost map explorer** (the interactive cost maps, below) and
 **In situ data viewer** (the observations themselves; a web copy of the original geodesic-binning app,
 `docs/bin_viewer.md`). Both explorer buttons open on the class shown in the report, in the same tab; the

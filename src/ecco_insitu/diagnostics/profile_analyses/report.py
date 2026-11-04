@@ -268,7 +268,7 @@ def _split_comparison_html(metas):
     if not parts:
         return ''
     return f"""
-<h3>5. Pooled vs own-class split (anomaly term)</h3>
+<h3 id="n-split">5. Pooled vs own-class split (anomaly term)</h3>
 <p>Mean cost per datum, (&Delta;V/&sigma;)&sup2; (<code>true</code> weights), over 0&ndash;2000&nbsp;m, from analysis 10.
 <code>pooled</code> removes the mean misfit of all obs classes pooled (as <code>cost_profiles.F</code>; analysis 12);
 <code>own</code> removes the class&rsquo;s own mean (the core analyses).</p>
@@ -336,7 +336,7 @@ def _year_split_html(metas):
     if not parts:
         return ''
     return f"""
-<h3>6. Year split (supplemental analysis 11)</h3>
+<h3 id="n-year">6. Year split (supplemental analysis 11)</h3>
 <p>Mean cost per datum, (&Delta;V/&sigma;)&sup2; (<code>true</code> weights), over 0&ndash;2000&nbsp;m, for data from the
 climatology&rsquo;s years and from after them.</p>
 {''.join(parts)}
@@ -353,11 +353,13 @@ def _notes_html(metas):
     """The notes & errata page: interpretation, data notes, open decisions, and corrections."""
     return f"""
 <h2>Notes &amp; errata</h2>
-<p class="notes-lede">Not part of the core report. The core report (figures, captions, Terminology) states only
-what is plotted and how it is computed. This page collects interpretation, notes on the data, open
-decisions, and corrections.</p>
+<p class="notes-lede">This run&rsquo;s findings, open decisions and corrections. How to use the pages and how the
+attribution tools work: the <a href="guide.html">Guide</a>.</p>
+<p class="notes-toc">On this page: <a href="#n-read">1. Reading the figures</a> &middot; <a href="#n-data">2. Data notes</a> &middot;
+<a href="#n-open">3. Open decisions</a> &middot; <a href="#n-err">4. Errata and known limitations</a> &middot; <a href="#n-split">5. Pooled vs own split</a>
+&middot; <a href="#n-year">6. Year split</a></p>
 
-<h3>1. Reading the figures</h3>
+<h3 id="n-read">1. Reading the figures</h3>
 <ul>
 <li><strong>Analysis 1</strong> is a sanity check on the data itself, e.g. it would show a double
 potential-temperature conversion.</li>
@@ -389,7 +391,7 @@ or depths.</li>
 second peak suggests outliers.</li>
 </ul>
 
-<h3>2. Data notes</h3>
+<h3 id="n-data">2. Data notes</h3>
 <p><strong>Deep XBT values are Mediterranean.</strong> In run 20261027_142247, weighted XBT T values below
 2200&nbsp;m are all in the Mediterranean (13 values, 2200&ndash;2800&nbsp;m, T&nbsp;&asymp;&nbsp;12.9&ndash;13.9&nbsp;&deg;C),
 where the deep water stays near 13&nbsp;&deg;C to the bottom. Between 2000 and 2200&nbsp;m, 27 of 187 values
@@ -459,7 +461,7 @@ above 0. On the same casts, 99.4% of our flags agree with v4r6&rsquo;s. This app
 <code>final</code> cost (0.194 vs 0.170) is in &gamma; and sf, not in the data. Details:
 <code>docs/known_issues.md</code> KI-18, <code>cost_comparisons/wod_flags/README.md</code>.</p>
 
-<h3>3. Open decisions</h3>
+<h3 id="n-open">3. Open decisions</h3>
 <ul>
 <li><strong>KI-21, XBT depth cap of 2900&nbsp;m:</strong> decided 2026-10-27; <em>team approval pending.</em></li>
 <li><strong>KI-19, WOD flags beyond a cast&rsquo;s standard levels</strong>
@@ -468,7 +470,7 @@ above 0. On the same casts, 99.4% of our flags agree with v4r6&rsquo;s. This app
 <em>Sign-off on option&nbsp;2 pending.</em></li>
 </ul>
 
-<h3>4. Errata and known limitations</h3>
+<h3 id="n-err">4. Errata and known limitations</h3>
 <ul>
 <li><strong>Decision (2026-10-29): the core analyses use each obs class&rsquo;s own bin means for the split.</strong>
 Analysis&nbsp;2 shows the split&rsquo;s two terms, anomaly and mean, as the team asked; with each class&rsquo;s own
@@ -649,7 +651,7 @@ code { background: #f0f0f0; padding: 1px 3px; border-radius: 2px; font-size: 0.9
 .hdr-link { font-size: 0.82em; color: var(--accent); cursor: pointer; white-space: nowrap; }
 .hdr-link:hover { text-decoration: underline; }
 .hdr-right { margin-left: auto; display: flex; align-items: center; gap: 0.5em; }
-.hdr-notes { color: #555; margin-right: 1.6em; padding: 0.3em 0.6em; border: 1px solid #ccc; border-radius: 5px; }
+.hdr-notes { color: #555; margin-right: 0.2em; text-decoration: none; padding: 0.3em 0.6em; border: 1px solid #ccc; border-radius: 5px; }
 .hdr-notes:hover { background: #f3f3f3; text-decoration: none; }
 .explorer-btn { background: var(--accent); color: #fff; text-decoration: none;
   font-size: 0.9em; font-weight: 600; padding: 0.35em 0.9em; border-radius: 5px; white-space: nowrap;
@@ -665,6 +667,8 @@ code { background: #f0f0f0; padding: 1px 3px; border-radius: 2px; font-size: 0.9
 .notes-inner p, .notes-inner li { margin: 0.4em 0; }
 .notes-inner ul { padding-left: 1.3em; }
 .notes-lede { color: #777; font-style: italic; }
+.notes-toc { font-size: 0.9em; background: #f6f7f9; border: 1px solid #e3e5e8; border-radius: 4px; padding: 0.4em 0.7em; }
+.notes-toc a, .notes-lede a { color: var(--accent); }
 .notes-table { width: auto; font-size: 0.88em; }
 .notes-table td:nth-child(n+4) { text-align: right; font-variant-numeric: tabular-nums; }
 """
@@ -1135,7 +1139,8 @@ render();
   <span class="hdr-link" id="toggle-side-meta">Metadata</span>
   <span style="color:#ccc;font-size:0.8em;margin-left:0.5em">← → cycle sources &nbsp; ↑ ↓ cycle analyses</span>
   <span class="hdr-right">
-    <span class="hdr-link hdr-notes" id="toggle-notes" title="Interpretation notes, decisions and known issues">Notes &amp; errata</span>
+    <a class="hdr-link hdr-notes" href="guide.html" title="How to use the report, the explorer and the data viewer; how the attribution works">Guide</a>
+    <span class="hdr-link hdr-notes" id="toggle-notes" title="This run's findings, decisions and corrections" style="margin-right:1.6em">Notes &amp; errata</span>
     <a class="explorer-btn" id="map-explorer" href="viewer.html" style="display:none"
        title="Interactive cost maps: any depth level or band, any years, unsplit / split / bias">Cost map explorer</a>
     <a class="explorer-btn" id="bin-viewer" href="#" style="display:none"
@@ -1166,7 +1171,7 @@ render();
       <select id="peak-part"><option value="unsplit">unsplit</option><option value="anomaly">anomaly term</option><option value="mean" selected>mean term</option></select>
       <select id="peak-v"><option>T</option><option>S</option></select>
       from <input id="peak-a" type="number" value="2000" step="100" style="width:5em"> to <input id="peak-b" type="number" value="2600" step="100" style="width:5em"> m
-      <a href="viewer.html" id="peak-link">investigate &rarr;</a></div>
+      <a href="viewer.html" id="peak-link">investigate &rarr;</a> <a href="guide.html#attribution" style="font-weight:normal">(how it works)</a></div>
     {''.join(panels)}
   </div>
   <div id="side">
@@ -1341,6 +1346,9 @@ def compile_report(input_dirs, out_dir, title=None, flat=False, portable=False,
         n_figs = len(list((out_dir / 'figures').glob('*.png')))
         print(f'      + figures/ ({n_figs} PNG files)')
         _write_map_explorer(input_dirs, out_dir, title, bin_viewer)
+        from ecco_insitu.diagnostics.profile_analyses import guide
+        (out_dir / 'guide.html').write_text(guide.page(title, bin_viewer), encoding='utf-8')
+        print('      + guide.html: the user guide (how the pages and the attribution work)')
         print(f'      Ready for GitHub Pages (see ecco-insitu publish-reports).')
     return out_dir
 
