@@ -45,6 +45,11 @@ platform table with an apportioned share; data viewer's platform box / `?platfor
 Live check (PFL vs_model mean term 2000–2600 m): peak 2400 m; 98 % of its excess over the neighbors from sampling;
 top cluster 56°N 38°W, 4.1 % of bins, 33.8 % of the term; top floats 6903082 (11.5 %), 6903871, 1902621, 6903085.
 Possible next: ocean-basin names for clusters; per-profile costs (would make platform shares exact).
+Done 2026-11-04 (restore point before: tag `before-range-redesign-2026-11-04`): **one depth range** in the cost
+explorer (shaded band with handles, from/to menus; a click does nothing; "Investigate the peak in this range" button;
+the same-bins checkbox uses the same range); **cluster names** (Natural Earth seas + coarse basin boxes + oceans);
+**platform table computed profile by profile** from the profile details (mean term rebuilt this way agrees with the
+analysis to 0.14 % of its total; `tests/tools/check_meanterm_from_details.py`).
 Done 2026-11-03 (later): **profile panel** in the data viewer (click a profile: full profile with obs / clim / model /
 neighbors / ±σ / rejected levels; the platform over time; the bin's largest misfits). Detail data on three more sites
 (`ecco-bin-viewer-detail-a/-b/-c`, see docs/bin_viewer.md). Live check: float 6903082 at 2400 m, obs 2.810 vs model
