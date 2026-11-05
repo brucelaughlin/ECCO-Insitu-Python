@@ -236,12 +236,14 @@ def _groups(depth):
             out['100m'].append({'lo': float(lo), 'levels': lv})
     for j, g in enumerate(out['100m']):         # each band runs to the start of the next one
         hi = out['100m'][j + 1]['lo'] if j + 1 < len(out['100m']) else g['lo'] + 100
-        n = len(g['levels'])
-        g['label'] = f'{int(g["lo"])}–{int(hi)} m' + (f' ({n} level{"s" if n > 1 else ""})' if hi - g['lo'] > 100 else '')
+        g['label'] = f'{int(g["lo"])}–{int(hi)} m'
         g.pop('lo')
     for key, n in GROUPINGS.items():
+        # each group's label runs from its first level to the next group's first level (the last to its last level),
+        # so the labels meet: 1100–1700 m, 1700–2600 m, ... (the levels themselves never overlap)
         parts = np.array_split(np.arange(len(d)), n)
-        out[key] = [{'label': f'{d[p[0]]:g}–{d[p[-1]]:g} m', 'levels': p.tolist()} for p in parts]
+        out[key] = [{'label': f'{d[p[0]]:g}–{(d[parts[i + 1][0]] if i + 1 < len(parts) else d[p[-1]]):g} m', 'levels': p.tolist()}
+                    for i, p in enumerate(parts)]
     return out
 
 

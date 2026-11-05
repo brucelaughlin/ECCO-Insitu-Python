@@ -793,11 +793,11 @@ async function showBin(b) {
   // links: the in situ data viewer at this bin, depth, years and reference
   const links = document.getElementById('binlinks'); links.innerHTML = '';
   if (INDEX.bin_viewer && lon !== null) {
-    const q = new URLSearchParams({src: S.src, ref: S.ct === 'vs_model' ? 'model' : 'clim', lon: lon.toFixed(2), lat: lat.toFixed(2), V: S.V});
+    const q = new URLSearchParams({src: S.src, ref: S.ct === 'vs_model' ? 'model' : 'clim', lon: lon.toFixed(2), lat: lat.toFixed(2), V: S.V, bin: b});
     const lv = levelsSelected(); if (lv && lv.length === 1) q.set('k', lv[0]); else if (lv) q.set('levels', lv[0] + '-' + lv[lv.length - 1]);
     if (!S.all) { q.set('y0', INDEX.blocks[S.t0]); q.set('y1', INDEX.blocks[S.t1]); }
     q.set('back', location.href.split('#')[0]);
-    links.innerHTML = `<a href="${INDEX.bin_viewer}?${q}">Open the profiles of this bin in the in situ data viewer &rarr;</a>`;
+    links.innerHTML = `<a href="${INDEX.bin_viewer}?${q}">Open the profiles of bin ${b} in the in situ data viewer (outlined there) &rarr;</a>`;
   }
   // per-year chart
   busy('Loading the years of bin ' + b + '…'); await paint();
@@ -1055,7 +1055,7 @@ function fillDepthSelect() {
     const sp = (INDEX.spikes[S.src + '|' + S.ct] || {})[S.V] || [];
     opts = sp.map(s => [s.level, `${INDEX.depth[s.level]} m: ${s.part} ${fmt(s.value)} vs ${fmt(s.median)} around it`]);
     if (!opts.length) opts = [[-1, 'no spikes flagged for this selection']];
-  } else opts = INDEX.groups[S.dmode].map((g, i) => [i, g.label + ' (' + g.levels.length + ' levels)']);
+  } else opts = INDEX.groups[S.dmode].map((g, i) => [i, `${g.label} (${g.levels.length} level${g.levels.length > 1 ? 's' : ''}: ${INDEX.depth[g.levels[0]]}${g.levels.length > 1 ? '–' + INDEX.depth[g.levels.at(-1)] : ''} m)`]);
   sel.style.display = opts.length ? '' : 'none';
   for (const [v, t] of opts) { const o = document.createElement('option'); o.value = v; o.textContent = t; sel.appendChild(o); }
   if (opts.length) { if (![...sel.options].some(o => o.value == S.dsel)) S.dsel = opts[0][0]; sel.value = S.dsel; }

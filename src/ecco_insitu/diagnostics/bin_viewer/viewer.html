@@ -96,8 +96,11 @@ select { font-size: 0.85em; }
   <span class="grp" id="platgrp" title="Mark every profile of one platform (Argo float, ITP, tag, mooring, ship code) with cyan rings, at any zoom">
     <span class="lab" id="platlab">platform</span><input id="plat" list="platlist" placeholder="e.g. 6903082" size="13"><datalist id="platlist"></datalist>
     <button class="btn" id="platclear" title="no platform">×</button><span id="platinfo" style="font-size:0.75em;color:#345"></span></span>
+  <span class="grp" title="The face colors' range, symmetric about 0 (empty: automatic)"><span class="lab">colors ±</span>
+    <input id="fmax" type="number" step="any" size="5" style="width:5em"><button class="btn" id="fauto">auto</button></span>
   <span class="grp"><span class="lab">max cells/bin</span><select id="cap"><option>250</option><option>500</option><option selected>1000</option><option>2000</option><option>5000</option></select></span>
 </div>
+<div id="bininfo" style="display:none;text-align:center;font-size:12px;padding:0.2em;background:#fff3e0;border-bottom:1px solid #f0c080"></div>
 <div id="titlebox"></div>
 <div id="stage">
   <div class="cbar"><canvas id="cbl"></canvas></div>
@@ -129,7 +132,7 @@ const DATA_URL = '.';   // the data sit next to this page
 const ZOOM_THRESHOLD = 10;           // scale factor above which bins split into one cell per profile
 const MICRO_BASE_LW = 0.04;          // cell edge width at the threshold (pt)
 const QF_FACE = [0.05, 0.95], QF_EDGE = [0.05, 0.25, 0.5, 0.75, 0.95, 0.99];
-const PRGN = [__PRGN__], CIVIDIS = [__CIVIDIS__];
+const RDBU = [__RDBU__], CIVIDIS = [__CIVIDIS__];
 // Bin edge width (zoomed out): EDGE_K * sqrt(profile count) px (none for one profile), times sqrt(zoom factor),
 // so edges thicken a little as you zoom in; capped at EDGE_CAP of the bin's own size on screen, so an edge never
 // covers its bin. (The original: 0.01 pt per profile, capped by the smallest bin of all, which on the world map
@@ -208,14 +211,31 @@ function fillPlatforms() {
   document.getElementById('platlab').textContent = P.kind;
   list.innerHTML = P.names.length <= 20000 ? P.names.slice(0, 20000).map(n => `<option value="${n}">`).join('') : '';
 }
+// A platform's track: all its profiles in date-time order (dates from the profile details), drawn as a line with
+// direction arrows and its first (circle) and last (square) profile marked. Independent of depth and time window.
+let TRACK = null, HIBIN = null;          // HIBIN: the bin a link pointed at (?bin=), outlined in orange
+async function platformTrack(idx) {
+  const P = CLASS[S.src].plat, pr = CLASS[S.src].p, js = [];
+  for (let j = 0; j < P.pi.length; j++) if (P.pi[j] === idx) js.push(j);
+  const dt = new Map();
+  if (INDEX.detail && INDEX.detail[S.src]) {
+    const C = INDEX.detail[S.src].chunk, chunks = [...new Set(js.map(j => Math.floor(j / C)))];
+    busy(`Loading the track (${chunks.length} file${chunks.length > 1 ? 's' : ''})…`);
+    for (const c of chunks) { const D = await detailChunk(S.src, c); for (const j of js) if (Math.floor(j / C) === c) dt.set(j, D.date[j % C] * 1e6 + D.time[j % C]); }
+    busy(null);
+  }
+  js.sort((a, b) => (dt.get(a) ?? pr.year[a] * 1e10) - (dt.get(b) ?? pr.year[b] * 1e10));
+  return {idx, js, dated: dt.size === js.length, dt};
+}
 function setPlatform(name) {
   const P = CLASS[S.src]?.plat, info = document.getElementById('platinfo');
-  PLATFORM = null; info.textContent = '';
+  PLATFORM = null; TRACK = null; info.textContent = '';
   if (P && name && P.byName.has(name)) {
     const idx = P.byName.get(name), pr = CLASS[S.src].p; let n = 0, y0 = 9999, y1 = 0;
     for (let j = 0; j < P.pi.length; j++) if (P.pi[j] === idx) { n++; if (pr.year[j] < y0) y0 = pr.year[j]; if (pr.year[j] > y1) y1 = pr.year[j]; }
     PLATFORM = {name, idx, n, y0, y1};
-    info.textContent = `${n.toLocaleString()} profiles, ${y0}–${y1}; cyan rings where it has a value at this depth`;
+    info.textContent = `${n.toLocaleString()} profiles, ${y0}–${y1}; cyan rings where it has a value at this depth; line: its track`;
+    TRACK = null; platformTrack(idx).then(t => { if (PLATFORM && PLATFORM.idx === t.idx) { TRACK = t; draw(); } });
   } else if (name) info.textContent = 'not found in this class';
   document.getElementById('plat').value = PLATFORM ? name : (name || '');
   draw();
@@ -233,7 +253,8 @@ async function loadLevel(src, V, k) {
   if (!c.levels[key]) {
     busy(`Loading ${src} ${V} at ${INDEX.depth[k]} m…`);
     const raw = cols(await gz(`${refBase()}/${src}/${S.ref === 'clim' ? '' : S.ref + '/'}${V}_${String(k).padStart(2, '0')}.bin`), [['ix', Uint32Array, 4, true], ['v', Uint16Array, 2]]);
-    const v = new Float32Array(raw.n); for (let i = 0; i < raw.n; i++) v[i] = F16[raw.v[i]];
+    // the files hold obs − reference; the page shows reference − obs (clim − obs, model − obs) throughout
+    const v = new Float32Array(raw.n); for (let i = 0; i < raw.n; i++) v[i] = -F16[raw.v[i]];
     c.levels[key] = {ix: raw.ix, v};
   }
   return c.levels[key];
@@ -259,8 +280,10 @@ function depthGroups(mode) {
     const n = +mode, N = d.length;
     for (let i = 0; i < n; i++) {                // as numpy.array_split: the first N % n groups one longer
       const a = i * Math.floor(N / n) + Math.min(i, N % n), b = a + Math.floor(N / n) + (i < N % n ? 1 : 0);
-      out.push({label: `${(+d[a]).toFixed(0)}–${(+d[b - 1]).toFixed(0)} m`, levels: [...Array(b - a).keys()].map(j => a + j)});
+      out.push({a, b, levels: [...Array(b - a).keys()].map(j => a + j)});
     }
+    // labels meet: from the group's first level to the next group's first level (the last group to its last level)
+    out.forEach((g, i) => { g.label = `${(+d[g.a]).toFixed(0)}–${(+d[i + 1 < out.length ? out[i + 1].a : g.b - 1]).toFixed(0)} m`; });
   }
   return out;
 }
@@ -310,17 +333,15 @@ function quantile(sorted, q) {               // numpy's default (linear) quantil
 // std; both over all depth levels of the variable), per class over the whole record (export.py), so the colors
 // stay fixed while the time window changes.
 function colorScales() {
-  const q = REF().scales[S.V];
-  return {face: [q.face[0], q.face[1]], qface: q.face, edge: [q.edge[1], q.edge[4]], qedge: q.edge};
+  // the stored limits are of obs − ref; for ref − obs they mirror. The face scale is symmetric about 0 (red–blue,
+  // white = 0); its end is the larger |5 % or 95 % quantile|, or the user's value (the "± max" box).
+  const q = REF().scales[S.V], qf = [-q.face[1], -q.face[0]], m = S.faceMax || Math.max(Math.abs(qf[0]), Math.abs(qf[1]));
+  return {face: [-m, m], qface: qf, edge: [q.edge[1], q.edge[4]], qedge: q.edge, auto: Math.max(Math.abs(qf[0]), Math.abs(qf[1]))};
 }
 
-// ---------- colors (matplotlib PRGn sliced so 0 is white, as the original; cividis) ----------
+// ---------- colors: a red–blue anomaly scale (matplotlib RdBu_r: blue < 0, white = 0, red > 0); cividis for the std ----------
 function lut(arr, x) { const i = Math.max(0, Math.min(255, Math.round(x * 255))); return [arr[3 * i], arr[3 * i + 1], arr[3 * i + 2]]; }
-function faceColor(v, sc) {
-  const [vmin, vmax] = sc.face, m = Math.max(Math.abs(vmin), Math.abs(vmax));
-  const a = 0.5 + vmin / (2 * m), b = 0.5 + vmax / (2 * m), t = Math.max(0, Math.min(1, (v - vmin) / (vmax - vmin)));
-  return lut(PRGN, a + t * (b - a));
-}
+function faceColor(v, sc) { const m = sc.face[1]; return lut(RDBU, Math.max(0, Math.min(1, 0.5 + v / (2 * m)))); }
 function edgeColor(v, sc) { const [vmin, vmax] = sc.edge; return lut(CIVIDIS, Math.max(0, Math.min(1, (v - vmin) / (vmax - vmin)))); }
 
 // ---------- cells (the original's _fill_polygon_voronoi: y-stratified seeds, 2 Lloyd steps, clip to the bin) ----------
@@ -446,6 +467,20 @@ function drawMap(M) {
     const P = CLASS[S.src].plat.pi, pr = CLASS[S.src].p, y0 = S.all ? 0 : INDEX.years0 + S.t0, y1 = S.all ? 9999 : INDEX.years0 + S.t1;
     for (const e of STATS.values()) for (const j of e.idx) if (P[j] === PLATFORM.idx && pr.year[j] >= y0 && pr.year[j] <= y1) platDots.push({p: M.proj(pr.lon[j], pr.lat[j]), j});
   }
+  // the track, cut where it crosses the map's edge (a jump of over a third of the map's width)
+  const trackPaths = [], trackEnds = [], trackArrows = [];
+  if (TRACK && PLATFORM && TRACK.idx === PLATFORM.idx) {
+    const pr = CLASS[S.src].p, [ex0, , ex1] = M.extent, wrap = (ex1 - ex0) / 3; let cur = [];
+    const pts = TRACK.js.map(j => M.proj(pr.lon[j], pr.lat[j]));
+    pts.forEach((q, i) => { if (i && Math.hypot(q[0] - pts[i - 1][0], q[1] - pts[i - 1][1]) > wrap) { if (cur.length > 1) trackPaths.push(cur); cur = []; } cur.push(q); });
+    if (cur.length > 1) trackPaths.push(cur);
+    if (pts.length) { trackEnds.push({p: pts[0], first: true}); trackEnds.push({p: pts.at(-1), first: false}); }
+    const step = Math.max(1, Math.round(pts.length / 12));
+    for (let i = step; i < pts.length; i += step) { const a = pts[i - 1], b = pts[i]; if (Math.hypot(b[0] - a[0], b[1] - a[1]) > wrap) continue;
+      trackArrows.push({p: [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2], ang: Math.atan2(b[1] - a[1], b[0] - a[0]) * 180 / Math.PI}); }
+  }
+  const hl = HIBIN !== null && M.bins.get(HIBIN) ? [M.bins.get(HIBIN)] : [];
+  const hlDots = []; if (hl.length && STATS.get(HIBIN)) for (const j of STATS.get(HIBIN).idx) hlDots.push({p: M.proj(CLASS[S.src].p.lon[j], CLASS[S.src].p.lat[j]), j});
   const cellLw = MICRO_BASE_LW * (sf / ZOOM_THRESHOLD) * PT, borderLw = Math.min(1.5, Math.max(0.3, 0.6 * sf / ZOOM_THRESHOLD)) * PT;
   const G = M.id === 'll' ? grid(M, vs) : polarGrid(M, vs), [ex0, ey0, ex1, ey1] = M.extent;
   M.deck.setProps({layers: [
@@ -473,6 +508,14 @@ function drawMap(M) {
       pickable: true, radiusMinPixels: 1.2, onClick: info => { if (info.object) openProfile(info.object.j); return true; }}),
     new deck.ScatterplotLayer({id: 'sel', data: PICKED !== null ? dots.filter(d => d.j === PICKED) : [], getPosition: d => d.p, stroked: true, filled: false,
       getLineColor: [0, 0, 0, 255], getRadius: 6, radiusUnits: 'pixels', getLineWidth: 2, lineWidthUnits: 'pixels'}),
+    new deck.PathLayer({id: 'hibin', data: hl, getPath: d => d.ring, getColor: [255, 140, 0, 255], getWidth: 3.5, widthUnits: 'pixels'}),
+    new deck.ScatterplotLayer({id: 'hidots', data: hlDots, getPosition: d => d.p, stroked: true, filled: false, getLineColor: [255, 140, 0, 255],
+      getRadius: 5, radiusUnits: 'pixels', getLineWidth: 1.6, lineWidthUnits: 'pixels', pickable: true, onClick: info => { if (info.object) openProfile(info.object.j); return true; }}),
+    new deck.PathLayer({id: 'track', data: trackPaths, getPath: d => d, getColor: [0, 120, 150, 210], getWidth: 1.8, widthUnits: 'pixels'}),
+    new deck.TextLayer({id: 'trackarrows', data: trackArrows, getPosition: d => d.p, getText: () => '➤', getAngle: d => d.ang, getSize: 13,
+      getColor: [0, 110, 140, 255], characterSet: '➤'}),
+    new deck.ScatterplotLayer({id: 'trackends', data: trackEnds, getPosition: d => d.p, getFillColor: d => d.first ? [255, 255, 255, 255] : [0, 110, 140, 255],
+      getLineColor: [0, 110, 140, 255], stroked: true, getRadius: 6, radiusUnits: 'pixels', getLineWidth: 2, lineWidthUnits: 'pixels'}),
     new deck.ScatterplotLayer({id: 'plat', data: platDots, getPosition: d => d.p, stroked: true, filled: false, getLineColor: [0, 200, 230, 255],
       pickable: true, onClick: info => { if (info.object) openProfile(info.object.j); return true; },
       getRadius: 4, radiusUnits: 'pixels', getLineWidth: 1.6, lineWidthUnits: 'pixels'}),
@@ -508,6 +551,7 @@ function writeAddress() {
     if (S.dmode === 'level') q.set('k', S.k); else { q.set('dmode', S.dmode); q.set('g', S.g); }
     if (!S.all) { q.set('y0', INDEX.years0 + S.t0); q.set('y1', INDEX.years0 + S.t1); }
     if (PLATFORM) q.set('platform', PLATFORM.name);
+    if (HIBIN !== null) q.set('bin', HIBIN);
     const M = MAPS.find(m => m.view.zoom > m.home.zoom + 0.01) || MAPS[0];
     if (M.view.zoom > M.home.zoom + 0.01) q.set('view', `${M.id},${M.view.target[0].toFixed(2)},${M.view.target[1].toFixed(2)},${scaleFactor(M, M.view).toFixed(2)}`);
     if (old.get('back')) q.set('back', old.get('back'));
@@ -520,7 +564,7 @@ function titles() {
   let tot = 0; for (const e of STATS.values()) tot += e.n;
   const years = S.all ? `all years (${ci.years[0]}–${ci.years[1]})` : S.t0 === S.t1 ? `${INDEX.years0 + S.t0}` : `${INDEX.years0 + S.t0}–${INDEX.years0 + S.t1}`;
   document.getElementById('titlebox').textContent =
-    `variable: ${S.V}; anomaly relative to the ${S.ref === 'clim' ? 'climatology' : (INDEX.refs || {})[S.ref] || S.ref}\n` +
+    `variable: ${S.V}; shown: ${S.ref === 'clim' ? 'climatology' : 'model'} − observation (${S.ref === 'clim' ? 'climatology' : (INDEX.refs || {})[S.ref] || S.ref}); red: the reference is warmer/saltier\n` +
     `${nlev} total depth levels in file; ${depthText()}\n` +
     `${lv.length}/${nlev} total depth levels populated; geodesic bins populated at current depth level: ${W.nBins}/${INDEX.n_bins_grid}\n` +
     `profiles binned at current depth level: ${tot.toLocaleString()}; obs class: ${S.src}; years: ${years}\n` +
@@ -534,8 +578,9 @@ function titles() {
     `the geodesic bin polygons.`;
 }
 function colorbars() {
+  document.getElementById('fmax').placeholder = fmt(SC.auto);
   const unit = INDEX.units[S.V];
-  const what = S.ref === 'clim' ? `${S.V} anomaly` : `${S.V} − model`;
+  const what = S.ref === 'clim' ? `clim − obs ${S.V}` : `model − obs ${S.V}`;
   bar('cbl', SC.edge, SC.qedge, QF_EDGE, x => edgeColor(x, SC), `${what} std (${unit})`, 'white');
   bar('cbr', SC.face, SC.qface, QF_FACE, x => faceColor(x, SC), `${what} mean (${unit})`, 'black');
 }
@@ -687,6 +732,8 @@ function setupControls() {
   document.getElementById('copylink').onclick = async e => { clearTimeout(ADDR_T); writeAddress(); await new Promise(r => setTimeout(r, 450));
     try { await navigator.clipboard.writeText(location.href); e.target.textContent = 'copied'; } catch (err) { prompt('Copy this link:', location.href); }
     setTimeout(() => e.target.textContent = 'copy link', 1500); };
+  document.getElementById('fmax').onchange = e => { S.faceMax = +e.target.value > 0 ? +e.target.value : null; SC = colorScales(); draw(); };
+  document.getElementById('fauto').onclick = () => { S.faceMax = null; document.getElementById('fmax').value = ''; SC = colorScales(); draw(); };
   document.getElementById('cap').onchange = e => { S.cap = +e.target.value; draw(); };
   document.getElementById('reset').onclick = () => resetZoom();
   document.getElementById('resetall').onclick = () => { S.dmode = 'level'; document.getElementById('dmode').value = 'level';
@@ -713,7 +760,7 @@ function fillDepth() {
     d.innerHTML = lv.map(k => `<option value="${k}">${k + 1}: ${INDEX.depth[k]} m</option>`).join(''); d.value = S.k;
   } else {
     const gs = groupsWithData(); if (!gs.some(g => g.i === S.g)) S.g = gs[0].i;
-    d.innerHTML = gs.map(g => `<option value="${g.i}">${g.label} (${g.levels.length} levels)</option>`).join(''); d.value = S.g;
+    d.innerHTML = gs.map(g => `<option value="${g.i}">${g.label} (${g.levels.length} level${g.levels.length > 1 ? 's' : ''})</option>`).join(''); d.value = S.g;
   }
 }
 function fillTime() {
@@ -832,7 +879,7 @@ async function drawOneProfile(g, cv, pr, j, ref, unit) {
   for (const q of nbr) for (const r of q) if (z[r.k] <= zmax) all.push(r.obs);
   let lo = Math.min(...all), hi = Math.max(...all); const pad = 0.05 * (hi - lo || 1); lo -= pad; hi += pad;
   const X = v => L + w1 * (v - lo) / (hi - lo);
-  const an = rows.map(r => r.obs - refv(r)), aa = an.filter(Number.isFinite), ss = rows.map(r => r.sig).filter(Number.isFinite);
+  const an = rows.map(r => refv(r) - r.obs), aa = an.filter(Number.isFinite), ss = rows.map(r => r.sig).filter(Number.isFinite);
   let am = Math.max(1e-6, ...aa.map(Math.abs), ...ss.map(x => 2 * x)) * 1.1;
   const X2 = v => L + w1 + gap + w2 * (v + am) / (2 * am);
   g.font = '10px sans-serif'; g.fillStyle = '#444'; g.strokeStyle = '#ddd'; g.lineWidth = 1;
@@ -842,7 +889,7 @@ async function drawOneProfile(g, cv, pr, j, ref, unit) {
   g.textAlign = 'center'; g.textBaseline = 'top';
   for (const t of niceTicks(lo, hi, 4)) g.fillText(fmt(t), X(t), H - B + 4);
   for (const t of niceTicks(-am, am, 4)) g.fillText(fmt(t), X2(t), H - B + 4);
-  g.fillText(`${S.V} (${unit})`, L + w1 / 2, H - B + 18); g.fillText(`obs − ${ref} (${unit})`, L + w1 + gap + w2 / 2, H - B + 18);
+  g.fillText(`${S.V} (${unit})`, L + w1 / 2, H - B + 18); g.fillText(`${ref} − obs (${unit})`, L + w1 + gap + w2 / 2, H - B + 18);
   const path = (pts, col, w, dash) => { g.strokeStyle = col; g.lineWidth = w; g.setLineDash(dash || []); g.beginPath(); let on = false;
     for (const [x, y] of pts) { if (!Number.isFinite(x)) { on = false; continue; } if (on) g.lineTo(x, y); else { g.moveTo(x, y); on = true; } } g.stroke(); g.setLineDash([]); };
   for (const q of nbr) path(q.filter(r => z[r.k] <= zmax).map(r => [X(r.obs), Y(z[r.k])]), 'rgba(150,150,150,0.35)', 1);
@@ -857,10 +904,10 @@ async function drawOneProfile(g, cv, pr, j, ref, unit) {
   rows.forEach((r, i) => { const x = X2(r.sig || 0), y = Y(z[r.k]); i ? g.lineTo(x, y) : g.moveTo(x, y); });
   [...rows].reverse().forEach(r => g.lineTo(X2(-(r.sig || 0)), Y(z[r.k]))); g.fill();
   g.strokeStyle = '#999'; g.beginPath(); g.moveTo(X2(0), T); g.lineTo(X2(0), H - B); g.stroke();
-  path(rows.map(r => [X2(r.obs - refv(r)), Y(z[r.k])]), '#111', 1.8);
+  path(rows.map(r => [X2(refv(r) - r.obs), Y(z[r.k])]), '#111', 1.8);
   let nrej = 0;
   for (const r of rows) if (r.code) { nrej++; const x = X(r.obs), y = Y(z[r.k]); g.strokeStyle = '#d35400'; g.lineWidth = 1.5; g.beginPath(); g.moveTo(x - 3, y - 3); g.lineTo(x + 3, y + 3); g.moveTo(x + 3, y - 3); g.lineTo(x - 3, y + 3); g.stroke();
-    const x2 = X2(Math.max(-am, Math.min(am, r.obs - refv(r)))); g.beginPath(); g.moveTo(x2 - 3, y - 3); g.lineTo(x2 + 3, y + 3); g.moveTo(x2 + 3, y - 3); g.lineTo(x2 - 3, y + 3); g.stroke(); }
+    const x2 = X2(Math.max(-am, Math.min(am, refv(r) - r.obs))); g.beginPath(); g.moveTo(x2 - 3, y - 3); g.lineTo(x2 + 3, y + 3); g.moveTo(x2 + 3, y - 3); g.lineTo(x2 - 3, y + 3); g.stroke(); }
   // the depth shown on the map
   const lv = currentLevels(); g.strokeStyle = 'rgba(108,52,131,0.7)'; g.setLineDash([3, 3]);
   for (const k of [lv[0], lv[lv.length - 1]]) { if (z[k] > zmax) continue; g.beginPath(); g.moveTo(L, Y(z[k])); g.lineTo(W - Rm, Y(z[k])); g.stroke(); } g.setLineDash([]);
@@ -873,8 +920,8 @@ async function drawOneProfile(g, cv, pr, j, ref, unit) {
     g.fillStyle = '#333'; g.fillText(t, lx + 20, ly); lx += wt; });
   // per-level table of the map's depth, and notes
   const at = rows.filter(r => lv.includes(r.k)), dv = at.map(r => {
-    const m = r.obs - refv(r), c = Number.isFinite(r.sig) && r.sig > 0 ? (m / r.sig) ** 2 : NaN;
-    return `${z[r.k]} m: obs ${r.obs.toFixed(3)}, ${ref} ${Number.isFinite(refv(r)) ? refv(r).toFixed(3) : '–'}, obs − ${ref} ${Number.isFinite(m) ? (m >= 0 ? '+' : '') + m.toFixed(3) : '–'} ${unit}, ` +
+    const m = refv(r) - r.obs, c = Number.isFinite(r.sig) && r.sig > 0 ? (m / r.sig) ** 2 : NaN;
+    return `${z[r.k]} m: obs ${r.obs.toFixed(3)}, ${ref} ${Number.isFinite(refv(r)) ? refv(r).toFixed(3) : '–'}, ${ref} − obs ${Number.isFinite(m) ? (m >= 0 ? '+' : '') + m.toFixed(3) : '–'} ${unit}, ` +
       `σ ${Number.isFinite(r.sig) ? r.sig.toFixed(3) : '–'}, (Δ/σ)² ${Number.isFinite(c) ? c.toFixed(2) : '–'}${r.code ? '; <b style="color:#d35400">rejected: ' + qcText(r.code) + '</b>' : ''}`; });
   document.getElementById('ppfoot').innerHTML = (dv.length ? `<b>At the map's depth</b> (purple dashes): ${dv.join('<br>')}<br>` : '') +
     `Blue bands: ±1σ and ±2σ, the assumed error of the observation (the cost is (Δ/σ)²). ` +
@@ -890,16 +937,16 @@ async function drawFloat(g, cv, j, ref, unit, name) {
   const prs = []; for (const i of idx) { const q = await profileOf(S.src, i); prs.push([i, q]); } busy(null);
   prs.sort((a, b) => a[1].date - b[1].date || a[1].time - b[1].time);
   const z = INDEX.depth, W = cv.width, H = cv.height, L = 52, Rm = 70, T = 26, B = 40, refv = r => S.ref === 'clim' ? r.clim : r.model;
-  let zmax = 0, am = 0; for (const [, q] of prs) for (const r of q[S.V]) { zmax = Math.max(zmax, z[r.k]); const m = r.obs - refv(r); if (Number.isFinite(m)) am = Math.max(am, Math.abs(m)); }
+  let zmax = 0, am = 0; for (const [, q] of prs) for (const r of q[S.V]) { zmax = Math.max(zmax, z[r.k]); const m = refv(r) - r.obs; if (Number.isFinite(m)) am = Math.max(am, Math.abs(m)); }
   if (!zmax) { g.fillText(`No ${S.V} in these profiles.`, 20, 40); return; }
-  const vals = []; for (const [, q] of prs) for (const r of q[S.V]) { const m = r.obs - refv(r); if (Number.isFinite(m)) vals.push(Math.abs(m)); }
+  const vals = []; for (const [, q] of prs) for (const r of q[S.V]) { const m = refv(r) - r.obs; if (Number.isFinite(m)) vals.push(Math.abs(m)); }
   vals.sort((a, b) => a - b); am = Math.max(1e-6, vals[Math.floor(0.98 * (vals.length - 1))] || am);
   const nP = prs.length, cw = (W - L - Rm) / nP, Y = d => T + (H - T - B) * d / zmax;
   const RD = [[5,48,97],[67,147,195],[209,229,240],[247,247,247],[253,219,199],[214,96,77],[103,0,31]];
   const col = x => { const t = Math.max(0, Math.min(1, (x + am) / (2 * am))) * (RD.length - 1), i = Math.min(RD.length - 2, Math.floor(t)), f = t - i;
     return `rgb(${RD[i].map((c, k) => Math.round(c + f * (RD[i + 1][k] - c))).join(',')})`; };
   prs.forEach(([i, q], n) => { const rows = q[S.V];
-    rows.forEach((r, m) => { const m2 = r.obs - refv(r); if (!Number.isFinite(m2)) return; const z0 = m ? (z[rows[m - 1].k] + z[r.k]) / 2 : z[r.k], z1 = m + 1 < rows.length ? (z[r.k] + z[rows[m + 1].k]) / 2 : z[r.k];
+    rows.forEach((r, m) => { const m2 = refv(r) - r.obs; if (!Number.isFinite(m2)) return; const z0 = m ? (z[rows[m - 1].k] + z[r.k]) / 2 : z[r.k], z1 = m + 1 < rows.length ? (z[r.k] + z[rows[m + 1].k]) / 2 : z[r.k];
       g.fillStyle = col(m2); g.fillRect(L + n * cw, Y(z0), Math.max(1, cw + 0.3), Math.max(1, Y(z1) - Y(z0))); }); });
   const k = prs.findIndex(([i]) => i === j); if (k >= 0) { g.strokeStyle = '#000'; g.lineWidth = 1.5; g.strokeRect(L + k * cw, T, Math.max(2, cw), H - T - B); }
   g.strokeStyle = '#999'; g.lineWidth = 1; g.strokeRect(L, T, W - L - Rm, H - T - B);
@@ -917,9 +964,9 @@ async function drawFloat(g, cv, j, ref, unit, name) {
   g.fillStyle = '#333'; g.textAlign = 'left'; g.textBaseline = 'middle';
   for (const t of niceTicks(-am, am, 4)) g.fillText(fmt(t), W - Rm + 35, T + (H - T - B) * (1 - (t + am) / (2 * am)));
   g.textAlign = 'left'; g.textBaseline = 'middle'; g.font = '11px sans-serif'; g.fillStyle = '#333';
-  g.fillText(`${name}: obs − ${ref} (${unit}), depth against profile number`, L, 12);
-  document.getElementById('ppfoot').innerHTML = `Each column is one profile of ${name}, left to right in time; color is obs − ${ref} (red warmer/saltier, blue colder/fresher; ` +
-    `the scale's ends are the 98th percentile of |obs − ${ref}| over these profiles). A water-mass difference tends to persist from profile to profile; a sensor drift creeps; a single bad profile stands alone. ` +
+  g.fillText(`${name}: ${ref} − obs (${unit}), depth against profile number`, L, 12);
+  document.getElementById('ppfoot').innerHTML = `Each column is one profile of ${name}, left to right in time; color is ${ref} − obs (red: the reference is warmer/saltier, blue: colder/fresher; ` +
+    `the scale's ends are the 98th percentile of |${ref} − obs| over these profiles). A water-mass difference tends to persist from profile to profile; a sensor drift creeps; a single bad profile stands alone. ` +
     `<a href="#" id="pphl2">Ring its profiles on the map</a> to see its track.`;
   document.getElementById('pphl2').onclick = e => { e.preventDefault(); setPlatform(name); };
 }
@@ -931,13 +978,13 @@ async function listMisfits(j, ref, unit) {
   busy(`Loading the ${idx.length} profiles of bin ${b}…`); await paint();
   const rows = [], refv = r => S.ref === 'clim' ? r.clim : r.model, pl = CLASS[S.src].plat;
   for (const i of idx) { const q = await profileOf(S.src, i);
-    for (const r of q[S.V]) if (lv.includes(r.k)) { const m = r.obs - refv(r); if (!Number.isFinite(m)) continue;
+    for (const r of q[S.V]) if (lv.includes(r.k)) { const m = refv(r) - r.obs; if (!Number.isFinite(m)) continue;
       rows.push({i, z: INDEX.depth[r.k], m, s: r.sig, n: Number.isFinite(r.sig) && r.sig > 0 ? Math.abs(m) / r.sig : NaN, code: r.code, date: q.date,
         plat: pl && pl.pi[i] !== 0xFFFFFFFF ? pl.names[pl.pi[i]] : '–'}); } }
   busy(null);
   rows.sort((a, c) => (c.n || 0) - (a.n || 0));
   let h = `<b>Bin ${b}, ${depthText().replace('displaying ', '')}, ${S.all ? 'all years' : y0 + '–' + y1}: the ${Math.min(25, rows.length)} largest misfits of ${rows.length} values</b> (click a row to open that profile)` +
-    `<table><tr><th>#</th><th>date</th><th>${pl ? pl.kind : 'platform'}</th><th>depth</th><th>obs − ${ref} (${unit})</th><th>σ</th><th>|Δ|/σ</th><th>QC</th></tr>`;
+    `<table><tr><th>#</th><th>date</th><th>${pl ? pl.kind : 'platform'}</th><th>depth</th><th>${ref} − obs (${unit})</th><th>σ</th><th>|Δ|/σ</th><th>QC</th></tr>`;
   rows.slice(0, 25).forEach((r, n) => { h += `<tr class="pick" data-i="${r.i}"><td>${n + 1}</td><td>${ymd(r.date)}</td><td>${r.plat}</td><td>${r.z} m</td>` +
     `<td>${(r.m >= 0 ? '+' : '') + r.m.toFixed(3)}</td><td>${Number.isFinite(r.s) ? r.s.toFixed(3) : '–'}</td><td><b>${Number.isFinite(r.n) ? r.n.toFixed(1) : '–'}</b></td>` +
     `<td style="text-align:left">${r.code ? '<span style="color:#d35400">rejected</span>' : 'kept'}</td></tr>`; });
@@ -1028,6 +1075,12 @@ async function init() {
       if (M !== MAPS[0]) setTimeout(() => M.el.scrollIntoView({block: 'center'}), 300); } }
   await recompute();
   if (q.get('platform')) setPlatform(q.get('platform'));
+  if (q.get('bin')) { HIBIN = +q.get('bin'); const e = STATS.get(HIBIN), info = document.getElementById('bininfo');
+    info.style.display = ''; info.innerHTML = `<b>Geodesic bin ${HIBIN}</b> (outlined in orange; its profiles ringed): ` +
+      (e ? `${e.n} profiles here at this depth and these years; mean ${S.ref === 'clim' ? 'clim' : 'model'} − obs ${e.mean.toFixed(3)} ${INDEX.units[S.V]}. Click a ring for the profile.` : 'no profiles at this depth and these years.') +
+      ` <a href="#" id="binclear">clear</a>`;
+    document.getElementById('binclear').onclick = ev => { ev.preventDefault(); HIBIN = null; info.style.display = 'none'; writeAddress(); draw(); };
+    draw(); }
 }
 init().catch(e => { busy(null); document.getElementById('titlebox').textContent = 'error: ' + e.message; console.error(e); });
 </script>

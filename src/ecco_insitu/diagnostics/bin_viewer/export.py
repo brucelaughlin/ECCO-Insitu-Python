@@ -762,7 +762,7 @@ def write_page(out):
     here = Path(__file__).parent
     lut = lambda name: ','.join(str(int(round(255 * c))) for i in range(256) for c in colormaps[name](i)[:3])
     html = (here / 'viewer.html').read_text()
-    html = html.replace('__PRGN__', lut('PRGn')).replace('__CIVIDIS__', lut('cividis'))
+    html = html.replace('__RDBU__', lut('RdBu_r')).replace('__CIVIDIS__', lut('cividis'))
     html = html.replace('__GUIDE__', GUIDE_HTML.replace('CELL_BUDGET', '200,000'))
     (out / 'index.html').write_text(html)
     shutil.copytree(here / 'vendor', out / 'vendor', dirs_exist_ok=True)
