@@ -281,6 +281,9 @@ def _new_acc(n_depths):
         'a01_T_count': np.zeros(n_depths, dtype=np.int64),
         'a01_S_sum':   np.zeros(n_depths),
         'a01_S_count': np.zeros(n_depths, dtype=np.int64),
+        # observations (weight > 0) per (month, level), for the time-depth count grid; month = YYYYMM - 199201
+        'tdc_T': defaultdict(lambda: np.zeros(n_depths, dtype=np.int64)),
+        'tdc_S': defaultdict(lambda: np.zeros(n_depths, dtype=np.int64)),
         # --- bias accumulators for split cost, shape (N_BINS+1, n_depths) ---
         'bias_sum_T':   np.zeros((N_BINS + 1, n_depths)),
         'bias_sum_S':   np.zeros((N_BINS + 1, n_depths)),
@@ -496,8 +499,11 @@ def _add_viewer(acc, V, part, mf, ok, w, sf, gamma, ym, bi_safe):
     v['sum'].append(np.bincount(inv, weights=c[rows, cols], minlength=len(u)))
     v['n'].append(np.bincount(inv, minlength=len(u)).astype(np.int64))
     if part == 'unsplit':
-        # bias diagnostic: the signed misfit V - Vref (not a cost term), summed per cell
+        # bias diagnostic: the signed misfit V - Vref (not a cost term), summed per cell; and the normalized
+        # misfit (V - Vref)/sigma (true weights: 1/sigma = sqrt(w_true)), summed per cell
         v.setdefault('mis', []).append(np.bincount(inv, weights=mf[rows, cols], minlength=len(u)))
+        nm = mf * np.sqrt(np.maximum(_weight_versions(w, sf, gamma)['true'], 0))
+        v.setdefault('nmis', []).append(np.bincount(inv, weights=nm[rows, cols], minlength=len(u)))
     if sum(len(k) for k in v['keys']) > 20_000_000:
         _viewer_reduce(v)
 
@@ -511,8 +517,9 @@ def _viewer_reduce(v):
     v['keys'] = [u]
     v['sum'] = [np.bincount(inv, weights=s, minlength=len(u))]
     v['n'] = [np.bincount(inv, weights=n, minlength=len(u)).astype(np.int64)]
-    if v.get('mis'):
-        v['mis'] = [np.bincount(inv, weights=np.concatenate(v['mis']), minlength=len(u))]
+    for k2 in ('mis', 'nmis'):
+        if v.get(k2):
+            v[k2] = [np.bincount(inv, weights=np.concatenate(v[k2]), minlength=len(u))]
     return v
 
 
@@ -542,6 +549,9 @@ def _accumulate_file(acc, fd, cost_type, pass_, biases=None, pooled=None):
             cols = np.where(obs)[1]
             np.add.at(acc[f'a01_{V}_sum'],   cols, val[obs])
             np.add.at(acc[f'a01_{V}_count'], cols, 1)
+            rows_o = np.where(obs)[0]; ymo = _yyyymm(fd['ymd'])[rows_o]
+            for m in np.unique(ymo):
+                np.add.at(acc[f'tdc_{V}'][int(m)], cols[ymo == m], 1)
         if cost_type == 'vs_clim':
             ref = fd[f'clim_{V}']
         else:
@@ -582,6 +592,14 @@ def _finalize(acc, depth):
     """Convert running sums to means / normalized quantities.  Returns results dict."""
     n_d = len(depth)
     res = {'depth': depth}
+
+    # time-depth counts: (month, level) arrays over the months that have data
+    res['tdc'] = {}
+    for V in VARS:
+        d = acc.get(f'tdc_{V}') or {}
+        months = sorted(d)
+        res['tdc'][V] = {'yyyymm': np.array(months, np.int32),
+                         'count': np.array([d[m] for m in months], np.int64).reshape(len(months), n_d)}
 
     # analysis 1
     res['a01'] = {}
@@ -760,6 +778,17 @@ def _write_nc(res, source, run_ts, path, cost_types_used, pooled_sources=None):
         cv('a01_S_mean_depth', res['a01']['S']['mean'], ('depth',), 'f4',
            long_name='Global mean S vs depth (all weighted observations; the same for every cost type)')
         nc.createVariable('a01_T_count_depth', 'i8', ('depth',))[:] = res['a01']['T']['count']
+        # observations per (month, level), for the time-depth count grid
+        for V in VARS:
+            t = res.get('tdc', {}).get(V)
+            if t is None or not len(t['yyyymm']):
+                continue
+            dim = f'tdc_month_{V}'
+            nc.createDimension(dim, len(t['yyyymm']))
+            nc.createVariable(f'tdc_{V}_yyyymm', 'i4', (dim,))[:] = t['yyyymm']
+            x = nc.createVariable(f'tdc_{V}_count', 'i4', (dim, 'depth'), zlib=True)
+            x[:] = t['count']
+            x.long_name = f'number of {V} observations with weight > 0 per month and depth level (the same for every cost type)'
         nc.createVariable('a01_S_count_depth', 'i8', ('depth',))[:] = res['a01']['S']['count']
 
         mb = nc.createVariable('map_band_label', str, ('map_band',))
@@ -791,6 +820,11 @@ def _write_nc(res, source, run_ts, path, cost_types_used, pooled_sources=None):
                     x.long_name = (f'{V} sum of the signed misfit prof_{V} - reference per (year block, bin, '
                                    f'level); divided by ..._n gives the mean bias (a diagnostic, not a cost term)')
                     x.units = 'degC' if V == 'T' else 'psu'
+                if v.get('nmis'):
+                    x = nc.createVariable(f'viewer__{V}__{part}__nmisfit_sum', 'f4', (dim,), zlib=True)
+                    x[:] = v['nmis'][0]
+                    x.long_name = (f'{V} sum of the normalized misfit (prof_{V} - reference)/sigma (true weights) per (year '
+                                   f'block, bin, level); divided by ..._n gives its mean (not squared, not a cost term)')
 
         # the split's mean term, this class's own bin means (per bin and level, and its mean over bins)
         for (V, wv), mt in res.get('meanterm', {}).items():
