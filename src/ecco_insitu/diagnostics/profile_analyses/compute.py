@@ -502,8 +502,12 @@ def _add_viewer(acc, V, part, mf, ok, w, sf, gamma, ym, bi_safe):
         # bias diagnostic: the signed misfit V - Vref (not a cost term), summed per cell; and the normalized
         # misfit (V - Vref)/sigma (true weights: 1/sigma = sqrt(w_true)), summed per cell
         v.setdefault('mis', []).append(np.bincount(inv, weights=mf[rows, cols], minlength=len(u)))
-        nm = mf * np.sqrt(np.maximum(_weight_versions(w, sf, gamma)['true'], 0))
+        wt = np.maximum(_weight_versions(w, sf, gamma)['true'], 0)
+        nm = mf * np.sqrt(wt)
         v.setdefault('nmis', []).append(np.bincount(inv, weights=nm[rows, cols], minlength=len(u)))
+        # the assumed error sigma = 1/sqrt(w_true), summed per cell (its mean per bin can be mapped)
+        sig = np.where(wt > 0, 1 / np.sqrt(np.where(wt > 0, wt, 1)), 0.0)
+        v.setdefault('sig', []).append(np.bincount(inv, weights=sig[rows, cols], minlength=len(u)))
     if sum(len(k) for k in v['keys']) > 20_000_000:
         _viewer_reduce(v)
 
@@ -517,7 +521,7 @@ def _viewer_reduce(v):
     v['keys'] = [u]
     v['sum'] = [np.bincount(inv, weights=s, minlength=len(u))]
     v['n'] = [np.bincount(inv, weights=n, minlength=len(u)).astype(np.int64)]
-    for k2 in ('mis', 'nmis'):
+    for k2 in ('mis', 'nmis', 'sig'):
         if v.get(k2):
             v[k2] = [np.bincount(inv, weights=np.concatenate(v[k2]), minlength=len(u))]
     return v
@@ -819,6 +823,12 @@ def _write_nc(res, source, run_ts, path, cost_types_used, pooled_sources=None):
                     x[:] = v['mis'][0]
                     x.long_name = (f'{V} sum of the signed misfit prof_{V} - reference per (year block, bin, '
                                    f'level); divided by ..._n gives the mean bias (a diagnostic, not a cost term)')
+                    x.units = 'degC' if V == 'T' else 'psu'
+                if v.get('sig'):
+                    x = nc.createVariable(f'viewer__{V}__{part}__sigma_sum', 'f4', (dim,), zlib=True)
+                    x[:] = v['sig'][0]
+                    x.long_name = (f'{V} sum of the assumed error sigma (1/sqrt(true weight)) per (year block, bin, level); '
+                                   f'divided by ..._n gives the mean sigma')
                     x.units = 'degC' if V == 'T' else 'psu'
                 if v.get('nmis'):
                     x = nc.createVariable(f'viewer__{V}__{part}__nmisfit_sum', 'f4', (dim,), zlib=True)
