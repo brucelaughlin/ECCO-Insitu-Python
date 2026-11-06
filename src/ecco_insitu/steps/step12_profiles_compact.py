@@ -69,6 +69,7 @@ Sanity checks (ERROR aborts the conversion, WARN is reported only)
          (the test MITgcm applies); negative prof_interp_i/j
   ERROR  (output only) prof_date differs from prof_YYYYMMDD/prof_HHMMSS
          by more than 0.5 s; on input this is a WARN, since it is recomputed
+         (float32 mode copies prof_date unchanged, so there it is a WARN on both)
   WARN   depth not increasing; weights equal to the fill value; weighted
          prof_T outside [-3, 40] or prof_S outside [0, 45]; NaN/Inf in
          other variables; tiny values that underflow to 0 in float32
@@ -425,10 +426,11 @@ def convert_attr(val, spec):
 # 3./5. legality checks (run on the input and again on the output)
 # ----------------------------------------------------------------------------
 
-def check_file(ds, stats, chunk_prof, phase='input'):
+def check_file(ds, stats, chunk_prof, phase='input', date_recomputed=True):
     """Return a list of (severity, variable, message). phase is 'input' or
     'output'; an inconsistent prof_date is a WARN on input (it will be
-    recomputed) and an ERROR on output."""
+    recomputed) and an ERROR on output, unless ``date_recomputed`` is False (float32
+    mode copies prof_date as it is, so the output keeps the input's WARN)."""
     issues = []
 
     def err(v, m):
@@ -544,7 +546,9 @@ def check_file(ds, stats, chunk_prof, phase='input'):
             if fin.any() and np.all(sec // 60 % 60 == month):
                 msg += '; its minutes equal the month number (mm/MM mix-up)'
             if phase == 'input':
-                warn(DATE_VAR, msg + '; will be recomputed')
+                warn(DATE_VAR, msg + ('; will be recomputed' if date_recomputed else '; copied unchanged'))
+            elif not date_recomputed:
+                warn(DATE_VAR, msg + '; copied unchanged from the input')
             else:
                 err(DATE_VAR, msg)
 
@@ -798,8 +802,10 @@ def process_file(src_path, dst_path, args):
     print_table('TYPE PLAN', ['variable', 'dims', 'input', 'output', 'rule'],
                 rows)
 
+    date_recomputed = specs.get(DATE_VAR, {}).get('mode') == 'replace'
     n_err = print_issues('PRE-CONVERSION SANITY CHECK',
-                         check_file(src, in_stats, args.chunk_prof))
+                         check_file(src, in_stats, args.chunk_prof,
+                                    date_recomputed=date_recomputed))
     if n_err:
         src.close()
         print(f'\n  ABORTED: {src_path} has {n_err} error(s); not converted')
@@ -834,7 +840,7 @@ def process_file(src_path, dst_path, args):
                 rows, right=(2, 3, 4, 5, 6, 7, 8, 9))
     n_err_out = print_issues('POST-CONVERSION SANITY CHECK (output file)',
                              check_file(dst, out_stats, args.chunk_prof,
-                                        phase='output'))
+                                        phase='output', date_recomputed=date_recomputed))
     dst.close()
     src.close()
 

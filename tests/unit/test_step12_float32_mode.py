@@ -39,3 +39,19 @@ def test_float32_mode_changes_only_profile_arrays(tmp_path):
             else:
                 assert b[k].dtype == a[k].dtype, k
                 assert np.array_equal(b[k][:], a[k][:]), k
+
+
+def test_float32_mode_keeps_a_date_off_by_a_second(tmp_path):
+    """prof_date 1 s off prof_YYYYMMDD/HHMMSS (as in GLD and XBT files): copied as is in float32 mode, a warning, not
+    a failure (only 'full' mode recomputes prof_date, so only there must the output agree to 0.5 s)."""
+    src = _make(str(tmp_path / 'in.nc'))
+    with netCDF4.Dataset(src, 'a') as ds:
+        ds['prof_date'][:] = 738687.5 + 1 / 86400
+    dst = str(tmp_path / 'out.nc')
+    try:
+        rc = s12.cli([src, '-o', dst, '--mode', 'float32'])
+    except SystemExit as e:
+        rc = e.code
+    assert rc in (0, None)
+    with netCDF4.Dataset(src) as a, netCDF4.Dataset(dst) as b:
+        assert np.array_equal(b['prof_date'][:], a['prof_date'][:])

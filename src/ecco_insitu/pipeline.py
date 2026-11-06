@@ -367,7 +367,8 @@ def _process_one_file(args):
                 print(f"\nstep: {step_counter}")
                 try:
                     MITprof_ds = fn(MITprof_ds)
-                    if 'prof_T' in MITprof_ds and 'T_conversion' in MITprof_ds['prof_T'].attrs:
+                    # a step returns None when no valid data is left (handled as 'no data left' below)
+                    if MITprof_ds is not None and 'prof_T' in MITprof_ds and 'T_conversion' in MITprof_ds['prof_T'].attrs:
                         t_conversion = MITprof_ds['prof_T'].attrs['T_conversion']
                 except Exception as e:
                     print(f"\n-------- FILE FAILURE --------")
