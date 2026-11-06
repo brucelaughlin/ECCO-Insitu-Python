@@ -264,6 +264,12 @@ function setPlatform(name) {
   document.getElementById('plat').value = PLATFORM ? name : (name || '');
   draw();
 }
+function platformNote(nHere) {     // the platform's line under the menu: how many profiles are ringed here
+  if (!PLATFORM) return;
+  const lev = S.dmode === 'level' ? INDEX.depth[S.k] + ' m' : 'these depths', yrs = S.all ? '' : ' in these years';
+  document.getElementById('platinfo').textContent = `${PLATFORM.n.toLocaleString()} profiles, ${PLATFORM.y0}–${PLATFORM.y1}; ` +
+    `${nHere.toLocaleString()} with a value at ${lev}${yrs} (cyan rings); line: all of them in time order (key at the lower left), small circles: the others, click any to open it`;
+}
 async function loadClass(src) {
   if (CLASS[src]) return CLASS[src];
   busy('Loading ' + src + ' profiles…');
@@ -493,13 +499,15 @@ function drawMap(M) {
     for (const e of STATS.values()) for (const j of e.idx) if (P[j] === PLATFORM.idx && pr.year[j] >= y0 && pr.year[j] <= y1) platDots.push({p: M.proj(pr.lon[j], pr.lat[j]), j});
   }
   // the track, cut where it crosses the map's edge (a jump of over a third of the map's width)
-  const trackPaths = [], trackEnds = [], trackArrows = [];
+  const trackPaths = [], trackEnds = [], trackArrows = [], trackVerts = [];
   if (TRACK && PLATFORM && TRACK.idx === PLATFORM.idx) {
     const pr = CLASS[S.src].p, [ex0, , ex1] = M.extent, wrap = (ex1 - ex0) / 3; let cur = [];
     const pts = TRACK.js.map(j => M.proj(pr.lon[j], pr.lat[j])), tf = TRACK.frac;
     // one segment per pair of consecutive profiles, colored by the time of its first profile (TRACKMAP: early -> late)
     pts.forEach((q, i) => { if (!i || Math.hypot(q[0] - pts[i - 1][0], q[1] - pts[i - 1][1]) > wrap) return;
       trackPaths.push({path: [pts[i - 1], q], c: trackColor(tf[i - 1])}); });
+    const ringed = new Set(platDots.map(d => d.j));
+    TRACK.js.forEach((j, i) => { if (!ringed.has(j)) trackVerts.push({p: pts[i], j, c: trackColor(tf[i])}); });
     if (pts.length) { trackEnds.push({p: pts[0], first: true, c: trackColor(0)}); trackEnds.push({p: pts.at(-1), first: false, c: trackColor(1)}); }
     const step = Math.max(1, Math.round(pts.length / 12));
     for (let i = step; i < pts.length; i += step) { const a = pts[i - 1], b = pts[i]; if (Math.hypot(b[0] - a[0], b[1] - a[1]) > wrap) continue;
@@ -542,6 +550,10 @@ function drawMap(M) {
       getColor: d => d.c, characterSet: '➤'}),
     new deck.ScatterplotLayer({id: 'trackends', data: trackEnds, getPosition: d => d.p, getFillColor: d => d.first ? [255, 255, 255, 255] : d.c,
       getLineColor: d => d.c, stroked: true, getRadius: 6, radiusUnits: 'pixels', getLineWidth: 2, lineWidthUnits: 'pixels'}),
+    // the track's other profiles (no value at this depth, or outside the years): small hollow markers, clickable
+    new deck.ScatterplotLayer({id: 'trackverts', data: trackVerts, getPosition: d => d.p, stroked: true, filled: true,
+      getFillColor: [255, 255, 255, 200], getLineColor: d => d.c, getRadius: 2.6, radiusUnits: 'pixels', getLineWidth: 1.2,
+      lineWidthUnits: 'pixels', pickable: true, onClick: info => { if (info.object) openProfile(info.object.j); return true; }}),
     new deck.ScatterplotLayer({id: 'plat', data: platDots, getPosition: d => d.p, stroked: true, filled: false, getLineColor: [0, 200, 230, 255],
       pickable: true, onClick: info => { if (info.object) openProfile(info.object.j); return true; },
       getRadius: 4, radiusUnits: 'pixels', getLineWidth: 1.6, lineWidthUnits: 'pixels'}),
@@ -555,6 +567,7 @@ function drawMap(M) {
       characterSet: '0123456789'}),
   ]});
   legend(M, visible);
+  if (M === MAPS[0]) platformNote(platDots.length);
   M.state = {sf, overBudget, nBins: [...STATS.keys()].filter(b => M.bins.has(b)).length};
   if (M.id !== 'll') {
     const name = M.id === 'N' ? 'Arctic' : 'Southern Ocean', lim = M.id === 'N' ? 'north' : 'south';
