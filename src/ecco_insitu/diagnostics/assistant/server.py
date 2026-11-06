@@ -285,8 +285,9 @@ def cli(argv=None):
     if not a.offline:
         base, sub = _from_env(s)
         cmd = s['token_command']
-        if not (base and sub and cmd):
-            p.error('set assistant.base_url, assistant.subscription_id and assistant.token_command (or use --offline)')
+        missing = [k for k, v in (('base_url', base), ('subscription_id', sub), ('token_command', cmd)) if not v]
+        if missing:
+            p.error('set ' + ', '.join('assistant.' + k for k in missing) + ' in config/local.yaml (or use --offline)')
         model = Model(base, sub, cmd, s['model'])
     log_dir = Path(config_loader.get(cfg, 'run.log_dir') or Path(config_loader.CONFIG_DIR).parent / 'z_logs')
     log_dir.mkdir(parents=True, exist_ok=True)
