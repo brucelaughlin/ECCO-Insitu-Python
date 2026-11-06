@@ -70,8 +70,8 @@ and depth range, and runs the peak tool there (section <a href="#peak">The peak 
 <p><b>Simple / expert</b> (top right): simple shows the everyday choices; expert adds the mean-bias diagnostic, depth bands and groups,
 flagged spikes, single year, the log color scale and regions. A link that uses an expert option opens in expert mode; your choice is
 remembered in this browser.</p>
-<p><b>Rows of buttons</b> (top): class, cost type, variable, cost part (unsplit, anomaly, mean term, number of points), the mean-bias
-diagnostic (obs &minus; reference, not a cost), depth (all, one level, 100&nbsp;m bands, groups of levels, flagged spikes) and time
+<p><b>Rows of buttons</b> (top): class, cost type, variable, cost part (unsplit, anomaly, mean term, number of points), the misfit,
+normalized misfit and &sigma; (ref &minus; obs, (ref &minus; obs)/&sigma;, the assumed error; not costs), depth (all, one level, 100&nbsp;m bands, groups of levels, flagged spikes) and time
 (all years, or any range; the mean term has no years).</p>
 <p><b>Maps:</b> the global map (equal area) and the two polar maps; each bin colored by the selection. Hover a bin for its value;
 <b>click a bin</b> for its breakdown (the &ldquo;Clicked bin&rdquo; panel: per level, per year, and a link to its profiles).</p>
@@ -98,9 +98,9 @@ profile, with the true locations as red dots. Polar maps are below the world map
 <p><b>Click a profile</b> (a red dot or a ring, zoomed in) for the <b>profile panel</b>:</p>
 <ul>
 <li><b>this profile</b>: observation (black), climatology (blue), model (red; monthly mean), and up to 60 neighbors in gray (same bin,
-  &plusmn;2 years, other platforms); on the right, obs &minus; reference with &plusmn;1&sigma; and &plusmn;2&sigma; bands; &times; marks values the
+  &plusmn;2 years, other platforms); on the right, reference &minus; obs with &plusmn;1&sigma; and &plusmn;2&sigma; bands; &times; marks values the
   chain rejected; the values at the map&rsquo;s depth are listed, with the rejection reason if any.</li>
-<li><b>this platform over time</b>: all the platform&rsquo;s profiles as a depth &times; time picture of obs &minus; reference.</li>
+<li><b>this platform over time</b>: all the platform&rsquo;s profiles as a depth &times; time picture of reference &minus; obs.</li>
 <li><b>largest misfits here</b>: the bin&rsquo;s profiles ranked by |&Delta;V|/&sigma; at the map&rsquo;s depth; click a row to open one.</li>
 </ul>
 """),
@@ -174,14 +174,14 @@ dragging on the maps.</p>
   are drawn pale. <b>The decisive check:</b> if the feature is gone from the gray curve, R accounts for it.</li>
 <li>a table: R&rsquo;s bins with data, values (points), the curve over R and over the rest (per datum, or per bin for the mean term),
   and R&rsquo;s share of the summed value, with how many times its share of bins that is;</li>
-<li>per year: R (bars) against the rest (line); for the mean term, which has no years, obs &minus; reference per year;</li>
+<li>per year: R (bars) against the rest (line); for the mean term, which has no years, reference &minus; obs per year;</li>
 <li>R&rsquo;s ten largest bins (click one for its breakdown).</li>
 </ul>
 <p><b>Caution:</b> a region drawn around the darkest bins will always carry a large share. Judge it by its share relative to its share
 of bins and values, and by the rest-of-the-world curve, not by the share alone.</p>
 """),
     ('platforms', '6. Platforms, profile by profile', """
-<p>The region panel lists the platforms in R with their profiles, years, mean obs &minus; reference and <b>share of the region&rsquo;s
+<p>The region panel lists the platforms in R with their profiles, years, mean reference &minus; obs and <b>share of the region&rsquo;s
 value</b>. The shares are computed profile by profile from every profile&rsquo;s own values (the data viewer&rsquo;s profile details), kept
 values at the selected levels only, true weights (w = 1/&sigma;&sup2;):</p>
 <ul>
@@ -220,7 +220,7 @@ Zoom in and click one for the profile panel (section <a href="#viewer">The in si
 <li><b>Clusters:</b> the largest is the subpolar North Atlantic (56&deg;N 38&deg;W): 4.1&nbsp;% of the bins, 33.8&nbsp;% of the term.</li>
 <li><b>Region vs the rest:</b> the region&rsquo;s mean term per bin is 45.9 against 3.84 for the rest of the world.</li>
 <li><b>Platforms:</b> four floats deployed there since 2021 (6903082, 6903871, 6903085, 1902621) carry about 40&nbsp;% of the region&rsquo;s term,
-  each with obs &minus; model about &minus;0.37 to &minus;0.40&nbsp;&deg;C.</li>
+  each with model &minus; obs about +0.37 to +0.40&nbsp;&deg;C.</li>
 <li><b>Profiles:</b> float 6903082 at 2400&nbsp;m in March 2025: obs 2.810&nbsp;&deg;C, model 3.269&nbsp;&deg;C (&minus;0.46&nbsp;&deg;C, 3.4&sigma;); it agrees with
   the other floats nearby; the cold layer at 2000&ndash;2500&nbsp;m persists over its life.</li>
 </ol>

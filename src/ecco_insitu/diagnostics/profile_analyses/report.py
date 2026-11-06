@@ -1178,7 +1178,7 @@ render();
 <div id="main">
   <div id="fig-area">
     <div class="map-hint" id="map-hint" style="display:none">These are fixed images for the standard depth bands.
-      For any depth level or band, any range of years, the split terms and the mean bias, open the
+      For any depth level or band, any range of years, the split terms, the misfits and &sigma;, open the
       <a href="viewer.html" id="map-hint-link">Cost map explorer &rarr;</a></div>
     <div class="map-hint" id="peak-hint" style="display:none">A peak in these curves? <b>Investigate it:</b> the explorer finds the
       largest value in a depth range, separates sampling from signal, and shows where it comes from.

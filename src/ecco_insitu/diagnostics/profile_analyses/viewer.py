@@ -18,7 +18,7 @@ without one image per combination. It needs two kinds of files, written under ``
 Record blocks (little-endian columns): ``uint32 n``, then n values of each column in turn: ``uint16 bin``
 (1-based), ``uint8 level``, ``uint8 block`` (year index; 255 = all years), ``float16`` mean cost per datum
 unsplit, ``float16`` mean cost per datum of the split's anomaly term, ``uint16`` point count, ``float16``
-mean signed misfit V - V_ref (the bias diagnostic; degC or psu). The summary file has, per variable T then
+mean signed misfit V_ref - V (degC or psu), ``float16`` mean (V_ref - V)/sigma, ``float16`` mean sigma (true weights). The summary file has, per variable T then
 S, one record block and then the mean term: ``uint32 m`` and m values each of ``uint16 bin``, ``uint8
 level``, ``float16`` mean term. The years file has one record block per variable. float16 keeps
 3 significant digits (values below ~6e-5 lose precision; they are ~0 on every color scale).
@@ -66,13 +66,17 @@ results as the report&rsquo;s figures.</p>
   the number of points: compare maps of the mean term with each other, not with the other parts.</td></tr>
 <tr><td># points</td><td>The number of observations (profile values) in each bin for the selected depths and years: the
   &ldquo;n&rdquo; behind the averages. Bins with very few points give noisy averages.</td></tr>
-<tr><td>Diagnostic</td><td>mean bias (obs &minus; reference)</td><td><strong>Not a cost term</strong>, so it has its own row. The
-  average of the signed misfit, observation minus reference, over the bin&rsquo;s points in the selected depths and years, in
-  &deg;C (T) or psu (S). Red: the observations are warmer or saltier than the reference; blue: colder or fresher. The color
-  scale is symmetric about zero. Use it with the time range to see whether a steady offset is constant or
-  <em>drifting</em> (model drift, a change in instruments or regions, or ocean change against a fixed climatology). It is
-  related to the split&rsquo;s mean term (which is this offset, over the whole record, squared and weighted), but here it keeps
-  its sign, has units, and can be limited to any years.</td></tr>
+<tr><td rowspan="3">Misfit, &sigma;</td><td>misfit (ref &minus; obs)</td><td><strong>Not a cost term.</strong> The
+  average of the signed misfit, reference minus observation, over the bin&rsquo;s points in the selected depths and years, in
+  &deg;C (T) or psu (S). Red: the reference (climatology or model) is warmer or saltier than the observations; blue: colder or
+  fresher. The color scale is centered on zero; type a value in &ldquo;max &plusmn;&rdquo; to set its range. Use it with the time range
+  to see whether a steady offset is constant or <em>drifting</em>. It is related to the split&rsquo;s mean term (this offset over
+  the whole record, squared and weighted), but here it keeps its sign, has units, and can be limited to any years.</td></tr>
+<tr><td>normalized misfit (ref &minus; obs)/&sigma;</td><td>The same, with each value divided by its assumed error &sigma;
+  first (true weights, no &gamma; or scaling factor): &plusmn;1 means one assumed error. Its square, averaged, is the unsplit cost.
+  Same red&ndash;blue scale centered on zero.</td></tr>
+<tr><td>&sigma; (assumed error)</td><td>The mean assumed error of the observations, &sigma; = 1/&radic;w with the true weights, in
+  &deg;C or psu: the errors the costs are measured against. Where the cost is high, check whether &sigma; is small there.</td></tr>
 <tr><td rowspan="6">Depth</td><td>all depths</td><td>All depth levels together (each point counts once, so the upper ocean, which
   has more and closer-spaced levels, dominates).</td></tr>
 <tr><td>single level</td><td>One of the 97 standard depth levels (2&nbsp;m to 6000&nbsp;m); pick it in the list.</td></tr>
@@ -114,7 +118,7 @@ the top color (so a few extreme bins don&rsquo;t wash out the rest). It is <stro
 years for the current obs class, cost type, variable and depth selection, and kept while you move the time range, so
 differences between years are real and not rescaling. Unsplit and anomaly share one scale (same units), so switching
 between them is a fair comparison. It is recomputed when you change the class, cost type, variable or depth, and for
-the mean term, number of points and bias, which have their own scales. The note next to the color bar says which
+the mean term, number of points, misfits and &sigma;, which have their own scales. The note next to the color bar says which
 applies. <strong>max</strong>: set the top of the scale yourself (kept until you press <strong>auto</strong>), e.g. to compare
 two depths on the same scale. <strong>auto</strong>: back to the automatic scale. <strong>log color scale</strong>: spreads small values out (covers three powers of
 ten below the max).</p>
@@ -127,8 +131,8 @@ A jump in the red curve that the blue one does not show comes from <em>which bin
 water. (Example: PFL vs_model mean term at 2200&ndash;2400&nbsp;m: red 4.9&ndash;5.6, blue 2.3&ndash;2.4; most floats stop at 2000&nbsp;m,
 so those levels hold far fewer bins, mostly subpolar North Atlantic ones.)</p>
 <p><b>Clicked bin</b>: click any bin on a map. The panel shows its center, and per depth level (the selected levels) the number of
-points, the unsplit and anomaly costs, the mean term, and the mean observation &minus; reference (all years); a bar chart of the
-selected cost part per year (for the mean term: obs &minus; reference per year, since the mean term itself has no years); and a link
+points, the unsplit and anomaly costs, the mean term, and the mean reference &minus; observation, the normalized misfit and &sigma; (all years); a bar chart of the
+selected cost part per year (for the mean term: reference &minus; observation per year, since the mean term itself has no years); and a link
 that opens the <b>in situ data viewer</b> on that bin, zoomed in to the individual profiles, at the same class, reference
 (climatology or model), variable, depth and years.</p>
 
@@ -141,7 +145,7 @@ depth or years. With a region:</p>
   bins (light red). If a feature disappears from the rest-of-the-world curve, the region accounts for it. With &ldquo;same bins&rdquo;
   on, both curves use only bins with data at every level of the range.</li>
 <li>a table: the region&rsquo;s share of the bins with data, of the points, and of the <b>summed</b> cost (or count), at the
-  selected depths and years, and how many times its share of bins that is. (Not shown for the mean bias, which doesn&rsquo;t add up.)</li>
+  selected depths and years, and how many times its share of bins that is. (Not shown for the misfits and &sigma;, which don&rsquo;t add up.)</li>
 <li>per year: the region (bars; faint with fewer than 5 bins) against the rest of the world (line).</li>
 <li>the region&rsquo;s ten largest bins; click a row for that bin&rsquo;s breakdown and the link to its profiles.</li>
 </ul>
@@ -180,7 +184,7 @@ ringed in cyan.</p>
 <li>Values near 1 mean the misfit is about what the assumed errors &sigma; allow; much larger values point to a poor fit, a
 too-small &sigma;, or bad data. With few points (# points) a single bad profile can dominate a bin.</li>
 <li>If unsplit is high but anomaly is low in a region, the misfit there is mostly a steady offset (see the mean term).
-  The mean bias shows that offset&rsquo;s sign and size; compare early and late year ranges to see if it changes.</li>
+  The misfit (ref &minus; obs) shows that offset&rsquo;s sign and size; compare early and late year ranges to see if it changes.</li>
 <li>The time range shows whether a high cost is persistent or limited to some years (e.g. one cruise or float).</li>
 <li>Data notes, open decisions and corrections are on the report&rsquo;s <em>Notes &amp; errata</em> page.</li>
 </ul>
@@ -270,11 +274,13 @@ def _spikes(res, V, core, depth):
 
 YEARS_PER_PIECE = 5      # year-by-year data is written in pieces of this many years
 
-_COLS = (('bin', '<u2'), ('lev', 'u1'), ('blk', 'u1'), ('mu', '<f2'), ('ma', '<f2'), ('n', '<u2'), ('bias', '<f2'))
+_COLS = (('bin', '<u2'), ('lev', 'u1'), ('blk', 'u1'), ('mu', '<f2'), ('ma', '<f2'), ('n', '<u2'), ('bias', '<f2'),
+         ('nmis', '<f2'), ('sig', '<f2'))
 
 
 def _cells(nc, V, core, nd):
-    """Per non-empty (year, bin, level): mean cost per datum unsplit and anomaly, point count, mean bias."""
+    """Per non-empty (year, bin, level): mean cost per datum unsplit and anomaly, point count, and the means of
+    reference - obs, (reference - obs)/sigma and sigma."""
     if f'viewer__{V}__unsplit__cell' not in nc.variables:
         return None
     cell = nc[f'viewer__{V}__unsplit__cell'][:]
@@ -284,11 +290,13 @@ def _cells(nc, V, core, nd):
     sa = np.full(len(cell), np.nan); na = np.zeros(len(cell))
     pos = np.searchsorted(cell, ca)
     sa[pos], na[pos] = nc[f'viewer__{V}__{core}__sum'][:], nc[f'viewer__{V}__{core}__n'][:]
-    mis = nc[f'viewer__{V}__unsplit__misfit_sum'][:].astype(np.float64) \
-        if f'viewer__{V}__unsplit__misfit_sum' in nc.variables else np.full(len(cell), np.nan)
+    opt = lambda k: nc[f'viewer__{V}__unsplit__{k}'][:].astype(np.float64) \
+        if f'viewer__{V}__unsplit__{k}' in nc.variables else np.full(len(cell), np.nan)
     with np.errstate(invalid='ignore', divide='ignore'):
+        # bias and normalized misfit are reference - obs (the analysis saves obs - reference sums)
         return {'bin': (cell // nd) % (pa.N_BINS + 1), 'lev': cell % nd, 'blk': cell // nd // (pa.N_BINS + 1),
-                'mu': su / nn, 'ma': np.where(na > 0, sa / na, np.nan), 'n': nn, 'na': na, 'bias': mis / nn}
+                'mu': su / nn, 'ma': np.where(na > 0, sa / na, np.nan), 'n': nn, 'na': na,
+                'bias': -opt('misfit_sum') / nn, 'nmis': -opt('nmisfit_sum') / nn, 'sig': opt('sigma_sum') / nn}
 
 
 def _all_years(r):
@@ -304,7 +312,7 @@ def _all_years(r):
         return {'bin': u // 256, 'lev': u % 256, 'blk': np.full(len(u), 255),
                 'mu': np.bincount(inv, weights=r['mu'] * r['n']) / n,
                 'ma': np.where(na > 0, np.bincount(inv, weights=np.where(ok, r['ma'] * r['na'], 0)) / na, np.nan),
-                'n': n, 'bias': np.bincount(inv, weights=np.nan_to_num(r['bias']) * r['n']) / n}
+                'n': n, **{k: np.bincount(inv, weights=np.nan_to_num(r[k]) * r['n']) / n for k in ('bias', 'nmis', 'sig')}}
 
 
 def _pack(r):

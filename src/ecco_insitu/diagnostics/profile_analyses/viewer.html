@@ -60,6 +60,9 @@ canvas { border: 1px solid #ccc; display: block; }
 #cbarbox { display: flex; flex-direction: column; align-items: center; }
 #cbar { display: block; }
 #cbtxt { margin-top: 2px; font-size: 0.9em; color: #333; }
+.cbar2box { display: flex; flex-direction: column; align-items: center; margin-top: 4px; font-size: 0.85em; }
+#cbar2 { border: none; }
+#cbtxt2 { margin-top: 2px; color: #333; }
 #legend .opts { display: flex; gap: 0.8em; align-items: center; padding-top: 0.2em; }
 #guide { margin: 0.3em 1em 1.2em; max-width: 72em; font-size: 0.86em; line-height: 1.5; color: #333; }
 #guide summary { cursor: pointer; color: var(--accent); font-weight: 600; }
@@ -125,14 +128,14 @@ canvas.clickable { cursor: pointer; }
 <div id="header"><h1>Cost map explorer — __TITLE__</h1><a href="index.html">&larr; back to the report</a><a href="guide.html">user guide</a>
   <button class="tab" id="copylink" title="Copy a link that opens exactly this view (settings, depth, years, region)">copy link to this view</button>
   <span class="hdr-guide" id="open-guide">Guide: what every option means</span>
-  <span id="modesw" title="Simple: the everyday choices only. Expert: every option (the bias diagnostic, depth bands and groups, flagged spikes,
+  <span id="modesw" title="Simple: the everyday choices only. Expert: every option (depth bands and groups, flagged spikes,
 single year, log scale, regions)"><button class="tab" data-m="simple">simple</button><button class="tab" data-m="expert">expert</button></span></div>
 <div class="row"><span class="lab">Source</span><span id="srcs"></span></div>
 <div class="row"><span class="lab">Cost type</span><span id="cts"></span></div>
 <div class="row"><span class="lab">Variable</span><span id="vars"></span></div>
 <div class="row"><span class="lab">Cost</span><span id="parts"></span></div>
-<div class="row diag x"><span class="lab">Diagnostic</span><span id="diags"></span>
-  <span class="dnote">not a cost term: the signed misfit, shown on its own red–blue scale</span></div>
+<div class="row diag"><span class="lab">Misfit, &sigma;</span><span id="diags"></span>
+  <span class="dnote">not cost terms: the signed misfits use a red–blue scale centered on 0</span></div>
 <div class="row"><span class="lab">Depth</span><span id="dmodes"></span><select id="dsel"></select></div>
 <div class="row"><span class="lab">Time</span>
   <button class="tab" id="tall">all years</button>
@@ -172,7 +175,7 @@ not changes in which bins are counted"><input type="checkbox" id="samebins"> als
     <div class="bar" id="busybar"><div></div></div></div></div></div></div>
 <div id="legend"><div id="cbarbox"><canvas id="cbar" width="440" height="32"></canvas><span id="cbtxt"></span></div>
   <div class="opts"><label class="x"><input type="checkbox" id="logscale"> log color scale</label>
-  <label>max <input type="number" id="vmax" step="any" style="width:6em"></label>
+  <label><span id="vmaxlab">max</span> <input type="number" id="vmax" step="any" style="width:6em"></label>
   <button class="tab" id="vauto">auto (98th pct)</button><span id="scalenote" class="dnote"></span></div></div>
 <div id="info"></div>
 <div class="row x" id="regrow"><span class="lab">Region</span>
@@ -192,7 +195,15 @@ not changes in which bins are counted"><input type="checkbox" id="samebins"> als
 const INDEX_URL = 'viewer/index.json', GRID_URL = 'viewer/grid.json';
 const PARTS = {unsplit: 'cost per datum, unsplit', anomaly: 'cost per datum, split anomaly term',
                mean: 'split mean term (per bin; all years)', count: 'number of points',
-               bias: 'mean bias, observation − reference (diagnostic, not a cost)'};
+               bias: 'mean misfit, reference − observation (not a cost)',
+               nmis: 'mean normalized misfit, (reference − observation)/σ (not a cost)',
+               sig: 'mean σ, the assumed error of the observations (not a cost)'};
+// the diagnostics (not cost terms, so not additive over bins); the signed ones use the red–blue scale centered on 0
+const DIAG = p => p === 'bias' || p === 'nmis' || p === 'sig', SIGNED = p => p === 'bias' || p === 'nmis';
+// a record set's values for the current part (null for the count: weights only); the mean term has no per-year
+// values, so per-year charts show the mean misfit for it
+const valArr = (c, part = S.part) => part === 'anomaly' ? c.ma : part === 'bias' || part === 'mean' ? c.bias
+  : part === 'nmis' ? c.nmis : part === 'sig' ? c.sig : part === 'count' ? null : c.mu;
 const S = {src: null, ct: null, V: 'T', part: 'unsplit', dmode: 'level', dsel: 0, t0: 0, t1: 0, all: true,
            vmax: null, log: false, same: false, sb0: 0, sb1: 0};
 let INDEX, GRID, GRIDS = {}, CACHE = {};
@@ -239,7 +250,7 @@ function parse(buf, withMean) { // see viewer.py for the layout (little-endian c
   const u8 = n => { const a = buf.slice(o, o + n); o += n; return a; };
   const h16 = n => { const r = raw16(n), a = new Float32Array(n); for (let i = 0; i < n; i++) a[i] = F16[r[i]]; return a; };
   const recs = () => { const n = dv.getUint32(o, true); o += 4;
-    return {bin: u16(n), lev: u8(n), blk: u8(n), mu: h16(n), ma: h16(n), n: u16(n), bias: h16(n)}; };
+    return {bin: u16(n), lev: u8(n), blk: u8(n), mu: h16(n), ma: h16(n), n: u16(n), bias: h16(n), nmis: h16(n), sig: h16(n)}; };
   for (const V of ['T', 'S']) {
     const c = recs();
     if (withMean) { const m = dv.getUint32(o, true); o += 4; c.mt = {bin: u16(m), lev: u8(m), v: h16(m)}; }
@@ -278,7 +289,7 @@ async function yearData(src, ct) {      // year-by-year data: only the pieces co
     const parts = need.map(p => YCACHE[p.file][V]);
     const cat = k => { const n = parts.reduce((a, q) => a + q[k].length, 0), a = new parts[0][k].constructor(n);
                        let o = 0; for (const q of parts) { a.set(q[k], o); o += q[k].length; } return a; };
-    out[V] = {}; for (const k of ['bin', 'lev', 'blk', 'mu', 'ma', 'n', 'bias']) out[V][k] = cat(k);
+    out[V] = {}; for (const k of ['bin', 'lev', 'blk', 'mu', 'ma', 'n', 'bias', 'nmis', 'sig']) out[V][k] = cat(k);
   }
   return out;
 }
@@ -290,7 +301,7 @@ function levelBinValues(d, yd) {          // Map level -> {bin -> [sum, weight]}
   const add = (lev, bin, x, w) => { let m = out.get(lev); if (!m) out.set(lev, m = new Map()); const e = m.get(bin); if (e) { e[0] += x * w; e[1] += w; } else m.set(bin, [x * w, w]); };
   if (S.part === 'mean') { const m = d[S.V].mt; for (let i = 0; i < m.bin.length; i++) if (Number.isFinite(m.v[i])) add(m.lev[i], m.bin[i], m.v[i], 1); }
   else {
-    const val = S.part === 'anomaly' ? c.ma : S.part === 'bias' ? c.bias : S.part === 'count' ? null : c.mu,
+    const val = valArr(c),
           t0 = useYears ? S.t0 : 0, t1 = useYears ? S.t1 : 255;
     for (let i = 0; i < c.bin.length; i++) {
       if (c.blk[i] < t0 || c.blk[i] > t1) continue;
@@ -355,13 +366,13 @@ function drawProfile() {
   // past it, the region gets its own axis along the top (purple), so nothing is cut off and nothing is squashed.
   const vals = [...all, ...(S.same ? same : []), ...(PROF.region ? PROF.rest : [])].filter(Number.isFinite);
   if (!vals.length) return;
-  let lo = Math.min(0, ...vals), hi = Math.max(...vals); if (S.part === 'bias') { const m = Math.max(Math.abs(lo), Math.abs(hi)); lo = -m; hi = m; }
+  let lo = Math.min(0, ...vals), hi = Math.max(...vals); if (SIGNED(S.part)) { const m = Math.max(Math.abs(lo), Math.abs(hi)); lo = -m; hi = m; }
   if (hi === lo) hi = lo + 1;
   const rv = PROF.region ? PROF.reg.filter(Number.isFinite) : [];
   const ownAxis = rv.length > 0 && (Math.max(...rv) > hi * 1.02 || Math.min(...rv) < lo - 0.02 * (hi - lo));
   let rlo = lo, rhi = hi;
   if (ownAxis) { rlo = Math.min(0, ...rv); rhi = Math.max(...rv);
-    if (S.part === 'bias') { const m = Math.max(Math.abs(rlo), Math.abs(rhi)); rlo = -m; rhi = m; } if (rhi === rlo) rhi = rlo + 1; }
+    if (SIGNED(S.part)) { const m = Math.max(Math.abs(rlo), Math.abs(rhi)); rlo = -m; rhi = m; } if (rhi === rlo) rhi = rlo + 1; }
   const T = ownAxis ? 32 : 10;
   const zmax = Math.max(...z), X = v => L + (W - L - R) * (v - lo) / (hi - lo), Y = d => T + (H - T - B) * d / zmax;
   PROFGEOM = {T, B, H, zmax};
@@ -465,7 +476,7 @@ async function investigatePeak(zA, zB) {
     for (let i = 0; i < c.length; i++) { const [la, lo2] = center(c[i]);
       for (const [o] of high) if (!seen.has(o)) { const [lb2, lob] = center(o); if (hav(la, lo2, lb2, lob) <= CLUSTER_KM) { seen.add(o); c.push(o); } } }
     cl.push(c); }
-  const additive = S.part !== 'bias';
+  const additive = !DIAG(S.part);
   const cls = cl.map(c => { const s = c.reduce((a, b) => a + val(m, b), 0); let x = 0, y = 0, zz = 0;
       for (const b of c) { const [la, lo2] = center(b).map(v => v * Math.PI / 180); x += Math.cos(la) * Math.cos(lo2); y += Math.cos(la) * Math.sin(lo2); zz += Math.sin(la); }
       return {bins: c, s, lat: Math.atan2(zz, Math.hypot(x, y)) * 180 / Math.PI, lon: Math.atan2(y, x) * 180 / Math.PI}; })
@@ -550,7 +561,7 @@ async function profilesWithData(P, src, lv) {   // Set of profile indices with a
   return (P.has[key] = out);
 }
 // Exact platform shares, from the data viewer's profile details (every profile's obs, reference, sigma and QC code):
-//  - unsplit cost: each kept value's own (obs − ref)² / σ² (true weights), summed per platform;
+//  - unsplit cost: each kept value's own (ref − obs)² / σ² (true weights), summed per platform;
 //  - mean term of a bin and level: J = w̄ (mean misfit)², w̄ = 1 / max(s/n, s/9), s = mean σ² over the bin's kept values
 //    (as cost_profiles.F; true weights = 1/σ²). Profile i's part is w̄ · (mean misfit) · misfit_i / n: the parts add up to
 //    J exactly; a profile pulling the other way gets a negative part;
@@ -591,8 +602,8 @@ function renderPlatformTable(el, P, X) {
   const rows = [...X.share].filter(([pi]) => pi !== 0xFFFFFFFF).sort((a, b) => b[1] - a[1]).slice(0, 12);
   const nPlat = [...X.nprof.keys()].filter(k => k !== 0xFFFFFFFF).length, what = S.part === 'mean' ? 'mean term' : S.part === 'anomaly' ? 'anomaly cost' : S.part === 'count' ? 'points' : 'unsplit cost';
   let h = `<div class="ptitle" style="margin-top:0.6em">Platforms in the region <span class="dnote">(${P.kind}; ${nPlat} with kept data at the selected depths; computed profile by profile)</span></div>` +
-    `<table><tr><th>${P.kind}</th><th>profiles</th><th>years</th><th>share of the region's ${what}</th><th>mean obs − ${ref} (${unit})</th><th></th></tr>`;
-  for (const [pi, x] of rows) { const nm = P.names[pi], ys = X.yrs.get(pi) || ['–', '–'], mb = X.mw.get(pi) ? X.mis.get(pi) / X.mw.get(pi) : NaN;
+    `<table><tr><th>${P.kind}</th><th>profiles</th><th>years</th><th>share of the region's ${what}</th><th>mean ${ref} − obs (${unit})</th><th></th></tr>`;
+  for (const [pi, x] of rows) { const nm = P.names[pi], ys = X.yrs.get(pi) || ['–', '–'], mb = X.mw.get(pi) ? -X.mis.get(pi) / X.mw.get(pi) : NaN;   // ref − obs
     const q = new URLSearchParams({src: S.src, ref: S.ct === 'vs_model' ? 'model' : 'clim', V: S.V, platform: nm});
     const lvv = levelsSelected(); if (lvv && lvv.length === 1) q.set('k', lvv[0]); q.set('back', location.href.split('#')[0]);
     h += `<tr><td>${nm}</td><td>${X.nprof.get(pi) || 0}</td><td>${ys[0]}–${ys[1]}</td><td><b>${X.total ? (100 * x / X.total).toFixed(1) + ' %' : '–'}</b></td>` +
@@ -600,7 +611,7 @@ function renderPlatformTable(el, P, X) {
   h += '</table><span class="dnote">Computed profile by profile from every profile\'s own values (the in situ data viewer\'s profile details, ' +
     'rounded to 0.001), kept values only; rebuilt this way, the mean term agrees with the analysis to 0.14 % of its total (PFL vs model, 2400 m). ' +
     (S.part === 'mean' ? 'For the mean term w̄·(mean misfit)² of each bin and level, a profile\'s part is w̄·(mean misfit)·(its misfit)/n, so the parts add up to the term; a profile pulling against the bin\'s mean gets a negative part. '
-                       : S.part === 'anomaly' ? 'Each value\'s (misfit − its bin\'s mean misfit)²/σ². ' : S.part === 'count' ? '' : 'Each value\'s (obs − ref)²/σ² (true weights). ') +
+                       : S.part === 'anomaly' ? 'Each value\'s (misfit − its bin\'s mean misfit)²/σ². ' : S.part === 'count' ? '' : 'Each value\'s (ref − obs)²/σ² (true weights). ') +
     '"show profiles" opens the in situ data viewer with that platform\'s profiles ringed.</span>';
   el.innerHTML = h;
 }
@@ -635,7 +646,7 @@ async function regionPlatforms(d) {
   if (!REGION || !REGION.size) return;
   const P = await platformsOf(S.src);
   if (!P) { el.innerHTML = '<span class="dnote">(Platform table: needs the in situ data viewer\'s platform files.)</span>'; return; }
-  if (S.part !== 'bias') {
+  if (!DIAG(S.part)) {
     let X = null; try { X = await regionPlatformsExact(d, P); } catch (e) { console.warn(e); busy(null); }
     if (X) { renderPlatformTable(el, P, X); return; }
   }
@@ -657,23 +668,23 @@ async function regionPlatforms(d) {
     const binProf = new Map(); for (const [key, e] of cell) { const b = Math.floor(key / 256), m2 = binProf.get(b) || new Map(); for (const [pi, n] of e) m2.set(pi, (m2.get(pi) || 0) + n); binProf.set(b, m2); }
     for (const [b, v] of perBin) { const m2 = binProf.get(b); if (!m2) continue; const n = [...m2.values()].reduce((a, c) => a + c, 0); for (const [pi, c] of m2) add(pi, v * c / n); }
   } else {
-    const c = yAll[S.V], val = S.part === 'anomaly' ? c.ma : S.part === 'bias' ? c.bias : S.part === 'count' ? null : c.mu;
+    const c = yAll[S.V], val = valArr(c);
     for (let i = 0; i < c.bin.length; i++) { if (!REGION.has(c.bin[i]) || (lset && !lset.has(c.lev[i]))) continue;
       if (!S.all && (c.blk[i] < S.t0 || c.blk[i] > S.t1)) continue;
       const e = cell.get(c.bin[i] * 256 + c.blk[i]); if (!e) continue; const x = val ? val[i] * c.n[i] : c.n[i]; if (!Number.isFinite(x)) continue;
       const n = [...e.values()].reduce((a, q) => a + q, 0); for (const [pi, q] of e) add(pi, x * q / n); }
   }
-  // mean obs − ref per platform (from the bias records, apportioned the same way)
+  // mean ref − obs per platform (from the bias records, apportioned the same way)
   { const c = (yAll || await (async () => { const a = S.all, t0 = S.t0, t1 = S.t1; S.all = false; S.t0 = 0; S.t1 = INDEX.blocks.length - 1; const r = await yearData(S.src, S.ct); S.all = a; S.t0 = t0; S.t1 = t1; return r; })())[S.V];
     for (let i = 0; i < c.bin.length; i++) { if (!REGION.has(c.bin[i]) || (lset && !lset.has(c.lev[i])) || !Number.isFinite(c.bias[i])) continue;
       if (!S.all && S.part !== 'mean' && (c.blk[i] < S.t0 || c.blk[i] > S.t1)) continue;
       const e = cell.get(c.bin[i] * 256 + c.blk[i]); if (!e) continue; const n = [...e.values()].reduce((a, q) => a + q, 0);
       for (const [pi, q] of e) { const w = c.n[i] * q / n; bias.set(pi, (bias.get(pi) || 0) + c.bias[i] * w); bw.set(pi, (bw.get(pi) || 0) + w); } } }
-  const tot = [...share.values()].reduce((a, b) => a + b, 0), additive = S.part !== 'bias';
+  const tot = [...share.values()].reduce((a, b) => a + b, 0), additive = !DIAG(S.part);
   const rows = [...share].filter(([pi]) => pi !== 0xFFFFFFFF).sort((a, b) => additive ? b[1] - a[1] : Math.abs(b[1]) - Math.abs(a[1])).slice(0, 12);
   const unit = S.V === 'T' ? '°C' : 'psu', nPlat = [...perPlat.keys()].filter(k => k !== 0xFFFFFFFF).length;
   let h = `<div class="ptitle" style="margin-top:0.6em">Platforms in the region <span class="dnote">(${P.kind}; ${nPlat} with data at the selected depths)</span></div>` +
-    `<table><tr><th>${P.kind}</th><th>profiles</th><th>years</th>${additive ? '<th>share of the region\'s value</th>' : ''}<th>mean obs − ref (${unit})</th><th></th></tr>`;
+    `<table><tr><th>${P.kind}</th><th>profiles</th><th>years</th>${additive ? '<th>share of the region\'s value</th>' : ''}<th>mean ref − obs (${unit})</th><th></th></tr>`;
   for (const [pi, x] of rows) { const nm = P.names[pi], ys = yrs.get(pi), mb = bw.get(pi) ? bias.get(pi) / bw.get(pi) : NaN;
     const q = new URLSearchParams({src: S.src, ref: S.ct === 'vs_model' ? 'model' : 'clim', V: S.V, platform: nm});
     const lvv = levelsSelected(); if (lvv && lvv.length === 1) q.set('k', lvv[0]);
@@ -706,8 +717,8 @@ async function drawRegion(d) {
   for (const [b, [sv, pts, nl, wt]] of per) { const dv = perBin() ? nl : wt; tot.s += sv; tot.n += dv; tot.pts += pts; if (REGION.has(b)) { rg.s += sv; rg.n += dv; rg.pts += pts; } }
   const nbT = per.size, nbR = [...per.keys()].filter(b => REGION.has(b)).length;
   const pc = (a, b) => b ? (100 * a / b).toFixed(1) + ' %' : '–', mean = (s, n) => S.part === 'count' ? Math.round(s).toLocaleString() : n ? fmt(s / n) : '–';
-  const what = S.part === 'count' ? '# points' : S.part === 'bias' ? 'obs − ref' : S.part === 'mean' ? 'mean term' : S.part + ' cost';
-  const additive = S.part !== 'bias';
+  const what = S.part === 'count' ? '# points' : DIAG(S.part) ? PARTS[S.part].split(',')[0].replace(/ \(.*/, '') : S.part === 'mean' ? 'mean term' : S.part + ' cost';
+  const additive = !DIAG(S.part);
   let h = `<table><tr><th></th><th>bins with data</th><th>points</th><th>${perBin() ? 'mean per bin and level' : S.part === 'count' ? 'points' : 'per datum'}</th>${additive ? '<th>share of the summed ' + what + '</th>' : ''}</tr>` +
     `<tr><td>region</td><td>${nbR} (${pc(nbR, nbT)})</td><td>${Math.round(rg.pts).toLocaleString()} (${pc(rg.pts, tot.pts)})</td><td>${mean(rg.s, rg.n)}</td>${additive ? '<td><b>' + pc(rg.s, tot.s) + '</b></td>' : ''}</tr>` +
     `<tr><td>rest of the world</td><td>${nbT - nbR}</td><td>${Math.round(tot.pts - rg.pts).toLocaleString()}</td><td>${mean(tot.s - rg.s, tot.n - rg.n)}</td>${additive ? '<td>' + pc(tot.s - rg.s, tot.s) + '</td>' : ''}</tr>` +
@@ -727,11 +738,11 @@ async function drawRegion(d) {
   document.getElementById('regtop').innerHTML = t;
   document.querySelectorAll('#regtop tr.pick').forEach(r => r.addEventListener('click', () => showBin(+r.dataset.b)));
   regionPlatforms(d);
-  // per year: region vs rest (the mean term has no years: obs − ref instead)
+  // per year: region vs rest (the mean term has no years: ref − obs instead)
   const all = S.all, t0 = S.t0, t1 = S.t1; S.all = false; S.t0 = 0; S.t1 = INDEX.blocks.length - 1;
   busy('Loading the years for the region…'); await paint();
   const yAll = await yearData(S.src, S.ct); S.all = all; S.t0 = t0; S.t1 = t1; busy(null);
-  const c = yAll[S.V], val = S.part === 'anomaly' ? c.ma : (S.part === 'bias' || S.part === 'mean') ? c.bias : S.part === 'count' ? null : c.mu;
+  const c = yAll[S.V], val = valArr(c);
   const nb = INDEX.blocks.length, sr = new Float64Array(nb), wr = new Float64Array(nb), so = new Float64Array(nb), wo = new Float64Array(nb), br = new Array(nb).fill(0).map(() => new Set());
   for (let i = 0; i < c.bin.length; i++) { if (lset && !lset.has(c.lev[i])) continue;
     const x = val ? val[i] : c.n[i]; if (!Number.isFinite(x)) continue; const w = val ? c.n[i] : 1;
@@ -750,7 +761,7 @@ async function drawRegion(d) {
     for (let i = 0; i < nb; i++) { if (!Number.isFinite(vo[i])) { on = false; continue; } const x = L + (i + 0.5) * bw, y = yv(vo[i]); if (on) g.lineTo(x, y); else { g.moveTo(x, y); on = true; } } g.stroke(); }
   g.textAlign = 'center'; g.textBaseline = 'top'; g.fillStyle = '#444';
   for (let i = 0; i < nb; i += 5) g.fillText(INDEX.blocks[i], L + (i + 0.5) * bw, H - B + 4);
-  g.textAlign = 'left'; g.fillText(`per year at the selected depths: ${S.part === 'mean' ? 'obs − ref' : PARTS[S.part]} — bars: region (faint: under ${MIN_BINS} bins)` + (cnt ? '' : '; line: rest of the world'), L, 2);
+  g.textAlign = 'left'; g.fillText(`per year at the selected depths: ${S.part === 'mean' ? 'ref − obs' : PARTS[S.part]} — bars: region (faint: under ${MIN_BINS} bins)` + (cnt ? '' : '; line: rest of the world'), L, 2);
 }
 
 // ---------- the clicked bin: its values at the selected depths, per level and per year, and links ----------
@@ -759,7 +770,7 @@ function binBreakdown(d, yd, b) {
   const c = (!S.all && S.part !== 'mean') ? yd[S.V] : d[S.V], cAll = d[S.V], lv = levelsSelected(), lset = lv ? new Set(lv) : null;
   const perLev = new Map();
   for (let i = 0; i < cAll.bin.length; i++) { if (cAll.bin[i] !== b) continue;
-    perLev.set(cAll.lev[i], {n: cAll.n[i], mu: cAll.mu[i], ma: cAll.ma[i], bias: cAll.bias[i]}); }
+    perLev.set(cAll.lev[i], {n: cAll.n[i], mu: cAll.mu[i], ma: cAll.ma[i], bias: cAll.bias[i], nmis: cAll.nmis[i], sig: cAll.sig[i]}); }
   const mt = new Map(); const m = d[S.V].mt; for (let i = 0; i < m.bin.length; i++) if (m.bin[i] === b) mt.set(m.lev[i], m.v[i]);
   return {perLev, mt, lset};
 }
@@ -767,7 +778,7 @@ async function binYears(b) {               // per-year values of the bin at the 
   const all = S.all, t0 = S.t0, t1 = S.t1; S.all = false; S.t0 = 0; S.t1 = INDEX.blocks.length - 1;
   const yd = await yearData(S.src, S.ct); S.all = all; S.t0 = t0; S.t1 = t1;
   const c = yd[S.V], lv = levelsSelected(), lset = lv ? new Set(lv) : null, sum = new Float64Array(INDEX.blocks.length), w = new Float64Array(INDEX.blocks.length);
-  const val = S.part === 'anomaly' ? c.ma : S.part === 'bias' || S.part === 'mean' ? c.bias : S.part === 'count' ? null : c.mu;
+  const val = valArr(c);
   for (let i = 0; i < c.bin.length; i++) { if (c.bin[i] !== b || (lset && !lset.has(c.lev[i]))) continue;
     const x = val ? val[i] : c.n[i]; if (!Number.isFinite(x)) continue; sum[c.blk[i]] += val ? x * c.n[i] : x; w[c.blk[i]] += val ? c.n[i] : 1; }
   return {sum, w, what: S.part === 'mean' ? 'bias' : S.part};
@@ -782,10 +793,10 @@ async function showBin(b) {
     `; ${S.src}, ${S.ct}, ${S.V}; all years.<br>`;
   if (!rows.length) html += 'No data at the selected depths.';
   else {
-    html += `<table><tr><th>depth</th><th># points</th><th>unsplit</th><th>anomaly</th><th>mean term</th><th>obs − ref (${unit})</th></tr>`;
+    html += `<table><tr><th>depth</th><th># points</th><th>unsplit</th><th>anomaly</th><th>mean term</th><th>ref − obs (${unit})</th><th>(ref − obs)/σ</th><th>σ (${unit})</th></tr>`;
     const shown = rows.length > 14 ? rows.filter((_, i) => i % Math.ceil(rows.length / 14) === 0 || i === rows.length - 1) : rows;
     for (const k of shown) { const r = perLev.get(k);
-      html += `<tr><td>${z[k]} m</td><td>${r.n}</td><td>${fmt(r.mu)}</td><td>${Number.isFinite(r.ma) ? fmt(r.ma) : '–'}</td><td>${mt.has(k) && Number.isFinite(mt.get(k)) ? fmt(mt.get(k)) : '–'}</td><td>${Number.isFinite(r.bias) ? (r.bias >= 0 ? '+' : '') + r.bias.toFixed(3) : '–'}</td></tr>`; }
+      html += `<tr><td>${z[k]} m</td><td>${r.n}</td><td>${fmt(r.mu)}</td><td>${Number.isFinite(r.ma) ? fmt(r.ma) : '–'}</td><td>${mt.has(k) && Number.isFinite(mt.get(k)) ? fmt(mt.get(k)) : '–'}</td><td>${Number.isFinite(r.bias) ? (r.bias >= 0 ? '+' : '') + r.bias.toFixed(3) : '–'}</td><td>${Number.isFinite(r.nmis) ? (r.nmis >= 0 ? '+' : '') + r.nmis.toFixed(2) : '–'}</td><td>${Number.isFinite(r.sig) ? fmt(r.sig) : '–'}</td></tr>`; }
     html += '</table>' + (shown.length < rows.length ? `<span class="dnote">${shown.length} of ${rows.length} levels shown</span><br>` : '');
     html += '<span class="dnote">Costs: (ΔV/σ)², true weights, over all years. Mean term: per bin and level, as the map&rsquo;s mean term.</span>';
   }
@@ -812,11 +823,11 @@ async function showBin(b) {
   const yv = x => T + (H - T - B) * (hi - x) / (hi - lo);
   g.font = '10px sans-serif'; g.fillStyle = '#444'; g.textAlign = 'right'; g.textBaseline = 'middle';
   for (const t of niceTicks(lo, hi, 4)) { g.fillText(fmt(t), L - 4, yv(t)); g.strokeStyle = '#eee'; g.beginPath(); g.moveTo(L, yv(t)); g.lineTo(W - R2, yv(t)); g.stroke(); }
-  for (let i = 0; i < nb; i++) { if (!Number.isFinite(v[i])) continue; g.fillStyle = Y.what === 'bias' ? (v[i] >= 0 ? '#c0392b' : '#2471a3') : '#e67e22';
+  for (let i = 0; i < nb; i++) { if (!Number.isFinite(v[i])) continue; g.fillStyle = SIGNED(Y.what) ? (v[i] >= 0 ? '#c0392b' : '#2471a3') : '#e67e22';
     const y0 = yv(Math.max(0, Math.min(v[i], hi))), y1 = yv(Math.min(0, Math.max(v[i], lo))); g.fillRect(L + i * bw + 1, Math.min(y0, y1), bw - 2, Math.max(1, Math.abs(y1 - y0))); }
   g.textAlign = 'center'; g.textBaseline = 'top'; g.fillStyle = '#444';
   for (let i = 0; i < nb; i += 5) g.fillText(INDEX.blocks[i], L + (i + 0.5) * bw, H - B + 4);
-  g.textAlign = 'left'; g.fillText(`per year at the selected depths: ${Y.what === 'bias' ? 'obs − ref (' + unit + ')' : PARTS[Y.what]}`, L, 2);
+  g.textAlign = 'left'; g.fillText(`per year at the selected depths: ${Y.what === 'bias' ? 'ref − obs (' + unit + ')' : PARTS[Y.what]}`, L, 2);
 }
 
 function status(t) { const s = document.getElementById('status'); s.textContent = t || ''; s.className = ''; }
@@ -839,7 +850,7 @@ function computeBins(d, yd, allYears) {   // per-bin value for the current selec
       if (Number.isFinite(m.v[i])) { sum[m.bin[i]] += m.v[i]; cnt[m.bin[i]] += 1; }
     }
   } else {
-    const val = S.part === 'anomaly' ? c.ma : S.part === 'bias' ? c.bias : c.mu,
+    const val = valArr(c),
           t0 = useYears ? S.t0 : 0, t1 = useYears ? S.t1 : 255;
     for (let i = 0; i < c.bin.length; i++) {
       if (c.blk[i] < t0 || c.blk[i] > t1) continue;
@@ -854,7 +865,7 @@ function computeBins(d, yd, allYears) {   // per-bin value for the current selec
   return out;
 }
 function p98(v) {
-  const a = Array.from(v).filter(Number.isFinite).map(x => S.part === 'bias' ? Math.abs(x) : x).sort((x, y) => x - y);
+  const a = Array.from(v).filter(Number.isFinite).map(x => SIGNED(S.part) ? Math.abs(x) : x).sort((x, y) => x - y);
   return a.length ? a[Math.min(a.length - 1, Math.floor(0.98 * a.length))] || 1 : 1;
 }
 const YLORRD = [[255,255,204],[255,237,160],[254,217,118],[254,178,76],[253,141,60],[252,78,42],[227,26,28],[189,0,38],[128,0,38]];
@@ -863,9 +874,9 @@ function ramp(stops, x) {
   const t = Math.max(0, Math.min(1, x)) * (stops.length - 1), i = Math.min(stops.length - 2, Math.floor(t)), f = t - i;
   return stops[i].map((c, k) => Math.round(c + f * (stops[i + 1][k] - c)));
 }
-function color(x) { return S.part === 'bias' ? ramp(RDBU, x) : ramp(YLORRD, x); }
+function color(x) { return SIGNED(S.part) ? ramp(RDBU, x) : ramp(YLORRD, x); }
 function scale(v, vmax) {
-  if (S.part === 'bias') return 0.5 + 0.5 * v / vmax;          // symmetric: -vmax .. +vmax
+  if (SIGNED(S.part)) return 0.5 + 0.5 * v / vmax;          // symmetric: -vmax .. +vmax
   if (S.log) { const lo = Math.max(vmax / 1e3, 1e-6); return (Math.log10(Math.max(v, lo)) - Math.log10(lo)) / (Math.log10(vmax) - Math.log10(lo)); }
   return v / vmax;
 }
@@ -913,7 +924,7 @@ function drawBar(vmax) {
   ctx.strokeStyle = '#999'; ctx.strokeRect(x0 - 0.5, 0.5, x1 - x0, h);
   ctx.fillStyle = '#333'; ctx.strokeStyle = '#333'; ctx.font = '11px sans-serif'; ctx.textAlign = 'center';
   let ticks, pos;
-  if (S.part === 'bias') {
+  if (SIGNED(S.part)) {
     ticks = niceTicks(-vmax, vmax, 6);
     pos = v => x0 + (x1 - x0) * (v + vmax) / (2 * vmax);
   } else if (S.log) {
@@ -930,10 +941,16 @@ function drawBar(vmax) {
     ctx.fillText(fmt(v), x, h + 15);
   }
   const unit = S.V === 'T' ? '°C' : 'psu';
-  document.getElementById('cbtxt').textContent = S.part === 'bias'
-    ? `${PARTS.bias}, ${unit}: red = observations warmer/saltier than the reference, blue = colder/fresher; beyond ±${fmt(vmax)} use the end colors`
-    : `${PARTS[S.part]}${S.part === 'count' ? '' : ', (ΔV/σ)², true weights'}${S.log ? '; log scale' : ''}; ` +
+  const ref = S.ct === 'vs_model' ? 'model' : 'climatology';
+  const txt = SIGNED(S.part)
+    ? `${PARTS[S.part]}${S.part === 'bias' ? ', ' + unit : ''}: red = the ${ref} is warmer/saltier than the observations, blue = colder/fresher; ` +
+      `the scale is centered on 0 (set ± with "max"); beyond ±${fmt(vmax)} the end colors`
+    : `${PARTS[S.part]}${S.part === 'count' ? '' : S.part === 'sig' ? ', ' + unit : ', (ΔV/σ)², true weights'}${S.log ? '; log scale' : ''}; ` +
       `values above ${fmt(vmax)} use the top color`;
+  document.getElementById('cbtxt').textContent = txt;
+  // the same bar under the global map (on a laptop screen the one below the polar maps is out of sight)
+  const c2 = document.getElementById('cbar2');
+  if (c2) { c2.getContext('2d').clearRect(0, 0, c2.width, c2.height); c2.getContext('2d').drawImage(c, 0, 0); document.getElementById('cbtxt2').textContent = txt; }
 }
 function fmt(x) {
   if (x === 0 || Math.abs(x) < 1e-12) return '0';
@@ -1011,8 +1028,12 @@ async function render() {
   const ttxt = S.part === 'mean' ? 'all years (the mean term is defined over the whole record)' : timeText();
   document.getElementById('info').innerHTML =
     `<b>${S.src}</b>, ${S.ct}, ${S.V}: ${PARTS[S.part]}; ${dtxt}; ${ttxt}. ${nb} bins with data. ` +
-    (S.part === 'bias' ? 'Each bin: mean of (observation &minus; reference) over its points in the selected levels and years, in ' +
+    (S.part === 'bias' ? 'Each bin: mean of (reference &minus; observation) over its points in the selected levels and years, in ' +
        (S.V === 'T' ? '&deg;C' : 'psu') + '. A diagnostic of steady offsets and their change over time; it is not part of the cost. ' :
+     S.part === 'nmis' ? 'Each bin: mean of (reference &minus; observation)/&sigma; over its points in the selected levels and years (true weights, ' +
+       'so &sigma; is the assumed error alone). &plusmn;1 is one assumed error. Not part of the cost (the unsplit cost is the mean of its square). ' :
+     S.part === 'sig' ? 'Each bin: mean of &sigma;, the assumed error of the observations (true weights 1/&sigma;&sup2;), over its points in the selected levels and years, in ' +
+       (S.V === 'T' ? '&deg;C' : 'psu') + '. The errors the costs are measured against. ' :
      S.part === 'mean' ? 'Mean term: w&#772;&middot;(V&#772;&minus;V&#772;<sub>ref</sub>)&sup2; per bin and level (own bin means, all years), averaged over the selected levels. ' :
      'Each bin: mean of (&Delta;V/&sigma;)&sup2; over its points in the selected levels and years. ') +
     'The color scale is fixed for this view across years; unsplit and anomaly share it. ' +
@@ -1022,7 +1043,8 @@ function syncControls() {
   const set = (id, attr, cur) => document.querySelectorAll('#' + id + ' .tab').forEach(t => t.classList.toggle('active', t.dataset[attr] === cur));
   set('srcs', 'v', S.src); set('cts', 'v', S.ct); set('vars', 'v', S.V); set('parts', 'v', S.part); set('dmodes', 'v', S.dmode);
   set('diags', 'v', S.part);
-  document.getElementById('logscale').disabled = S.part === 'bias';
+  document.getElementById('logscale').disabled = SIGNED(S.part);
+  document.getElementById('vmaxlab').textContent = SIGNED(S.part) ? 'max ±' : 'max';
   const lo = document.getElementById('tlo'), hi = document.getElementById('thi'), tall = document.getElementById('tall');
   const noTime = S.part === 'mean';
   lo.disabled = hi.disabled = tall.disabled = document.getElementById('tone').disabled = noTime;
@@ -1084,7 +1106,8 @@ async function init() {
   const maps = document.getElementById('maps');
   for (const [v, t] of [['global', 'Global (equal area, from 113°E)'], ['NH', 'North polar'], ['SH', 'South polar']]) {
     const box = document.createElement('div'); box.className = 'mapbox';
-    box.innerHTML = `<div class="t">${t}</div><canvas id="c_${v}" width="${GRID[v].nx}" height="${GRID[v].ny}"></canvas>`;
+    box.innerHTML = `<div class="t">${t}</div><canvas id="c_${v}" width="${GRID[v].nx}" height="${GRID[v].ny}"></canvas>` +
+      (v === 'global' ? '<div class="cbar2box"><canvas id="cbar2" width="440" height="32"></canvas><span id="cbtxt2"></span></div>' : '');
     maps.appendChild(box);
     box.querySelector('canvas').addEventListener('mousemove', e => hover(e, v));
     box.querySelector('canvas').addEventListener('mouseleave', () => document.getElementById('hover').style.display = 'none');
@@ -1170,7 +1193,7 @@ async function init() {
   if (INDEX.core_split === 'own') partTabs.push(['mean', 'mean term (split)']);
   partTabs.push(['count', '# points']);
   tabs('parts', partTabs, 'part', v => { S.part = v; re(); });
-  tabs('diags', [['bias', 'mean bias (obs − reference)']], 'part', v => { S.part = v; S.log = false;
+  tabs('diags', [['bias', 'misfit (ref − obs)'], ['nmis', 'normalized misfit (ref − obs)/σ'], ['sig', 'σ (assumed error)']], 'part', v => { S.part = v; S.log = false;
     document.getElementById('logscale').checked = false; re(); });
   tabs('dmodes', [['all', 'all depths'], ['level', 'single level'], ['100m', '100 m bands'], ['15', '15 groups'], ['30', '30 groups'], ['spike', 'flagged spikes']], 'dmode',
        v => { S.dmode = v; S.dsel = 0; re(); });
@@ -1236,7 +1259,7 @@ async function init() {
   };
   fit(); window.addEventListener('resize', fit);
   // simple / expert mode: simple hides the less-used options; a view that uses one of them shows in expert mode
-  const needsExpert = () => S.part === 'bias' || ['100m', '15', '30', 'spike'].includes(S.dmode) || (REGION && REGION.size) || S.log;
+  const needsExpert = () => ['100m', '15', '30', 'spike'].includes(S.dmode) || (REGION && REGION.size) || S.log;
   const setMode = m => { document.body.classList.toggle('simple', m === 'simple');
     document.querySelectorAll('#modesw .tab').forEach(b => b.classList.toggle('active', b.dataset.m === m));
     try { localStorage.setItem('explorerMode', m); } catch (e) {} };
@@ -1244,8 +1267,8 @@ async function init() {
   window.initMode = () => setMode(needsExpert() ? 'expert' : (saved || 'simple'));   // called once the address is read
   document.querySelectorAll('#modesw .tab').forEach(b => b.addEventListener('click', () => {
     if (b.dataset.m === 'simple' && needsExpert()) {
-      if (!confirm('This view uses expert options (bias diagnostic, depth bands or groups, spikes, a region or the log scale). Switch to simple and reset them?')) return;
-      if (S.part === 'bias') S.part = 'unsplit'; if (['100m', '15', '30', 'spike'].includes(S.dmode)) { S.dmode = 'all'; fillDepthSelect(); }
+      if (!confirm('This view uses expert options (depth bands or groups, spikes, a region or the log scale). Switch to simple and reset them?')) return;
+      if (['100m', '15', '30', 'spike'].includes(S.dmode)) { S.dmode = 'all'; fillDepthSelect(); }
       REGION = null; regionText(); S.log = false; document.getElementById('logscale').checked = false; render(); }
     setMode(b.dataset.m); }));
   document.getElementById('copylink').addEventListener('click', async e => { writeAddress();
