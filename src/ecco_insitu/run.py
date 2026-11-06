@@ -132,7 +132,7 @@ def default_log_dir(cfg):
     return (root if (root / 'pyproject.toml').exists() else Path.cwd()) / 'z_logs'
 
 
-def _compact_yearly(yearly_dir):
+def _compact_yearly(yearly_dir, mode='float32'):
     """Step 12 on every file under ``yearly_dir``, in place: each file is rewritten compacted and
     renamed ``..._ncei_step_12.nc``. Returns the number of files that failed (left as they were)."""
     from ecco_insitu.steps import step12_profiles_compact as step12
@@ -140,7 +140,7 @@ def _compact_yearly(yearly_dir):
     for f in sorted(Path(yearly_dir).rglob('*.nc')):
         tmp = f.with_name(f.stem + '_compact.nc')
         try:
-            rc = step12.cli([str(f), '-o', str(tmp), '--complevel', '2', '--overwrite'])
+            rc = step12.cli([str(f), '-o', str(tmp), '--complevel', '2', '--overwrite', '--mode', mode])
         except SystemExit as e:                       # argparse / explicit exits inside the step
             rc = e.code
         if rc:
@@ -210,7 +210,7 @@ def run_chain(input_dir, dest_dir, cfg, n_workers=None, scaling=None, window=Non
             report_spatial_scaling.main(str(yearly), window_mode=window)
         if compact:
             _banner('Step 12 (compact): rewriting output files in place')
-            if _compact_yearly(yearly):
+            if _compact_yearly(yearly, r.get('compact_mode', 'float32')):
                 status = EXIT_STEP_FAILED
             _banner(f'Step 12 (compact) finished: {datetime.datetime.now():%c}')
         if pack and status == EXIT_OK:

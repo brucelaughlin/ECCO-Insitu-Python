@@ -3,6 +3,22 @@
 Rewrite MITgcm pkg/profiles input netCDF files with compact variable types
 and netCDF-4 (HDF5) zlib compression, with sanity checks before and after.
 
+Modes (``--mode``; ``run.compact_mode`` in the settings)
+---------------------------------------------------------
+::
+
+  float32 (default)  only the (iPROF, iDEPTH) float64 profile arrays -> float32:
+                     prof_T, prof_S and their weight, clim, uncertainty, cost and
+                     weight-code arrays (the bulk of every file). Everything else
+                     keeps its type: positions, dates, depths, prof_interp_*,
+                     per-profile factors. Format and compression as the chain
+                     already writes them (netCDF-4, zlib; MITgcm reads these).
+                     About halves the files and the model's I/O.
+  full               the type rules below for every variable (also integers to
+                     int32, prof_date recomputed, ...).
+
+Both modes run the same checks and read every value back after writing.
+
 Steps for each input file
 -------------------------
 ::
@@ -290,8 +306,16 @@ def scan_variable(var, chunk_prof):
 # 2. type plan
 # ----------------------------------------------------------------------------
 
-def plan_variable(name, var, st):
-    """Output dtype / fill / conversion mode for one variable."""
+PROFILE_ARRAY_DIMS = (PROF_DIM, 'iDEPTH')
+
+
+def plan_variable(name, var, st, mode='full'):
+    """Output dtype / fill / conversion mode for one variable. ``mode`` 'float32': only (iPROF, iDEPTH) float64
+    arrays are converted (to float32, where safe); every other variable is copied unchanged."""
+    if mode == 'float32' and not (var.dimensions == PROFILE_ARRAY_DIMS and var.dtype == np.float64):
+        spec = dict(dtype=var.dtype, mode='copy', fill=var.getncattr('_FillValue') if '_FillValue' in var.ncattrs() else None,
+                    remap=[], int_fill=None, rule='unchanged (float32 mode)', notes=[])
+        return spec
     src = var.dtype
     spec = dict(dtype=src, mode='copy', fill=None, remap=[],
                 int_fill=None, rule='unchanged', notes=[])
@@ -762,7 +786,7 @@ def process_file(src_path, dst_path, args):
 
     in_stats = {n: scan_variable(v, args.chunk_prof)
                 for n, v in src.variables.items()}
-    specs = {n: plan_variable(n, v, in_stats[n])
+    specs = {n: plan_variable(n, v, in_stats[n], getattr(args, 'mode', 'full'))
              for n, v in src.variables.items()}
 
     rows = []
@@ -790,6 +814,8 @@ def process_file(src_path, dst_path, args):
         spec['values'] = datenum(src['prof_YYYYMMDD'][:], src['prof_HHMMSS'][:])
 
     fmt = args.format
+    if fmt == 'auto' and getattr(args, 'mode', 'full') == 'float32':
+        fmt = src.data_model          # the format the chain already writes (and MITgcm reads)
     if fmt == 'auto':
         fmt = 'NETCDF4_CLASSIC'
         if any(s['dtype'] not in CLASSIC_DTYPES for s in specs.values()):
@@ -872,6 +898,9 @@ def cli(argv=None):
                         'type needs NETCDF4 (default: %(default)s)')
     p.add_argument('--overwrite', action='store_true',
                    help='overwrite existing output files')
+    p.add_argument('--mode', default='float32', choices=('float32', 'full'),
+                   help='float32: only the (iPROF, iDEPTH) float64 profile arrays to float32 (default); '
+                        'full: every type rule (see the module description)')
     args = p.parse_args(argv)
 
     if args.chunk_prof < 1:

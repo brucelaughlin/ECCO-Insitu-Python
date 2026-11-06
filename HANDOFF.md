@@ -45,6 +45,14 @@ platform table with an apportioned share; data viewer's platform box / `?platfor
 Live check (PFL vs_model mean term 2000–2600 m): peak 2400 m; 98 % of its excess over the neighbors from sampling;
 top cluster 56°N 38°W, 4.1 % of bins, 33.8 % of the term; top floats 6903082 (11.5 %), 6903871, 1902621, 6903085.
 Possible next: ocean-basin names for clusters; per-profile costs (would make platform shares exact).
+**Step 12 (2026-11-06):** still off by default (`run.compact: false`; never used in the recent runs). New
+`run.compact_mode`: **float32** (default) converts only the (iPROF, iDEPTH) float64 profile arrays (T, S, weights,
+clim, uncertainty, cost; weight codes to int32) and keeps everything else, and the netCDF-4/zlib format the model
+already reads from `ecco_arrays/`; **full** = the old rules. Checked on PFL 2022: every other variable identical,
+converted arrays within float32 rounding (6e-8); step 13 keeps float32: model-ready file 619 → 316 MB, reading T, S
+and weights 1.42 → 0.73 s. Not yet run through the model. Enable with `ecco-insitu run --compact` (or
+`--set run.compact=true`). Restore point: tag `before-step12-float32-2026-11-06`.
+
 Done 2026-11-04 (later): **Guide** page (`guide.html`, from `guide.py`: the manual and the attribution method with
 formulas); **questions page** (`questions.html`, from `questions.py`: 21 questions → preset views); **every view as a
 link** (report, explorer and data viewer keep their state in the address; copy-link buttons); explorer **simple /
