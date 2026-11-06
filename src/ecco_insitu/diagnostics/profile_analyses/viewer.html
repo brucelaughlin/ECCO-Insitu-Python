@@ -1182,7 +1182,7 @@ async function init() {
   const keys = Object.keys(INDEX.files), srcs = [...new Set(keys.map(k => k.split('|')[0]))], cts = [...new Set(keys.map(k => k.split('|')[1]))];
   const q = new URLSearchParams(location.search);
   S.src = q.get('src') && srcs.includes(q.get('src')) ? q.get('src') : srcs[0];
-  S.ct = q.get('ct') && cts.includes(q.get('ct')) ? q.get('ct') : cts[0];
+  S.ct = q.get('ct') && cts.includes(q.get('ct')) ? q.get('ct') : cts.includes('vs_model') ? 'vs_model' : cts[0];   // default: the model
   if (q.get('V') === 'S') S.V = 'S';
   if (q.get('part') && PARTS[q.get('part')]) S.part = q.get('part');
   const re = () => { S.vmax = null; document.getElementById('vmax').value = ''; fillDepthSelect(); render(); };

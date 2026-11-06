@@ -158,7 +158,7 @@ def _offline(A, question, view):
     """No model: a fixed keyword match to one tool, so the page, links and tools can be tested."""
     q, view = question.lower(), view or {}
     src = next((s for s in A.sources if s.lower() in q), view.get('src') or ('PFL' if 'PFL' in A.sources else A.sources[0]))
-    ct = 'vs_clim' if 'clim' in q else 'vs_model' if 'model' in q else view.get('ct') or A.cost_types[0]
+    ct = 'vs_clim' if 'clim' in q else 'vs_model' if 'model' in q else view.get('ct') or ('vs_model' if 'vs_model' in A.cost_types else A.cost_types[0])
     V = 'S' if re.search(r'\bsalin|\bS\b', question) else 'T'
     nums = [float(x) for x in re.findall(r'(\d{2,4})\s*m\b', q)]
     z0, z1 = (min(nums), max(nums)) if len(nums) >= 2 else (nums[0], nums[0]) if nums else (0, 2000)

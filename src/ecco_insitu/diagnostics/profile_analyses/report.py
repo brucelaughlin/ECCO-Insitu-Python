@@ -938,7 +938,8 @@ const NO_COST = ['01'];
 const BAND_ANALYSES = ['05', '06'];
 const PART_ANALYSES = ['06', '07'];
 
-let curSource = SOURCES[0], curCost = COST_TYPES[0], curAn = null, curBand = 'all', curPart = 'unsplit';
+let curSource = SOURCES[0], curCost = COST_TYPES.includes('vs_model') ? 'vs_model' : COST_TYPES[0],   // default: the model
+    curAn = null, curBand = 'all', curPart = 'unsplit';
 let HAS_EXPLORER = false;
 const BIN_VIEWER_URL = {json.dumps(bin_viewer or '')};
 
