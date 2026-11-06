@@ -104,9 +104,8 @@ Alternative (simpler to host, more to rebuild): the whole site as an internal St
    JPL network. The public github.com site stays as it is, for collaborators at other institutions; the team lead
    doesn't want to move it to github.jpl.nasa.gov, which only JPL can reach. Where the assistant lives in production
    is still open. One option: the public site unchanged, plus an internal copy with the assistant for JPL users.
-2. **Subscription: Application, on a project charge number** (changed 2026-11-06). The developer is an intern
-   (affiliate, no timecard), so the timecard route for an Individual subscription likely isn't open, and the team
-   expects to want general access anyway. Start directly with an **Application** subscription: a JPL application
+2. **Subscription: Application, on a project charge number** (changed 2026-11-06). The timecard route for an Individual
+   subscription isn't available to every team member, and the team expects to want general access anyway. Start directly with an **Application** subscription: a JPL application
    account, the $11/month fee plus tokens on the project's charge number (with the CAM's approval if needed), and the
    default $100/month cap. The prototype still runs locally; the same credential then serves the team version.
 3. **Commercial** (public data; more models, slightly cheaper).
@@ -124,7 +123,7 @@ Alternative (simpler to host, more to rebuild): the whole site as an internal St
 ## Questions to send back (short)
 - How long are prompts and answers retained, and where (for both GovCloud and Commercial)?
 - May a tool on github.jpl.nasa.gov Pages call a proxy on a JPL VM? (the answer suggests yes)
-- Can an intern (affiliate) request and manage an Application subscription, or must an employee own it?
+- Who may request and own an Application subscription (any team member, or an employee on the project)?
 - How is a JPL application account requested, and how long does that take?
 - Who is our project's information system owner (for production approval later)?
 
