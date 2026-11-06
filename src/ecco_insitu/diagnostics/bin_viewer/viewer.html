@@ -28,11 +28,11 @@ select { font-size: 0.85em; }
 .cbar { width: 74px; display: flex; flex-direction: column; align-items: center; }
 .cbar canvas { display: block; }
 .cbar .t { font-size: 10px; writing-mode: vertical-rl; transform: rotate(180deg); text-align: center; }
-#trackkey { position: absolute; left: 8px; bottom: 8px; background: rgba(255,255,255,0.85); border: 1px solid #aaa; border-radius: 3px;
+.trackkey { position: absolute; left: 8px; bottom: 8px; background: rgba(255,255,255,0.85); border: 1px solid #aaa; border-radius: 3px;
   padding: 3px 6px; font-size: 10px; color: #333; pointer-events: none; z-index: 2; }
-#trackkey .tkbar { width: 120px; height: 7px; margin: 2px 0 1px; border: 1px solid #888; }
-#trackkey .tklab { display: flex; justify-content: space-between; width: 122px; }
-#trackkey .tknote { color: #777; font-size: 9px; }
+.trackkey .tkbar { width: 120px; height: 7px; margin: 2px 0 1px; border: 1px solid #888; }
+.trackkey .tklab { display: flex; justify-content: space-between; width: 122px; }
+.trackkey .tknote { color: #777; font-size: 9px; }
 #mapbox { position: relative; flex: 1; max-width: 1400px; background: lightskyblue; border: 1px solid #333; }
 #map, .map { position: absolute; inset: 0; }
 .mapbox.polar { position: relative; margin: 0 auto; background: lightskyblue; border: 1px solid #333; }
@@ -111,7 +111,7 @@ select { font-size: 0.85em; }
 <div id="titlebox"></div>
 <div id="stage">
   <div class="cbar"><canvas id="cbl"></canvas></div>
-  <div id="mapbox"><div id="map"></div><div id="legend"></div><div id="trackkey" style="display:none"></div>
+  <div id="mapbox"><div id="map"></div><div id="legend"></div><div class="trackkey" id="trackkey" style="display:none"></div>
     <div id="busy"><div class="box"><div class="spin"></div><span id="busymsg">loading…</span></div></div></div>
   <div class="cbar"><canvas id="cbr"></canvas></div>
 </div>
@@ -119,11 +119,11 @@ select { font-size: 0.85em; }
 <div id="keys">Scroll to zoom, drag to pan; &#8962; home returns every map to its whole view. Zoomed in, <b>click a red dot</b> (a profile) to see it in full. Scroll down for the polar maps.</div>
 <div class="polar-sec"><div class="polar-title" id="info-N"></div>
   <div class="pstage"><div class="cbar"><canvas id="cbl-N"></canvas></div>
-    <div class="mapbox polar" id="box-N"><div class="map" id="map-N"></div><div class="legend" id="legend-N"></div></div>
+    <div class="mapbox polar" id="box-N"><div class="map" id="map-N"></div><div class="legend" id="legend-N"></div><div class="trackkey" id="trackkey-N" style="display:none"></div></div>
     <div class="cbar"><canvas id="cbr-N"></canvas></div></div></div>
 <div class="polar-sec"><div class="polar-title" id="info-S"></div>
   <div class="pstage"><div class="cbar"><canvas id="cbl-S"></canvas></div>
-    <div class="mapbox polar" id="box-S"><div class="map" id="map-S"></div><div class="legend" id="legend-S"></div></div>
+    <div class="mapbox polar" id="box-S"><div class="map" id="map-S"></div><div class="legend" id="legend-S"></div><div class="trackkey" id="trackkey-S" style="display:none"></div></div>
     <div class="cbar"><canvas id="cbr-S"></canvas></div></div></div>
 <div id="pp" style="display:none">
   <div id="pphead"><b id="pptitle">Profile</b><span id="ppclose" title="close">×</span></div>
@@ -231,10 +231,12 @@ function trackColor(f) {
   const t = Math.max(0, Math.min(1, f)) * (TRACKMAP.length - 1), i = Math.min(TRACKMAP.length - 2, Math.floor(t)), u = t - i;
   return [...TRACKMAP[i].map((c, k) => Math.round(c + u * (TRACKMAP[i + 1][k] - c))), 235];
 }
-function trackKey() {             // the small key: the first and last month in the main map's view, on a strip of the track's colors
-  const el = document.getElementById('trackkey');
-  if (!TRACK || !PLATFORM || TRACK.idx !== PLATFORM.idx || TRACK.js.length < 2) { el.style.display = 'none'; return; }
-  const sp = MAPS[0].trackSpan || [0, 1], month = f => new Date((TRACK.t0 + f * (TRACK.t1 - TRACK.t0)) * 864e5).toISOString().slice(0, 7);
+function trackKey(M) {            // the small key of map M (all maps if none): the first and last month in its view
+  if (!M) { for (const m of MAPS) trackKey(m); return; }
+  const el = document.getElementById(M.id === 'll' ? 'trackkey' : 'trackkey-' + M.id);
+  if (!el) return;
+  if (!TRACK || !PLATFORM || TRACK.idx !== PLATFORM.idx || TRACK.js.length < 2 || !M.trackSpan) { el.style.display = 'none'; return; }
+  const sp = M.trackSpan, month = f => new Date((TRACK.t0 + f * (TRACK.t1 - TRACK.t0)) * 864e5).toISOString().slice(0, 7);
   const stops = TRACKMAP.map((c, i) => `rgb(${c}) ${100 * i / (TRACKMAP.length - 1)}%`).join(', ');
   el.innerHTML = `<b>${PLATFORM.name}</b> track<div class="tkbar" style="background:linear-gradient(to right, ${stops})"></div>` +
     `<div class="tklab"><span>${month(sp[0])}</span><span>${month(sp[1])}</span></div>` +
@@ -509,6 +511,7 @@ function drawMap(M) {
   }
   // the track, cut where it crosses the map's edge (a jump of over a third of the map's width)
   const trackPaths = [], trackEnds = [], trackArrows = [], trackVerts = [];
+  M.trackSpan = null;
   if (TRACK && PLATFORM && TRACK.idx === PLATFORM.idx) {
     const pr = CLASS[S.src].p, [ex0, , ex1] = M.extent, wrap = (ex1 - ex0) / 3; let cur = [];
     const pts = TRACK.js.map(j => M.proj(pr.lon[j], pr.lat[j]));
@@ -516,7 +519,7 @@ function drawMap(M) {
     const vis = TRACK.frac.filter((f, i) => pts[i][0] >= bx0 && pts[i][0] <= bx1 && pts[i][1] >= by0 && pts[i][1] <= by1);
     const f0 = vis.length > 1 ? Math.min(...vis) : 0, f1 = vis.length > 1 ? Math.max(...vis) : 1;
     const tf = TRACK.frac.map(f => f1 > f0 ? (f - f0) / (f1 - f0) : 0);
-    M.trackSpan = [f0, f1];
+    M.trackSpan = vis.length ? [f0, f1] : null;          // null: the track is not in this map's view (no key)
     // one segment per pair of consecutive profiles, colored by the time of its first profile (TRACKMAP: early -> late)
     pts.forEach((q, i) => { if (!i || Math.hypot(q[0] - pts[i - 1][0], q[1] - pts[i - 1][1]) > wrap) return;
       trackPaths.push({path: [pts[i - 1], q], c: trackColor(tf[i - 1])}); });
@@ -847,7 +850,7 @@ function clampView(M, v) {
 function setView(M, v, now) {
   M.view = clampView(M, v); M.deck.setProps({viewState: M.view});
   clearTimeout(M.t);
-  const go = () => { if (!STATS) return; drawMap(M); if (M.id === 'll') { titles(); trackKey(); } else writeAddress(); };
+  const go = () => { if (!STATS) return; drawMap(M); trackKey(M); if (M.id === 'll') titles(); else writeAddress(); };
   if (now) go(); else M.t = setTimeout(go, 60);
 }
 function resetZoom() { for (const M of MAPS) setView(M, M.home, true); if (STATS) titles(); }
