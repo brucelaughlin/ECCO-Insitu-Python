@@ -39,14 +39,14 @@ _CHROME = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'
 
 _ANALYSIS_TITLES = {
     '01': 'Global mean T and S vs depth',
-    '02': 'Global mean T and S cost vs depth: unsplit and the two terms of the split',
+    '02': 'Cost per datum vs depth, three weight versions (final, nosf, true): unsplit and the two terms of the split',
     '03': 'Global mean cost per datum vs time',
     '04': 'Total cost per month',
     '05': 'Vertically integrated (summed) cost per geodesic bin',
     '06': 'Vertically integrated cost per datum per geodesic bin',
     '07': 'Zonal mean cost per datum vs depth',
     '08': 'Histogram of per-datum cost',
-    '09': 'Global mean cost per datum vs depth',
+    '09': 'Normalized misfit squared, (ref − obs)²/σ², vs depth: analysis 02’s true-weight lines on their own axis',
     '10': 'Global mean cost per datum by depth range',
     '11': 'Supplemental: cost vs depth, data inside vs after the climatology\'s years',
     '12': 'Supplemental: split anomaly term with own vs pooled (cost_profiles.F) bin means',
@@ -126,9 +126,12 @@ _ANALYSIS_DESC = {
         'single-point QC limit against climatology.'
     ),
     '09': (
-        'As analysis 2, <code>true</code> weights only: mean (&Delta;V/&sigma;)&sup2; at each depth '
-        'level: unsplit (dashed) and the split&rsquo;s anomaly term (solid; own bin means). The mean term '
-        'isn&rsquo;t per datum, so it is only in analysis&nbsp;2. Right panel: number of points at each level.'
+        '<strong>The same numbers as analysis&nbsp;2&rsquo;s red lines</strong> (the <code>true</code> weights), on an axis of '
+        'their own: at each depth level, the mean over its points of (&Delta;V/&sigma;)&sup2;, unsplit (dashed) and the '
+        'split&rsquo;s anomaly term (solid; own bin means). With the true weight 1/&sigma;&sup2;, the value is the '
+        'squared misfit in units of the assumed error: 1 means the observations are, on average, one &sigma; from '
+        'the reference. The mean term isn&rsquo;t a mean over points (one value per bin), so it is only in '
+        'analysis&nbsp;2. Right panel: number of points at each level.'
     ),
     '10': (
         'Mean (&Delta;V/&sigma;)&sup2; (<code>true</code> weights) over all points in each depth range: '
@@ -159,8 +162,30 @@ _ANALYSIS_DESC = {
 SUPPLEMENTAL = {'11': 'year split', '12': 'split: own vs pooled'}
 
 _GLOSSARY_HTML = """
-<p><strong>Weight versions</strong>: which factors are kept in the weight <em>w</em> = &gamma;&nbsp;&middot;&nbsp;sf&nbsp;/&nbsp;&sigma;&sup2;.
-All use the same misfit &Delta;V&nbsp;=&nbsp;V&nbsp;&minus;&nbsp;V<sub>ref</sub>.</p>
+<p><strong>Weights and &sigma;.</strong> Every observation (one value of T or S at one depth level) has its own weight
+<em>w</em>, and its cost is <em>w</em>&nbsp;&middot;&nbsp;(&Delta;V)&sup2;. ECCO&rsquo;s cost is the sum over all observations. Every
+cost in this report is a mean of that per-observation cost (over the points at a depth, in a month, in a bin), except the
+split&rsquo;s mean term, which is one value per bin. The processing chain builds <em>w</em> = &gamma;&nbsp;&middot;&nbsp;sf&nbsp;/&nbsp;&sigma;&sup2;
+in three steps:</p>
+<table class="gloss-table">
+<tr><th>Step</th><th>Factor</th><th>What it is</th></tr>
+<tr><td>04</td><td>1/&sigma;&sup2;</td><td>&sigma; is the <em>assumed error</em> of the observation: how far from the reference it is expected to
+  be, not the instrument&rsquo;s accuracy (Argo sensors: about 0.002&nbsp;&deg;C; &sigma; for T here: about 0.9&nbsp;&deg;C near the
+  surface, 0.25&nbsp;&deg;C at 500&ndash;1000&nbsp;m, 0.1&nbsp;&deg;C at depth). It is a derived field, a map per depth (see below).</td></tr>
+<tr><td>10</td><td>&gamma;</td><td>The area of the profile&rsquo;s model grid cell over the largest cell&rsquo;s area (0&ndash;1), so that small
+  high-latitude cells don&rsquo;t count more than large ones.</td></tr>
+<tr><td>11</td><td>sf</td><td>The spatial scaling factor (0&ndash;1, about 1/n for n profiles in a geodesic bin and month), so that
+  densely sampled places and times don&rsquo;t dominate the cost.</td></tr>
+</table>
+<p><strong>Where &sigma; comes from.</strong> Between 60&deg;S and 60&deg;N: the ECCO uncertainty fields on the model grid
+(<code>Theta_/Salt_sigma_smoothed_method_02_masked_merged_capped_extrapolated.bin</code>, the files of the original MATLAB
+chain; 50 levels, interpolated to each profile&rsquo;s depths). North of 60&deg;N: an Arctic file made for this chain, the
+expected RMS difference between Arctic observations and the climatology (bias included), estimated per 100&nbsp;km cell
+from 1992&ndash;2023 observations and smoothed toward its neighbors. South of 60&deg;S: for now, a constant
+(10&nbsp;&deg;C, 5&nbsp;psu), which makes those observations count very little. S has a floor of 0.005&nbsp;psu.</p>
+<p><strong>Weight versions</strong>: the figures show the cost with three choices of <em>w</em>. All use the same misfit
+&Delta;V&nbsp;=&nbsp;V&nbsp;&minus;&nbsp;V<sub>ref</sub>, squared, so its sign doesn&rsquo;t matter here. Analysis&nbsp;2 draws all three; analysis&nbsp;9 is
+its <code>true</code> lines alone.</p>
 <table class="gloss-table">
 <tr><th>Label</th><th>Cost per point</th><th>Meaning</th></tr>
 <tr><td><code>final</code></td><td>&gamma; &middot; sf &middot; (&Delta;V/&sigma;)&sup2;</td>
@@ -170,7 +195,9 @@ All use the same misfit &Delta;V&nbsp;=&nbsp;V&nbsp;&minus;&nbsp;V<sub>ref</sub>
 <tr><td><code>true</code></td><td>(&Delta;V/&sigma;)&sup2;</td>
     <td>&gamma; and sf removed: &ldquo;cost per datum&rdquo; (all factors removed)</td></tr>
 </table>
-<p>&gamma; and sf are both between 0 and 1, so <code>true</code> &ge; <code>nosf</code> &ge; <code>final</code>.</p>
+<p>&gamma; and sf are both between 0 and 1, so <code>true</code> &ge; <code>nosf</code> &ge; <code>final</code>. Example: PFL T against
+the model at 240&nbsp;m: 0.19 (final), 0.68 (nosf), 1.04 (true). <code>final</code> is small because sf and &gamma; shrink the
+weights, not because the fit is better; <code>true</code> is the one to read as &ldquo;how many &sigma; off&rdquo;.</p>
 
 <p><strong>Split modes</strong></p>
 <table class="gloss-table">

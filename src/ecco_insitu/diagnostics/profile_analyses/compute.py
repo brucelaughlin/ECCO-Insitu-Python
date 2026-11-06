@@ -16,14 +16,14 @@ standard analyses.  Save as per-source NetCDF files plus figures.
 The 10 analyses (per obs class, for each cost type and split/unsplit mode):
 
   1.  Global mean T and S vs depth
-  2.  Global mean T and S cost vs depth
+  2.  Global mean T and S cost per datum vs depth, three weight versions (final, nosf, true)
   3.  Global mean cost per datum vs time  (factors removed = 'true' weight version)
   4.  Global mean total cost vs time      (final weights)
   5.  Vertically integrated cost per geodesic bin
   6.  Vertically integrated cost per datum per geodesic bin  (factors removed)
   7.  Zonal mean cost per datum vs depth
   8.  Histogram of per-datum cost
-  9.  Global mean cost per datum vs depth  (analysis 2 with 'true' weights, separate figure)
+  9.  Normalized misfit squared (ref - obs)^2/sigma^2 vs depth: analysis 2's 'true' lines on their own axis
   10. Global mean cost per datum summed into depth ranges
       (0–100, 0–250, 0–500, 0–700, 0–2000 m)
 
@@ -1211,8 +1211,8 @@ def _make_figures(res, source, fig_dir, lims=None, cost_type=None):
 
     how = 'own bin means' if CORE_SPLIT == 'own' else 'bin means pooled over all obs classes'
     for an, wvs, title_sfx in [
-        ('02', WEIGHT_VERS, 'mean cost'),
-        ('09', ('true',),   'mean cost per datum'),
+        ('02', WEIGHT_VERS, 'cost per datum, three weight versions'),
+        ('09', ('true',),   '(ref − obs)²/σ², true weights (02\'s red lines)'),
     ]:
         zoom = an == '02'          # 02: a second row, the same lines with the cost axis limited to 0-2
         fig = plt.figure(figsize=(5 * nv + 1.8, 11 if zoom else 6))

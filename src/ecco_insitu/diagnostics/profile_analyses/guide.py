@@ -38,8 +38,13 @@ data viewer on one platform &rarr; click a profile to see it whole. Section&nbsp
 <tr><td>reference, V<sub>ref</sub></td><td>What an observation V is compared with: the WOA23 climatology (<code>vs_clim</code>) or the ECCO
   v4r6 model (<code>vs_model</code>; monthly means sampled at the profile&rsquo;s grid cell and month).</td></tr>
 <tr><td>misfit &Delta;V</td><td>V &minus; V<sub>ref</sub>, in &deg;C or psu.</td></tr>
-<tr><td>&sigma;</td><td>The assumed error of an observation (its uncertainty), from the processing chain.</td></tr>
-<tr><td>cost per datum</td><td>(&Delta;V/&sigma;)&sup2; for one value (&ldquo;true&rdquo; weights). 1 means one assumed error away; 4 means two.</td></tr>
+<tr><td>&sigma;</td><td>The assumed error of an observation: how far from the reference it is expected to be. Not the instrument&rsquo;s
+  accuracy (much smaller); a derived map per depth (the report&rsquo;s Terminology says where it comes from). In the explorer, &ldquo;&sigma;
+  (assumed error)&rdquo; maps it.</td></tr>
+<tr><td>weight w</td><td>Each observation&rsquo;s own: w = &gamma;&middot;sf/&sigma;&sup2;, with &gamma; the model grid cell&rsquo;s area factor and sf the spatial
+  scaling (both 0&ndash;1). An observation&rsquo;s cost is w&middot;(&Delta;V)&sup2;; ECCO&rsquo;s cost is the sum over observations.</td></tr>
+<tr><td>cost per datum</td><td>(&Delta;V/&sigma;)&sup2; for one value (&ldquo;true&rdquo; weights, 1/&sigma;&sup2;). 1 means one assumed error away; 4 means two.
+  Analysis&nbsp;09 is this against depth (the same as analysis&nbsp;02&rsquo;s red lines).</td></tr>
 <tr><td>geodesic bin</td><td>One of 10,242 cells of roughly equal area (about 220&nbsp;km across) covering the globe.</td></tr>
 <tr><td>depth level</td><td>One of the 97 standard depths (2&nbsp;m to 6000&nbsp;m): 2&ndash;5&nbsp;m apart in the top 100&nbsp;m (23 levels), wider below
   (50&nbsp;m around 1000&nbsp;m, 100&nbsp;m from 1100 to 2000&nbsp;m), 200&nbsp;m apart below 2000&nbsp;m.</td></tr>
