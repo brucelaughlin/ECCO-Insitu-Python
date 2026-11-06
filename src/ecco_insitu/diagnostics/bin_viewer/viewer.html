@@ -15,8 +15,10 @@
 :root { --accent: #1a5ca8; --border: #c8c8c8; }
 * { box-sizing: border-box; margin: 0; padding: 0; }
 body { font-family: Courier, 'Courier New', monospace; background: lightskyblue; color: #111; font-size: 13px; }
-#top { display: flex; gap: 0.6em; align-items: center; flex-wrap: wrap; padding: 0.4em 0.8em; background: #e9f5fd;
+#top { position: sticky; top: 0; z-index: 20; box-shadow: 0 1px 3px rgba(0,0,0,0.15); display: flex; gap: 0.6em; align-items: center; flex-wrap: wrap; padding: 0.4em 0.8em; background: #e9f5fd;
   border-bottom: 1px solid #9cc; font-family: -apple-system, 'Segoe UI', sans-serif; }
+#top a.jump { text-decoration: none; color: #1a5ca8; }
+html { scroll-padding-top: 6.5em; }     /* jumps land below the sticky settings bar */
 #top .lab { font-size: 0.72em; color: #567; text-transform: uppercase; letter-spacing: 0.05em; }
 .btn { padding: 0.2em 0.55em; border: 1px solid var(--border); border-radius: 4px; background: #fff; cursor: pointer; font-size: 0.85em; }
 .btn.on { background: var(--accent); color: #fff; border-color: var(--accent); }
@@ -45,7 +47,7 @@ select { font-size: 0.85em; }
 #legend { position: absolute; top: 6px; right: 6px; background: rgba(255,255,255,0.8); border: 1px solid #aaa;
   border-radius: 3px; padding: 3px 7px; font-size: 9px; line-height: 1.35; pointer-events: none; z-index: 3; }
 #caption { text-align: center; font-size: 11px; line-height: 1.4; padding: 0.5em 1em 0.3em; max-width: 70em; margin: 0 auto; }
-#pp { position: fixed; right: 12px; top: 70px; width: 590px; max-height: calc(100vh - 90px); overflow-y: auto; z-index: 20;
+#pp { position: fixed; right: 12px; top: calc(var(--barh, 70px) + 6px); width: 590px; max-height: calc(100vh - var(--barh, 70px) - 20px); overflow-y: auto; z-index: 21;
   background: #fff; border: 1px solid #889; border-radius: 6px; box-shadow: 0 4px 18px rgba(0,0,0,0.25); padding: 0.5em 0.7em;
   font-family: -apple-system, 'Segoe UI', sans-serif; font-size: 12px; }
 #pphead { display: flex; justify-content: space-between; align-items: center; font-size: 13px; }
@@ -106,6 +108,8 @@ select { font-size: 0.85em; }
   <span class="grp" title="The face colors' range, symmetric about 0 (empty: automatic)"><span class="lab">colors ±</span>
     <input id="fmax" type="number" step="any" size="5" style="width:5em"><button class="btn" id="fauto">auto</button></span>
   <span class="grp"><span class="lab">max cells/bin</span><select id="cap"><option>250</option><option>500</option><option selected>1000</option><option>2000</option><option>5000</option></select></span>
+  <span class="grp" title="The settings stay at the top of the window; jump to a map"><span class="lab">go to</span>
+    <a class="btn jump" href="#stage">global</a><a class="btn jump" href="#info-N">Arctic</a><a class="btn jump" href="#info-S">Southern Ocean</a></span>
 </div>
 <div id="bininfo" style="display:none;text-align:center;font-size:12px;padding:0.2em;background:#fff3e0;border-bottom:1px solid #f0c080"></div>
 <div id="titlebox"></div>
@@ -1069,7 +1073,9 @@ function homeZoom(M) {                  // the zoom at which the map's whole vie
 function sizeBoxes() {
   const main = document.getElementById('mapbox'), w = main.clientWidth;
   main.style.height = Math.round(w / 2) + 'px';
-  const side = Math.max(320, Math.min(w - 2 * (74 + 10), window.innerHeight - 70));
+  const barH = document.getElementById('top').offsetHeight;      // the sticky settings bar: each polar map fits below it
+  document.documentElement.style.setProperty('--barh', barH + 'px');   // the profile panel opens below the bar
+  const side = Math.max(320, Math.min(w - 2 * (74 + 10), window.innerHeight - barH - 50));
   for (const h of ['N', 'S']) { const b = document.getElementById('box-' + h); b.style.width = side + 'px'; b.style.height = side + 'px'; }
 }
 function addMap(id, elId, legendId, bins, land, extent, proj, latOf, bathy) {
@@ -1108,8 +1114,13 @@ async function init() {
   MAIN_Z0 = MAPS[0].home.zoom;
   addMap('N', 'map-N', 'legend-N', binsN, landN, [-r40, -r40, r40, r40], (lon, lat) => polarXY(lon, lat, 'N'), (x, y) => polarLat(x, y, 'N'), polarBathy('N'));
   addMap('S', 'map-S', 'legend-S', binsS, landS, [-r40, -r40, r40, r40], (lon, lat) => polarXY(lon, lat, 'S'), (x, y) => polarLat(x, y, 'S'), polarBathy('S'));
-  window.addEventListener('resize', () => { sizeBoxes(); for (const M of MAPS) { const z = homeZoom(M);
-    M.home = {...M.home, zoom: z, minZoom: z, maxZoom: z + 9}; if (M.id === 'll') MAIN_Z0 = z; setView(M, M.view, true); } if (STATS) { titles(); colorbars(); } });
+  const refit = () => { sizeBoxes(); for (const M of MAPS) { const z = homeZoom(M);
+    M.home = {...M.home, zoom: z, minZoom: z, maxZoom: z + 9}; if (M.id === 'll') MAIN_Z0 = z; setView(M, M.view, true); } if (STATS) { titles(); colorbars(); } };
+  window.addEventListener('resize', refit);
+  // the sticky settings bar changes height when its text wraps (e.g. a platform's note): re-fit the polar maps to it
+  let barH0 = document.getElementById('top').offsetHeight, barT = null;
+  new ResizeObserver(() => { const h = document.getElementById('top').offsetHeight; if (h === barH0) return; barH0 = h;
+    clearTimeout(barT); barT = setTimeout(refit, 150); }).observe(document.getElementById('top'));
   setupControls();
   // a link from the cost map explorer's clicked bin: ?src= &ref= &V= &k= or &levels=a-b &y0= &y1= &lon= &lat=
   // (opens on that class, reference, variable, depth and years, zoomed in on the bin, past the cell threshold)
