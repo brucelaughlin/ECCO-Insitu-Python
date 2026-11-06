@@ -2,7 +2,7 @@
 
 Started 2026-11-04, after a senior team member asked for an LLM on the site: a user asks a question, the site
 answers with supporting plots. Status (2026-11-06): **the AI-service team answered** (summary below); the design is
-updated to match. Decisions made 2026-11-06 (below): an Individual subscription and a local prototype.
+updated to match. Decisions made 2026-11-06 (below): an Application subscription on a charge number, and a local prototype first.
 
 ## Design (agreed in discussion)
 
@@ -104,18 +104,18 @@ Alternative (simpler to host, more to rebuild): the whole site as an internal St
    JPL network. The public github.com site stays as it is, for collaborators at other institutions; the team lead
    doesn't want to move it to github.jpl.nasa.gov, which only JPL can reach. Where the assistant lives in production
    is still open. One option: the public site unchanged, plus an internal copy with the assistant for JPL users.
-2. **Subscription: Individual**, charged to the timecard (the AI-service team says Individual allows this), so no
-   charge number or CAM approval is needed to prototype. Only the subscriber's own credential is used, so the
-   prototype is for the developer and live demos; others using it is an open question (below). Production means an
-   **Application** subscription on a charge number.
+2. **Subscription: Application, on a project charge number** (changed 2026-11-06). The developer is an intern
+   (affiliate, no timecard), so the timecard route for an Individual subscription likely isn't open, and the team
+   expects to want general access anyway. Start directly with an **Application** subscription: a JPL application
+   account, the $11/month fee plus tokens on the project's charge number (with the CAM's approval if needed), and the
+   default $100/month cap. The prototype still runs locally; the same credential then serves the team version.
 3. **Commercial** (public data; more models, slightly cheaper).
 4. **Production approval: not needed to prototype.** Find out who the project's information system owner is before
    anyone else uses it.
 
 ### Built so it moves to production with configuration changes only
-- The proxy reads its settings from the environment: endpoint, credential (Individual key now; the Application
-  account's login later, renewed every 12 h), model name, and per-user limits. No code changes when the subscription
-  changes.
+- The proxy reads its settings from the environment: endpoint, the Application account's login (renewed every 12 h;
+  the token has no refresh), model name, and per-user limits. No code changes when the hosting changes.
 - The page reads the proxy's address from one setting. If no proxy is set or reachable, the assistant box doesn't
   appear, so the same page works on the public site without it.
 - The actions are the existing view links and tools, so they work the same wherever the site is hosted.
@@ -124,11 +124,13 @@ Alternative (simpler to host, more to rebuild): the whole site as an internal St
 ## Questions to send back (short)
 - How long are prompts and answers retained, and where (for both GovCloud and Commercial)?
 - May a tool on github.jpl.nasa.gov Pages call a proxy on a JPL VM? (the answer suggests yes)
-- For a team-internal tool: is the Individual subscription acceptable for a small prototype others try?
+- Can an intern (affiliate) request and manage an Application subscription, or must an employee own it?
+- How is a JPL application account requested, and how long does that take?
 - Who is our project's information system owner (for production approval later)?
 
 ## Next
-1. Developer: subscribe (Individual, Commercial) at goto.jpl.nasa.gov/GenAI-API-Service.
+1. Get the charge number (and the CAM's approval if needed), then request an Application subscription (Commercial)
+   at goto.jpl.nasa.gov/GenAI-API-Service. Meanwhile, build in offline mode.
 2. Build: a local proxy (with an offline mode that needs no credential, for testing), the assistant box in the
    report and explorer pages, and the actions for the ten analyses' questions (from questions.html).
 3. Demo to the team; then the Application subscription, the hosting choice, and approval.
