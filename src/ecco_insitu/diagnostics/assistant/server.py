@@ -64,6 +64,7 @@ class Model:
         self._token, self._t = None, 0
 
     def token(self, force=False):
+        """An access token from ``token_command``, reused for ``refresh_s`` seconds (``force``: always a new one)."""
         if force or not self._token or time.time() - self._t > self.refresh_s:
             env = {k: v for k, v in os.environ.items() if k != 'PYTHONPATH'}
             r = subprocess.run(self.cmd, shell=True, capture_output=True, text=True, timeout=120, env=env)
@@ -74,6 +75,7 @@ class Model:
         return self._token
 
     def chat(self, messages, tools):
+        """One chat completion with tool calling; retries 429/503 (and a refused token) with backoff."""
         body = json.dumps({'model': self.model, 'messages': messages, 'tools': tools,
                            'max_tokens': 1200}).encode()
         for attempt in range(5):
@@ -198,6 +200,7 @@ class _Limiter:
 
 
 def make_handler(A, model, site_dir, settings, log):
+    """The request handler: the site's files (pages with the question box added), /assistant/status and /assistant/ask."""
     limiter = _Limiter(settings['per_minute'])
 
     class H(SimpleHTTPRequestHandler):
@@ -270,6 +273,7 @@ def make_handler(A, model, site_dir, settings, log):
 
 
 def cli(argv=None):
+    """``ecco-insitu assistant``: run the local server, or answer one question (``--ask``)."""
     p = argparse.ArgumentParser(description='The ask-a-question prototype: a local server for the report site '
                                             '(settings: the assistant section; docs/planning/llm_assistant.md).')
     p.add_argument('--offline', action='store_true', help='no model: a fixed keyword match to one tool (for testing)')

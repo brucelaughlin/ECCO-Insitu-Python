@@ -37,6 +37,7 @@ class Analysis:
         self._open = {}
 
     def nc(self, src, ct):
+        """The open analysis NetCDF of one obs class and cost type (ToolError for unknown names)."""
         if src not in self.sources:
             raise ToolError(f'unknown obs class {src!r}; the classes are {", ".join(self.sources)}')
         if ct not in self.cost_types:
@@ -52,13 +53,16 @@ class Analysis:
 
     @property
     def depth(self):
+        """The depth levels (m)."""
         ds = self.nc(self.sources[0], self.cost_types[0])
         return np.asarray(ds['depth_m'][:], float)
 
     def has(self, src, ct, name):
+        """Whether the class's file has variable ``name``."""
         return name in self.nc(src, ct).variables
 
     def get(self, src, ct, name):
+        """Variable ``name`` of the class's file as an array (ToolError if it is missing)."""
         ds = self.nc(src, ct)
         if name not in ds.variables:
             raise ToolError(f'{src} {ct} has no {name} (e.g. no S for XBT)')
