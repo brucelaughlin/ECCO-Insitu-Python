@@ -28,6 +28,10 @@ select { font-size: 0.85em; }
 .cbar { width: 74px; display: flex; flex-direction: column; align-items: center; }
 .cbar canvas { display: block; }
 .cbar .t { font-size: 10px; writing-mode: vertical-rl; transform: rotate(180deg); text-align: center; }
+#trackkey { position: absolute; left: 8px; bottom: 8px; background: rgba(255,255,255,0.85); border: 1px solid #aaa; border-radius: 3px;
+  padding: 3px 6px; font-size: 10px; color: #333; pointer-events: none; z-index: 2; }
+#trackkey .tkbar { width: 120px; height: 7px; margin: 2px 0 1px; border: 1px solid #888; }
+#trackkey .tklab { display: flex; justify-content: space-between; width: 122px; }
 #mapbox { position: relative; flex: 1; max-width: 1400px; background: lightskyblue; border: 1px solid #333; }
 #map, .map { position: absolute; inset: 0; }
 .mapbox.polar { position: relative; margin: 0 auto; background: lightskyblue; border: 1px solid #333; }
@@ -104,7 +108,7 @@ select { font-size: 0.85em; }
 <div id="titlebox"></div>
 <div id="stage">
   <div class="cbar"><canvas id="cbl"></canvas></div>
-  <div id="mapbox"><div id="map"></div><div id="legend"></div>
+  <div id="mapbox"><div id="map"></div><div id="legend"></div><div id="trackkey" style="display:none"></div>
     <div id="busy"><div class="box"><div class="spin"></div><span id="busymsg">loading…</span></div></div></div>
   <div class="cbar"><canvas id="cbr"></canvas></div>
 </div>
@@ -213,7 +217,21 @@ function fillPlatforms() {
 }
 // A platform's track: all its profiles in date-time order (dates from the profile details), drawn as a line with
 // direction arrows and its first (circle) and last (square) profile marked. Independent of depth and time window.
-let TRACK = null, HIBIN = null;          // HIBIN: the bin a link pointed at (?bin=), outlined in orange
+let TRACK = null, HIBIN = null;
+// the track's colors, early to late (viridis-like, dark purple -> yellow; readable on blue water and brown land)
+const TRACKMAP = [[68, 1, 84], [59, 82, 139], [33, 145, 140], [94, 201, 98], [253, 231, 37]];
+function trackColor(f) {
+  const t = Math.max(0, Math.min(1, f)) * (TRACKMAP.length - 1), i = Math.min(TRACKMAP.length - 2, Math.floor(t)), u = t - i;
+  return [...TRACKMAP[i].map((c, k) => Math.round(c + u * (TRACKMAP[i + 1][k] - c))), 235];
+}
+function trackKey() {             // the small key: the track's first and last month on a strip of its colors
+  const el = document.getElementById('trackkey');
+  if (!TRACK || !PLATFORM || TRACK.idx !== PLATFORM.idx || TRACK.js.length < 2) { el.style.display = 'none'; return; }
+  const stops = TRACKMAP.map((c, i) => `rgb(${c}) ${100 * i / (TRACKMAP.length - 1)}%`).join(', ');
+  el.innerHTML = `<b>${PLATFORM.name}</b> track<div class="tkbar" style="background:linear-gradient(to right, ${stops})"></div>` +
+    `<div class="tklab"><span>${TRACK.first}</span><span>${TRACK.last}</span></div>`;
+  el.style.display = '';
+}          // HIBIN: the bin a link pointed at (?bin=), outlined in orange
 async function platformTrack(idx) {
   const P = CLASS[S.src].plat, pr = CLASS[S.src].p, js = [];
   for (let j = 0; j < P.pi.length; j++) if (P.pi[j] === idx) js.push(j);
@@ -225,7 +243,13 @@ async function platformTrack(idx) {
     busy(null);
   }
   js.sort((a, b) => (dt.get(a) ?? pr.year[a] * 1e10) - (dt.get(b) ?? pr.year[b] * 1e10));
-  return {idx, js, dated: dt.size === js.length, dt};
+  // each profile's time as a fraction of the track's span (days; the year alone if a date is missing), for the colors
+  const day = j => { const v = dt.get(j); if (v === undefined) return Date.UTC(pr.year[j], 6, 1) / 864e5;
+    const d = Math.floor(v / 1e6), y = Math.floor(d / 1e4), m = Math.floor(d / 100) % 100, dd = d % 100;
+    return Date.UTC(y, Math.max(0, m - 1), Math.max(1, dd)) / 864e5; };
+  const t = js.map(day), t0 = Math.min(...t), t1 = Math.max(...t), frac = t.map(x => t1 > t0 ? (x - t0) / (t1 - t0) : 0);
+  const fmtDay = x => { const d = new Date(x * 864e5); return d.toISOString().slice(0, 7); };
+  return {idx, js, dated: dt.size === js.length, dt, frac, first: fmtDay(t0), last: fmtDay(t1)};
 }
 function setPlatform(name) {
   const P = CLASS[S.src]?.plat, info = document.getElementById('platinfo');
@@ -234,7 +258,7 @@ function setPlatform(name) {
     const idx = P.byName.get(name), pr = CLASS[S.src].p; let n = 0, y0 = 9999, y1 = 0;
     for (let j = 0; j < P.pi.length; j++) if (P.pi[j] === idx) { n++; if (pr.year[j] < y0) y0 = pr.year[j]; if (pr.year[j] > y1) y1 = pr.year[j]; }
     PLATFORM = {name, idx, n, y0, y1};
-    info.textContent = `${n.toLocaleString()} profiles, ${y0}–${y1}; cyan rings where it has a value at this depth; line: its track`;
+    info.textContent = `${n.toLocaleString()} profiles, ${y0}–${y1}; cyan rings where it has a value at this depth; line: its track, colored by time (key at the lower left)`;
     TRACK = null; platformTrack(idx).then(t => { if (PLATFORM && PLATFORM.idx === t.idx) { TRACK = t; draw(); } });
   } else if (name) info.textContent = 'not found in this class';
   document.getElementById('plat').value = PLATFORM ? name : (name || '');
@@ -427,7 +451,7 @@ async function recompute() {
 function draw() {
   if (!STATS) return;
   for (const M of MAPS) drawMap(M);
-  titles(); colorbars();
+  titles(); colorbars(); trackKey();
 }
 function drawMap(M) {
   const vs = M.view, sf = scaleFactor(M, vs), micro = sf > ZOOM_THRESHOLD, [bx0, by0, bx1, by1] = viewBounds(M, vs);
@@ -437,8 +461,8 @@ function drawMap(M) {
   const pxPerUnit = Math.pow(2, vs.zoom), grow = Math.sqrt(sf);
   const edgeWidth = (B, n) => n <= 1 ? 0 : Math.min(EDGE_K * Math.sqrt(n) * grow,
     EDGE_CAP * Math.min(B.bbox[2] - B.bbox[0], B.bbox[3] - B.bbox[1]) * pxPerUnit);
-  const binRows = [], cellRows = [], dots = [], labels = [], visible = [];
-  for (const [b, e] of STATS) { const B = M.bins.get(b); if (B && inView(B)) visible.push([B, e]); }
+  const binRows = [], cellRows = [], dots = [], labels = [], binIds = [], visible = [];
+  for (const [b, e] of STATS) { const B = M.bins.get(b); if (B && inView(B)) visible.push([B, e, b]); }
   let overBudget = false;
   if (micro) { let tot = 0; for (const [, e] of visible) tot += e.n <= S.cap ? e.n : 1; overBudget = tot > CELL_BUDGET; }
   for (const [b, e] of STATS) {
@@ -456,8 +480,9 @@ function drawMap(M) {
   }
   if (micro) {
     const P = CLASS[S.src].p;
-    for (const [B, e] of visible) {
+    for (const [B, e, b] of visible) {
       labels.push({pos: B.rp, text: e.mean.toFixed(2)});
+      binIds.push({pos: B.rp, text: String(b)});
       for (const j of e.idx) dots.push({p: M.proj(P.lon[j], P.lat[j]), j});
     }
   }
@@ -471,13 +496,14 @@ function drawMap(M) {
   const trackPaths = [], trackEnds = [], trackArrows = [];
   if (TRACK && PLATFORM && TRACK.idx === PLATFORM.idx) {
     const pr = CLASS[S.src].p, [ex0, , ex1] = M.extent, wrap = (ex1 - ex0) / 3; let cur = [];
-    const pts = TRACK.js.map(j => M.proj(pr.lon[j], pr.lat[j]));
-    pts.forEach((q, i) => { if (i && Math.hypot(q[0] - pts[i - 1][0], q[1] - pts[i - 1][1]) > wrap) { if (cur.length > 1) trackPaths.push(cur); cur = []; } cur.push(q); });
-    if (cur.length > 1) trackPaths.push(cur);
-    if (pts.length) { trackEnds.push({p: pts[0], first: true}); trackEnds.push({p: pts.at(-1), first: false}); }
+    const pts = TRACK.js.map(j => M.proj(pr.lon[j], pr.lat[j])), tf = TRACK.frac;
+    // one segment per pair of consecutive profiles, colored by the time of its first profile (TRACKMAP: early -> late)
+    pts.forEach((q, i) => { if (!i || Math.hypot(q[0] - pts[i - 1][0], q[1] - pts[i - 1][1]) > wrap) return;
+      trackPaths.push({path: [pts[i - 1], q], c: trackColor(tf[i - 1])}); });
+    if (pts.length) { trackEnds.push({p: pts[0], first: true, c: trackColor(0)}); trackEnds.push({p: pts.at(-1), first: false, c: trackColor(1)}); }
     const step = Math.max(1, Math.round(pts.length / 12));
     for (let i = step; i < pts.length; i += step) { const a = pts[i - 1], b = pts[i]; if (Math.hypot(b[0] - a[0], b[1] - a[1]) > wrap) continue;
-      trackArrows.push({p: [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2], ang: Math.atan2(b[1] - a[1], b[0] - a[0]) * 180 / Math.PI}); }
+      trackArrows.push({p: [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2], ang: Math.atan2(b[1] - a[1], b[0] - a[0]) * 180 / Math.PI, c: trackColor(tf[i - 1])}); }
   }
   const hl = HIBIN !== null && M.bins.get(HIBIN) ? [M.bins.get(HIBIN)] : [];
   const hlDots = []; if (hl.length && STATS.get(HIBIN)) for (const j of STATS.get(HIBIN).idx) hlDots.push({p: M.proj(CLASS[S.src].p.lon[j], CLASS[S.src].p.lat[j]), j});
@@ -511,17 +537,22 @@ function drawMap(M) {
     new deck.PathLayer({id: 'hibin', data: hl, getPath: d => d.ring, getColor: [255, 140, 0, 255], getWidth: 3.5, widthUnits: 'pixels'}),
     new deck.ScatterplotLayer({id: 'hidots', data: hlDots, getPosition: d => d.p, stroked: true, filled: false, getLineColor: [255, 140, 0, 255],
       getRadius: 5, radiusUnits: 'pixels', getLineWidth: 1.6, lineWidthUnits: 'pixels', pickable: true, onClick: info => { if (info.object) openProfile(info.object.j); return true; }}),
-    new deck.PathLayer({id: 'track', data: trackPaths, getPath: d => d, getColor: [0, 120, 150, 210], getWidth: 1.8, widthUnits: 'pixels'}),
-    new deck.TextLayer({id: 'trackarrows', data: trackArrows, getPosition: d => d.p, getText: () => '➤', getAngle: d => d.ang, getSize: 13,
-      getColor: [0, 110, 140, 255], characterSet: '➤'}),
-    new deck.ScatterplotLayer({id: 'trackends', data: trackEnds, getPosition: d => d.p, getFillColor: d => d.first ? [255, 255, 255, 255] : [0, 110, 140, 255],
-      getLineColor: [0, 110, 140, 255], stroked: true, getRadius: 6, radiusUnits: 'pixels', getLineWidth: 2, lineWidthUnits: 'pixels'}),
+    new deck.PathLayer({id: 'track', data: trackPaths, getPath: d => d.path, getColor: d => d.c, getWidth: 2.2, widthUnits: 'pixels', capRounded: true}),
+    new deck.TextLayer({id: 'trackarrows', data: trackArrows, getPosition: d => d.p, getText: () => '➤', getAngle: d => d.ang, getSize: 12,
+      getColor: d => d.c, characterSet: '➤'}),
+    new deck.ScatterplotLayer({id: 'trackends', data: trackEnds, getPosition: d => d.p, getFillColor: d => d.first ? [255, 255, 255, 255] : d.c,
+      getLineColor: d => d.c, stroked: true, getRadius: 6, radiusUnits: 'pixels', getLineWidth: 2, lineWidthUnits: 'pixels'}),
     new deck.ScatterplotLayer({id: 'plat', data: platDots, getPosition: d => d.p, stroked: true, filled: false, getLineColor: [0, 200, 230, 255],
       pickable: true, onClick: info => { if (info.object) openProfile(info.object.j); return true; },
       getRadius: 4, radiusUnits: 'pixels', getLineWidth: 1.6, lineWidthUnits: 'pixels'}),
     new deck.TextLayer({id: 'labels', data: labels, getPosition: d => d.pos, getText: d => d.text, getSize: 8 * PT,
       getColor: [255, 255, 255], outlineWidth: 4, outlineColor: [0, 0, 0, 255], fontFamily: 'Courier New, Courier, monospace',
       fontWeight: 'bold', fontSettings: {sdf: true, fontSize: 96, buffer: 12, radius: 24, cutoff: 0.2}, characterSet: '0123456789.-'}),
+    // the bin's id, small and gray, just above its mean
+    new deck.TextLayer({id: 'binids', data: binIds, getPosition: d => d.pos, getText: d => d.text, getSize: 6 * PT,
+      getPixelOffset: [0, -9 * PT], getColor: [40, 40, 40, 200], outlineWidth: 2, outlineColor: [255, 255, 255, 170],
+      fontFamily: 'Helvetica, Arial, sans-serif', fontSettings: {sdf: true, fontSize: 64, buffer: 8, radius: 16, cutoff: 0.2},
+      characterSet: '0123456789'}),
   ]});
   legend(M, visible);
   M.state = {sf, overBudget, nBins: [...STATS.keys()].filter(b => M.bins.has(b)).length};
