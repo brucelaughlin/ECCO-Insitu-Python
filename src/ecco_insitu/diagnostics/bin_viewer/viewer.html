@@ -32,6 +32,7 @@ select { font-size: 0.85em; }
   padding: 3px 6px; font-size: 10px; color: #333; pointer-events: none; z-index: 2; }
 #trackkey .tkbar { width: 120px; height: 7px; margin: 2px 0 1px; border: 1px solid #888; }
 #trackkey .tklab { display: flex; justify-content: space-between; width: 122px; }
+#trackkey .tknote { color: #777; font-size: 9px; }
 #mapbox { position: relative; flex: 1; max-width: 1400px; background: lightskyblue; border: 1px solid #333; }
 #map, .map { position: absolute; inset: 0; }
 .mapbox.polar { position: relative; margin: 0 auto; background: lightskyblue; border: 1px solid #333; }
@@ -230,12 +231,14 @@ function trackColor(f) {
   const t = Math.max(0, Math.min(1, f)) * (TRACKMAP.length - 1), i = Math.min(TRACKMAP.length - 2, Math.floor(t)), u = t - i;
   return [...TRACKMAP[i].map((c, k) => Math.round(c + u * (TRACKMAP[i + 1][k] - c))), 235];
 }
-function trackKey() {             // the small key: the track's first and last month on a strip of its colors
+function trackKey() {             // the small key: the first and last month in the main map's view, on a strip of the track's colors
   const el = document.getElementById('trackkey');
   if (!TRACK || !PLATFORM || TRACK.idx !== PLATFORM.idx || TRACK.js.length < 2) { el.style.display = 'none'; return; }
+  const sp = MAPS[0].trackSpan || [0, 1], month = f => new Date((TRACK.t0 + f * (TRACK.t1 - TRACK.t0)) * 864e5).toISOString().slice(0, 7);
   const stops = TRACKMAP.map((c, i) => `rgb(${c}) ${100 * i / (TRACKMAP.length - 1)}%`).join(', ');
   el.innerHTML = `<b>${PLATFORM.name}</b> track<div class="tkbar" style="background:linear-gradient(to right, ${stops})"></div>` +
-    `<div class="tklab"><span>${TRACK.first}</span><span>${TRACK.last}</span></div>`;
+    `<div class="tklab"><span>${month(sp[0])}</span><span>${month(sp[1])}</span></div>` +
+    (sp[0] > 0 || sp[1] < 1 ? `<div class="tknote">in view (whole track ${TRACK.first} – ${TRACK.last})</div>` : '');
   el.style.display = '';
 }          // HIBIN: the bin a link pointed at (?bin=), outlined in orange
 async function platformTrack(idx) {
@@ -255,7 +258,7 @@ async function platformTrack(idx) {
     return Date.UTC(y, Math.max(0, m - 1), Math.max(1, dd)) / 864e5; };
   const t = js.map(day), t0 = Math.min(...t), t1 = Math.max(...t), frac = t.map(x => t1 > t0 ? (x - t0) / (t1 - t0) : 0);
   const fmtDay = x => { const d = new Date(x * 864e5); return d.toISOString().slice(0, 7); };
-  return {idx, js, dated: dt.size === js.length, dt, frac, first: fmtDay(t0), last: fmtDay(t1)};
+  return {idx, js, dated: dt.size === js.length, dt, frac, t0, t1, first: fmtDay(t0), last: fmtDay(t1)};
 }
 function setPlatform(name) {
   const P = CLASS[S.src]?.plat, info = document.getElementById('platinfo');
@@ -508,13 +511,18 @@ function drawMap(M) {
   const trackPaths = [], trackEnds = [], trackArrows = [], trackVerts = [];
   if (TRACK && PLATFORM && TRACK.idx === PLATFORM.idx) {
     const pr = CLASS[S.src].p, [ex0, , ex1] = M.extent, wrap = (ex1 - ex0) / 3; let cur = [];
-    const pts = TRACK.js.map(j => M.proj(pr.lon[j], pr.lat[j])), tf = TRACK.frac;
+    const pts = TRACK.js.map(j => M.proj(pr.lon[j], pr.lat[j]));
+    // the colors span the times of the track's profiles in view (zoomed in, the visible part still runs early -> late)
+    const vis = TRACK.frac.filter((f, i) => pts[i][0] >= bx0 && pts[i][0] <= bx1 && pts[i][1] >= by0 && pts[i][1] <= by1);
+    const f0 = vis.length > 1 ? Math.min(...vis) : 0, f1 = vis.length > 1 ? Math.max(...vis) : 1;
+    const tf = TRACK.frac.map(f => f1 > f0 ? (f - f0) / (f1 - f0) : 0);
+    M.trackSpan = [f0, f1];
     // one segment per pair of consecutive profiles, colored by the time of its first profile (TRACKMAP: early -> late)
     pts.forEach((q, i) => { if (!i || Math.hypot(q[0] - pts[i - 1][0], q[1] - pts[i - 1][1]) > wrap) return;
       trackPaths.push({path: [pts[i - 1], q], c: trackColor(tf[i - 1])}); });
     const ringed = new Set(platDots.map(d => d.j));
     TRACK.js.forEach((j, i) => { if (!ringed.has(j)) trackVerts.push({p: pts[i], j, c: trackColor(tf[i])}); });
-    if (pts.length) { trackEnds.push({p: pts[0], first: true, c: trackColor(0)}); trackEnds.push({p: pts.at(-1), first: false, c: trackColor(1)}); }
+    if (pts.length) { trackEnds.push({p: pts[0], first: true, c: trackColor(tf[0])}); trackEnds.push({p: pts.at(-1), first: false, c: trackColor(tf.at(-1))}); }
     const step = Math.max(1, Math.round(pts.length / 12));
     for (let i = step; i < pts.length; i += step) { const a = pts[i - 1], b = pts[i]; if (Math.hypot(b[0] - a[0], b[1] - a[1]) > wrap) continue;
       trackArrows.push({p: [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2], ang: Math.atan2(b[1] - a[1], b[0] - a[0]) * 180 / Math.PI, c: trackColor(tf[i - 1])}); }
@@ -839,7 +847,7 @@ function clampView(M, v) {
 function setView(M, v, now) {
   M.view = clampView(M, v); M.deck.setProps({viewState: M.view});
   clearTimeout(M.t);
-  const go = () => { if (!STATS) return; drawMap(M); if (M.id === 'll') titles(); else writeAddress(); };
+  const go = () => { if (!STATS) return; drawMap(M); if (M.id === 'll') { titles(); trackKey(); } else writeAddress(); };
   if (now) go(); else M.t = setTimeout(go, 60);
 }
 function resetZoom() { for (const M of MAPS) setView(M, M.home, true); if (STATS) titles(); }
