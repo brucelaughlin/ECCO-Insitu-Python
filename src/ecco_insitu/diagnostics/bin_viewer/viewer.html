@@ -36,6 +36,8 @@ select { font-size: 0.85em; }
 #map, .map { position: absolute; inset: 0; }
 .mapbox.polar { position: relative; margin: 0 auto; background: lightskyblue; border: 1px solid #333; }
 .polar-sec { padding: 1.2em 10px 0.4em; }
+.pstage { display: flex; justify-content: center; align-items: stretch; gap: 10px; }
+.pstage .mapbox.polar { margin: 0; }
 .polar-title { text-align: center; font-size: 11px; line-height: 1.4; padding-bottom: 0.3em; white-space: pre; }
 .legend { position: absolute; top: 6px; right: 6px; background: rgba(255,255,255,0.8); border: 1px solid #aaa;
   border-radius: 3px; padding: 3px 7px; font-size: 9px; line-height: 1.35; pointer-events: none; z-index: 3; }
@@ -115,9 +117,13 @@ select { font-size: 0.85em; }
 <div id="caption"></div>
 <div id="keys">Scroll to zoom, drag to pan; &#8962; home returns every map to its whole view. Zoomed in, <b>click a red dot</b> (a profile) to see it in full. Scroll down for the polar maps.</div>
 <div class="polar-sec"><div class="polar-title" id="info-N"></div>
-  <div class="mapbox polar" id="box-N"><div class="map" id="map-N"></div><div class="legend" id="legend-N"></div></div></div>
+  <div class="pstage"><div class="cbar"><canvas id="cbl-N"></canvas></div>
+    <div class="mapbox polar" id="box-N"><div class="map" id="map-N"></div><div class="legend" id="legend-N"></div></div>
+    <div class="cbar"><canvas id="cbr-N"></canvas></div></div></div>
 <div class="polar-sec"><div class="polar-title" id="info-S"></div>
-  <div class="mapbox polar" id="box-S"><div class="map" id="map-S"></div><div class="legend" id="legend-S"></div></div></div>
+  <div class="pstage"><div class="cbar"><canvas id="cbl-S"></canvas></div>
+    <div class="mapbox polar" id="box-S"><div class="map" id="map-S"></div><div class="legend" id="legend-S"></div></div>
+    <div class="cbar"><canvas id="cbr-S"></canvas></div></div></div>
 <div id="pp" style="display:none">
   <div id="pphead"><b id="pptitle">Profile</b><span id="ppclose" title="close">×</span></div>
   <div id="ppmeta"></div>
@@ -625,11 +631,15 @@ function colorbars() {
   document.getElementById('fmax').placeholder = fmt(SC.auto);
   const unit = INDEX.units[S.V];
   const what = S.ref === 'clim' ? `clim − obs ${S.V}` : `model − obs ${S.V}`;
-  bar('cbl', SC.edge, SC.qedge, QF_EDGE, x => edgeColor(x, SC), `${what} std (${unit})`, 'white');
-  bar('cbr', SC.face, SC.qface, QF_FACE, x => faceColor(x, SC), `${what} mean (${unit})`, 'black');
+  // the same two bars beside the global map and beside each polar map (one color scale for all three)
+  for (const [sfx, box] of [['', 'mapbox'], ['-N', 'box-N'], ['-S', 'box-S']]) {
+    bar('cbl' + sfx, SC.edge, SC.qedge, QF_EDGE, x => edgeColor(x, SC), `${what} std (${unit})`, 'white', box);
+    bar('cbr' + sfx, SC.face, SC.qface, QF_FACE, x => faceColor(x, SC), `${what} mean (${unit})`, 'black', box);
+  }
 }
-function bar(id, lim, qs, qf, col, label, qcol) {   // as the original's establish_colorbars
-  const c = document.getElementById(id), r = window.devicePixelRatio || 1, H = document.getElementById('mapbox').clientHeight, W = 74;
+function bar(id, lim, qs, qf, col, label, qcol, box = 'mapbox') {   // as the original's establish_colorbars; as tall as its map
+  const c = document.getElementById(id), r = window.devicePixelRatio || 1, H = document.getElementById(box).clientHeight, W = 74;
+  if (!c || !H) return;
   c.width = W * r; c.height = H * r; c.style.width = W + 'px'; c.style.height = H + 'px';
   const g = c.getContext('2d'); g.setTransform(r, 0, 0, r, 0, 0);
   const top = 0, h = H, x0 = 4, w = 16;
@@ -1048,7 +1058,7 @@ function homeZoom(M) {                  // the zoom at which the map's whole vie
 function sizeBoxes() {
   const main = document.getElementById('mapbox'), w = main.clientWidth;
   main.style.height = Math.round(w / 2) + 'px';
-  const side = Math.max(320, Math.min(w, window.innerHeight - 70));
+  const side = Math.max(320, Math.min(w - 2 * (74 + 10), window.innerHeight - 70));
   for (const h of ['N', 'S']) { const b = document.getElementById('box-' + h); b.style.width = side + 'px'; b.style.height = side + 'px'; }
 }
 function addMap(id, elId, legendId, bins, land, extent, proj, latOf, bathy) {
