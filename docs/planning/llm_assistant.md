@@ -128,9 +128,36 @@ Alternative (simpler to host, more to rebuild): the whole site as an internal St
 - How is a JPL application account requested, and how long does that take?
 - Who is our project's information system owner (for production approval later)?
 
+## Prototype (built 2026-11-06)
+
+`ecco-insitu assistant` (code in `src/ecco_insitu/diagnostics/assistant/`):
+- **server.py**: a local web server (localhost only). It serves the report site and adds an "Ask a question" box
+  to each page as it serves it; the files and the published site are unchanged. `POST /assistant/ask` sends the
+  question and the page's current view to the model with the tools, runs the tools the model picks, and returns
+  the answer, links to the views and the required AI notice. It retries 429/503 errors, limits questions per
+  minute, and logs every question, tool call and token count to `z_logs/assistant_<date>.log`.
+- **tools.py**: 10 fixed tools on the analysis NetCDF files: list_contents, cost_vs_depth, cost_vs_time,
+  compare_classes, compare_references, where_high, offset_vs_variability, peak_attribution, observation_counts,
+  open_view. Each returns a few rounded numbers plus links (report / explorer / data viewer).
+- **widget.js**: the question box.
+- Settings: the `assistant` section (defaults.yaml); this machine's in `config/local.yaml` (not committed).
+  The subscription ID and base URL are read from `$ANTHROPIC_BASE_URL` (Claude Code's) unless set. To switch to
+  the new subscription, set `assistant.subscription_id` (and `base_url` if it differs). Model:
+  `assistant.model` (Haiku 5.5). Haiku 5.5 on the service only accepts the default temperature.
+
+Run:
+```
+ecco-insitu assistant                  # then open http://localhost:8765/ ; Ctrl-C stops it
+ecco-insitu assistant --offline        # no model: a keyword match to one tool, for testing
+ecco-insitu assistant --ask "question" # one answer in the terminal
+```
+First tests (2026-11-06): the 2400 m Argo peak (98 % sampling; the North Atlantic area holds 34 %); the worst class
+against the model above 2000 m (ITP, 10.2); Argo against the climatology over time (+0.15 per decade); XBT
+offset vs variability (anomaly 0.987 of 1.13); an off-topic question (declined). Every number in the answers was
+checked against the tool output. About 4-5k tokens and 5-7 s per question.
+
 ## Next
-1. Get the charge number (and the CAM's approval if needed), then request an Application subscription (Commercial)
-   at goto.jpl.nasa.gov/GenAI-API-Service. Meanwhile, build in offline mode.
-2. Build: a local proxy (with an offline mode that needs no credential, for testing), the assistant box in the
-   report and explorer pages, and the actions for the ten analyses' questions (from questions.html).
+1. The new subscription (Individual, on the project charge number): when it arrives, set
+   `assistant.subscription_id`. Until then, the prototype uses the developer's existing subscription.
+2. Try it with the team's real questions; add tools where they don't fit (e.g. a region by name, years, platforms).
 3. Demo to the team; then the Application subscription, the hosting choice, and approval.

@@ -39,7 +39,8 @@ where = ["src"]
 
 [tool.setuptools.package-data]
 ecco_insitu = ["defaults.yaml", "diagnostics/profile_analyses/viewer.html",
-               "diagnostics/bin_viewer/viewer.html", "diagnostics/bin_viewer/vendor/*.js"]
+               "diagnostics/bin_viewer/viewer.html", "diagnostics/bin_viewer/vendor/*.js",
+               "diagnostics/assistant/widget.js"]
 
 [tool.setuptools.dynamic]
 version = { attr = "ecco_insitu.__version__" }

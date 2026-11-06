@@ -32,6 +32,7 @@ settings accepts ``--config FILE`` and ``--set key=value``.
 ``publish-reports``         publish report sites to GitHub Pages (the gh-pages branch)
 ``provenance``              check a run against the code and inputs it was made from
 ``bin-viewer``              geodesic bin viewer: data, page, upload
+``assistant``               *prototype:* ask-a-question assistant (local server for the report site)
 ==========================  =============================================================
 """
 import importlib
@@ -77,6 +78,8 @@ COMMANDS = {
                         'profile analysis report: compile figures into HTML + PDF'),
     'publish-reports': ('ecco_insitu.diagnostics.profile_analyses.publish', 'cli',
                         'publish profile-report --site folders to GitHub Pages (gh-pages branch)'),
+    'assistant': ('ecco_insitu.diagnostics.assistant.server', 'cli',
+                  '[prototype] ask-a-question assistant: local server for the report site'),
 }
 
 

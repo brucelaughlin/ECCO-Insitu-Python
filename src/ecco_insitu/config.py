@@ -59,6 +59,7 @@ PATH_KEYS = (
     'paths.geodesic_bin_csv', 'paths.wod_std_dir',
     'run.input_dir', 'run.output_base', 'run.log_dir',
     'diagnostics.report_dir', 'diagnostics.cost_report_dir',
+    'assistant.analysis_dir', 'assistant.site_dir',
 )
 
 # Paths that steps 01-10 need; checked before a run (see check_required_paths).

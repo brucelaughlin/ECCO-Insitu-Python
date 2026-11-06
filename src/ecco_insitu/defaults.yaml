@@ -195,3 +195,26 @@ diagnostics:
   report_dir: null
   # report_costs.py output parent folder
   cost_report_dir: null
+
+# -------------------------------------------------------------------------------------
+# Ask-a-question assistant (prototype; ecco-insitu assistant; docs/planning/llm_assistant.md)
+# -------------------------------------------------------------------------------------
+assistant:
+  # the profile-analyze folder the tools read (the one the site was built from)
+  analysis_dir: null
+  # the report site (folder with index.html, viewer.html), served on the same address
+  site_dir: null
+  # the in situ data viewer's address (links to it)
+  bin_viewer: null
+  # the JPL GenAI Managed API. Base URL and subscription ID: the subscription's page (or, if unset, taken from
+  # $GENAI_API_SERVICE_BASE_URL / $GENAI_API_SUBSCRIPTION_ID / $ANTHROPIC_BASE_URL, as the genai_api package does)
+  base_url: null
+  subscription_id: null
+  # how to get an access token: a command that prints one (the genai_api package's CLI handles the login)
+  token_command: null
+  model: us.anthropic.claude-haiku-5-5
+  # http (localhost only) for the page and the questions
+  port: 8765
+  # limits: tool rounds per question, questions per minute (all users of this server together)
+  max_rounds: 6
+  per_minute: 10
