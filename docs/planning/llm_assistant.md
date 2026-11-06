@@ -2,7 +2,7 @@
 
 Started 2026-11-04, after a senior team member asked for an LLM on the site: a user asks a question, the site
 answers with supporting plots. Status (2026-11-06): **the AI-service team answered** (summary below); the design is
-updated to match. Nothing built yet; next steps need decisions (see "Decisions needed").
+updated to match. Decisions made 2026-11-06 (below): an Individual subscription and a local prototype.
 
 ## Design (agreed in discussion)
 
@@ -99,20 +99,36 @@ team member's browser (JPL network)
 
 Alternative (simpler to host, more to rebuild): the whole site as an internal Streamlit app.
 
-## Decisions needed
-1. **Hosting.** Mirror the site to **github.jpl.nasa.gov Pages** (keeps the public github.com site as it is) and add
-   a **JPL VM** for the proxy, or build an internal Streamlit app. Recommended: the mirror + VM (reuses everything).
-2. **Charge number** for a Managed API subscription (and the CAM's approval if needed); **Individual** to prototype,
-   **Application** once the team uses it.
-3. **GovCloud or Commercial.** The data are public, so Commercial is allowed and slightly cheaper; GovCloud is the
-   default. Either works for Haiku / Sonnet 5.5.
-4. **Who to ask about production approval** (the project's information system owner), before team-wide use.
+## Decisions (2026-11-06)
+1. **Hosting: a local prototype first.** The site and the proxy both run on the developer's laptop (localhost), on the
+   JPL network. The public github.com site stays as it is, for collaborators at other institutions; the team lead
+   doesn't want to move it to github.jpl.nasa.gov, which only JPL can reach. Where the assistant lives in production
+   is still open. One option: the public site unchanged, plus an internal copy with the assistant for JPL users.
+2. **Subscription: Individual**, charged to the timecard (the AI-service team says Individual allows this), so no
+   charge number or CAM approval is needed to prototype. Only the subscriber's own credential is used, so the
+   prototype is for the developer and live demos; others using it is an open question (below). Production means an
+   **Application** subscription on a charge number.
+3. **Commercial** (public data; more models, slightly cheaper).
+4. **Production approval: not needed to prototype.** Find out who the project's information system owner is before
+   anyone else uses it.
+
+### Built so it moves to production with configuration changes only
+- The proxy reads its settings from the environment: endpoint, credential (Individual key now; the Application
+  account's login later, renewed every 12 h), model name, and per-user limits. No code changes when the subscription
+  changes.
+- The page reads the proxy's address from one setting. If no proxy is set or reachable, the assistant box doesn't
+  appear, so the same page works on the public site without it.
+- The actions are the existing view links and tools, so they work the same wherever the site is hosted.
+- The required AI notice, throttling, and retry on 429/503 are in from the start.
 
 ## Questions to send back (short)
 - How long are prompts and answers retained, and where (for both GovCloud and Commercial)?
 - May a tool on github.jpl.nasa.gov Pages call a proxy on a JPL VM? (the answer suggests yes)
 - For a team-internal tool: is the Individual subscription acceptable for a small prototype others try?
+- Who is our project's information system owner (for production approval later)?
 
 ## Next
-Once the decisions above are made: a prototype with an Individual subscription, a local proxy, and the actions
-for the ten analyses' questions; then the internal mirror and the VM.
+1. Developer: subscribe (Individual, Commercial) at goto.jpl.nasa.gov/GenAI-API-Service.
+2. Build: a local proxy (with an offline mode that needs no credential, for testing), the assistant box in the
+   report and explorer pages, and the actions for the ten analyses' questions (from questions.html).
+3. Demo to the team; then the Application subscription, the hosting choice, and approval.
