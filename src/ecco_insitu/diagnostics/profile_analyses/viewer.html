@@ -52,6 +52,14 @@ select { font-size: 0.86em; padding: 0.15em; max-width: 26em; }
 #busy .bar > div { height: 100%; width: 0; background: var(--accent); }
 @keyframes spin { to { transform: rotate(360deg); } }
 #status { min-height: 1.3em; }
+/* the settings stay at the top of the window while scrolling; "fold" shrinks them to one summary line */
+#controls { position: sticky; top: 0; z-index: 8; background: #f7f7f7; box-shadow: 0 1px 3px rgba(0,0,0,0.15); }
+#foldbar { display: flex; align-items: center; gap: 0.8em; padding: 0.2em 1em; font-size: 0.85em; border-bottom: 1px solid #eee; }
+#foldbar .tab { font-size: 0.8em; padding: 0.1em 0.5em; }
+#foldsum { color: #555; display: none; }
+#controls.folded #ctlrows { display: none; }
+#controls.folded #foldsum { display: inline; }
+html { scroll-padding-top: 4em; }
 #status.pending { color: var(--accent); font-weight: 600; }
 .mapbox { position: relative; }
 .mapbox .t { font-size: 0.8em; color: #555; text-align: center; margin-bottom: 2px; }
@@ -118,9 +126,9 @@ canvas.clickable { cursor: pointer; }
 #regp td, #regp th { border: 1px solid #e3e3e3; padding: 1px 6px; text-align: right; }
 #regp th { background: #f3f3f3; } #regp td:first-child, #regp th:first-child { text-align: left; }
 #regp tr.pick { cursor: pointer; } #regp tr.pick:hover { background: #eef4fc; }
-#regbox { position: fixed; border: 1.5px dashed #6c3483; background: rgba(108,52,131,0.08); pointer-events: none; display: none; z-index: 6; }
+#regbox { position: fixed; border: 1.5px dashed #6c3483; background: rgba(108,52,131,0.08); pointer-events: none; display: none; z-index: 9; }
 .tab.armed { background: #6c3483; color: #fff; border-color: #6c3483; }
-#hover { position: fixed; pointer-events: none; background: rgba(255,255,255,0.95); border: 1px solid #aaa;
+#hover { position: fixed; z-index: 9; pointer-events: none; background: rgba(255,255,255,0.95); border: 1px solid #aaa;
          padding: 2px 6px; font-size: 0.8em; display: none; }
 </style>
 </head>
@@ -130,6 +138,10 @@ canvas.clickable { cursor: pointer; }
   <span class="hdr-guide" id="open-guide">Guide: what every option means</span>
   <span id="modesw" title="Simple: the everyday choices only. Expert: every option (depth bands and groups, flagged spikes,
 single year, log scale, regions)"><button class="tab" data-m="simple">simple</button><button class="tab" data-m="expert">expert</button></span></div>
+<div id="controls">
+<div id="foldbar"><button class="tab" id="fold" title="Fold the settings to one line (they stay at the top while you scroll)">&#9650; fold settings</button>
+  <span id="foldsum"></span></div>
+<div id="ctlrows">
 <div class="row"><span class="lab">Source</span><span id="srcs"></span></div>
 <div class="row"><span class="lab">Cost type</span><span id="cts"></span></div>
 <div class="row"><span class="lab">Variable</span><span id="vars"></span></div>
@@ -151,7 +163,9 @@ single year, log scale, regions)"><button class="tab" data-m="simple">simple</bu
     <span class="cap">shift window</span>
     <button class="step" id="shr" title="move the whole window one year later">&#9654;&#9654;</button></span>
   <button class="tab tbtn x" id="tone" title="show one year at a time: both handles together">single year</button></div>
+</div>
 <div id="status"></div>
+</div>
 <details id="peaktool" class="tool"><summary><b>Optional: depth profile and peak attribution</b>
   <span class="dnote">&mdash; not needed for the maps. Open to see the selection&rsquo;s cost against depth (as analysis&nbsp;02), choose a
   depth range around a bump, and find where it comes from (<a href="guide.html#attribution">how it works</a>).</span></summary>
@@ -193,6 +207,8 @@ not changes in which bins are counted"><input type="checkbox" id="samebins"> als
 <script>
 'use strict';
 const INDEX_URL = 'viewer/index.json', GRID_URL = 'viewer/grid.json';
+const DATA_FORMAT = 2;                  // the record layout this page reads (viewer.py DATA_FORMAT)
+const vurl = u => u + '?v=' + ((INDEX && INDEX.version) || '');   // this build's files only (never a cached older one)
 const PARTS = {unsplit: 'cost per datum, unsplit', anomaly: 'cost per datum, split anomaly term',
                mean: 'split mean term (per bin; all years)', count: 'number of points',
                bias: 'mean misfit, reference − observation (not a cost)',
@@ -209,7 +225,7 @@ const S = {src: null, ct: null, V: 'T', part: 'unsplit', dmode: 'level', dsel: 0
 let INDEX, GRID, GRIDS = {}, CACHE = {};
 
 async function getGz(url, label, onProgress) {  // download (with progress in the overlay) and gunzip
-  const r = await fetch(url);
+  const r = await fetch(vurl(url));
   if (!r.ok) throw new Error(url + ': ' + r.status);
   const total = +r.headers.get('content-length') || 0;
   let got = 0;
@@ -1039,7 +1055,13 @@ async function render() {
     'The color scale is fixed for this view across years; unsplit and anomaly share it. ' +
     'Hover a bin for its value.';
 }
+function foldSummary() {
+  const lv = levelsSelected(), d = lv ? (lv.length === 1 ? INDEX.depth[lv[0]] + ' m' : INDEX.depth[lv[0]] + '–' + INDEX.depth[lv.at(-1)] + ' m') : 'all depths';
+  document.getElementById('foldsum').textContent = `${S.src} · ${S.ct} · ${S.V} · ${PARTS[S.part].split(/[,(]/)[0].trim()} · ${d} · ` +
+    (S.part === 'mean' ? 'whole record' : timeText());
+}
 function syncControls() {
+  foldSummary();
   const set = (id, attr, cur) => document.querySelectorAll('#' + id + ' .tab').forEach(t => t.classList.toggle('active', t.dataset[attr] === cur));
   set('srcs', 'v', S.src); set('cts', 'v', S.ct); set('vars', 'v', S.V); set('parts', 'v', S.part); set('dmodes', 'v', S.dmode);
   set('diags', 'v', S.part);
@@ -1097,8 +1119,10 @@ function hover(e, view) {
 }
 async function init() {
   busy('Loading the map explorer…');
-  INDEX = await (await fetch(INDEX_URL)).json();
-  GRID = await (await fetch(GRID_URL)).json();
+  INDEX = await (await fetch(INDEX_URL, {cache: 'no-store'})).json();
+  if ((INDEX.format || 1) !== DATA_FORMAT) {           // this page and its data are from different builds
+    busy(null); status('This page is out of date with its data: reload it (Cmd-Shift-R or Ctrl-Shift-R).'); return; }
+  GRID = await (await fetch(vurl(GRID_URL))).json();
   for (const v of ['global', 'NH', 'SH']) {
     const b = await getGz('viewer/grid_' + v + '.bin');
     GRIDS[v] = new Int16Array(b.buffer, b.byteOffset, b.byteLength / 2);
@@ -1271,6 +1295,11 @@ async function init() {
       if (['100m', '15', '30', 'spike'].includes(S.dmode)) { S.dmode = 'all'; fillDepthSelect(); }
       REGION = null; regionText(); S.log = false; document.getElementById('logscale').checked = false; render(); }
     setMode(b.dataset.m); }));
+  document.getElementById('fold').addEventListener('click', e => {
+    const c = document.getElementById('controls'), f = c.classList.toggle('folded');
+    e.target.innerHTML = f ? '&#9660; show settings' : '&#9650; fold settings';
+    try { localStorage.setItem('explorerFolded', f ? '1' : ''); } catch (err) {} });
+  try { if (localStorage.getItem('explorerFolded')) document.getElementById('fold').click(); } catch (err) {}
   document.getElementById('copylink').addEventListener('click', async e => { writeAddress();
     try { await navigator.clipboard.writeText(location.href); e.target.textContent = 'link copied'; }
     catch (err) { prompt('Copy this link:', location.href); }

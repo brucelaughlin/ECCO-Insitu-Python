@@ -274,6 +274,7 @@ def _spikes(res, V, core, depth):
 
 YEARS_PER_PIECE = 5      # year-by-year data is written in pieces of this many years
 
+DATA_FORMAT = 2     # 2: the columns below (1: without nmis and sig, before 2026-11-06)
 _COLS = (('bin', '<u2'), ('lev', 'u1'), ('blk', 'u1'), ('mu', '<f2'), ('ma', '<f2'), ('n', '<u2'), ('bias', '<f2'),
          ('nmis', '<f2'), ('sig', '<f2'))
 
@@ -384,7 +385,11 @@ def write(analysis_dir, out, bin_viewer=None):
     core = 'split_own' if meta.get('core_split', pa.CORE_SPLIT) == 'own' else 'split'
     if not (out / 'grid.json').exists():
         _write_grid(out)
-    index = {'files': {}, 'spikes': {}, 'core_split': meta.get('core_split', pa.CORE_SPLIT)}
+    # 'format': the record layout (_COLS); the page refuses data of another format. 'version': added to every data
+    # file's address, so a browser never mixes cached files of two builds (the names stay the same)
+    import time
+    index = {'files': {}, 'spikes': {}, 'core_split': meta.get('core_split', pa.CORE_SPLIT),
+             'format': DATA_FORMAT, 'version': time.strftime('%Y%m%d%H%M%S')}
     # bin centers (lon, lat; bin id = index + 1), for the clicked-bin panel and the link into the data viewer
     from ecco_insitu import config as config_loader
     csv = config_loader.get(config_loader.load(), 'paths.geodesic_bin_csv')
