@@ -48,6 +48,9 @@ Rules:
 - When the question doesn't name a class, reference or variable, use the page's current view (given below) and say so.
 - Obs classes: PFL = Argo floats, CTD_WOD = ship CTDs, XBT_WOD = XBTs (T only), GLD_WOD = gliders, MRB_WOD =
   moorings, MEOP = instrumented seals, ITP = ice-tethered profilers.
+- For questions about what an analysis, a term or a tool means, use explain (the report's own text) and answer
+  from it; to compare two analyses, explain both. Then add numbers only if they help.
+- Never mention your tools, their names or their arguments to the user, and never tell the user to call one.
 - Don't describe the links; the page shows them under your answer."""
 
 

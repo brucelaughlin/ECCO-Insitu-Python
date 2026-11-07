@@ -407,6 +407,41 @@ def observation_counts(A, src, variable='T', depth_from=0, depth_to=6000):
                        'caption': f'Analysis 01: {src} mean T and S and counts against depth'}]}
 
 
+def _text(html):
+    """Plain text from the report's HTML snippets (tags dropped, entities decoded, spaces collapsed)."""
+    import html as _h
+    import re
+    t = re.sub(r'<br\s*/?>|</p>|</tr>|</li>', '\n', html)
+    t = re.sub(r'<[^>]+>', ' ', t)
+    t = _h.unescape(t)
+    return re.sub(r'[ \t]+', ' ', re.sub(r'\n\s*', '\n', t)).strip()
+
+
+def explain(A, topic):
+    """The report's own text on an analysis ('01'-'12') or a term: what it shows and how it is computed. Use it for
+    any question about what something means, before or instead of computing numbers."""
+    from ecco_insitu.diagnostics.profile_analyses import guide, report
+    t = str(topic).strip().lower().replace('analysis', '').strip()
+    if t.isdigit() and f'{int(t):02d}' in report._ANALYSIS_TITLES:
+        an = f'{int(t):02d}'
+        return {'result': {'analysis': an, 'title': report._ANALYSIS_TITLES[an],
+                           'description': _text(report._ANALYSIS_DESC.get(an, ''))},
+                'views': [{'page': 'report', 'params': {'src': 'PFL', 'ct': 'vs_model', 'an': an},
+                           'caption': f'Analysis {an} in the report'}]}
+    if t in ('analyses', 'list', 'all'):
+        return {'result': {'analyses': report._ANALYSIS_TITLES}, 'views': []}
+    if t in ('terms', 'terminology', 'glossary', 'weights', 'sigma', 'σ', 'cost', 'split', 'weight versions'):
+        terms = next(body for key, _, body in guide.SECTIONS if key == 'terms')
+        return {'result': {'report_terminology': _text(report._GLOSSARY_HTML)[:6000], 'guide_terms': _text(terms)[:4000]},
+                'views': [{'page': 'guide', 'params': {}, 'caption': 'The guide (terms)'}]}
+    for key, title, body in guide.SECTIONS:
+        if t in (key, title.lower()) or t in title.lower():
+            return {'result': {'guide_section': title, 'text': _text(body)[:6000]},
+                    'views': [{'page': 'guide', 'params': {}, 'caption': f'The guide: {title}'}]}
+    raise ToolError(f'no text on {topic!r}; topics: an analysis number 01-12, "analyses", "terms", or a guide section: '
+                    + ', '.join(k for k, *_ in guide.SECTIONS))
+
+
 def open_view(A, page, **params):
     """Open any view of the site directly (when no computation is needed)."""
     if page not in ('report', 'explorer', 'data', 'questions', 'guide'):
@@ -415,7 +450,7 @@ def open_view(A, page, **params):
                                                    'caption': params.pop('caption', None) or f'The {page} view'}]}
 
 
-TOOLS = {f.__name__: f for f in (list_contents, cost_vs_depth, cost_vs_time, compare_classes, compare_references,
+TOOLS = {f.__name__: f for f in (explain, list_contents, cost_vs_depth, cost_vs_time, compare_classes, compare_references,
                                  where_high, offset_vs_variability, peak_attribution, observation_counts, open_view)}
 
 # JSON schemas for the model (OpenAI tool format)
@@ -432,6 +467,10 @@ def _schema(name, desc, props, required):
 
 
 SCHEMAS = [
+    _schema('explain', 'The report\'s own text: what an analysis (01-12) shows and how it is computed, the list of analyses '
+            '("analyses"), the definitions of terms ("terms": cost, weights, sigma, the split), or a guide section '
+            '(e.g. "attribution", "peak", "explorer", "viewer"). Use it for questions about meaning or method.',
+            {'topic': {'type': 'string'}}, ['topic']),
     _schema('list_contents', 'The obs classes, cost types, variables, depth levels and years the analysis has.', {}, []),
     _schema('cost_vs_depth', 'Cost per datum against depth (analysis 02) for one class and reference; the largest level.',
             {'src': _SRC, 'cost_type': _CT, 'variable': _V, 'part': _PART, 'depth_from': _Z, 'depth_to': _Z}, ['src', 'cost_type']),
