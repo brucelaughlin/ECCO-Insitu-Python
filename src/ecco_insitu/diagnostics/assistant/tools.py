@@ -343,7 +343,7 @@ def offset_vs_variability(A, src, cost_type, variable='T', depth_from=0, depth_t
 
 def peak_attribution(A, src, cost_type, variable='T', part='mean', depth_from=2000, depth_to=2600):
     """Where a bump in the cost against depth comes from: the peak level in the range, how much of its excess over
-    the neighboring levels is due to which bins have data (sampling), and the areas that carry it."""
+    the neighboring levels comes from a different set of places being averaged at that depth, and the areas that carry it."""
     V, part = _var(variable), _part(part)
     z = A.depth
     v, n = _cost_depth(A, src, cost_type, V, part)
@@ -376,12 +376,16 @@ def peak_attribution(A, src, cost_type, variable='T', part='mean', depth_from=20
     res = {'obs_class': src, 'cost_type': cost_type, 'variable': V, 'part': part,
            'peak': {'depth_m': _r(z[kp], 4), 'value': _r(level_value(kp)), 'bins': int(np.sum(np.isfinite(vals[kp][0])))},
            'neighbor_levels': [{'depth_m': _r(z[i], 4), 'value': _r(level_value(i)), 'bins': int(np.sum(np.isfinite(vals[i][0])))} for i in nbrs],
-           'same_bins': {'bins': int(keep.sum()), 'peak': _r(sp), 'neighbors_mean': _r(sb)},
-           'share_of_excess_due_to_sampling_pct': _r(100 * sampling) if np.isfinite(sampling) else None,
+           'same_places_only': {'places': int(keep.sum()), 'peak': _r(sp), 'depths_around_it_average': _r(sb)},
+           'share_of_jump_from_a_different_set_of_places_pct': _r(100 * sampling) if np.isfinite(sampling) else None,
+           'share_of_jump_from_a_worse_fit_at_that_depth_pct': _r(100 * (1 - sampling)) if np.isfinite(sampling) else None,
            'areas_at_peak': where['result']['areas_of_the_top_10pct'][:4],
-           'method': 'sampling share = 1 - (excess over the bins with data at the peak and both neighbors) / (excess over all bins). '
-                     'A high share means the bump comes from which bins have data at each depth (e.g. most floats stop '
-                     'near 2000 m), not from a change in the misfit with depth in the same places'}
+           'method': 'Each depth\'s value is an average over the places (bins) with data at that depth, and that list of places '
+                     'changes with depth (most Argo floats stop near 2000 m). The jump is the peak minus the average of the '
+                     'two depths around it. It is computed twice: over all places, and over only the places with data at '
+                     'all three depths. share from a different set of places = 1 - (jump over the same places) / (jump over '
+                     'all places). A high share: the jump comes from averaging a different set of places at the peak depth '
+                     'than at the depths around it, not from a worse fit at that depth in the same places'}
     views = [{'page': 'explorer', 'params': {'src': src, 'ct': cost_type, 'V': V, 'part': part,
                                              'peak': f'{z[min(k)]:g}-{z[max(k)]:g}'},
               'caption': f'Cost map explorer, peak tool on {z[min(k)]:g}–{z[max(k)]:g} m (outlines the largest area)'}]

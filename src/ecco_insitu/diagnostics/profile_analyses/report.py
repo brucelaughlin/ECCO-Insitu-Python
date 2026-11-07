@@ -1209,7 +1209,7 @@ render();
       For any depth level or band, any range of years, the split terms, the misfits and &sigma;, open the
       <a href="viewer.html" id="map-hint-link">Cost map explorer &rarr;</a></div>
     <div class="map-hint" id="peak-hint" style="display:none">A peak in these curves? <b>Investigate it:</b> the explorer finds the
-      largest value in a depth range, separates sampling from signal, and shows where it comes from.
+      largest value in a depth range, tells whether it is a worse fit at that depth or a different set of places averaged there, and shows where it comes from.
       <select id="peak-part"><option value="unsplit">unsplit</option><option value="anomaly">anomaly term</option><option value="mean" selected>mean term</option></select>
       <select id="peak-v"><option>T</option><option>S</option></select>
       from <input id="peak-a" type="number" value="2000" step="100" style="width:5em"> to <input id="peak-b" type="number" value="2600" step="100" style="width:5em"> m

@@ -25,7 +25,7 @@ SECTIONS = [
 already set up to answer it. <b>Every view is a link:</b> the address of the explorer and of the data viewer holds all their settings
 (use &ldquo;copy link&rdquo;), so you can bookmark a view or send it to someone.</p>
 <p>A typical path: a bump in an analysis&nbsp;02 curve &rarr; &ldquo;investigate&rdquo; (below the figure) &rarr; the explorer finds the peak,
-separates sampling from signal, outlines the bins that carry it and lists their platforms &rarr; &ldquo;show profiles&rdquo; opens the
+tells whether the jump is a worse fit at that depth or a different set of places averaged there, outlines the bins that carry it and lists their platforms &rarr; &ldquo;show profiles&rdquo; opens the
 data viewer on one platform &rarr; click a profile to see it whole. Section&nbsp;<a href="#attribution">Attribution</a> explains each step.</p>
 <p class="note">This page is the manual. Run-specific findings, decisions and corrections are on the report&rsquo;s
 <b>Notes &amp; errata</b> page.</p>
@@ -116,7 +116,7 @@ calculation on the saved results; nothing is fitted or judged. The page reports 
 <p>The steps, in the order the tools apply them:</p>
 <ol>
 <li><a href="#peak">Find the peak</a> in the chosen depth range.</li>
-<li><a href="#samebins">Same bins</a>: is the peak in the water, or in the sampling?</li>
+<li><a href="#samebins">Same bins</a>: is the jump a worse fit at that depth, or a different set of places being averaged there?</li>
 <li><a href="#contrib">Bin contributions</a>: how much each bin adds to the curve at the peak.</li>
 <li><a href="#clusters">Clusters</a>: group the largest contributors into areas, and name them.</li>
 <li><a href="#region">Region vs the rest</a>: does the feature disappear without the area?</li>
@@ -133,18 +133,47 @@ c<sub>k</sub> = &Sigma;<sub>i</sub> J<sub>i,k</sub> / B<sub>k</sub>. These are e
 <p>The <b>peak</b> is the level p with the largest c<sub>k</sub> in the depth range. Its <b>neighbors</b> are the nearest levels with data
 above (p&minus;) and below (p+); the <b>excess</b> is E = c<sub>p</sub> &minus; (c<sub>p&minus;</sub> + c<sub>p+</sub>)/2.</p>
 """),
-    ('samebins', '2. Same bins: sampling or signal?', """
-<p>A curve like c<sub>k</sub> can jump because the water changes, or because <em>different bins</em> have data at different depths
-(e.g. most Argo floats stop at 2000&nbsp;m; below it only a few regions are sampled). To tell them apart, the same calculation is
-repeated over only the bins S that have data at p and at both neighbors:</p>
-<p class="f">c<sub>k</sub><sup>S</sup> = the curve at level k over the bins in S only, &nbsp;
-E<sup>S</sup> = c<sub>p</sub><sup>S</sup> &minus; (c<sub>p&minus;</sub><sup>S</sup> + c<sub>p+</sub><sup>S</sup>)/2,</p>
-<p class="f">share of the excess due to sampling = 1 &minus; E<sup>S</sup>/E (clipped to 0&ndash;100&nbsp;%).</p>
-<p>If the peak survives in a fixed set of bins (E<sup>S</sup> &asymp; E), it is in the water. If it disappears (E<sup>S</sup> &asymp; 0), it comes
-from the change in which bins are counted: the bins that have data only at the peak&rsquo;s depth are unusual. That does <em>not</em> make
-the peak wrong: those bins really are badly fit; but it is a regional feature, not a feature of the global water column.</p>
-<p>The checkbox &ldquo;also draw the curve over the same bins at every depth of the range&rdquo; draws c<sup>S</sup> over a whole range
-(S = bins with data at every level of the range), so you can see it by eye.</p>
+    ('samebins', '2. Same bins: a worse fit at that depth, or a different set of places?', """
+<p><b>The question.</b> Each point of the cost-against-depth curve is an <em>average over the places (geodesic bins) that have data at
+that depth</em>. That list of places is not the same at every depth: most Argo floats stop at 2000&nbsp;m, so below 2000&nbsp;m far
+fewer places have data. When the curve jumps at one depth, there are two possible reasons:</p>
+<ul>
+<li><b>A. A worse fit at that depth.</b> In the same places, the misfit really is larger at that depth than above and below it.</li>
+<li><b>B. A different set of places is averaged at that depth than at the depths above and below it.</b> No place needs to fit worse:
+  the average changes because some places drop out of the list (or join it), and the ones left are unusual.</li>
+</ul>
+<p><b>An everyday version of B:</b> a class&rsquo;s average test score drops on Friday. Nobody did worse; half the class was absent, and
+the absent half were the strong students. Friday&rsquo;s average is over a different set of students than Thursday&rsquo;s.</p>
+<p><b>The example</b> (PFL, vs_model, T, mean term). The curve at 2400&nbsp;m and the depths around it:</p>
+<table class="g">
+<tr><th>depth</th><th>places with data at that depth</th><th>average</th></tr>
+<tr><td>2200&nbsp;m</td><td>1,181</td><td>4.90</td></tr>
+<tr><td>2400&nbsp;m</td><td>1,046</td><td><b>5.57</b> (the jump)</td></tr>
+<tr><td>2600&nbsp;m</td><td>410</td><td>2.62</td></tr>
+</table>
+<p>The three averages are over three different lists of places. At 2400&nbsp;m, many of the places still on the list are in the subpolar
+North Atlantic, where the misfits are large; at 2600&nbsp;m most of them have dropped out.</p>
+<p><b>The test:</b> average all three depths over <em>one</em> list: only the places with data at all three depths (410 of them).
+Then the list can&rsquo;t change from depth to depth.</p>
+<table class="g">
+<tr><th>depth</th><th>the same 410 places</th><th>average</th></tr>
+<tr><td>2200 and 2600&nbsp;m</td><td>410</td><td>2.79 (the two averaged)</td></tr>
+<tr><td>2400&nbsp;m</td><td>410</td><td>2.83</td></tr>
+</table>
+<ul>
+<li>If the jump is still there over the same places, it is <b>A</b>: those places really fit worse at that depth.</li>
+<li>If the jump disappears over the same places, it is <b>B</b>: it came from averaging over a different set of places.</li>
+</ul>
+<p>Here the jump almost disappears (2.83 against 2.79), so the peak tool reports that <b>98&nbsp;%</b> of the jump comes from a different
+set of places being averaged at 2400&nbsp;m (B), and 2&nbsp;% from a worse fit at 2400&nbsp;m (A).</p>
+<p><b>That doesn&rsquo;t make the peak wrong.</b> The North Atlantic places really do fit badly; the jump just tells you about those places,
+not about the ocean as a whole at 2400&nbsp;m.</p>
+<p><b>The exact numbers</b> (for checking): the jump is the peak&rsquo;s value minus the average of the two depths around it, over all
+places (E = 5.57 &minus; (4.90 + 2.62)/2 = 1.81) and over the same places (E<sup>S</sup> = 2.83 &minus; 2.79 = 0.04). The share due to a
+different set of places is 1 &minus; E<sup>S</sup>/E = 1 &minus; 0.04/1.81 &asymp; 98&nbsp;%.</p>
+<p><b>On the plot:</b> the checkbox &ldquo;also draw the curve over the same bins at every depth of the range&rdquo; adds a blue curve over
+one list of places: those with data at every depth of the range. Where the red curve (all places) jumps and the blue one (the same places)
+doesn&rsquo;t, the jump comes from a change in which places are averaged.</p>
 """),
     ('contrib', '3. Bin contributions', """
 <p>Each bin&rsquo;s part of the curve at the peak, chosen so the parts add up:</p>
@@ -154,7 +183,7 @@ the peak wrong: those bins really are badly fit; but it is a regional feature, n
 <li>mean term: bin i contributes J<sub>i,p</sub>; share J<sub>i,p</sub>/&Sigma;<sub>j</sub>J<sub>j,p</sub>.</li>
 </ul>
 <p>A share always comes with the bin&rsquo;s share of the <em>bins</em> (or values): a region holding 4&nbsp;% of the bins and 34&nbsp;% of the term
-carries 8&times; its share. A large share from many bins is ordinary; a large share from few bins is the signal.</p>
+carries 8&times; its share. A large share from many bins is ordinary; a large share from few bins points to those few places.</p>
 """),
     ('clusters', '4. Clusters and their names', """
 <p>The bins at the peak whose contribution is in the top 10&nbsp;% are grouped into <b>clusters</b>: two high bins belong to the same
@@ -209,7 +238,7 @@ their numbers of profiles there, and says so.</p>
 Zoom in and click one for the profile panel (section <a href="#viewer">The in situ data viewer</a>). What to look for:</p>
 <ul>
 <li><b>against its neighbors</b> (gray): if the platform agrees with other platforms nearby and the reference doesn&rsquo;t, the
-  difference is the reference&rsquo;s (or the water&rsquo;s); if it alone is off, suspect the platform;</li>
+  difference is in the reference (or real ocean variability the reference misses); if it alone is off, suspect the platform;</li>
 <li><b>over time</b> (second tab): a difference that persists from profile to profile is a water-mass (or model) difference; one
   that creeps is a likely sensor drift; a single bad profile stands alone;</li>
 <li><b>against &sigma;</b>: how many assumed errors the misfit is; above about 3 is unusual;</li>
@@ -220,8 +249,9 @@ Zoom in and click one for the profile panel (section <a href="#viewer">The in si
 <p>PFL (Argo), vs_model, T, mean term, depth range 2000&ndash;2600&nbsp;m (run 20261027_142247):</p>
 <ol>
 <li><b>Peak:</b> 2400&nbsp;m, 5.57 over 1,046 bins; neighbors 2200&nbsp;m 4.90 (1,181 bins) and 2600&nbsp;m 2.62 (410 bins).</li>
-<li><b>Same bins:</b> over the 410 bins with data at all three levels, 2.83 vs 2.79: 98&nbsp;% of the excess is from which bins are
-  counted. Most floats stop at 2000&nbsp;m; the few deeper ones are in a few regions.</li>
+<li><b>Same bins:</b> over only the 410 places with data at all three depths, 2.83 against 2.79: the jump nearly disappears, so 98&nbsp;%
+  of it comes from a different set of places being averaged at 2400&nbsp;m. Most floats stop at 2000&nbsp;m; the few deeper ones are in a
+  few regions.</li>
 <li><b>Clusters:</b> the largest is the subpolar North Atlantic (56&deg;N 38&deg;W): 4.1&nbsp;% of the bins, 33.8&nbsp;% of the term.</li>
 <li><b>Region vs the rest:</b> the region&rsquo;s mean term per bin is 45.9 against 3.84 for the rest of the world.</li>
 <li><b>Platforms:</b> four floats deployed there since 2021 (6903082, 6903871, 6903085, 1902621) carry about 40&nbsp;% of the region&rsquo;s term,
@@ -230,7 +260,7 @@ Zoom in and click one for the profile panel (section <a href="#viewer">The in si
   the other floats nearby; the cold layer at 2000&ndash;2500&nbsp;m persists over its life.</li>
 </ol>
 <p><i>Reading (not a test the tools run):</i> the model is warmer than the floats in the subpolar North Atlantic at 2000&ndash;2500&nbsp;m; the
-global mean term peaks at 2400&nbsp;m because few other regions are sampled there. The model values are monthly means, not the model&rsquo;s
+global mean term peaks at 2400&nbsp;m because, at that depth, the North Atlantic is a much bigger share of the places with data. The model values are monthly means, not the model&rsquo;s
 values at each profile&rsquo;s time.</p>
 """),
     ('cautions', 'Cautions', """

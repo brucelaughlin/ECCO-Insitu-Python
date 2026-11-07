@@ -175,8 +175,8 @@ single year, log scale, regions)"><button class="tab" data-m="simple">simple</bu
       <div class="dnote">Set it with the menus, or on the plot: drag the band's top or bottom edge (the handles), drag inside it to move it,
         or drag across an empty part of the plot to draw a new one. Nothing happens until you use it:</div>
       <div class="rangeuse"><button class="tab primary" id="peakgo">Investigate the peak in this range</button>
-        <label title="Draw a second curve over only the bins that have data at every level of the range, so it shows changes in the water,
-not changes in which bins are counted"><input type="checkbox" id="samebins"> also draw the curve over the same bins at every depth of the range</label>
+        <label title="Draw a second (blue) curve averaged over one fixed list of places: only those with data at every depth of the range.
+Where the red curve (all places) jumps and the blue one doesn't, the jump comes from a change in which places are averaged, not from a worse fit"><input type="checkbox" id="samebins"> also draw the curve over the same bins at every depth of the range</label>
         <button class="tab" id="sbupdate" style="display:none" title="The band moved since the blue curve was drawn">redraw the blue curve for this range</button></div>
       <span id="sbnote" class="dnote"></span></div>
     <canvas id="pcan" width="520" height="430"></canvas></div>
@@ -506,13 +506,17 @@ async function investigatePeak(zA, zB) {
   const big = cls[0], samp = Number.isFinite(fromSampling) ? Math.round(100 * fromSampling) : null;
   let h = `<div class="explain"><b>In short:</b> between ${Math.round(lo)} and ${Math.round(hi)} m the curve is highest at <b>${z[kp]} m</b>. ` +
     (samp === null ? '' : samp >= 50
-      ? `Most of that bump (${samp} %) is <b>not</b> a change in the water: fewer bins have data at that depth than at the depths around it, and the ones that do are not typical. `
-      : `Most of that bump (${100 - samp} %) is <b>in the water</b>: it is still there when only the same bins are compared at every depth. `) +
+      ? `<b>${samp} % of the jump comes from averaging over a different set of places at ${z[kp]} m than at the depths above and below it</b>, ` +
+        `not from a worse fit at ${z[kp]} m. Over only the ${keep.size} places with data at all three depths, the jump nearly disappears ` +
+        `(${fmt(sp)} against ${fmt(sbase)}). `
+      : `<b>${100 - samp} % of the jump is a worse fit at ${z[kp]} m:</b> it is still there over only the ${keep.size} places with data at all ` +
+        `three depths (${fmt(sp)} against ${fmt(sbase)}). `) +
     (additive && big ? `The bins with the highest values are mostly in the <b>${where(big)}</b> (${pc(big.bins.length, bins.length)} of the bins, ${pc(big.s, tot)} of the total); that area is now outlined in purple on the maps, and the region panel shows its numbers and its platforms.` : '') +
     `</div><b>${S.src}, ${S.ct}, ${S.V}: ${PARTS[S.part]}; ${timeText()}.</b> The steps:<ol>` +
     `<li><b>Peak:</b> ${z[kp]} m, ${fmt(vp)} over ${np} bins` + (Number.isFinite(base) ? `; the levels around it (${ku !== undefined ? z[ku] + ' m: ' + fmt(vu) + ', ' + nu + ' bins' : ''}${ku !== undefined && kd !== undefined ? '; ' : ''}${kd !== undefined ? z[kd] + ' m: ' + fmt(vd) + ', ' + nd + ' bins' : ''}) average ${fmt(base)}.` : '.') + '</li>' +
-    `<li><b>Same bins:</b> over the ${keep.size} bins with data at the peak and both neighbors, the peak is ${fmt(sp)} and its neighbors ${fmt(sbase)}` +
-      (Number.isFinite(fromSampling) ? `: <b>${(100 * fromSampling).toFixed(0)} %</b> of the peak's excess over its neighbors comes from which bins are counted at each level, ${(100 * (1 - fromSampling)).toFixed(0)} % remains in a fixed set of bins.` : '.') + '</li>' +
+    `<li><b>Same places:</b> over only the ${keep.size} places with data at the peak and at both depths around it, the peak is ${fmt(sp)} and the two depths around it average ${fmt(sbase)}` +
+      (Number.isFinite(fromSampling) ? `: <b>${(100 * fromSampling).toFixed(0)} %</b> of the jump comes from a different set of places being averaged at ${z[kp]} m, ` +
+        `${(100 * (1 - fromSampling)).toFixed(0)} % is a worse fit there (<a href="guide.html#samebins">what this means</a>).` : '.') + '</li>' +
     `<li><b>Where:</b> the top ${Math.round(100 * (1 - HIGH_Q))} % of bins at ${z[kp]} m (${high.length} bins, values ≥ ${fmt(thr)}) form ${cls.length} cluster${cls.length > 1 ? 's' : ''} (neighbors within ${CLUSTER_KM} km). ` +
       (additive ? `They hold ${pc(high.reduce((a, [, v]) => a + v, 0), tot)} of the summed value at this level.` : '') + '</li></ol>';
   h += `<table><tr><th>cluster</th><th>center</th><th>bins</th><th>share of bins</th>${additive ? '<th>share of the summed value</th>' : '<th>mean</th>'}</tr>`;

@@ -51,6 +51,12 @@ Rules:
 - For questions about what an analysis, a term or a tool means, use explain (the report's own text) and answer
   from it; to compare two analyses, explain both. Then add numbers only if they help.
 - Never mention your tools, their names or their arguments to the user, and never tell the user to call one.
+- Write for a reader without an advanced degree: plain words, short sentences; say what is compared with what (e.g.
+  "the places with data at 2400 m vs those at 2200 and 2600 m", never just "different"); give the numbers. Never use
+  shorthand: never the words "sampling", "sampled", "signal", "artifact" or "in the water". For a peak's result, start
+  with: "N % of the jump at D m comes from averaging over a different set of places at D m than at the depths above
+  and below it, not from a worse fit at D m" (or the reverse: "N % of the jump is a worse fit at D m"), then the
+  numbers over all places and over the same places.
 - Don't describe the links; the page shows them under your answer."""
 
 

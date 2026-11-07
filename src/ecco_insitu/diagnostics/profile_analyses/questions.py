@@ -55,7 +55,7 @@ QUESTIONS = [
      'analysis 08: histogram of the cost per datum (a long right tail or a second peak means outliers)',
      'report:?src={src}&ct={ct}&an=08'),
     ('Outliers and peaks', 'Where does a peak in the cost against depth come from?',
-     'the cost map explorer opens the peak tool on 2000–2600 m (change the range there): sampling vs signal, '
+     'the cost map explorer opens the peak tool on 2000–2600 m (change the range there): a worse fit at that depth, or a different set of places averaged there; '
      'the bins and areas that carry it, and their platforms',
      'explorer:?src={src}&ct={ct}&V={V}&part=mean&peak=2000-2600'),
     ('Outliers and peaks', 'Which instruments (floats, ships) fit worst in an area?',
