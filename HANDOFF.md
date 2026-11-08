@@ -1,5 +1,44 @@
 # Handoff Context — ECCO-Insitu-Python
 
+## ⟶ RESUME HERE (2026-11-08) — the latest state; the sections below are older
+
+**Everything is committed and pushed (last code commit 98a8c10).** All 136 tests pass. Demo to the team: Monday
+2026-11-09.
+
+**Sites.** Public: the report (gh-pages of this repo) and the in situ data viewer (`ecco-bin-viewer`). Local copy:
+`docs/reports/profile_report_20261027_142247/` (served by `ecco-insitu assistant` on http://localhost:8765/, which
+adds the "Ask a question" box). **The local copy is AHEAD of the public site** (not yet published, waiting for the
+user's OK): plain-language attribution wording (guide `#samebins`, the peak tool's summary), isobaths on the cost map
+explorer, supplemental analysis 13 (observations per month and depth band). Publish with
+`ecco-insitu publish-reports docs/reports/profile_report_20261027_142247`, then push main (the docs deploy), then
+check the Actions run succeeded (GitHub deploys have timed out before; retry if so).
+
+**Rebuild the report site:** `ecco-insitu profile-report --site --inputs ~/ecco/yip/insitu_reports/profile_analyses_20261104_142247
+--out docs/reports/profile_report_20261027_142247_new --title "Profile Analysis — 20261027_142247 (WOD flags, XBT max
+depth 2900 m)" --bin-viewer https://brucelaughlin.github.io/ecco-bin-viewer/run_20261027_142247/`, check it, then swap
+it in for the folder above (never rebuild in place: pages the user has open would mix files).
+
+**Assistant (chatbot) prototype:** `src/ecco_insitu/diagnostics/assistant/` (tools.py: 11 tools incl. `explain`;
+server.py; widget.js). Settings in `config/local.yaml` under `assistant:` (subscription `brucel-ecco`, the user's own;
+switch by changing `subscription_id`). Plan and decisions: `docs/planning/llm_assistant.md`.
+
+**Step 12** compaction (float32) is ON by default since 2026-11-07 (`--no-compact` skips it). Waiting: the model
+run on `..._20261106_113015/ecco_arrays` (or the user's re-run) to confirm.
+
+**Requested 2026-11-08, not started yet:**
+1. Region awareness in the assistant: questions about a named area ("the east Pacific", "the Labrador Sea") get
+   that area's cost. Plan: a tool taking a region name -> bins (index.json has bin_names from Natural Earth marine
+   areas + BASINS boxes in viewer.py) or a lon/lat box, then the region's cost vs the rest.
+2. Drawing your own region in the cost map explorer ALREADY EXISTS ("select region", drag a box) but is hidden in
+   expert mode: make it visible in simple mode too.
+3. Finer cost-map resolution so geodesic bins look like hexagons (viewer.py _write_grid: npix 1400 global / 700
+   polar; raise it; check the data size).
+4. Navigation: don't call the front page "the report"; one shared navigation bar on every page (report, cost map
+   explorer, data viewer, guide, questions), instead of "back to the report".
+
+**Explain at the user's level** (no shorthand; say what is compared with what; show numbers): see the memory note
+"plain explanations".
+
 ## ⟶ CURRENT STATE (2026-11-02, evening) — read this first
 
 ### What's live
