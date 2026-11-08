@@ -193,25 +193,54 @@ as the report and the ECCO split cost.</p>
 """
 
 
+def _hex_raster(raster, land_geoms, proj, extent, outside):
+    """Redo a view's pixel -> bin raster so bins are drawn as their true cells (hexagons): each ocean pixel gets the
+    bin whose center is nearest (the chain's own rule agrees for 99.96 % of model grid cells), and land comes from
+    Natural Earth's coastline instead of the 1-degree model grid. Returns (bin ids, land mask)."""
+    import cartopy.crs as ccrs
+    import shapely
+    from scipy.spatial import cKDTree
+    from ecco_insitu import config as config_loader
+    ll = np.loadtxt(config_loader.get(config_loader.load(), 'paths.geodesic_bin_csv'), delimiter=',')[:, :2]
+    r = np.pi / 180
+    xyz = lambda lo, la: np.c_[np.cos(la * r) * np.cos(lo * r), np.cos(la * r) * np.sin(lo * r), np.sin(la * r)]
+    ny, nx = outside.shape
+    x0, x1, y0, y1 = extent
+    X, Y = np.meshgrid(np.linspace(x0, x1, nx), np.linspace(y0, y1, ny))
+    pts = ccrs.PlateCarree().transform_points(proj, X.ravel(), Y.ravel())
+    lon, lat = pts[:, 0], pts[:, 1]
+    ok = ~outside.ravel() & np.isfinite(lon) & np.isfinite(lat)
+    ids = np.zeros(lon.size, np.int32)
+    ids[ok] = cKDTree(xyz(ll[:, 0], ll[:, 1])).query(xyz(lon[ok], lat[ok]))[1] + 1
+    land = np.zeros(lon.size, bool)
+    world = shapely.union_all(land_geoms)
+    land[ok] = shapely.contains_xy(world, lon[ok], lat[ok])
+    return ids.reshape(ny, nx), land.reshape(ny, nx)
+
+
 def _write_grid(out):
-    """Pixel -> bin rasters and coastlines for the three views."""
+    """Pixel -> bin rasters and coastlines for the three views; bins drawn as their true (hexagonal) cells."""
     import cartopy.feature as cfeature
     import cartopy.crs as ccrs
     from ecco_insitu.diagnostics import common
     bl = common.BinLookup()
-    views = {'global': (bl.projected_raster('global', npix=1400, proj=pa._global_proj()), pa._global_proj()),
-             'NH': (bl.projected_raster('NH', npix=700, fill_box=pa._POLAR_EDGE_LAT), ccrs.NorthPolarStereo()),
-             'SH': (bl.projected_raster('SH', npix=700, fill_box=pa._POLAR_EDGE_LAT), ccrs.SouthPolarStereo())}
+    # resolution: the canvas pixels per map (the page scales them to the window); 2200 across the global map gives
+    # each ~220 km bin about 8 pixels, enough to see its six sides
+    views = {'global': (bl.projected_raster('global', npix=2200, proj=pa._global_proj()), pa._global_proj()),
+             'NH': (bl.projected_raster('NH', npix=1400, fill_box=pa._POLAR_EDGE_LAT), ccrs.NorthPolarStereo()),
+             'SH': (bl.projected_raster('SH', npix=1400, fill_box=pa._POLAR_EDGE_LAT), ccrs.SouthPolarStereo())}
     meta = {}
-    land_geoms = list(cfeature.NaturalEarthFeature('physical', 'land', '110m').geometries())
+    land_geoms = list(cfeature.NaturalEarthFeature('physical', 'land', '50m').geometries())     # land pixels
+    coast_geoms = list(cfeature.NaturalEarthFeature('physical', 'land', '110m').geometries())   # drawn outlines (light)
     for name, ((raster, land, outside, extent), proj) in views.items():
-        g = raster['a'].astype(np.int16)
+        ids, land = _hex_raster(raster, land_geoms, proj, extent, outside)
+        g = ids.astype(np.int16)
         g[land | outside | (g == 0)] = -1
         ny, nx = g.shape
         (out / f'grid_{name}.bin').write_bytes(gzip.compress(g[::-1].tobytes(), 9))   # row 0 = top
         x0, x1, y0, y1 = extent
         polys = []
-        for geom in land_geoms:
+        for geom in coast_geoms:
             pg = proj.project_geometry(geom, ccrs.PlateCarree())
             for part in getattr(pg, 'geoms', [pg]):
                 if part.is_empty:
