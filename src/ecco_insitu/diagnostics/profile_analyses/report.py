@@ -861,6 +861,7 @@ def _collect_data(input_dirs):
 # ── interactive HTML ───────────────────────────────────────────────────────────
 
 def _build_interactive_html(data, metas, title, bin_viewer=None):
+    from ecco_insitu.diagnostics.profile_analyses import nav
     sources = sorted(data.keys())
     all_cost_types = sorted({ct for src in data.values() for ct in src.keys()})
     all_analyses = sorted({
@@ -1036,7 +1037,7 @@ var render = function () {{
   // both header buttons open on the class shown here
   document.getElementById('map-explorer').href = 'viewer.html?src=' + encodeURIComponent(curSource) +
     '&ct=' + encodeURIComponent(curCost);
-  if (BIN_VIEWER) document.getElementById('bin-viewer').href = BIN_VIEWER + '?src=' + encodeURIComponent(curSource) +
+  if (BIN_VIEWER && document.getElementById('bin-viewer')) document.getElementById('bin-viewer').href = BIN_VIEWER + '?src=' + encodeURIComponent(curSource) +
     '&back=' + encodeURIComponent(location.href.split('?')[0].split('#')[0]);
   document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
   if (curAn) {{
@@ -1144,7 +1145,6 @@ document.getElementById('close-notes').addEventListener('click', () => showNotes
 
 // the in situ data viewer (bin viewer), if the report was built with --bin-viewer
 const BIN_VIEWER = BIN_VIEWER_URL;
-if (BIN_VIEWER) document.getElementById('bin-viewer').style.display = '';
 // analysis 02: the "investigate a peak" link into the explorer
 function updatePeakLink() {{
   const g = id => document.getElementById(id).value;
@@ -1154,7 +1154,7 @@ function updatePeakLink() {{
 ['peak-part', 'peak-v', 'peak-a', 'peak-b'].forEach(id => document.getElementById(id).addEventListener('change', updatePeakLink));
 // the map explorer link, if this site has one (profile-report --site)
 fetch('viewer/index.json', {{method: 'HEAD'}}).then(r => {{
-  if (r.ok) {{ HAS_EXPLORER = true; document.getElementById('map-explorer').style.display = ''; render(); }}
+  if (r.ok) {{ HAS_EXPLORER = true; render(); }}
 }}).catch(() => {{}});
 
 // the address holds the view (?src=&ct=&an=&band=&part=), so a view can be linked (the questions page does)
@@ -1179,23 +1179,18 @@ render();
 <head>
 <meta charset="utf-8">
 <title>{_html.escape(title)}</title>
-<style>{_CSS_INTERACTIVE}</style>
+<style>{_CSS_INTERACTIVE}{nav.CSS}</style>
 </head>
 <body>
+{nav.row('analyses', title, bin_viewer, {'explorer': 'map-explorer', 'data': 'bin-viewer'})}
 <div id="header">
-  <h1>{_html.escape(title)}</h1>
+  <h1>Analyses</h1>
   <span class="hdr-link" id="toggle-side-gloss">Terminology</span>
   <span style="color:#ccc">|</span>
   <span class="hdr-link" id="toggle-side-meta">Metadata</span>
   <span style="color:#ccc;font-size:0.8em;margin-left:0.5em">← → cycle sources &nbsp; ↑ ↓ cycle analyses</span>
   <span class="hdr-right">
-    <a class="hdr-link hdr-notes" href="questions.html" title="Common questions, each opening a page set up to answer it" style="color:#fff;background:#6c3483;border-color:#6c3483">What do you want to know?</a>
-    <a class="hdr-link hdr-notes" href="guide.html" title="How to use the report, the explorer and the data viewer; how the attribution works">Guide</a>
-    <span class="hdr-link hdr-notes" id="toggle-notes" title="This run's findings, decisions and corrections" style="margin-right:1.6em">Notes &amp; errata</span>
-    <a class="explorer-btn" id="map-explorer" href="viewer.html" style="display:none"
-       title="Interactive cost maps: any depth level or band, any years, unsplit / split / bias">Cost map explorer</a>
-    <a class="explorer-btn" id="bin-viewer" href="#" style="display:none"
-       title="The data themselves: T and S anomalies per geodesic bin, zoom in to every profile">In situ data viewer</a>
+    <span class="hdr-link hdr-notes" id="toggle-notes" title="This run's findings, decisions and corrections">Notes &amp; errata</span>
   </span>
 </div>
 <div id="nav">
@@ -1429,8 +1424,11 @@ def _write_map_explorer(input_dirs, out_dir, title, bin_viewer=None):
         shutil.rmtree(vdir)
     viewer.write(input_dirs[0], vdir, bin_viewer)
     page = (Path(viewer.__file__).with_name('viewer.html')).read_text()
+    from ecco_insitu.diagnostics.profile_analyses import nav
     (Path(out_dir) / 'viewer.html').write_text(page.replace('__TITLE__', _html.escape(title))
-                                               .replace('__GUIDE__', viewer.GUIDE_HTML))
+                                               .replace('__GUIDE__', viewer.GUIDE_HTML)
+                                               .replace('__NAVCSS__', nav.CSS)
+                                               .replace('__NAV__', nav.row('explorer', title, bin_viewer, {'data': 'nav-data'})))
     size = sum(f.stat().st_size for f in vdir.iterdir()) / 1e6
     print(f'      + viewer.html and viewer/ ({size:.0f} MB): the interactive map explorer')
 

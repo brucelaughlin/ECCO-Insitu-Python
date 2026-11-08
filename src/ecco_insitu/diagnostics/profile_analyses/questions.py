@@ -114,6 +114,7 @@ def page(title, sources, cost_types, depth, bin_viewer=None):
     opt = lambda vals, sel: ''.join(f'<option{" selected" if v == sel else ""}>{_html.escape(v)}</option>' for v in vals)
     src0 = 'PFL' if 'PFL' in sources else sources[0]
     ct0 = 'vs_model' if 'vs_model' in cost_types else cost_types[0]
+    from ecco_insitu.diagnostics.profile_analyses import nav
     js = f"""
 const BINV = {json.dumps((bin_viewer or '').rstrip('/') + '/' if bin_viewer else '')}, K1000 = {k1000};
 function fill() {{
@@ -130,15 +131,14 @@ function fill() {{
 ['src', 'ct', 'V'].forEach(id => document.getElementById(id).addEventListener('change', fill)); fill();
 """
     return f"""<!DOCTYPE html>
-<html lang="en"><head><meta charset="utf-8"><title>Questions — {_html.escape(title)}</title><style>{CSS}</style></head>
+<html lang="en"><head><meta charset="utf-8"><title>Questions — {_html.escape(title)}</title><style>{CSS}{nav.CSS}</style></head>
 <body>
-<header><h1>What do you want to know?</h1><a href="index.html">&larr; Profile report</a><a href="viewer.html">Cost map explorer</a>
-  <a href="guide.html">Guide</a></header>
+{nav.row('questions', title, bin_viewer)}<header><h1>What do you want to know?</h1></header>
 <div id="choose">For: <label>obs class <select id="src">{opt(sources, src0)}</select></label>
   <label>compared with <select id="ct">{opt(cost_types, ct0)}</select></label>
   <label>variable <select id="V">{opt(['T', 'S'], 'T')}</select></label>
   <span style="color:#777">(each question opens with these; you can change everything there)</span></div>
-<main><p class="lede">Each question opens a page already set up to answer it. The analyses are those of the report
+<main><p class="lede">Each question opens a page already set up to answer it. The numbers are those of the run
 ({_html.escape(title)}).</p>{body}</main>
 <script>{js}</script>
 </body></html>

@@ -10,14 +10,15 @@ import html as _html
 # (id, title, body). Order = the table of contents.
 SECTIONS = [
     ('start', 'Start here', """
-<p>The site has three parts, linked from the top right of every page:</p>
+<p>The site has three main pages, plus this guide and the questions page. The row of buttons at the top of every page
+links to all of them (the page you are on is filled in), so any page is one click from any other.</p>
 <table class="g">
 <tr><th>Page</th><th>What it shows</th><th>Use it to</th></tr>
-<tr><td><b>Profile report</b> (the main page)</td><td>Fixed figures of the analyses (01&ndash;10 core, 11&ndash;12 supplemental) for each
+<tr><td><b>Analyses</b> (the first page)</td><td>Fixed figures of the analyses (01&ndash;10 core, 11&ndash;13 supplemental) for each
   obs class and cost type</td><td>see the overall picture: where and at what depths the observations disagree with the
   climatology or the model</td></tr>
 <tr><td><b>Cost map explorer</b></td><td>The same costs drawn live: maps for any depth, years and cost part; the depth profile;
-  regions; the peak tool</td><td>find <em>where</em> a feature in the report comes from</td></tr>
+  regions; the peak tool</td><td>find <em>where</em> a feature in the analyses comes from</td></tr>
 <tr><td><b>In situ data viewer</b></td><td>The observations themselves: anomalies per geodesic bin, every profile when zoomed in, the
   profile panel</td><td>look at the profiles and platforms behind a feature</td></tr>
 </table>
@@ -27,7 +28,7 @@ already set up to answer it. <b>Every view is a link:</b> the address of the exp
 <p>A typical path: a bump in an analysis&nbsp;02 curve &rarr; &ldquo;investigate&rdquo; (below the figure) &rarr; the explorer finds the peak,
 tells whether the jump is a worse fit at that depth or a different set of places averaged there, outlines the bins that carry it and lists their platforms &rarr; &ldquo;show profiles&rdquo; opens the
 data viewer on one platform &rarr; click a profile to see it whole. Section&nbsp;<a href="#attribution">Attribution</a> explains each step.</p>
-<p class="note">This page is the manual. Run-specific findings, decisions and corrections are on the report&rsquo;s
+<p class="note">This page is the manual. Run-specific findings, decisions and corrections are on the Analyses page&rsquo;s
 <b>Notes &amp; errata</b> page.</p>
 """),
     ('terms', 'Terms', """
@@ -39,7 +40,7 @@ data viewer on one platform &rarr; click a profile to see it whole. Section&nbsp
   v4r6 model (<code>vs_model</code>; monthly means sampled at the profile&rsquo;s grid cell and month).</td></tr>
 <tr><td>misfit &Delta;V</td><td>V &minus; V<sub>ref</sub>, in &deg;C or psu.</td></tr>
 <tr><td>&sigma;</td><td>The assumed error of an observation: how far from the reference it is expected to be. Not the instrument&rsquo;s
-  accuracy (much smaller); a derived map per depth (the report&rsquo;s Terminology says where it comes from). In the explorer, &ldquo;&sigma;
+  accuracy (much smaller); a derived map per depth (the Analyses page&rsquo;s Terminology says where it comes from). In the explorer, &ldquo;&sigma;
   (assumed error)&rdquo; maps it.</td></tr>
 <tr><td>weight w</td><td>Each observation&rsquo;s own: w = &gamma;&middot;sf/&sigma;&sup2;, with &gamma; the model grid cell&rsquo;s area factor and sf the spatial
   scaling (both 0&ndash;1). An observation&rsquo;s cost is w&middot;(&Delta;V)&sup2;; ECCO&rsquo;s cost is the sum over observations.</td></tr>
@@ -63,7 +64,7 @@ data viewer on one platform &rarr; click a profile to see it whole. Section&nbsp
   classes, a ship or program code (coarser).</td></tr>
 </table>
 """),
-    ('report', 'The profile report', """
+    ('report', 'The Analyses page', """
 <p>Choose the obs class, cost type and analysis with the tabs. Click a figure to see it full width. The side panel describes
 the figure; <b>Terminology</b> and <b>Metadata</b> open in it. Within a class, a figure uses the same axes in every cost type,
 so the tabs can be compared by eye.</p>
@@ -316,12 +317,14 @@ def page(title, bin_viewer=None):
     """The guide as one HTML page."""
     toc = ''.join(f'<a href="#{i}" class="{"sub" if i in SUBS else ""}">{t}</a>' for i, t, _ in SECTIONS)
     body = ''.join(f'<section id="{i}"><h2>{t}</h2>{b}</section>' for i, t, b in SECTIONS)
-    extra = (f'<a href="{_html.escape(bin_viewer)}">In situ data viewer &rarr;</a>' if bin_viewer else '')
+    from ecco_insitu.diagnostics.profile_analyses import nav
     return f"""<!DOCTYPE html>
-<html lang="en"><head><meta charset="utf-8"><title>Guide — {_html.escape(title)}</title><style>{CSS}</style></head>
+<html lang="en"><head><meta charset="utf-8"><title>Guide — {_html.escape(title)}</title><style>{CSS}{nav.CSS}
+.topnav {{ position: fixed; top: 0; left: 0; right: 0; z-index: 10; }}
+body {{ padding-top: 2.6em; }} #toc {{ top: 2.6em !important; height: calc(100vh - 2.6em) !important; }}</style></head>
 <body>
-<nav id="toc"><h1>Guide</h1><input id="q" placeholder="search this guide" aria-label="search this guide">{toc}
-  <div class="links"><a href="index.html">&larr; Profile report</a><a href="viewer.html">Cost map explorer &rarr;</a>{extra}</div></nav>
+<div class="topnav">{nav.row('guide', title, bin_viewer)}</div>
+<nav id="toc"><h1>Guide</h1><input id="q" placeholder="search this guide" aria-label="search this guide">{toc}</nav>
 <main>{body}</main>
 <script>{JS}</script>
 </body></html>

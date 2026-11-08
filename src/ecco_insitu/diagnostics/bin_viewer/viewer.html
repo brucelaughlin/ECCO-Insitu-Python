@@ -15,6 +15,13 @@
 :root { --accent: #1a5ca8; --border: #c8c8c8; }
 * { box-sizing: border-box; margin: 0; padding: 0; }
 body { font-family: Courier, 'Courier New', monospace; background: lightskyblue; color: #111; font-size: 13px; }
+#sitenav { display: flex; gap: 0.25em; align-items: center; flex-wrap: wrap; padding: 0.35em 1em; background: #f2f6fb;
+  border-bottom: 1px solid #d6e0ec; font: 13px -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
+#sitenav .site { margin-right: 0.8em; font-weight: 600; color: #345; }
+#sitenav a { text-decoration: none; color: #1a5ca8; padding: 0.22em 0.65em; border: 1px solid #c9d7ea; border-radius: 4px; background: #fff; }
+#sitenav a:hover { background: #eef4fc; border-color: #1a5ca8; }
+#sitenav a.here { background: #1a5ca8; color: #fff; border-color: #1a5ca8; cursor: default; }
+#sitenav a.navq { color: #6c3483; border-color: #d9c8e6; }
 #top { position: sticky; top: 0; z-index: 20; box-shadow: 0 1px 3px rgba(0,0,0,0.15); display: flex; gap: 0.6em; align-items: center; flex-wrap: wrap; padding: 0.4em 0.8em; background: #e9f5fd;
   border-bottom: 1px solid #9cc; font-family: -apple-system, 'Segoe UI', sans-serif; }
 #top a.jump { text-decoration: none; color: #1a5ca8; }
@@ -80,8 +87,8 @@ select { font-size: 0.85em; }
 </style>
 </head>
 <body>
+<div id="sitenav" style="display:none"></div>
 <div id="top">
-  <a id="back" class="btn" href="#" style="display:none;text-decoration:none;color:#1a5ca8" title="back to the profile report">&larr; report</a>
   <span class="grp"><span class="lab">class</span><select id="src"></select></span>
   <span class="grp" id="refgrp" style="display:none"><span class="lab">anomaly vs</span><span id="refs"></span></span>
   <span class="grp"><span class="lab">variable</span><button class="btn" id="vprev" title="previous variable">&#9664;</button>
@@ -284,6 +291,16 @@ function platformNote(nHere) {     // the platform's line under the menu: how ma
   const lev = S.dmode === 'level' ? INDEX.depth[S.k] + ' m' : 'these depths', yrs = S.all ? '' : ' in these years';
   document.getElementById('platinfo').textContent = `${PLATFORM.n.toLocaleString()} profiles, ${PLATFORM.y0}–${PLATFORM.y1}; ` +
     `${nHere.toLocaleString()} with a value at ${lev}${yrs} (cyan rings); line: all of them in time order (key at the lower left), small circles: the others, click any to open it`;
+}
+// The same navigation bar as the analyses site's pages (profile_analyses/nav.py), built from the address of the
+// page that opened this viewer (?back=) or the run's report (index.json report_url): every page is one click away.
+function siteNav(back) {
+  const base = back.split('?')[0].split('#')[0].replace(/[^/]*$/, ''), el = document.getElementById('sitenav');
+  const q = new URLSearchParams({src: S.src});
+  const links = [['Analyses', base + 'index.html?' + q, ''], ['Cost map explorer', base + 'viewer.html?' + q, ''],
+                 ['In situ data viewer', '#', 'here'], ['What do you want to know?', base + 'questions.html', 'navq'], ['Guide', base + 'guide.html', '']];
+  el.innerHTML = '<span class="site">ECCO in situ profiles</span>' + links.map(([t, h, c]) => `<a href="${h}" class="${c}">${t}</a>`).join('');
+  el.style.display = '';
 }
 async function loadClass(src) {
   if (CLASS[src]) return CLASS[src];
@@ -1103,11 +1120,7 @@ async function init() {
   // else to the run's report (index.json report_url)
   const q = new URLSearchParams(location.search), want = q.get('src'), back = q.get('back') || INDEX.report_url;
   S.src = want && INDEX.classes[want] ? want : INDEX.classes.CTD_WOD ? 'CTD_WOD' : Object.keys(INDEX.classes)[0]; fixVar();
-  if (back && /^https?:\/\//.test(back)) {
-    const a = document.getElementById('back'); a.href = back; a.style.display = '';
-    // came from the report in this tab: go back to it (the report keeps its place); otherwise open it
-    a.onclick = e => { if (document.referrer && document.referrer.split('?')[0] === back.split('?')[0] && history.length > 1) { e.preventDefault(); history.back(); } };
-  }
+  if (back && /^https?:\/\//.test(back)) siteNav(back);
   sizeBoxes();
   const r40 = Math.hypot(...polarXY(0, POLAR_EDGE_LAT, 'N'));
   addMap('ll', 'map', 'legend', bins, land, [-180, -90, 180, 90], (lon, lat) => [lon, lat], (x, y) => y, BATHY);

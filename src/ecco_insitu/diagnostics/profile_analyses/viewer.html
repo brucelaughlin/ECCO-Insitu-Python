@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <title>Cost map explorer — __TITLE__</title>
 <style>
+__NAVCSS__
 :root { --accent: #1a5ca8; --border: #d0d0d0; }
 * { box-sizing: border-box; margin: 0; padding: 0; }
 body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; color: #222; font-size: 14px; }
@@ -133,9 +134,9 @@ canvas.clickable { cursor: pointer; }
 </style>
 </head>
 <body>
-<div id="header"><h1>Cost map explorer — __TITLE__</h1><a href="index.html">&larr; back to the report</a><a href="guide.html">user guide</a>
+__NAV__
+<div id="header"><h1>Cost map explorer</h1>
   <button class="tab" id="copylink" title="Copy a link that opens exactly this view (settings, depth, years, region)">copy link to this view</button>
-  <span class="hdr-guide" id="open-guide">Guide: what every option means</span>
   <span id="modesw" title="Simple: the everyday choices only. Expert: every option (depth bands and groups, flagged spikes,
 single year, log scale, regions)"><button class="tab" data-m="simple">simple</button><button class="tab" data-m="expert">expert</button></span></div>
 <div id="controls">
@@ -1059,7 +1060,13 @@ function viewQuery() {
   const rc = regionCode(REGION); if (rc) q.set('region', rc);
   return q;
 }
-function writeAddress() { const q = viewQuery(); history.replaceState(null, '', location.pathname + '?' + q.toString() + location.hash); }
+function writeAddress() { const q = viewQuery(); history.replaceState(null, '', location.pathname + '?' + q.toString() + location.hash);
+  // the navigation bar's links open on the same class (and, for the data viewer, reference, variable and depth)
+  const nd = document.getElementById('nav-data');
+  if (nd && INDEX.bin_viewer) { const v = new URLSearchParams({src: S.src, ref: S.ct === 'vs_model' ? 'model' : 'clim', V: S.V});
+    const lv = levelsSelected(); if (lv && lv.length === 1) v.set('k', lv[0]); v.set('back', location.href.split('#')[0]); nd.href = INDEX.bin_viewer + '?' + v; }
+  const na = document.querySelector('.sitenav a[href^="index.html"]');
+  if (na) na.href = 'index.html?' + new URLSearchParams({src: S.src, ct: S.ct}); }
 
 async function render() {
   const id = ++RENDER_ID;
@@ -1380,8 +1387,6 @@ async function init() {
     try { await navigator.clipboard.writeText(location.href); e.target.textContent = 'link copied'; }
     catch (err) { prompt('Copy this link:', location.href); }
     setTimeout(() => e.target.textContent = 'copy link to this view', 1800); });
-  document.getElementById('open-guide').addEventListener('click', () => {
-    const g = document.getElementById('guide'); g.open = true; g.scrollIntoView({behavior: 'smooth'}); });
   S.dmode = 'all';
   { // depth, years, range, same bins, region, log, max from the address
     const d = q.get('depth');
