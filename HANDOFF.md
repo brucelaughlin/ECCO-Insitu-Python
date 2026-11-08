@@ -7,8 +7,8 @@
 
 **Sites.** Public: the report (gh-pages of this repo) and the in situ data viewer (`ecco-bin-viewer`). Local copy:
 `docs/reports/profile_report_20261027_142247/` (served by `ecco-insitu assistant` on http://localhost:8765/, which
-adds the "Ask a question" box). **The local copy is AHEAD of the public site** (not yet published, waiting for the
-user's OK): plain-language attribution wording (guide `#samebins`, the peak tool's summary), isobaths on the cost map
+adds the "Ask a question" box). **Published 2026-11-08 (both deploys succeeded; live pages checked identical to
+the local copy).** Included: plain-language attribution wording (guide `#samebins`, the peak tool's summary), isobaths on the cost map
 explorer, supplemental analysis 13 (observations per month and depth band), and the four 2026-11-08 items below
 (regions, hexagon maps, navigation). The in situ data viewer's page also changed (its navigation row; index.json
 report_url): publish it with `python -m ecco_insitu.diagnostics.bin_viewer.export --out
@@ -28,7 +28,7 @@ switch by changing `subscription_id`). Plan and decisions: `docs/planning/llm_as
 **Step 12** compaction (float32) is ON by default since 2026-11-07 (`--no-compact` skips it). Waiting: the model
 run on `..._20261106_113015/ecco_arrays` (or the user's re-run) to confirm.
 
-**Requested 2026-11-08, DONE the same day (local site only, not yet published; commits 360b4c6, 2fe0da2 and the navigation commit):**
+**Requested 2026-11-08, done and published the same day (commits 360b4c6, 2fe0da2, 5cd4d2b):**
 1. Region awareness in the assistant: questions about a named area ("the east Pacific", "the Labrador Sea") get
    that area's cost. Plan: a tool taking a region name -> bins (index.json has bin_names from Natural Earth marine
    areas + BASINS boxes in viewer.py) or a lon/lat box, then the region's cost vs the rest.
