@@ -44,7 +44,8 @@ data viewer on one platform &rarr; click a profile to see it whole. Section&nbsp
   (assumed error)&rdquo; maps it.</td></tr>
 <tr><td>weight w</td><td>Each observation&rsquo;s own: w = &gamma;&middot;sf/&sigma;&sup2;, with &gamma; the model grid cell&rsquo;s area factor and sf the spatial
   scaling (both 0&ndash;1). An observation&rsquo;s cost is w&middot;(&Delta;V)&sup2;; ECCO&rsquo;s cost is the sum over observations.</td></tr>
-<tr><td>cost per datum</td><td>(&Delta;V/&sigma;)&sup2; for one value (&ldquo;true&rdquo; weights, 1/&sigma;&sup2;). 1 means one assumed error away; 4 means two.
+<tr><td>cost per datum</td><td>The average of (misfit&nbsp;/&nbsp;&sigma;)&sup2; over many values (step by step, with an example:
+  <a href="#costperdatum">Cost per datum, step by step</a>). 1 means one assumed error away; 4 means two.
   Analysis&nbsp;09 is this against depth (the same as analysis&nbsp;02&rsquo;s red lines).</td></tr>
 <tr><td>geodesic bin</td><td>One of 10,242 cells of roughly equal area (about 220&nbsp;km across) covering the globe.</td></tr>
 <tr><td>depth level</td><td>One of the 97 standard depths (2&nbsp;m to 6000&nbsp;m): 2&ndash;5&nbsp;m apart in the top 100&nbsp;m (23 levels), wider below
@@ -63,6 +64,39 @@ data viewer on one platform &rarr; click a profile to see it whole. Section&nbsp
 <tr><td>platform</td><td>The instrument a profile comes from: an Argo float (WMO number), an ITP, a seal tag, a mooring; for the WOD ship
   classes, a ship or program code (coarser).</td></tr>
 </table>
+"""),
+    ('costperdatum', 'Cost per datum, step by step', """
+<p>Most of the site&rsquo;s numbers are a <b>cost per datum</b>. It is the average of a simple score that every single
+observation gets. Here is how it is made, with a real example.</p>
+<ol>
+<li><b>A datum is one number:</b> one temperature (or salinity) value, at one depth, in one profile. A single Argo profile with
+  70 depth levels gives about 70 data for T and 70 for S.</li>
+<li><b>Its misfit</b> is the reference minus the observation (the reference is the model or the climatology). Example: Argo
+  float 6903082 at 2400&nbsp;m on 29 March 2025 measured 2.810&nbsp;&deg;C; the model says 3.269&nbsp;&deg;C; the misfit is
+  +0.46&nbsp;&deg;C.</li>
+<li><b>Divide by &sigma;.</b> &sigma; is how big a misfit we <em>expect</em> for that value at that place and depth (a map made in
+  advance: about 0.9&nbsp;&deg;C near the surface, about 0.1&nbsp;&deg;C deep down). Dividing asks &ldquo;how many expected misfits is
+  this?&rdquo; Example: &sigma; is 0.134&nbsp;&deg;C there, so 0.46&nbsp;/&nbsp;0.134 = 3.4: this value is 3.4 expected misfits off.</li>
+<li><b>Square it.</b> 3.4&sup2; &asymp; 11.8: that is this datum&rsquo;s cost. Squaring makes every cost positive, whichever way the misfit
+  points, and makes big misfits count much more than small ones:
+  <table class="g"><tr><th>misfit, in units of &sigma;</th><th>cost of that datum</th></tr>
+  <tr><td>0.5</td><td>0.25</td></tr><tr><td>1</td><td>1</td></tr><tr><td>2</td><td>4</td></tr><tr><td>3.4</td><td>11.8</td></tr></table></li>
+<li><b>&ldquo;Per datum&rdquo; is the average</b> of those costs over many data. In analysis&nbsp;02, the value at 2400&nbsp;m is the
+  average cost of every datum the class has at 2400&nbsp;m. So:
+  <ul><li><b>about 1:</b> on average, the observations are about as far from the reference as &sigma; predicts;</li>
+  <li><b>well above 1:</b> a worse fit than &sigma; predicts (or &sigma; is too small there);</li>
+  <li><b>below 1:</b> a better fit than &sigma; predicts.</li></ul></li>
+</ol>
+<p><b>Why an average and not a total?</b> A total grows with the amount of data: a depth or class with ten times more data would
+have about ten times the total even if it fit just as well. The average lets you compare depths, classes and years that have
+very different amounts of data. (The total is in analysis&nbsp;04.)</p>
+<p><b>One caution.</b> It is an average of squares, so a few big misfits pull it up a lot. An average of 1 can mean every datum is
+about 1&nbsp;&sigma; off, or that eight data in nine fit almost perfectly and the ninth is 3&nbsp;&sigma; off (its cost is 9, and 9
+spread over nine data is 1). The histogram, analysis&nbsp;08, shows which.</p>
+<p><b>Weights.</b> &ldquo;Per datum&rdquo; on this site always means the plain score above, (misfit&nbsp;/&nbsp;&sigma;)&sup2;. The model&rsquo;s
+own cost also multiplies each score by two more numbers between 0 and 1: &gamma; (for the size of the model&rsquo;s grid cell) and sf
+(so that crowded places don&rsquo;t count more). Those are the <code>final</code> and <code>nosf</code> lines in analysis&nbsp;02; the
+red <code>true</code> lines, and analysis&nbsp;09, are the plain score.</p>
 """),
     ('report', 'The Analyses page', """
 <p>Choose the obs class, cost type and analysis with the tabs. Click a figure to see it full width. The side panel describes
