@@ -188,7 +188,8 @@ Where the red curve (all places) jumps and the blue one doesn't, the jump comes 
   <div id="busy"><div class="box"><div class="spin"></div><div><div id="busymsg">working…</div>
     <div class="bar" id="busybar"><div></div></div></div></div></div></div>
 <div id="legend"><div id="cbarbox"><canvas id="cbar" width="440" height="32"></canvas><span id="cbtxt"></span></div>
-  <div class="opts"><label class="x"><input type="checkbox" id="logscale"> log color scale</label>
+  <div class="opts"><label title="Depth lines of the seafloor: the 200 m shelf edge, and the one(s) nearest the depths shown"><input type="checkbox" id="isob" checked> isobaths <span id="isobtxt" class="dnote"></span></label>
+  <label class="x"><input type="checkbox" id="logscale"> log color scale</label>
   <label><span id="vmaxlab">max</span> <input type="number" id="vmax" step="any" style="width:6em"></label>
   <button class="tab" id="vauto">auto (98th pct)</button><span id="scalenote" class="dnote"></span></div></div>
 <div id="info"></div>
@@ -220,7 +221,7 @@ const DIAG = p => p === 'bias' || p === 'nmis' || p === 'sig', SIGNED = p => p =
 // values, so per-year charts show the mean misfit for it
 const valArr = (c, part = S.part) => part === 'anomaly' ? c.ma : part === 'bias' || part === 'mean' ? c.bias
   : part === 'nmis' ? c.nmis : part === 'sig' ? c.sig : part === 'count' ? null : c.mu;
-const S = {src: null, ct: null, V: 'T', part: 'unsplit', dmode: 'level', dsel: 0, t0: 0, t1: 0, all: true,
+const S = {isobaths: true, src: null, ct: null, V: 'T', part: 'unsplit', dmode: 'level', dsel: 0, t0: 0, t1: 0, all: true,
            vmax: null, log: false, same: false, sb0: 0, sb1: 0};
 let INDEX, GRID, GRIDS = {}, CACHE = {};
 
@@ -929,6 +930,38 @@ function drawMap(canvas, view, vals, vmax) {
     for (let i = 2; i < poly.length; i += 2) ctx.lineTo(poly[i], poly[i + 1]);
     ctx.closePath(); ctx.stroke();
   }
+  // isobaths for the selected depths (see isobathsFor), drawn faint over the colors, with a few depth labels
+  const B = GRID[view].bathy;
+  if (S.isobaths && B) {
+    const labs = [], taken = new Set(), k = canvas.width / Math.max(1, canvas.clientWidth);
+    for (const d of isobathsFor()) {
+      const shelf = d === 200;
+      ctx.strokeStyle = shelf ? 'rgba(30,30,30,0.55)' : 'rgba(20,40,90,0.6)'; ctx.lineWidth = shelf ? 0.6 : 0.8;
+      for (const p of B[d] || []) {
+        ctx.beginPath(); ctx.moveTo(p[0], p[1]);
+        let len = 0;
+        for (let i = 2; i < p.length; i += 2) { ctx.lineTo(p[i], p[i + 1]); len += Math.hypot(p[i] - p[i - 2], p[i + 1] - p[i - 1]); }
+        ctx.stroke();
+        if (len > 140 * k) { const m = 2 * Math.floor(p.length / 4), gx = Math.floor(p[m] / (130 * k)), gy = Math.floor(p[m + 1] / (130 * k));
+          if (!taken.has(gx + ',' + gy)) { taken.add(gx + ',' + gy); labs.push([p[m], p[m + 1], d]); } }
+      }
+    }
+    // k: canvas pixels per screen pixel, so the labels are ~10 px on screen on every map
+    ctx.font = Math.round(10 * k) + 'px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    for (const [x, y, d] of labs) { ctx.lineWidth = 3 * k; ctx.strokeStyle = 'rgba(255,255,255,0.85)'; ctx.strokeText(d + ' m', x, y);
+      ctx.fillStyle = d === 200 ? '#333' : '#1a2a5a'; ctx.fillText(d + ' m', x, y); }
+  }
+}
+// Which isobaths to draw for the selected depths: the 200 m shelf edge always, and the level(s) nearest the depths
+// shown (the seafloor at that depth: a bin is only colored offshore of it). All depths: 200, 1000 and 3000 m.
+const ISOBATHS = [200, 1000, 2000, 3000, 4000, 5000];
+function isobathsFor() {
+  const lv = levelsSelected();
+  if (!lv) return [200, 1000, 3000];
+  const z0 = INDEX.depth[lv[0]], z1 = INDEX.depth[lv.at(-1)], near = z => ISOBATHS.reduce((a, b) => Math.abs(b - z) < Math.abs(a - z) ? b : a);
+  const out = new Set([200, near(z0), near(z1)]);
+  for (const d of ISOBATHS) if (d > z0 && d < z1) out.add(d);
+  return [...out].sort((a, b) => a - b);
 }
 function niceTicks(lo, hi, n) {    // about n round-numbered ticks between lo and hi
   const raw = (hi - lo) / n, mag = Math.pow(10, Math.floor(Math.log10(raw)));
@@ -1037,6 +1070,7 @@ async function render() {
   document.getElementById('scalenote').textContent = S.vmax ? 'scale: your max' :
     (S.part === 'mean' || S.part === 'count' ? 'scale: auto for this view' : 'scale: fixed for this view (from all years), so time changes show');
   for (const view of ['global', 'NH', 'SH']) drawMap(document.getElementById('c_' + view), view, VALS, vmax);
+  document.getElementById('isobtxt').textContent = GRID.global.bathy ? '(' + isobathsFor().join(', ') + ' m)' : '(none in this build)';
   drawBar(vmax);
   PROF = profileCurves(d, (!S.all && S.part !== 'mean') ? await yearData(S.src, S.ct) : null); drawProfile();
   drawRegion(d);
@@ -1274,6 +1308,7 @@ async function init() {
     single = !single; e.target.classList.toggle('active', single);
     if (single) { S.t1 = S.t0; S.all = false; } render(); });
   document.getElementById('logscale').addEventListener('change', e => { S.log = e.target.checked; render(); });
+  document.getElementById('isob').addEventListener('change', e => { S.isobaths = e.target.checked; render(); });
   document.getElementById('vmax').addEventListener('change', e => { S.vmax = +e.target.value || null; render(); });
   document.getElementById('vauto').addEventListener('click', () => { S.vmax = null; document.getElementById('vmax').value = ''; render(); });
   // fit the three maps (same height) to the window width

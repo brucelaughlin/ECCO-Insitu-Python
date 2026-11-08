@@ -222,8 +222,57 @@ def _write_grid(out):
                 keep = np.isfinite(px) & np.isfinite(py)
                 if keep.sum() > 2:
                     polys.append(np.round(np.c_[px[keep], py[keep]], 1).ravel().tolist())
-        meta[name] = {'nx': nx, 'ny': ny, 'coast': polys}
+        meta[name] = {'nx': nx, 'ny': ny, 'coast': polys, 'bathy': _isobaths(proj, extent, nx, ny)}
     (out / 'grid.json').write_text(json.dumps(meta))
+
+
+ISOBATHS = (200, 1000, 2000, 3000, 4000, 5000)     # Natural Earth's levels the maps can show (m)
+
+
+def _isobaths(proj, extent, nx, ny):
+    """Isobaths in one view's pixel coordinates: {depth: [flat x, y lists]}. Natural Earth's bathymetry outlines (the
+    "deeper than d" polygons; only published at 10 m). The polygons are cut into pieces along straight lines, drawn
+    as chains of short steps; simplifying to 0.03 deg (as the data viewer does) turns each such cut into one long
+    edge, and the outlines are split there (edges over 1 deg) and at the dateline, which are not isobaths. Each piece
+    is then projected and thinned to points about a pixel apart; pieces under 3 px are dropped."""
+    import cartopy.crs as ccrs
+    import cartopy.io.shapereader as shpreader
+    names = {200: 'K_200', 1000: 'J_1000', 2000: 'I_2000', 3000: 'H_3000', 4000: 'G_4000', 5000: 'F_5000'}
+    x0, x1, y0, y1 = extent
+    out = {}
+    for d in ISOBATHS:
+        paths = []
+        for g in shpreader.Reader(shpreader.natural_earth(resolution='10m', category='physical',
+                                                          name=f'bathymetry_{names[d]}')).geometries():
+            g = g.simplify(0.03)
+            for p in (g.geoms if g.geom_type == 'MultiPolygon' else [g]):
+                for r in (p.exterior, *p.interiors):
+                    c = np.asarray(r.coords)
+                    if len(c) < 2:
+                        continue
+                    seam = np.r_[True, np.hypot(*np.diff(c, axis=0).T) > 1.0]
+                    for piece in np.split(c, np.nonzero(seam)[0][1:]):
+                        piece = piece[np.abs(piece[:, 0]) <= 179.99]
+                        if len(piece) < 2:
+                            continue
+                        xy = proj.transform_points(ccrs.PlateCarree(), piece[:, 0], piece[:, 1])[:, :2]
+                        px, py = (xy[:, 0] - x0) / (x1 - x0) * nx, (y1 - xy[:, 1]) / (y1 - y0) * ny
+                        ok = np.isfinite(px) & np.isfinite(py) & (px > -5) & (px < nx + 5) & (py > -5) & (py < ny + 5)
+                        pts = np.c_[px, py]
+                        cut = np.r_[True, ~ok[1:] | ~ok[:-1] | (np.hypot(*np.diff(pts, axis=0).T) > nx / 8)]
+                        for run in np.split(np.where(ok[:, None], pts, np.nan), np.nonzero(cut)[0][1:]):
+                            run = run[np.isfinite(run[:, 0])]
+                            if len(run) < 2 or np.ptp(run, axis=0).max() < 3:
+                                continue
+                            keep = [0]                                  # thin to points at least 0.7 px apart
+                            for i in range(1, len(run)):
+                                if np.hypot(*(run[i] - run[keep[-1]])) >= 0.7:
+                                    keep.append(i)
+                            if keep[-1] != len(run) - 1:
+                                keep.append(len(run) - 1)
+                            paths.append(np.round(run[keep], 1).ravel().tolist())
+        out[str(d)] = paths
+    return out
 
 
 def _groups(depth):
