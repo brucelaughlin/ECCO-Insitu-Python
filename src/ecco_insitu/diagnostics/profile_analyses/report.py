@@ -169,6 +169,12 @@ _ANALYSIS_DESC = {
     ),
 }
 SUPPLEMENTAL = {'11': 'year split', '12': 'split: own vs pooled', '13': 'counts: time × depth'}
+# short names for the analysis buttons (written slanted above them); the full titles are in _ANALYSIS_TITLES
+_ANALYSIS_SHORT = {
+    '01': 'mean T, S', '02': 'cost vs depth', '03': 'cost vs time', '04': 'total cost', '05': 'cost map (sum)',
+    '06': 'cost map (per datum)', '07': 'zonal mean', '08': 'histogram', '09': 'cost in σ units', '10': 'depth ranges',
+    '11': 'inside vs after clim.', '12': 'own vs pooled', '13': 'obs counts',
+}
 
 _GLOSSARY_HTML = """
 <p><strong>Weights and &sigma;.</strong> Every observation (one value of T or S at one depth level) has its own weight
@@ -642,6 +648,18 @@ body {
 .tab.na { opacity: 0.35; pointer-events: none; }
 .sup-label { margin-left: 1.2em; min-width: 0; }
 .tab.sup-tab { border-style: dashed; }
+#foldbar { display: flex; align-items: center; gap: 0.8em; padding: 0.2em 1em; font-size: 0.85em; }
+#foldbar .tab { font-size: 0.8em; padding: 0.1em 0.5em; }
+#foldsum { color: #555; display: none; }
+#nav.folded #navrows { display: none; }
+#nav.folded #foldsum { display: inline; }
+/* the analysis buttons' short names, slanted up and to the right like a plot's tick labels */
+#an-row { padding-top: 4.6em; }
+.an-wrap { position: relative; display: inline-block; }
+.an-name { position: absolute; left: 55%; bottom: 100%; margin-bottom: 0.2em; transform-origin: 0 100%;
+  transform: rotate(-38deg); white-space: nowrap; font-size: 0.74em; color: #567; pointer-events: none; }
+.an-wrap:has(.an-tab.active) .an-name { color: var(--accent); font-weight: 600; }
+.an-wrap:has(.sup-tab) .an-name { color: #889; }
 img.zoomable { cursor: zoom-in; }
 #zoom { position: fixed; inset: 0; background: rgba(255,255,255,0.97); z-index: 50; overflow: auto;
         display: flex; align-items: flex-start; justify-content: center; cursor: zoom-out; padding: 1em; }
@@ -955,9 +973,10 @@ def _build_interactive_html(data, metas, title, bin_viewer=None):
     )
     def _an_tab(an):
         sup = an in SUPPLEMENTAL
-        return (f'<button class="tab an-tab{" sup-tab" if sup else ""}" data-an="{an}"'
-                f' title="{_html.escape(_ANALYSIS_TITLES.get(an, an))}">'
-                f'{an + " (" + SUPPLEMENTAL[an] + ")" if sup else an}</button>')
+        short = _ANALYSIS_SHORT.get(an, '')
+        return (f'<span class="an-wrap"><span class="an-name" aria-hidden="true">{_html.escape(short)}</span>'
+                f'<button class="tab an-tab{" sup-tab" if sup else ""}" data-an="{an}"'
+                f' title="{_html.escape(_ANALYSIS_TITLES.get(an, an))}">{an}</button></span>')
     core = [an for an in all_analyses if an not in SUPPLEMENTAL]
     sup = [an for an in all_analyses if an in SUPPLEMENTAL]
     an_tabs = ''.join(_an_tab(an) for an in core)
@@ -1172,6 +1191,17 @@ render = function () {{ renderInner();
   if (curBand && curBand !== 'all') q.set('band', curBand); if (curPart && curPart !== 'unsplit') q.set('part', curPart);
   history.replaceState(null, '', location.pathname + '?' + q.toString()); }};
 render();
+// fold the settings to one line: the choice is remembered in this browser
+{{
+  const nav = document.getElementById('nav'), btn = document.getElementById('fold');
+  const sum = () => {{ document.getElementById('foldsum').textContent = curSource + ' · ' + curCost + ' · analysis ' + curAn +
+    (DESCS[curAn] ? ': ' + DESCS[curAn][0] : ''); }};
+  const set = f => {{ nav.classList.toggle('folded', f); btn.innerHTML = f ? '&#9660; show settings' : '&#9650; fold settings'; sum();
+    try {{ localStorage.setItem('analysesFolded', f ? '1' : ''); }} catch (e) {{}} }};
+  btn.addEventListener('click', () => set(!nav.classList.contains('folded')));
+  const r0 = render; render = function () {{ r0(); sum(); }};
+  try {{ if (localStorage.getItem('analysesFolded')) set(true); }} catch (e) {{}}
+}}
 """
 
     return f"""<!DOCTYPE html>
@@ -1194,11 +1224,15 @@ render();
   </span>
 </div>
 <div id="nav">
+  <div id="foldbar"><button class="tab" id="fold" title="Fold the settings to one line (more room for the figure)">&#9650; fold settings</button>
+    <span id="foldsum"></span></div>
+  <div id="navrows">
   <div class="tab-row"><span class="row-label">Source</span>{src_tabs}</div>
   <div class="tab-row"><span class="row-label">Cost type</span>{cost_tabs}<span id="cost-note" class="row-note"></span></div>
-  <div class="tab-row"><span class="row-label">Analysis</span>{an_tabs}</div>
+  <div class="tab-row" id="an-row"><span class="row-label">Analysis</span>{an_tabs}</div>
   <div class="tab-row" id="part-row" style="display:none"><span class="row-label">Cost</span>{part_tabs}<span id="part-note" class="row-note"></span></div>
   <div class="tab-row" id="band-row" style="display:none"><span class="row-label">Depth</span>{band_tabs}</div>
+  </div>
 </div>
 <div id="zoom" hidden><img alt=""><span class="zoom-hint">click or Esc to close</span></div>
 <div id="notes-page" hidden>

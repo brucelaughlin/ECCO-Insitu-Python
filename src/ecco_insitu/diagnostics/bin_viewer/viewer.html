@@ -22,6 +22,8 @@ body { font-family: Courier, 'Courier New', monospace; background: lightskyblue;
 #sitenav a:hover { background: #eef4fc; border-color: #1a5ca8; }
 #sitenav a.here { background: #1a5ca8; color: #fff; border-color: #1a5ca8; cursor: default; }
 #sitenav a.navq { color: #6c3483; border-color: #d9c8e6; }
+#top.folded > .grp { display: none; }
+#top.folded #foldsum { display: inline !important; }
 #top { position: sticky; top: 0; z-index: 20; box-shadow: 0 1px 3px rgba(0,0,0,0.15); display: flex; gap: 0.6em; align-items: center; flex-wrap: wrap; padding: 0.4em 0.8em; background: #e9f5fd;
   border-bottom: 1px solid #9cc; font-family: -apple-system, 'Segoe UI', sans-serif; }
 #top a.jump { text-decoration: none; color: #1a5ca8; }
@@ -89,6 +91,8 @@ select { font-size: 0.85em; }
 <body>
 <div id="sitenav" style="display:none"></div>
 <div id="top">
+  <button class="btn" id="fold" title="Fold the settings to one line (more room for the maps)">&#9650; fold</button>
+  <span id="foldsum" style="display:none;font-size:0.85em;color:#345"></span>
   <span class="grp"><span class="lab">class</span><select id="src"></select></span>
   <span class="grp" id="refgrp" style="display:none"><span class="lab">anomaly vs</span><span id="refs"></span></span>
   <span class="grp"><span class="lab">variable</span><button class="btn" id="vprev" title="previous variable">&#9664;</button>
@@ -302,6 +306,11 @@ function siteNav(back) {
   el.innerHTML = '<span class="site">ECCO in situ profiles</span>' + links.map(([t, h, c]) => `<a href="${h}" class="${c}">${t}</a>`).join('');
   el.style.display = '';
 }
+function foldSummary() {       // the folded bar's one line: what the maps show
+  const el = document.getElementById('foldsum'); if (!el || !INDEX) return;
+  el.textContent = `${S.src} · ${S.ref === 'clim' ? 'climatology' : 'model'} − obs · ${S.V} · ${depthText().replace('displaying ', '')} · ` +
+    (S.all ? 'all years' : (INDEX.years0 + S.t0) + '–' + (INDEX.years0 + S.t1)) + (PLATFORM ? ' · ' + PLATFORM.name : '');
+}
 async function loadClass(src) {
   if (CLASS[src]) return CLASS[src];
   busy('Loading ' + src + ' profiles…');
@@ -489,7 +498,7 @@ async function recompute() {
 function draw() {
   if (!STATS) return;
   for (const M of MAPS) drawMap(M);
-  titles(); colorbars(); trackKey();
+  titles(); colorbars(); trackKey(); foldSummary();
 }
 function drawMap(M) {
   const vs = M.view, sf = scaleFactor(M, vs), micro = sf > ZOOM_THRESHOLD, [bx0, by0, bx1, by1] = viewBounds(M, vs);
@@ -810,6 +819,11 @@ function setupControls() {
       fixVar(); fillDepth(); recompute(); });
   }
   document.getElementById('plat').onchange = e => setPlatform(e.target.value.trim());
+  { const top = document.getElementById('top'), btn = document.getElementById('fold');
+    const set = f => { top.classList.toggle('folded', f); btn.innerHTML = f ? '&#9660; settings' : '&#9650; fold'; foldSummary();
+      try { localStorage.setItem('viewerFolded', f ? '1' : ''); } catch (e) {} };
+    btn.onclick = () => set(!top.classList.contains('folded'));
+    try { if (localStorage.getItem('viewerFolded')) set(true); } catch (e) {} }
   document.getElementById('platclear').onclick = () => setPlatform('');
   document.getElementById('ppclose').onclick = () => { document.getElementById('pp').style.display = 'none'; PICKED = null; draw(); };
   document.querySelectorAll('#pptabs .btn').forEach(b => b.onclick = () => { PPTAB = b.dataset.t;

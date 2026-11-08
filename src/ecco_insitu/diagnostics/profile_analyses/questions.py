@@ -129,15 +129,25 @@ function fill() {{
   }});
 }}
 ['src', 'ct', 'V'].forEach(id => document.getElementById(id).addEventListener('change', fill)); fill();
+{{
+  const rows = document.getElementById('chooserows'), sum = document.getElementById('foldsum'), btn = document.getElementById('fold');
+  const set = f => {{ rows.style.display = f ? 'none' : ''; sum.style.display = f ? '' : 'none'; btn.innerHTML = f ? '&#9660; settings' : '&#9650; fold';
+    sum.textContent = ['src', 'ct', 'V'].map(id => document.getElementById(id).value).join(' · ');
+    try {{ localStorage.setItem('questionsFolded', f ? '1' : ''); }} catch (e) {{}} }};
+  btn.onclick = () => set(rows.style.display !== 'none');
+  try {{ if (localStorage.getItem('questionsFolded')) set(true); }} catch (e) {{}}
+}}
 """
     return f"""<!DOCTYPE html>
 <html lang="en"><head><meta charset="utf-8"><title>Questions — {_html.escape(title)}</title><style>{CSS}{nav.CSS}</style></head>
 <body>
 {nav.row('questions', title, bin_viewer)}<header><h1>What do you want to know?</h1></header>
-<div id="choose">For: <label>obs class <select id="src">{opt(sources, src0)}</select></label>
+<div id="choose"><button id="fold" title="Fold the settings to one line" style="font-size:0.8em">&#9650; fold</button>
+  <span id="chooserows">For: <label>obs class <select id="src">{opt(sources, src0)}</select></label>
   <label>compared with <select id="ct">{opt(cost_types, ct0)}</select></label>
   <label>variable <select id="V">{opt(['T', 'S'], 'T')}</select></label>
-  <span style="color:#777">(each question opens with these; you can change everything there)</span></div>
+  <span style="color:#777">(each question opens with these; you can change everything there)</span></span>
+  <span id="foldsum" style="display:none;color:#555"></span></div>
 <main><p class="lede">Each question opens a page already set up to answer it. The numbers are those of the run
 ({_html.escape(title)}).</p>{body}</main>
 <script>{js}</script>
