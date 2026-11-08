@@ -561,7 +561,7 @@ async function investigatePeak(zA, zB) {
   const pb = document.getElementById('peakback');
   if (pb) pb.onclick = () => { S.dmode = prevDepth.dmode; S.dsel = prevDepth.dsel; S.r0 = prevDepth.r0; S.r1 = prevDepth.r1; fillDepthSelect(); document.getElementById('dsel').value = S.dsel;
     nt.style.display = 'none'; render(); };
-  document.getElementById('peakclear').onclick = () => { REGION = null; nt.style.display = 'none'; regionChanged(); };
+  document.getElementById('peakclear').onclick = () => { REGION = null; PEAKBAND = null; nt.style.display = 'none'; regionChanged(); };
   REGION = new Set(cls[0].bins); regionChanged();
 }
 
@@ -1289,7 +1289,10 @@ async function init() {
   S.ct = q.get('ct') && cts.includes(q.get('ct')) ? q.get('ct') : cts.includes('vs_model') ? 'vs_model' : cts[0];   // default: the model
   if (q.get('V') === 'S') S.V = 'S';
   if (q.get('part') && PARTS[q.get('part')]) S.part = q.get('part');
-  const re = () => { S.vmax = null; document.getElementById('vmax').value = ''; fillDepthSelect(); render(); };
+  const re = () => { S.vmax = null; document.getElementById('vmax').value = ''; fillDepthSelect();
+    // the peak tool's results belong to one class, cost type, variable and part: redo them for the new selection
+    // (otherwise the text, the outline and the depth it chose would still be the old selection's)
+    if (PEAKBAND) { const [a, b] = PEAKBAND; render().then(() => investigatePeak(a, b)); } else render(); };
   tabs('srcs', srcs.map(s => [s, s]), 'src', v => { S.src = v; if (!hasS()) S.V = 'T'; re(); });
   tabs('cts', cts.map(s => [s, s]), 'ct', v => { S.ct = v; re(); });
   tabs('vars', [['T', 'T'], ['S', 'S']], 'V', v => { S.V = v; re(); });
