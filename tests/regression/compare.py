@@ -20,12 +20,15 @@ VOLATILE_ATTRS = {'created'}                       # global attributes that hold
 RENAMED_PROGRAM = {'created_by': {'optimize_profile_files.py', 'ecco_insitu.packing'}}
 VOLATILE_JSON_KEYS = {'profiles_dir', 'arrays_dir', 'grid_dir'}   # absolute paths in the manifest
 # run_config.yaml: compared as settings, ignoring machine-specific paths and the list of merged files
-VOLATILE_CONFIG_KEYS = {'data_root', 'paths', 'run', 'diagnostics', '_sources'}
+VOLATILE_CONFIG_KEYS = {'data_root', 'paths', 'run', 'diagnostics', 'assistant', '_sources'}
+# files that record how a run was made (code commit, local changes), not what it produced
+VOLATILE_FILES = {'documentation/provenance.json', 'documentation/code.patch'}
 
 
 def _files(root):
-    return sorted(os.path.relpath(os.path.join(d, f), root)
-                  for d, _, fs in os.walk(root) for f in fs if not f.startswith('.'))
+    return sorted(r for r in (os.path.relpath(os.path.join(d, f), root)
+                              for d, _, fs in os.walk(root) for f in fs if not f.startswith('.'))
+                  if r not in VOLATILE_FILES)
 
 
 def _compare_nc(a, b, rel, problems):

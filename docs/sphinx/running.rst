@@ -16,7 +16,7 @@ on the whole run folder:
    ecco-insitu run --no-scaling                 # skip step 11
    ecco-insitu run -w 10day                     # step 11 with 10-day windows
    ecco-insitu run --plots                      # also the step 11 figures
-   ecco-insitu run --compact                    # also step 12
+   ecco-insitu run --no-compact                 # skip step 12 (compaction to float32; on by default)
    ecco-insitu run --no-pack                    # skip step 13
 
 Before processing anything, the run checks the settings and data paths, the climatology, and every

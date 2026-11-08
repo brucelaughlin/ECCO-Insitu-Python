@@ -2,8 +2,8 @@
 ``ecco-insitu run``: the whole NCEI chain on a folder of input files.
 
 Steps 01-10 (:mod:`ecco_insitu.pipeline`), then, on the whole run folder, step 11 (spatial
-scaling), optionally the step 11 figures and step 12 (compaction), and step 13 (packing into
-model-ready files).
+scaling), optionally the step 11 figures, step 12 (compaction to float32; on by default since 2026-11-07,
+``--no-compact`` skips it), and step 13 (packing into model-ready files).
 
 - **Settings:** ``ecco_insitu/defaults.yaml``, ``config/local.yaml`` (this machine's data
   locations), ``--config FILE`` and ``--set key=value``, merged in that order.
@@ -255,7 +255,8 @@ def cli(argv=None):
     onoff = ap.add_argument_group('steps after 01-10 (defaults from the run.* settings)')
     onoff.add_argument('--no-scaling', dest='scaling', action='store_false', default=None, help='skip step 11')
     onoff.add_argument('--plots', dest='plots', action='store_true', default=None, help='make the step 11 figures')
-    onoff.add_argument('--compact', dest='compact', action='store_true', default=None, help='run step 12')
+    onoff.add_argument('--compact', dest='compact', action='store_true', default=None, help='run step 12 (the default)')
+    onoff.add_argument('--no-compact', dest='compact', action='store_false', help='skip step 12')
     onoff.add_argument('--no-pack', dest='pack', action='store_false', default=None, help='skip step 13')
     ap.add_argument('--log_dir', help='folder for the run log (default: run.log_dir, else z_logs/)')
     config.add_arguments(ap)

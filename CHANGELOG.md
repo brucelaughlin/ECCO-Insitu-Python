@@ -9,6 +9,15 @@ since those changes need the regression reference regenerated on purpose
 
 ## [Unreleased]
 
+### Changed (2026-11-07)
+- **Science (file types only):** step 12 (compaction) now runs by default (`run.compact: true`), in float32 mode:
+  the (iPROF, iDEPTH) float64 profile arrays become float32 (weight codes int32), everything else is copied as is.
+  `ecco_arrays/` halves (17 → 8.2 GB on the 2026-10-27 inputs); values change only by float32 rounding (at most
+  6e-8 relative). `ecco-insitu run --no-compact` restores the float64 output. The regression reference was
+  regenerated for this (`yearly/*__ncei_step_12.nc`, float32 arrays); with `--no-compact` the chain still matches
+  the previous reference exactly. The comparison now ignores `documentation/provenance.json` / `code.patch` (how a
+  run was made, not what it produced) and the `assistant` settings.
+
 ### Added
 - Production hardening, Phases 1–5 (details in `docs/production_hardening_report.md`):
   - regression and unit tests (`tests/`, `python -m pytest`);

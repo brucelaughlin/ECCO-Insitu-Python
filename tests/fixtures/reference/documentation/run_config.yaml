@@ -23,7 +23,8 @@ run:
   n_workers: null
   spatial_scaling: true
   scaling_plots: false
-  compact: false
+  compact: true
+  compact_mode: float32
   pack: true
 chain:
   variables:
@@ -72,3 +73,14 @@ pack:
 diagnostics:
   report_dir: /Users/brucel/ecco/yip/insitu_reports
   cost_report_dir: /Users/brucel/ecco/yip/cost_reports
+assistant:
+  analysis_dir: /Users/brucel/ecco/yip/insitu_reports/profile_analyses_20261104_142247
+  site_dir: /Users/brucel/ecco/yip/ECCO-Insitu-Python/docs/reports/profile_report_20261027_142247
+  bin_viewer: https://brucelaughlin.github.io/ecco-bin-viewer/run_20261027_142247/
+  base_url: https://com.genai-api.jpl.nasa.gov
+  subscription_id: brucel-ecco
+  token_command: cd /Users/brucel/genai_api && uv run genai_api token
+  model: us.anthropic.claude-haiku-5-5
+  port: 8765
+  max_rounds: 6
+  per_minute: 10

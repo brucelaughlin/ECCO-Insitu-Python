@@ -50,6 +50,7 @@ _ANALYSIS_TITLES = {
     '10': 'Global mean cost per datum by depth range',
     '11': 'Supplemental: cost vs depth, data inside vs after the climatology\'s years',
     '12': 'Supplemental: split anomaly term with own vs pooled (cost_profiles.F) bin means',
+    '13': 'Supplemental: number of observations per month and depth band',
 }
 
 _ANALYSIS_DESC = {
@@ -158,8 +159,16 @@ _ANALYSIS_DESC = {
         'Unsplit for reference (dashed). The pooled version&rsquo;s mean term covers all classes together, so '
         'it can&rsquo;t be shown per class; its total is under Metadata.'
     ),
+    '13': (
+        '<strong>Supplemental.</strong> How many observations this obs class has, when and at what depth. Across: '
+        'time, one column per month. Down: depth bands (finer near the surface). Each cell&rsquo;s color is the '
+        'number of observations (values the chain kept, weight&nbsp;&gt;&nbsp;0) in that month and depth band, on a '
+        'log scale: each step of the color bar is ten times more. White: none. Observations only, so it is the same '
+        'for every cost type. Use it to see, for example, when Argo floats started reaching 2000&nbsp;m, or which years '
+        'and depths a cost curve rests on few data.'
+    ),
 }
-SUPPLEMENTAL = {'11': 'year split', '12': 'split: own vs pooled'}
+SUPPLEMENTAL = {'11': 'year split', '12': 'split: own vs pooled', '13': 'counts: time × depth'}
 
 _GLOSSARY_HTML = """
 <p><strong>Weights and &sigma;.</strong> Every observation (one value of T or S at one depth level) has its own weight
@@ -961,7 +970,7 @@ const COST_TYPES = {json.dumps(all_cost_types)};
 const ANALYSES = {json.dumps(all_analyses)};
 const DESCS = {json.dumps(desc_data)};
 const EXISTS = {json.dumps(exists)};
-const NO_COST = ['01'];
+const NO_COST = ['01', '13'];   // observations only: the same for every cost type
 const BAND_ANALYSES = ['05', '06'];
 const PART_ANALYSES = ['06', '07'];
 

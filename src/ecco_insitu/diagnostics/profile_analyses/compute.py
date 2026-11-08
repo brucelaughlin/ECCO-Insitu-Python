@@ -1432,6 +1432,71 @@ def _make_figures(res, source, fig_dir, lims=None, cost_type=None):
                      f'climatology\'s years ({CLIM_YEARS[0]}–{CLIM_YEARS[1]}){ctl}')
         _savefig(fig, fig_dir / f'11_clim_years_{source}.png')
 
+    # ---- Analysis 13 (supplemental): number of observations per month and depth band ----
+    if res.get('tdc'):
+        _count_grid_figure(res, source, fig_dir, active_vars, ctl)
+
+
+# Analysis 13: depth bands for the count grid (upper edges, m): about 20 rows, finer near the surface
+COUNT_GRID_BANDS = (10, 20, 50, 75, 100, 150, 200, 300, 400, 500, 700, 1000, 1250, 1500, 1750, 2000, 2500, 3000,
+                    4000, 5000, 6500)
+
+
+def _count_grid_figure(res, source, fig_dir, active_vars, ctl):
+    """Analysis 13: a grid with time across (months) and depth bands down; each cell's color is the number of
+    observations (values with weight > 0) of the class in that month and band, on a log scale; empty cells white.
+    The same for every cost type (observations only)."""
+    from matplotlib.colors import LogNorm
+    depth = res['depth']
+    edges = np.r_[0, COUNT_GRID_BANDS]
+    band = np.searchsorted(edges, depth, side='left') - 1
+    band = np.clip(band, 0, len(COUNT_GRID_BANDS) - 1)
+    nb = len(COUNT_GRID_BANDS)
+    fig = plt.figure(figsize=(7.2 * len(VARS) + 1.6, 6.2))
+    gs = fig.add_gridspec(1, len(VARS) + 1, width_ratios=[1] * len(VARS) + [0.035], wspace=0.06)
+    axes = [fig.add_subplot(gs[0, 0])]
+    axes += [fig.add_subplot(gs[0, i], sharey=axes[0]) for i in range(1, len(VARS))]
+    cax = fig.add_subplot(gs[0, -1])
+    # one color scale and one time axis for every class (VIEWER_YEAR0 .. VIEWER_YEAR0 + VIEWER_N_BLOCKS), so the
+    # figures of different classes compare by eye
+    y0, y1 = VIEWER_YEAR0, VIEWER_YEAR0 + VIEWER_N_BLOCKS - 1
+    im = None
+    for ax, V in zip(axes, VARS):
+        t = res['tdc'].get(V)
+        ax.set_title(V)
+        if t is None or not t['count'].size or V not in active_vars:
+            ax.text(0.5, 0.5, f'no {V} data', ha='center', va='center', transform=ax.transAxes, color='#888')
+            ax.set_xticks([]); continue
+        ym, c = t['yyyymm'], t['count']
+        keep = (ym // 100 >= y0) & (ym // 100 <= y1)
+        ym, c = ym[keep], c[keep]
+        nmon = (y1 - y0 + 1) * 12
+        grid = np.zeros((nb, nmon))
+        col = (ym // 100 - y0) * 12 + (ym % 100 - 1)
+        for b in range(nb):
+            grid[b, col] = c[:, band == b].sum(axis=1)
+        grid[grid == 0] = np.nan
+        im = ax.pcolormesh(y0 + np.arange(nmon + 1) / 12, np.arange(nb + 1), grid, cmap='viridis',
+                           norm=LogNorm(vmin=1, vmax=1e5), shading='flat')
+        ax.set_xlim(y0, y1 + 1)
+        ax.set_xlabel('year')
+        ax.grid(True, axis='x', color='white', alpha=0.4, lw=0.4)
+    axes[0].set_ylim(nb, 0)
+    axes[0].set_yticks(np.arange(nb) + 0.5)
+    axes[0].set_yticklabels([f'{int(a)}–{int(b)} m' for a, b in zip(edges[:-1], edges[1:])], fontsize=7)
+    axes[0].set_ylabel('depth band')
+    for ax in axes[1:]:
+        ax.tick_params(labelleft=False)
+    if im is not None:
+        cb = fig.colorbar(im, cax=cax, extend='max')
+        cb.set_label('observations per month and band (log)', fontsize=9)
+    else:
+        cax.set_visible(False)
+    fig.suptitle(f'{source}: Analysis 13 — number of observations per month and depth band '
+                 f'(values with weight > 0){ctl}')
+    _savefig(fig, fig_dir / f'13_obs_counts_time_depth_{source}.png',
+             margins=dict(left=0.08, right=0.94, bottom=0.1, top=0.88))
+
 
 # The three cost parts the report can show for maps (06) and zonal sections (07); file-name suffix
 _PARTS = (('unsplit', ''), ('anomaly', '__anomaly'), ('mean', '__mean'))
@@ -1811,6 +1876,8 @@ def load_results(path):
                'a01': {V: {'mean': g(f'a01_{V}_mean_depth').astype(float),
                            'count': g(f'a01_{V}_count_depth')} for V in VARS}}
         top = depth <= DEPTH_RANGE_BOUNDS[-1]
+        res['tdc'] = {V: {'yyyymm': g(f'tdc_{V}_yyyymm').astype(np.int32), 'count': g(f'tdc_{V}_count')}
+                      for V in VARS if f'tdc_{V}_count' in nc.variables}
         res['meanterm'] = {}
         for V in VARS:
             for wv in WEIGHT_VERS:

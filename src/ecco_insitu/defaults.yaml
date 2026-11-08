@@ -73,7 +73,7 @@ run:
   # which post-steps 'ecco-insitu run' runs after steps 01-10
   spatial_scaling: true      # step 11
   scaling_plots: false       # the step 11 figures (ecco-insitu report-scaling) after step 11
-  compact: false             # step 12
+  compact: true              # step 12 (on by default since 2026-11-07; ecco-insitu run --no-compact skips it)
   # step 12's mode: float32 = only the (iPROF, iDEPTH) float64 profile arrays to float32 (halves the files;
   # positions, dates, prof_interp_* unchanged); full = every type rule (see steps/step12_profiles_compact.py)
   compact_mode: float32
