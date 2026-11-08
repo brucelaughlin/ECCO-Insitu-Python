@@ -123,6 +123,9 @@ canvas.clickable { cursor: pointer; }
 #peakp tr.pick { cursor: pointer; } #peakp tr.pick:hover { background: #eef4fc; }
 #peakp ol { margin: 0.2em 0 0.4em 1.3em; }
 #regp { min-width: 34em; max-width: 46em; font-size: 0.85em; line-height: 1.45; }
+/* the per-year charts never run past their panel's border (they are drawn at 560 px and scaled down to fit) */
+#rcan, #bcan { max-width: 100%; height: auto; }
+#regp, #binp { box-sizing: border-box; overflow: hidden; }
 #regp table { border-collapse: collapse; margin: 0.3em 0; }
 #regp td, #regp th { border: 1px solid #e3e3e3; padding: 1px 6px; text-align: right; }
 #regp th { background: #f3f3f3; } #regp td:first-child, #regp th:first-child { text-align: left; }

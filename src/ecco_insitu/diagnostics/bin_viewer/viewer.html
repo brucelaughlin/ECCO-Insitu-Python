@@ -971,10 +971,14 @@ async function drawOneProfile(g, cv, pr, j, ref, unit) {
   const rows = pr[S.V], z = INDEX.depth, W = cv.width, H = cv.height, L = 52, Rm = 10, T = 36, B = 36, gap = 30, w1 = (W - L - Rm - gap) * 0.55, w2 = W - L - Rm - gap - w1;
   if (!rows.length) { g.fillText(`No ${S.V} in this profile.`, 20, 40); return; }
   const refv = r => S.ref === 'clim' ? r.clim : r.model;
-  const zs = rows.map(r => z[r.k]), zmax = Math.max(...zs) * 1.04, Y = d => T + (H - T - B) * d / zmax;
   // neighbors (gray): same bin, ±2 years, other platforms
   const nb = document.getElementById('ppnb').checked ? neighborsOf(j) : [], nbr = [];
   for (const i of nb) { const q = await profileOf(S.src, i); nbr.push(q[S.V]); }
+  // the depth axis reaches the deepest of this profile, its neighbors and the selected depth (so a short profile
+  // doesn't cut the others off); where this profile ends is said under the plot
+  const zOwn = Math.max(...rows.map(r => z[r.k])), lvSel = currentLevels();
+  const zNb = nbr.reduce((m, q) => Math.max(m, ...q.map(r => z[r.k])), 0);
+  const zmax = Math.max(zOwn, zNb, ...lvSel.map(k => z[k])) * 1.04, Y = d => T + (H - T - B) * d / zmax;
   const all = [...rows.map(r => r.obs), ...rows.map(refv)].filter(Number.isFinite);
   for (const q of nbr) for (const r of q) if (z[r.k] <= zmax) all.push(r.obs);
   let lo = Math.min(...all), hi = Math.max(...all); const pad = 0.05 * (hi - lo || 1); lo -= pad; hi += pad;
@@ -1008,8 +1012,12 @@ async function drawOneProfile(g, cv, pr, j, ref, unit) {
   let nrej = 0;
   for (const r of rows) if (r.code) { nrej++; const x = X(r.obs), y = Y(z[r.k]); g.strokeStyle = '#d35400'; g.lineWidth = 1.5; g.beginPath(); g.moveTo(x - 3, y - 3); g.lineTo(x + 3, y + 3); g.moveTo(x + 3, y - 3); g.lineTo(x - 3, y + 3); g.stroke();
     const x2 = X2(Math.max(-am, Math.min(am, refv(r) - r.obs))); g.beginPath(); g.moveTo(x2 - 3, y - 3); g.lineTo(x2 + 3, y + 3); g.moveTo(x2 + 3, y - 3); g.lineTo(x2 - 3, y + 3); g.stroke(); }
+  // where this profile ends, when the axis goes deeper: a faint gray line, labeled
+  if (zOwn < zmax / 1.04 - 1e-6) { const y = Y(zOwn); g.strokeStyle = 'rgba(0,0,0,0.25)'; g.lineWidth = 1; g.setLineDash([1, 3]);
+    g.beginPath(); g.moveTo(L, y); g.lineTo(L + w1, y); g.stroke(); g.setLineDash([]);
+    g.fillStyle = '#777'; g.font = '9px sans-serif'; g.textAlign = 'left'; g.textBaseline = 'top'; g.fillText(`this profile ends at ${zOwn} m`, L + 3, y + 2); g.font = '10px sans-serif'; }
   // the depth shown on the map
-  const lv = currentLevels(); g.strokeStyle = 'rgba(108,52,131,0.7)'; g.setLineDash([3, 3]);
+  const lv = lvSel; g.strokeStyle = 'rgba(108,52,131,0.7)'; g.setLineDash([3, 3]);
   for (const k of [lv[0], lv[lv.length - 1]]) { if (z[k] > zmax) continue; g.beginPath(); g.moveTo(L, Y(z[k])); g.lineTo(W - Rm, Y(z[k])); g.stroke(); } g.setLineDash([]);
   // legend
   g.textAlign = 'left'; g.textBaseline = 'middle'; g.font = '11px sans-serif';
@@ -1023,7 +1031,8 @@ async function drawOneProfile(g, cv, pr, j, ref, unit) {
     const m = refv(r) - r.obs, c = Number.isFinite(r.sig) && r.sig > 0 ? (m / r.sig) ** 2 : NaN;
     return `${z[r.k]} m: obs ${r.obs.toFixed(3)}, ${ref} ${Number.isFinite(refv(r)) ? refv(r).toFixed(3) : '–'}, ${ref} − obs ${Number.isFinite(m) ? (m >= 0 ? '+' : '') + m.toFixed(3) : '–'} ${unit}, ` +
       `σ ${Number.isFinite(r.sig) ? r.sig.toFixed(3) : '–'}, (Δ/σ)² ${Number.isFinite(c) ? c.toFixed(2) : '–'}${r.code ? '; <b style="color:#d35400">rejected: ' + qcText(r.code) + '</b>' : ''}`; });
-  document.getElementById('ppfoot').innerHTML = (dv.length ? `<b>At the map's depth</b> (purple dashes): ${dv.join('<br>')}<br>` : '') +
+  const ends = zOwn < zmax / 1.04 - 1e-6 ? `This profile ends at <b>${zOwn} m</b>; the plot goes deeper for ${zNb > zOwn ? 'its neighbors' : "the map's depth"}. ` : '';
+  document.getElementById('ppfoot').innerHTML = (dv.length ? `<b>At the map's depth</b> (purple dashes): ${dv.join('<br>')}<br>` : '') + ends +
     `Blue bands: ±1σ and ±2σ, the assumed error of the observation (the cost is (Δ/σ)²). ` +
     (nrej ? `<span style="color:#d35400">×</span> marks the ${nrej} level${nrej > 1 ? 's' : ''} the processing chain rejected (weight 0; reason on hover in the table below is not shown here — see the levels above). ` : 'No level of this profile was rejected. ') +
     `The model line is the monthly-mean approximation (not the model's value at the profile's exact time). Values are the processed files', to 0.001.`;

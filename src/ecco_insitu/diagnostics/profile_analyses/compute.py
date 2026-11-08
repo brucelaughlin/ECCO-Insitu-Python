@@ -1429,7 +1429,7 @@ def _make_figures(res, source, fig_dir, lims=None, cost_type=None):
         cax.legend(fontsize=7)
         axes[0].set_ylim(_dmax, 0)
         fig.suptitle(f'{source}: Analysis 11 — cost per datum vs depth, data inside vs after the '
-                     f'climatology\'s years ({CLIM_YEARS[0]}–{CLIM_YEARS[1]}){ctl}')
+                     f'climatology\'s years ({CLIM_YEARS[0]}–{CLIM_YEARS[1]})\n{ctl.lstrip(" —")}', fontsize=11)
         _savefig(fig, fig_dir / f'11_clim_years_{source}.png')
 
     # ---- Analysis 13 (supplemental): number of observations per month and depth band ----
