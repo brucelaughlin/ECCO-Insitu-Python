@@ -284,7 +284,7 @@ def where_high(A, src, cost_type, variable='T', part='unsplit', depth_from=0, de
                   'share_of_summed_cost_pct': _r(100 * sum(cmap[b] for b in c) / total), 'bin_ids': [int(b + 1) for b in c[:40]]}
                  for c in clusters), key=lambda d: -d['share_of_summed_cost_pct'])[:6]
     k_mid = int(k[len(k) // 2]) if len(k) > 1 else int(k[0])
-    depth_param = f'k{k[0]}' if len(k) == 1 else 'all' if len(k) == len(z) else _group_param(A, k)
+    depth_param = _group_param(A, k)
     res = {'obs_class': src, 'cost_type': cost_type, 'variable': V, 'part': part,
            'depth_range_m': [_r(z[k[0]], 4), _r(z[k[-1]], 4)], 'bins_with_data': int(len(ok)),
            'highest_bins': [{'bin': int(b + 1), 'where': _where(A, b + 1), 'value': _r(val[b]), 'points': int(w[b])}
@@ -304,13 +304,13 @@ def where_high(A, src, cost_type, variable='T', part='unsplit', depth_from=0, de
 
 
 def _group_param(A, k):
-    """The explorer's depth setting for a range of levels: the 100 m band that matches it, else the first level."""
-    from ecco_insitu.diagnostics.profile_analyses.viewer import _groups
-    g = _groups(list(A.depth))
-    for i, grp in enumerate(g['100m']):
-        if grp['levels'] == list(map(int, k)):
-            return f'100m:{i}'
-    return f'k{int(k[0])}'
+    """The explorer's depth setting for levels ``k``: one level 'k<n>', all levels 'all', else the range 'r<a>-<b>'."""
+    k = sorted(int(x) for x in k)
+    if len(k) == 1:
+        return f'k{k[0]}'
+    if len(k) == len(A.depth):
+        return 'all'
+    return f'r{k[0]}-{k[-1]}'
 
 
 def offset_vs_variability(A, src, cost_type, variable='T', depth_from=0, depth_to=2000):
@@ -411,6 +411,123 @@ def observation_counts(A, src, variable='T', depth_from=0, depth_to=6000):
                        'caption': f'Analysis 01: {src} mean T and S and counts against depth'}]}
 
 
+# ---------------------------------------------------------------------------------------------------------------
+# regions: a named sea or ocean area (Natural Earth's marine areas), a common ocean region (the boxes below), or a
+# lon/lat box; a region is the set of geodesic bins whose centers fall in it
+# ---------------------------------------------------------------------------------------------------------------
+# common ocean regions that are not one Natural Earth area: (name, aliases, lon0, lon1, lat0, lat1); lon0 > lon1
+# crosses the dateline. Coarse boxes: descriptive only.
+OCEAN_REGIONS = [
+    ('eastern tropical Pacific', ('east pacific', 'eastern pacific', 'east tropical pacific'), -140, -70, -20, 20),
+    ('western tropical Pacific', ('west pacific', 'western pacific', 'warm pool'), 120, -170, -20, 20),
+    ('tropical Pacific', ('equatorial pacific',), 120, -70, -20, 20),
+    ('North Pacific', ('north pacific',), 120, -100, 20, 66),
+    ('South Pacific', ('south pacific',), 145, -70, -60, -20),
+    ('subpolar North Atlantic', ('subpolar atlantic', 'north atlantic subpolar gyre'), -65, -5, 45, 66),
+    ('subtropical North Atlantic', ('subtropical atlantic', 'sargasso'), -80, -15, 15, 45),
+    ('North Atlantic', ('north atlantic',), -100, 20, 0, 70),
+    ('tropical Atlantic', ('equatorial atlantic',), -60, 15, -15, 15),
+    ('South Atlantic', ('south atlantic',), -70, 20, -60, 0),
+    ('Indian Ocean', ('indian',), 20, 120, -60, 30),
+    ('Southern Ocean', ('southern', 'antarctic', 'acc', 'antarctic circumpolar current'), -180, 180, -90, -50),
+    ('Arctic', ('arctic ocean',), -180, 180, 66, 90),
+    ('Gulf Stream region', ('gulf stream',), -80, -45, 32, 45),
+    ('Kuroshio region', ('kuroshio', 'kuroshio extension'), 130, 175, 25, 42),
+    ('Agulhas region', ('agulhas',), 10, 40, -45, -30),
+]
+
+
+def _norm(t):
+    import re
+    return re.sub(r'[^a-z0-9 ]', ' ', str(t).lower().replace('the ', ' ')).split()
+
+
+def _in_box(lo, la, lon0, lon1, lat0, lat1):
+    lo = np.where(lo > 180, lo - 360, lo)
+    inlon = (lo >= lon0) & (lo <= lon1) if lon0 <= lon1 else (lo >= lon0) | (lo <= lon1)
+    return inlon & (la >= lat0) & (la <= lat1)
+
+
+@lru_cache(maxsize=1)
+def _bin_area_names():
+    """Each bin's area name (index = bin id - 1; '' if none), as the cost map explorer has them."""
+    from ecco_insitu.diagnostics.profile_analyses.viewer import _bin_names
+    return _bin_names() or []
+
+
+def find_region(A, name=None, lon_min=None, lon_max=None, lat_min=None, lat_max=None):
+    """(label, bin ids 1-based) of a region: a box if lon/lat are given, else the best match of ``name`` among the
+    common ocean regions and Natural Earth's named marine areas."""
+    if A.bin_ll is None:
+        raise ToolError('no bin locations on this machine (paths.geodesic_bin_csv)')
+    lo, la = A.bin_ll[:, 0], A.bin_ll[:, 1]
+    if None not in (lon_min, lon_max, lat_min, lat_max):
+        m = _in_box(lo, la, float(lon_min), float(lon_max), float(lat_min), float(lat_max))
+        return f'the box {lat_min}–{lat_max}° lat, {lon_min}–{lon_max}° lon', np.nonzero(m)[0] + 1
+    if not name:
+        raise ToolError('give a region name or a lon/lat box')
+    want = set(_norm(name)) - {'sea', 'ocean', 'region', 'area', 'basin', 'of'}
+    full = ' '.join(_norm(name))
+    for nm, aliases, a, b, c, d in OCEAN_REGIONS:               # common regions first (exact name or alias)
+        if full in [' '.join(_norm(nm))] + [' '.join(_norm(x)) for x in aliases]:
+            return f'{nm} (a box: {c}–{d}° lat, {a}–{b}° lon)', np.nonzero(_in_box(lo, la, a, b, c, d))[0] + 1
+    # a named area: the bins the cost map explorer names after it (each bin carries the name of the smallest Natural
+    # Earth marine area containing its center: profile_analyses.viewer._bin_names), so the two always agree
+    names = _bin_area_names()
+    uniq = sorted(set(n for n in names if n))
+    best, score = None, 0
+    for nm in uniq:
+        words = set(_norm(nm)) - {'sea', 'ocean', 'of', 'gulf', 'bay'}
+        sc = 2 if ' '.join(_norm(nm)) == full else len(want & words) / max(1, len(want | words))
+        if sc > score:
+            best, score = nm, sc
+    if best is None or score < 0.5:
+        for nm, aliases, a, b, c, d in OCEAN_REGIONS:           # a looser match on the common regions
+            if want & set(_norm(nm) + [w for x in aliases for w in _norm(x)]):
+                return f'{nm} (a box: {c}–{d}° lat, {a}–{b}° lon)', np.nonzero(_in_box(lo, la, a, b, c, d))[0] + 1
+        raise ToolError(f'no region called {name!r}; try a sea or ocean name (e.g. "Labrador Sea", "eastern tropical '
+                        f'Pacific", "Southern Ocean") or give a lon/lat box')
+    return f'{best} (Natural Earth marine area)', np.asarray([i + 1 for i, n in enumerate(names) if n == best])
+
+
+def region_cost(A, src, cost_type, region=None, variable='T', part='unsplit', depth_from=0, depth_to=2000,
+                lon_min=None, lon_max=None, lat_min=None, lat_max=None):
+    """The cost in a region (a named sea or ocean area, or a lon/lat box) against the rest of the world, over a depth
+    range, all years: the region's cost per datum (or mean term), its share of the bins, the points and the summed
+    cost, and its highest bins."""
+    V, part = _var(variable), _part(part)
+    label, ids = find_region(A, region, lon_min, lon_max, lat_min, lat_max)
+    k = _levels(A.depth, depth_from, depth_to)
+    val, w = _bin_cost(A, src, cost_type, V, part, k)
+    ok = np.isfinite(val) & (w > 0)
+    inr = np.zeros(pa.N_BINS, bool); inr[ids - 1] = True
+    def summ(m):
+        m = m & ok
+        if not m.any():
+            return None
+        if part == 'mean':
+            return {'bins_with_data': int(m.sum()), 'mean_term_mean_over_bins': _r(np.mean(val[m]))}
+        return {'bins_with_data': int(m.sum()), 'points': int(w[m].sum()), 'cost_per_datum': _r(np.sum(val[m] * w[m]) / np.sum(w[m]))}
+    reg, rest = summ(inr), summ(~inr)
+    if reg is None:
+        raise ToolError(f'{label}: no {src} {V} data at {depth_from}–{depth_to} m')
+    contrib = np.where(ok, val * (1 if part == 'mean' else w), 0)
+    res = {'region': label, 'region_bins': int(len(ids)), 'obs_class': src, 'cost_type': cost_type, 'variable': V,
+           'part': part, 'depth_range_m': [_r(A.depth[k[0]], 4), _r(A.depth[k[-1]], 4)], 'years': 'all',
+           'region_result': reg, 'rest_of_world': rest,
+           'region_share_of_bins_with_data_pct': _r(100 * reg['bins_with_data'] / ok.sum()),
+           'region_share_of_summed_cost_pct': _r(100 * contrib[inr].sum() / contrib.sum()) if contrib.sum() else None,
+           'highest_bins_in_region': [{'bin': int(b + 1), 'where': _where(A, b + 1), 'value': _r(val[b])}
+                                      for b in sorted(np.nonzero(inr & ok)[0], key=lambda b: -val[b])[:5]],
+           'note': 'a share of the summed cost much bigger than the share of bins means the region weighs more than '
+                   'its size; regions are sets of ~220 km geodesic bins, so small seas are coarse'}
+    depth_param = _group_param(A, k)
+    code = '.'.join(str(int(b)) for b in sorted(ids))
+    return {'result': res, 'views': [{'page': 'explorer', 'params': {
+        'src': src, 'ct': cost_type, 'V': V, 'part': part, 'depth': depth_param, 'years': 'all', 'region': code},
+        'caption': f'Cost map explorer with {label.split(" (")[0]} outlined (its panel: region vs the rest, per year, platforms)'}]}
+
+
 def _text(html):
     """Plain text from the report's HTML snippets (tags dropped, entities decoded, spaces collapsed)."""
     import html as _h
@@ -454,7 +571,7 @@ def open_view(A, page, **params):
                                                    'caption': params.pop('caption', None) or f'The {page} view'}]}
 
 
-TOOLS = {f.__name__: f for f in (explain, list_contents, cost_vs_depth, cost_vs_time, compare_classes, compare_references,
+TOOLS = {f.__name__: f for f in (explain, region_cost, list_contents, cost_vs_depth, cost_vs_time, compare_classes, compare_references,
                                  where_high, offset_vs_variability, peak_attribution, observation_counts, open_view)}
 
 # JSON schemas for the model (OpenAI tool format)
@@ -471,6 +588,12 @@ def _schema(name, desc, props, required):
 
 
 SCHEMAS = [
+    _schema('region_cost', 'The cost in a region against the rest of the world, over a depth range (all years): a named sea '
+            'or ocean area ("Labrador Sea", "Gulf of Mexico", "eastern tropical Pacific", "Southern Ocean", "subpolar '
+            'North Atlantic", "Kuroshio region", ...) or a lon/lat box (lon -180..180; lon_min > lon_max crosses the dateline).',
+            {'src': _SRC, 'cost_type': _CT, 'region': {'type': 'string'}, 'variable': _V, 'part': _PART,
+             'depth_from': _Z, 'depth_to': _Z, 'lon_min': {'type': 'number'}, 'lon_max': {'type': 'number'},
+             'lat_min': {'type': 'number'}, 'lat_max': {'type': 'number'}}, ['src', 'cost_type']),
     _schema('explain', 'The report\'s own text: what an analysis (01-12) shows and how it is computed, the list of analyses '
             '("analyses"), the definitions of terms ("terms": cost, weights, sigma, the split), or a guide section '
             '(e.g. "attribution", "peak", "explorer", "viewer"). Use it for questions about meaning or method.',

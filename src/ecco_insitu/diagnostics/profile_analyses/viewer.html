@@ -148,7 +148,8 @@ single year, log scale, regions)"><button class="tab" data-m="simple">simple</bu
 <div class="row"><span class="lab">Cost</span><span id="parts"></span></div>
 <div class="row diag"><span class="lab">Misfit, &sigma;</span><span id="diags"></span>
   <span class="dnote">not cost terms: the signed misfits use a red–blue scale centered on 0</span></div>
-<div class="row"><span class="lab">Depth</span><span id="dmodes"></span><select id="dsel"></select></div>
+<div class="row"><span class="lab">Depth</span><span id="dmodes"></span><select id="dsel"></select>
+  <span id="drange" style="display:none">from <select id="dr0"></select> to <select id="dr1"></select></span></div>
 <div class="row"><span class="lab">Time</span>
   <button class="tab" id="tall">all years</button>
   <div id="trange"><div id="ttrack"><div id="tfill"></div></div><div id="tticks"></div>
@@ -163,6 +164,12 @@ single year, log scale, regions)"><button class="tab" data-m="simple">simple</bu
     <span class="cap">shift window</span>
     <button class="step" id="shr" title="move the whole window one year later">&#9654;&#9654;</button></span>
   <button class="tab tbtn x" id="tone" title="show one year at a time: both handles together">single year</button></div>
+<div class="row" id="regrow"><span class="lab">Region</span>
+  <button class="tab" id="regmode" title="Drag a box on any map to add its bins to the region; shift-drag removes them; shift-click adds or removes one bin">draw a region</button>
+  <span class="dnote">or a named area:</span>
+  <input id="regname" list="regnames" placeholder="e.g. Labrador Sea" size="18"><datalist id="regnames"></datalist>
+  <button class="tab" id="regclear">clear</button>
+  <span id="regtxt" class="dnote">No region. Draw a box on a map, or pick a named area; its panel (below the maps) compares it with the rest of the world.</span></div>
 </div>
 <div id="status"></div>
 </div>
@@ -193,10 +200,6 @@ Where the red curve (all places) jumps and the blue one doesn't, the jump comes 
   <label><span id="vmaxlab">max</span> <input type="number" id="vmax" step="any" style="width:6em"></label>
   <button class="tab" id="vauto">auto (98th pct)</button><span id="scalenote" class="dnote"></span></div></div>
 <div id="info"></div>
-<div class="row x" id="regrow"><span class="lab">Region</span>
-  <button class="tab" id="regmode" title="Drag a box on any map to add its bins to the region; shift-drag removes them; shift-click adds or removes one bin">select region</button>
-  <button class="tab" id="regclear">clear</button>
-  <span id="regtxt" class="dnote">No region. Click "select region", then drag a box on a map (shift-drag removes, shift-click toggles one bin).</span></div>
 <div id="lower">
   <div id="regp" class="panel" style="display:none"><div class="ptitle">Region vs the rest <span class="dnote">(current class, cost type, variable, cost part, depths, years)</span></div>
     <div id="regsum"></div><canvas id="rcan" width="560" height="190"></canvas><div id="regtop"></div><div id="regplat"></div></div>
@@ -333,10 +336,28 @@ let REGION = null, REGMODE = false;
 const MIN_BINS = 5;                      // curves / bars with fewer bins (or points) than this are drawn faint
 function regionText() {
   const t = document.getElementById('regtxt');
-  t.textContent = REGION && REGION.size ? `${REGION.size} bins selected (outlined in purple). Drag to add, shift-drag to remove, shift-click toggles one bin.`
-    : 'No region. Click "select region", then drag a box on a map (shift-drag removes, shift-click toggles one bin).';
+  t.textContent = REGION && REGION.size ? `${REGION.size} bins selected (outlined in purple; its numbers are in the region panel below the maps). Drag to add, shift-drag to remove, shift-click toggles one bin.`
+    : 'No region. Draw a box on a map, or pick a named area; its panel (below the maps) compares it with the rest of the world.';
 }
 function regionChanged() { regionText(); render(); }   // render() writes the address
+// common ocean regions that are no single Natural Earth area (the chatbot's list, tools.py OCEAN_REGIONS): lon0 > lon1
+// crosses the dateline
+const OCEAN_REGIONS = [['eastern tropical Pacific', -140, -70, -20, 20], ['western tropical Pacific', 120, -170, -20, 20],
+  ['tropical Pacific', 120, -70, -20, 20], ['North Pacific', 120, -100, 20, 66], ['South Pacific', 145, -70, -60, -20],
+  ['subpolar North Atlantic', -65, -5, 45, 66], ['subtropical North Atlantic', -80, -15, 15, 45], ['North Atlantic', -100, 20, 0, 70],
+  ['tropical Atlantic', -60, 15, -15, 15], ['South Atlantic', -70, 20, -60, 0], ['Indian Ocean', 20, 120, -60, 30],
+  ['Southern Ocean', -180, 180, -90, -50], ['Arctic', -180, 180, 66, 90], ['Gulf Stream region', -80, -45, 32, 45],
+  ['Kuroshio region', 130, 175, 25, 42], ['Agulhas region', 10, 40, -45, -30]];
+function regionByName(nm) {             // Set of bin ids: a common ocean region (box) or a Natural Earth area (bin_name)
+  const R_ = new Set(), low = nm.toLowerCase(), box = OCEAN_REGIONS.find(r => r[0].toLowerCase() === low);
+  if (box) { const [, a, b, c, d] = box;
+    for (let i = 0; i < INDEX.bin_center.length / 2; i++) { let lo = INDEX.bin_center[2 * i]; const la = INDEX.bin_center[2 * i + 1]; if (lo > 180) lo -= 360;
+      if ((a <= b ? lo >= a && lo <= b : lo >= a || lo <= b) && la >= c && la <= d) R_.add(i + 1); }
+    return R_; }
+  const k = INDEX.bin_names ? INDEX.bin_names.findIndex(n => n.toLowerCase() === low) : -1;
+  if (k > 0) INDEX.bin_name.forEach((v, i) => { if (v === k) R_.add(i + 1); });
+  return R_;
+}
 
 // How a level's value is formed from its bins, as analysis 02: the mean term is one value per bin, so bins count
 // equally; costs and the bias are per point, so a level's value is the point-weighted mean (sum over bins of the
@@ -528,7 +549,7 @@ async function investigatePeak(zA, zB) {
   out.innerHTML = h;
   out.querySelectorAll('tr.pick').forEach(r => r.addEventListener('click', () => { REGION = new Set(cls[+r.dataset.i].bins); regionChanged(); }));
   // the maps show the peak level (the clusters are the high bins there); say so above the maps, with a way back
-  const prevDepth = {dmode: S.dmode, dsel: S.dsel};
+  const prevDepth = {dmode: S.dmode, dsel: S.dsel, r0: S.r0, r1: S.r1};
   if (S.dmode !== 'level' || +S.dsel !== kp) { S.dmode = 'level'; S.dsel = kp; fillDepthSelect(); document.getElementById('dsel').value = kp; }
   const nt = document.getElementById('peaknotice');
   nt.innerHTML = `<b>The maps now show ${z[kp]} m</b>, the peak level of ${Math.round(lo)}–${Math.round(hi)} m (the depth row above was set to it); ` +
@@ -537,7 +558,7 @@ async function investigatePeak(zA, zB) {
     `<button class="tab" id="peakclear">clear the outline</button>`;
   nt.style.display = '';
   const pb = document.getElementById('peakback');
-  if (pb) pb.onclick = () => { S.dmode = prevDepth.dmode; S.dsel = prevDepth.dsel; fillDepthSelect(); document.getElementById('dsel').value = S.dsel;
+  if (pb) pb.onclick = () => { S.dmode = prevDepth.dmode; S.dsel = prevDepth.dsel; S.r0 = prevDepth.r0; S.r1 = prevDepth.r1; fillDepthSelect(); document.getElementById('dsel').value = S.dsel;
     nt.style.display = 'none'; render(); };
   document.getElementById('peakclear').onclick = () => { REGION = null; nt.style.display = 'none'; regionChanged(); };
   REGION = new Set(cls[0].bins); regionChanged();
@@ -857,6 +878,7 @@ function levelsSelected() {
   const nd = INDEX.depth.length;
   if (S.dmode === 'all') return null;
   if (S.dmode === 'level' || S.dmode === 'spike') return [ +S.dsel ];
+  if (S.dmode === 'range') { const a = Math.min(S.r0, S.r1), b = Math.max(S.r0, S.r1); return Array.from({length: b - a + 1}, (_, i) => a + i); }
   return INDEX.groups[S.dmode][S.dsel].levels;
 }
 function computeBins(d, yd, allYears) {   // per-bin value for the current selection: Float32Array(10243), NaN = none
@@ -1018,7 +1040,7 @@ let VALS = null, RENDER_ID = 0;
 const SCALE = {};                       // view key -> automatic color-scale max (98th percentile, all years)
 function scaleKey() {
   const p = (S.part === 'anomaly') ? 'unsplit' : S.part;   // unsplit and anomaly: same units, same scale
-  return [S.src, S.ct, S.V, p, S.dmode, S.dsel].join('|');
+  return [S.src, S.ct, S.V, p, S.dmode, S.dmode === 'range' ? S.r0 + '-' + S.r1 : S.dsel].join('|');
 }
 // ---------- the address holds the whole view, so any view can be bookmarked, copied or sent ----------
 // src, ct, V, part, depth (all | k<level> | <mode>:<group> | spike:<level>), years (all | <y0>-<y1>), region (bin ids,
@@ -1030,7 +1052,7 @@ function regionDecode(t) { const R = new Set(); for (const part of (t || '').spl
   const [a, b] = part.split('-').map(Number); if (Number.isFinite(a)) for (let x = a; x <= (Number.isFinite(b) ? b : a); x++) R.add(x); } return R; }
 function viewQuery() {
   const q = new URLSearchParams({src: S.src, ct: S.ct, V: S.V, part: S.part});
-  q.set('depth', S.dmode === 'all' ? 'all' : S.dmode === 'level' ? 'k' + S.dsel : `${S.dmode}:${S.dsel}`);
+  q.set('depth', S.dmode === 'all' ? 'all' : S.dmode === 'level' ? 'k' + S.dsel : S.dmode === 'range' ? `r${Math.min(S.r0, S.r1)}-${Math.max(S.r0, S.r1)}` : `${S.dmode}:${S.dsel}`);
   q.set('years', S.all || S.part === 'mean' ? 'all' : `${INDEX.blocks[S.t0]}-${INDEX.blocks[S.t1]}`);
   const z = INDEX.depth; q.set('range', `${z[Math.min(+S.sb0, +S.sb1)]}-${z[Math.max(+S.sb0, +S.sb1)]}`);
   if (S.same) q.set('same', '1'); if (S.log) q.set('log', '1'); if (S.vmax) q.set('max', String(S.vmax));
@@ -1133,12 +1155,16 @@ function fillDepthSelect() {
   let opts = [];
   if (S.dmode === 'all') opts = [];
   else if (S.dmode === 'level') opts = INDEX.depth.map((z, k) => [k, z + ' m (level ' + (k + 1) + ')']);
+  else if (S.dmode === 'range') opts = [];
   else if (S.dmode === 'spike') {
     const sp = (INDEX.spikes[S.src + '|' + S.ct] || {})[S.V] || [];
     opts = sp.map(s => [s.level, `${INDEX.depth[s.level]} m: ${s.part} ${fmt(s.value)} vs ${fmt(s.median)} around it`]);
     if (!opts.length) opts = [[-1, 'no spikes flagged for this selection']];
   } else opts = INDEX.groups[S.dmode].map((g, i) => [i, `${g.label} (${g.levels.length} level${g.levels.length > 1 ? 's' : ''}: ${INDEX.depth[g.levels[0]]}${g.levels.length > 1 ? '–' + INDEX.depth[g.levels.at(-1)] : ''} m)`]);
   sel.style.display = opts.length ? '' : 'none';
+  const dr = document.getElementById('drange'); dr.style.display = S.dmode === 'range' ? '' : 'none';
+  if (S.dmode === 'range') { const o = INDEX.depth.map((z, k) => `<option value="${k}">${z} m</option>`).join('');
+    for (const [id, key] of [['dr0', 'r0'], ['dr1', 'r1']]) { const e = document.getElementById(id); if (!e.options.length) e.innerHTML = o; e.value = S[key]; } }
   for (const [v, t] of opts) { const o = document.createElement('option'); o.value = v; o.textContent = t; sel.appendChild(o); }
   if (opts.length) { if (![...sel.options].some(o => o.value == S.dsel)) S.dsel = opts[0][0]; sel.value = S.dsel; }
   if (S.dmode === 'spike' && +S.dsel < 0) S.dmode = 'all';
@@ -1229,9 +1255,18 @@ async function init() {
       document.getElementById('peakp').scrollIntoView({behavior: 'smooth', block: 'nearest'}); });
     pc.style.cursor = 'crosshair'; }
   document.getElementById('regmode').addEventListener('click', e => { REGMODE = !REGMODE; e.target.classList.toggle('armed', REGMODE);
-    e.target.textContent = REGMODE ? 'selecting: drag on a map (click here when done)' : 'select region';
+    e.target.textContent = REGMODE ? 'drawing: drag on a map (click here when done)' : 'draw a region';
     document.querySelectorAll('#maps canvas').forEach(c => c.style.cursor = REGMODE ? 'crosshair' : 'pointer'); });
-  document.getElementById('regclear').addEventListener('click', () => { REGION = null; regionChanged(); });
+  document.getElementById('regclear').addEventListener('click', () => { REGION = null; document.getElementById('regname').value = ''; regionChanged(); });
+  // named areas: every Natural Earth marine area that holds bins (index.json bin_names), plus the common ocean regions
+  if (INDEX.bin_name) {
+    const count = new Map(); INDEX.bin_name.forEach(i => count.set(i, (count.get(i) || 0) + 1));
+    const names = [...count.keys()].map(i => INDEX.bin_names[i]).filter(Boolean);
+    document.getElementById('regnames').innerHTML = [...OCEAN_REGIONS.map(r => r[0]), ...names.sort()].map(n => `<option value="${n}">`).join('');
+  }
+  document.getElementById('regname').addEventListener('change', e => { const nm = e.target.value.trim(); if (!nm) return;
+    const R_ = regionByName(nm); if (!R_ || !R_.size) { document.getElementById('regtxt').textContent = `No area called "${nm}" here; pick one from the list.`; return; }
+    REGION = R_; regionChanged(); });
   // the same-bins curve: drawn for the range when the box is ticked, and redrawn for a new range only when asked
   // (the "update" button that appears, or "Investigate"), so moving the band itself never recomputes anything
   const rangeChanged = () => { const ap = S.sbApplied || [S.sb0, S.sb1], stale = S.same && (+ap[0] !== +S.sb0 || +ap[1] !== +S.sb1);
@@ -1257,8 +1292,10 @@ async function init() {
   tabs('parts', partTabs, 'part', v => { S.part = v; re(); });
   tabs('diags', [['bias', 'misfit (ref − obs)'], ['nmis', 'normalized misfit (ref − obs)/σ'], ['sig', 'σ (assumed error)']], 'part', v => { S.part = v; S.log = false;
     document.getElementById('logscale').checked = false; re(); });
-  tabs('dmodes', [['all', 'all depths'], ['level', 'single level'], ['100m', '100 m bands'], ['15', '15 groups'], ['30', '30 groups'], ['spike', 'flagged spikes']], 'dmode',
-       v => { S.dmode = v; S.dsel = 0; re(); });
+  tabs('dmodes', [['all', 'all depths'], ['level', 'single level'], ['range', 'from – to'], ['100m', '100 m bands'], ['15', '15 groups'], ['30', '30 groups'], ['spike', 'flagged spikes']], 'dmode',
+       v => { S.dmode = v; S.dsel = 0; if (v === 'range' && S.r0 == null) { S.r0 = 0; S.r1 = INDEX.depth.findIndex(z => z >= 500); } re(); });
+  for (const [id, key] of [['dr0', 'r0'], ['dr1', 'r1']]) document.getElementById(id).addEventListener('change', e => {
+    S[key] = +e.target.value; S.vmax = null; document.getElementById('vmax').value = ''; render(); });
   document.getElementById('dsel').addEventListener('change', e => { S.dsel = e.target.value; S.vmax = null; document.getElementById('vmax').value = ''; render(); });
   const lo = document.getElementById('tlo'), hi = document.getElementById('thi'), nb = INDEX.blocks.length - 1;
   lo.max = hi.max = nb; S.t0 = 0; S.t1 = nb;
@@ -1322,7 +1359,7 @@ async function init() {
   };
   fit(); window.addEventListener('resize', fit);
   // simple / expert mode: simple hides the less-used options; a view that uses one of them shows in expert mode
-  const needsExpert = () => ['100m', '15', '30', 'spike'].includes(S.dmode) || (REGION && REGION.size) || S.log;
+  const needsExpert = () => ['100m', '15', '30', 'spike'].includes(S.dmode) || S.log;
   const setMode = m => { document.body.classList.toggle('simple', m === 'simple');
     document.querySelectorAll('#modesw .tab').forEach(b => b.classList.toggle('active', b.dataset.m === m));
     try { localStorage.setItem('explorerMode', m); } catch (e) {} };
@@ -1330,9 +1367,9 @@ async function init() {
   window.initMode = () => setMode(needsExpert() ? 'expert' : (saved || 'simple'));   // called once the address is read
   document.querySelectorAll('#modesw .tab').forEach(b => b.addEventListener('click', () => {
     if (b.dataset.m === 'simple' && needsExpert()) {
-      if (!confirm('This view uses expert options (depth bands or groups, spikes, a region or the log scale). Switch to simple and reset them?')) return;
+      if (!confirm('This view uses expert options (depth bands or groups, spikes or the log scale). Switch to simple and reset them?')) return;
       if (['100m', '15', '30', 'spike'].includes(S.dmode)) { S.dmode = 'all'; fillDepthSelect(); }
-      REGION = null; regionText(); S.log = false; document.getElementById('logscale').checked = false; render(); }
+      S.log = false; document.getElementById('logscale').checked = false; render(); }
     setMode(b.dataset.m); }));
   document.getElementById('fold').addEventListener('click', e => {
     const c = document.getElementById('controls'), f = c.classList.toggle('folded');
@@ -1349,6 +1386,7 @@ async function init() {
   { // depth, years, range, same bins, region, log, max from the address
     const d = q.get('depth');
     if (d && d !== 'all') { if (/^k\d+$/.test(d)) { S.dmode = 'level'; S.dsel = +d.slice(1); }
+      else if (/^r\d+-\d+$/.test(d)) { const [a, b] = d.slice(1).split('-').map(Number); S.dmode = 'range'; S.r0 = a; S.r1 = b; }
       else { const [m, v] = d.split(':'); if (['100m', '15', '30', 'spike'].includes(m)) { S.dmode = m; S.dsel = +v; } } }
     const y = q.get('years'); if (y && y !== 'all') { const [a, b] = y.split('-'), ia = INDEX.blocks.indexOf(a), ib = INDEX.blocks.indexOf(b);
       if (ia >= 0 && ib >= 0) { S.all = false; S.t0 = Math.min(ia, ib); S.t1 = Math.max(ia, ib); } }
