@@ -206,7 +206,7 @@ Where the red curve (all places) jumps and the blue one doesn't, the jump comes 
 <div id="info"></div>
 <div id="lower">
   <div id="regp" class="panel" style="display:none"><div class="ptitle">Region vs the rest <span class="dnote">(current class, cost type, variable, cost part, depths, years)</span></div>
-    <div id="regsum"></div><canvas id="rcan" width="560" height="190"></canvas><div id="regtop"></div><div id="regplat"></div></div>
+    <div id="regsum"></div><canvas id="rcan" width="560" height="200"></canvas><div id="regtop"></div><div id="regplat"></div></div>
   <div id="binp" class="panel"><div class="ptitle">Clicked bin</div><div id="bintxt" class="dnote">Click a bin on a map for its breakdown.</div>
     <canvas id="bcan" width="560" height="200" style="display:none"></canvas><div id="binlinks"></div></div>
 </div>
@@ -488,11 +488,19 @@ function drawProfile() {
 // peak, the high ones grouped into clusters of neighboring bins (centers within CLUSTER_KM), each cluster's share
 // of bins and of the summed value. The largest cluster becomes the region.
 const CLUSTER_KM = 600, HIGH_Q = 0.9;
-let PROFGEOM = null, PEAKBAND = null, RANGEPX = null, PEAKDONE = null;   // PEAKDONE: [k0, k1] last investigated   // the plot's depth axis; the depth band being / last investigated                    // the profile plot's depth axis, for mouse -> depth
+let PROFGEOM = null, PEAKBAND = null, RANGEPX = null, PEAKDONE = null, PEAKFOR = '';   // PEAKDONE: [k0, k1] last investigated   // the plot's depth axis; the depth band being / last investigated                    // the profile plot's depth axis, for mouse -> depth
 function hav(la1, lo1, la2, lo2) { const r = Math.PI / 180, a = Math.sin((la2 - la1) * r / 2) ** 2 + Math.cos(la1 * r) * Math.cos(la2 * r) * Math.sin((lo2 - lo1) * r / 2) ** 2; return 12742 * Math.asin(Math.sqrt(a)); }
+function peakStale() {                // the selection changed: the peak results are for the old one
+  const out = document.getElementById('peaktxt');
+  out.innerHTML = `<div class="explain">These results were for <b>${PEAKFOR}</b>. You changed the selection, so they are out of date; ` +
+    `click <b>investigate</b> to redo them for this one. The depth and the purple outline are left as they were.</div>`;
+  document.getElementById('peaknotice').style.display = 'none';
+  PEAKBAND = null; PEAKDONE = null;
+}
 async function investigatePeak(zA, zB) {
   document.getElementById('peaktool').open = true;          // the tool opens (e.g. from the report's "investigate" link)
   PEAKBAND = [Math.min(zA, zB), Math.max(zA, zB)];
+  PEAKFOR = `${S.src}, ${ctLabel(S.ct)}, ${S.V}, ${PARTS[S.part]}`;
   { // the depth range (menus, band) shows exactly what is investigated
     const zz = INDEX.depth, inb = zz.map((x, k) => k).filter(k => zz[k] >= PEAKBAND[0] && zz[k] <= PEAKBAND[1]);
     if (inb.length) { S.sb0 = inb[0]; S.sb1 = inb[inb.length - 1]; document.getElementById('sb0').value = S.sb0; document.getElementById('sb1').value = S.sb1; }
@@ -802,16 +810,25 @@ async function drawRegion(d) {
   const cv = document.getElementById('rcan'), g = cv.getContext('2d'), W = cv.width, H = cv.height; g.clearRect(0, 0, W, H);
   const okv = [...vr, ...(cnt ? [] : vo)].filter(Number.isFinite); if (!okv.length) return;
   let lo = Math.min(0, ...okv), hi = Math.max(0, ...okv); if (hi === lo) hi = lo + 1; const pad = 0.08 * (hi - lo); if (lo < 0) lo -= pad; if (hi > 0) hi += pad;
-  const L = 50, R2 = 10, T = 18, B = 24, bw = (W - L - R2) / nb, yv = x => T + (H - T - B) * (hi - x) / (hi - lo);
+  const L = 50, R2 = 10, T = 30, B = 24, bw = (W - L - R2) / nb, yv = x => T + (H - T - B) * (hi - x) / (hi - lo);
   g.font = '10px sans-serif'; g.fillStyle = '#444'; g.textAlign = 'right'; g.textBaseline = 'middle';
   for (const tk of niceTicks(lo, hi, 4)) { g.fillText(fmt(tk), L - 4, yv(tk)); g.strokeStyle = '#eee'; g.beginPath(); g.moveTo(L, yv(tk)); g.lineTo(W - R2, yv(tk)); g.stroke(); }
   for (let i = 0; i < nb; i++) { if (!Number.isFinite(vr[i])) continue; g.fillStyle = br[i].size >= MIN_BINS ? '#6c3483' : 'rgba(108,52,131,0.3)';
     const a = yv(Math.max(0, Math.min(vr[i], hi))), b2 = yv(Math.min(0, Math.max(vr[i], lo))); g.fillRect(L + i * bw + 1, Math.min(a, b2), bw - 2, Math.max(1, Math.abs(b2 - a))); }
-  if (!cnt) { g.strokeStyle = 'rgba(90,90,90,0.9)'; g.lineWidth = 1.5; g.beginPath(); let on = false;
-    for (let i = 0; i < nb; i++) { if (!Number.isFinite(vo[i])) { on = false; continue; } const x = L + (i + 0.5) * bw, y = yv(vo[i]); if (on) g.lineTo(x, y); else { g.moveTo(x, y); on = true; } } g.stroke(); }
+  if (!cnt) {   // the rest of the world: a gray line with a thin white edge (visible over the dark bars) and a dot per year
+    // with data (a year without data on either side has no line, only its dot)
+    const path = () => { g.beginPath(); let on = false;
+      for (let i = 0; i < nb; i++) { if (!Number.isFinite(vo[i])) { on = false; continue; } const x = L + (i + 0.5) * bw, y = yv(vo[i]); if (on) g.lineTo(x, y); else { g.moveTo(x, y); on = true; } } };
+    g.lineJoin = 'round';
+    for (const [lw, col] of [[4, '#fff'], [1.5, 'rgba(70,70,70,0.95)']]) { g.strokeStyle = col; g.lineWidth = lw; path(); g.stroke(); }
+    for (let i = 0; i < nb; i++) { if (!Number.isFinite(vo[i])) continue; const x = L + (i + 0.5) * bw, y = yv(vo[i]);
+      for (const [rad, col] of [[3, '#fff'], [2, 'rgba(70,70,70,0.95)']]) { g.fillStyle = col; g.beginPath(); g.arc(x, y, rad, 0, 2 * Math.PI); g.fill(); } } }
   g.textAlign = 'center'; g.textBaseline = 'top'; g.fillStyle = '#444';
   for (let i = 0; i < nb; i += 5) g.fillText(INDEX.blocks[i], L + (i + 0.5) * bw, H - B + 4);
-  g.textAlign = 'left'; g.fillText(`per year at the selected depths: ${S.part === 'mean' ? 'ref − obs' : PARTS[S.part]} — bars: region (faint: under ${MIN_BINS} bins)` + (cnt ? '' : '; line: rest of the world'), L, 2);
+  // two short lines, so nothing runs past the chart's edge: what is plotted, then what bars and line are
+  g.textAlign = 'left'; g.fillText(`Per year at the selected depths: ${S.part === 'mean' ? 'ref − obs' : PARTS[S.part]} (no bar, or a gap in the line: no data that year)`, L, 2);
+  g.fillStyle = '#666'; g.fillText(`bars: the purple-outlined region (pale: under ${MIN_BINS} of its bins have data)` +
+    (cnt ? '' : '; line and dots: the rest of the world'), L, 14);
 }
 
 // ---------- the clicked bin: its values at the selected depths, per level and per year, and links ----------
@@ -1297,9 +1314,9 @@ async function init() {
   if (q.get('V') === 'S') S.V = 'S';
   if (q.get('part') && PARTS[q.get('part')]) S.part = q.get('part');
   const re = () => { S.vmax = null; document.getElementById('vmax').value = ''; fillDepthSelect();
-    // the peak tool's results belong to one class, cost type, variable and part: redo them for the new selection
-    // (otherwise the text, the outline and the depth it chose would still be the old selection's)
-    if (PEAKBAND) { const [a, b] = PEAKBAND; render().then(() => investigatePeak(a, b)); } else render(); };
+    // the peak tool's results belong to one class, cost type, variable and part: say they are out of date (the depth
+    // and the outline stay as they are; redoing them here moved the depth without being asked)
+    if (PEAKBAND) peakStale(); render(); };
   tabs('srcs', srcs.map(s => [s, s]), 'src', v => { S.src = v; if (!hasS()) S.V = 'T'; re(); });
   tabs('cts', cts.map(s => [s, ctLabel(s)]), 'ct', v => { S.ct = v; re(); });
   tabs('vars', [['T', 'T'], ['S', 'S']], 'V', v => { S.V = v; re(); });
