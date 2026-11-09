@@ -8,13 +8,15 @@
   from the .meta headers since commit 2767cfb).
 - Analysis with both models: `~/ecco/yip/insitu_reports/profile_analyses_20261108_142247`
   (`profile-analyze --model V4r6=<dir> --model V5r1=<dir>`; V4r6 identical to the old vs_model). Comparison
-  figures: `--compare-only`. Site build: `docs/reports/profile_report_20261027_142247_new` (976 MB: near the
-  GitHub Pages 1 GB limit; NOT swapped in yet).
+  figures: `--compare-only`. Site: the local `docs/reports/profile_report_20261027_142247` (976 MB: near the GitHub Pages 1 GB limit).
 - Data viewer: V5r1 level files in `~/ecco/yip/bin_viewer_data/run_20261027_142247_V5r1_site/` (775 MB) for a
   new repository `ecco-bin-viewer-v5r1` (the user has to create it); index.json already points at it.
-- **Open question for the user:** V5r1's Black Sea is very warm at depth (13.6 °C at 1200 m vs about 8.9 °C
-  observed); CTD vs V5r1: the Black Sea box is 25 % of the summed cost from 0.3 % of the bins (PFL: 6 %). It
-  dominates V5r1's mean term and the comparison maps. Checked: not a reading error (the V5r1 field itself).
+- **Black Sea left out of all MODEL costs** (user's decision 2026-11-08, for the demo): compute.py
+  `MODEL_EXCLUDED_AREAS = ('Black Sea', 'Sea of Azov', 'Sea of Marmara')`; the climatology costs and analysis 01
+  keep them; the data viewer's model anomalies too. Why: V5r1's Black Sea is far too warm at depth (13.6 °C at
+  1200 m vs about 8.9 °C observed): it was 25 % of the CTD cost vs V5r1 from 0.3 % of the bins (PFL 6 %). V4r6 has
+  no Black Sea at all (0 values there). A red box at the top of Notes & errata says so, and a red line above every
+  model figure. Analysis used now: `profile_analyses_20261108b_142247` (local site swapped to it).
 
 **Everything is committed and pushed (last code commit 98a8c10).** All 136 tests pass. Demo to the team: Monday
 2026-11-09.
