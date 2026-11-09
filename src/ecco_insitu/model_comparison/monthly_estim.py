@@ -2,18 +2,23 @@
 **Work in progress** (see :mod:`ecco_insitu.model_comparison`). Approximate model equivalents from
 monthly-mean fields: ``prof_Testim`` / ``prof_Sestim`` without a model run on the profiles.
 
-For every profile file, the model's monthly-mean THETA and SALT (MITgcm MDS ``.data``/``.meta``, LLC90,
-compact layout) are sampled at the profile's grid cell, month and depths, and written to
+For every profile file, the model's monthly-mean THETA and SALT (MITgcm MDS ``.data``/``.meta``, any LLC
+grid in the compact layout: LLC90 for ECCO v4, LLC270 for V5) are sampled at the profile's grid cell, month and
+depths, and written to
 ``<name>_model.nc`` in the same layout ``ecco-insitu mds-to-nc`` writes (so ``model-cost`` and
 ``profile-analyze --model-equivalents`` take either).
 
 How each value is made:
 
-- **Cell:** the LLC90 cell the chain put the profile in (``prof_interp_lon`` / ``prof_interp_lat``, the
-  cell center; one cell per profile, as ``prof_interp_weights`` = 1).
-- **Month:** the monthly mean of the profile's calendar month (``prof_YYYYMMDD``). A record whose
-  time step is ``s`` (``deltaT`` = 3600 s, model start ``--start``, default 1992-01-01) ends at
-  ``start + s hours``; it is the mean of the month before that.
+- **Grid and time come from the fields' ``.meta`` headers**, not from fixed numbers: the grid size
+  (``dimList``: e.g. 90 x 1170 x 50 for LLC90, 270 x 3510 x 50 for LLC270) and each record's averaging
+  period (``timeInterval``, seconds since the model start ``--start``, default 1992-01-01). The grid
+  folder (``--grid``: XC, YC, RC, RF, hFacC) must be the same grid; this is checked.
+- **Cell:** on the chain's own grid (LLC90), the cell the NCEI chain put the profile in (``prof_interp_lon``
+  / ``prof_interp_lat``, the cell center); on any other grid, the cell nearest the profile's own position
+  (``prof_lon`` / ``prof_lat``), so a finer grid gives a value closer to the profile.
+- **Month:** the record whose averaging period contains the middle of the profile's calendar month
+  (``prof_YYYYMMDD``).
 - **Depth:** as the model's ``profiles_interp.F``. Linear between the two model levels around the depth
   (level centers ``-RC``), when the deeper one is wet; the shallowest level's value above it; the deepest
   level's value down to half a level below it; otherwise the upper level's value if the depth is above
@@ -43,30 +48,46 @@ import netCDF4
 import numpy as np
 
 FILL = -9999.0
-NX = 90
-NR = 50
 _VARS = {'T': 'theta', 'S': 'salt'}
 
 
 # --------------------------------------------------------------------------------------------------
+def read_meta(path):
+    """An MDS ``.meta`` header: {'dims': [nx, ny, nz], 'interval': (t0, t1) seconds or None, 'prec': str}."""
+    t = open(path).read()
+    dims = [int(x) for x in re.search(r'dimList\s*=\s*\[([^\]]*)\]', t).group(1).replace(',', ' ').split()]
+    ti = re.search(r'timeInterval\s*=\s*\[([^\]]*)\]', t)
+    prec = re.search(r"dataprec\s*=\s*\[\s*'(\w+)'", t)
+    return {'dims': dims[0::3], 'interval': tuple(float(x) for x in ti.group(1).split()) if ti else None,
+            'prec': prec.group(1) if prec else 'float32'}
+
+
 def read_grid(grid_dir):
-    """LLC90 cell centers (XC, YC; compact, flat), level centers and faces (RC, RF, positive down), and the
-    wet mask (hFacC > 0) per level, flat over the compact layout."""
+    """Cell centers (XC, YC; compact, flat), level centers and faces (RC, RF, positive down), and the wet mask
+    (hFacC > 0) per level, flat over the compact layout; the grid's size from its own .meta files."""
     g = lambda n: np.fromfile(os.path.join(grid_dir, n + '.data'), '>f4')
     xc, yc, rc, rf, h = g('XC'), g('YC'), -g('RC'), -g('RF'), g('hFacC')
-    n2 = xc.size
-    return {'xc': xc, 'yc': yc, 'zc': rc.astype(float), 'zf': rf.astype(float),
-            'wet': (h.reshape(NR, n2) > 0)}
+    n2, nr = xc.size, rc.size
+    return {'xc': xc, 'yc': yc, 'zc': rc.astype(float), 'zf': rf.astype(float), 'n2': n2, 'nr': nr,
+            'wet': (h.reshape(nr, n2) > 0)}
 
 
 def month_records(field_dir, prefix, start):
-    """{yyyymm: path} for the monthly-mean files ``<prefix>.<step>.data`` in ``field_dir``."""
+    """{yyyymm: (path, dims)} for the monthly-mean files ``<prefix>.<step>.data`` in ``field_dir``. Each record's
+    month is read from its ``.meta`` (``timeInterval``: the averaged period, seconds since ``start``): the month
+    of the period's middle. Without a timeInterval, the record ends at step x deltaT, deltaT from
+    ``timeInterval``-less headers being unknown, so that is an error."""
     out = {}
     for p in glob.glob(os.path.join(field_dir, f'{prefix}.*.data')):
-        step = int(re.search(r'\.(\d+)\.data$', p).group(1))
-        end = start + datetime.timedelta(hours=step)
-        mid = end - datetime.timedelta(days=14)          # inside the averaged month
-        out[mid.year * 100 + mid.month] = p
+        m = read_meta(p[:-5] + '.meta')
+        if not m['interval'] or len(m['interval']) < 2:
+            raise ValueError(f'{p[:-5]}.meta has no timeInterval: cannot tell which month it is')
+        t0, t1 = m['interval'][:2]
+        mid = start + datetime.timedelta(seconds=(t0 + t1) / 2)
+        key = mid.year * 100 + mid.month
+        if key in out:
+            raise ValueError(f'two records for {key}: {out[key][0]} and {p}')
+        out[key] = (p, m['dims'])
     return out
 
 
@@ -103,12 +124,22 @@ def _estimate_file(args):
     path, out_dir, theta, salt, grid_dir, start = args
     grid = read_grid(grid_dir)
     T_rec, S_rec = month_records(theta, 'THETA_mon_mean', start), month_records(salt, 'SALT_mon_mean', start)
+    for recs in (T_rec, S_rec):                      # the fields and the grid must be the same grid
+        for p, dims in list(recs.values())[:1]:
+            if dims[0] * dims[1] != grid['n2'] or dims[2] != grid['nr']:
+                raise ValueError(f'{p}: a {dims[0]} x {dims[1]} x {dims[2]} field, but the grid in {grid_dir} has '
+                                 f'{grid["n2"]} cells x {grid["nr"]} levels: give --grid for the fields\' grid')
+    on_chain_grid = grid['n2'] == 90 * 1170           # LLC90, the grid the NCEI chain assigns cells on
     name = os.path.basename(path)[:-3]
     with netCDF4.Dataset(path) as ds:
         ds.set_auto_mask(False)
         depth = np.asarray(ds['prof_depth'][:], float)
-        lon = np.asarray(ds['prof_interp_lon'][:], float).reshape(-1, ds['prof_interp_lon'].shape[-1] if ds['prof_interp_lon'].ndim > 1 else 1)[:, 0]
-        lat = np.asarray(ds['prof_interp_lat'][:], float).reshape(len(lon), -1)[:, 0]
+        if on_chain_grid:                            # the cell the NCEI chain chose (its center)
+            lon = np.asarray(ds['prof_interp_lon'][:], float).reshape(-1, ds['prof_interp_lon'].shape[-1] if ds['prof_interp_lon'].ndim > 1 else 1)[:, 0]
+            lat = np.asarray(ds['prof_interp_lat'][:], float).reshape(len(lon), -1)[:, 0]
+        else:                                        # a finer grid: the cell nearest the profile itself
+            lon = np.asarray(ds['prof_lon'][:], float).ravel()
+            lat = np.asarray(ds['prof_lat'][:], float).ravel()
         ym = (np.asarray(ds['prof_YYYYMMDD'][:], float) // 100).astype(int)
         has = {V: f'prof_{V}' in ds.variables for V in _VARS}
     cells, dist = cell_index(grid, lon, lat)
@@ -116,7 +147,7 @@ def _estimate_file(args):
     # profiles_interp.F: between centers with the deeper cell dry, use the upper value if above its bottom
     upper_ok = (rule == 1) & (depth < grid['zf'][k1])
     est = {V: np.full((len(lon), len(depth)), FILL) for V in _VARS if has[V]}
-    n2 = grid['xc'].size
+    n2, nr = grid['n2'], grid['nr']
     missing_month = 0
     for m in np.unique(ym):
         sel = np.nonzero(ym == m)[0]
@@ -125,7 +156,7 @@ def _estimate_file(args):
             if rec is None:
                 missing_month += len(sel) if V == 'T' else 0
                 continue
-            F = np.fromfile(rec, '>f4').reshape(NR, n2).astype(float)
+            F = np.fromfile(rec[0], '>f4').reshape(nr, n2).astype(float)
             c = cells[sel]
             f0, f1 = F[k0][:, c].T, F[k1][:, c].T
             w0, w1 = grid['wet'][k0][:, c].T, grid['wet'][k1][:, c].T
@@ -155,9 +186,10 @@ def _estimate_file(args):
                     'profiles (ecco_insitu.model_comparison.monthly_estim)')
         o.setncattr('monthly_mean_theta_dir', os.path.abspath(theta)); o.setncattr('monthly_mean_salt_dir', os.path.abspath(salt))
         o.setncattr('source_file', os.path.abspath(path))
-        o.setncattr('horizontal', 'the LLC90 cell of prof_interp_lon/lat (nearest neighbor, as the chain)')
+        o.setncattr('horizontal', 'the LLC90 cell of prof_interp_lon/lat (nearest neighbor, as the NCEI chain)' if on_chain_grid
+                    else f'the cell of a {grid["n2"]}-cell grid nearest prof_lon/lat ({os.path.abspath(grid_dir)})')
         o.setncattr('vertical', "as MITgcm profiles_interp.F (linear between level centers; dry cells have no value)")
-        o.setncattr('time', f"the profile's calendar month; model start {start:%Y-%m-%d}, deltaT 3600 s")
+        o.setncattr('time', f"the profile's calendar month: the record whose .meta timeInterval contains it; model start {start:%Y-%m-%d}")
     os.replace(tmp, dst)
     n = {V: int((arr != FILL).sum()) for V, arr in est.items()}
     far = int((np.degrees(dist) > 0.01).sum())
@@ -185,7 +217,8 @@ def cli(argv=None):
     ap.add_argument('--salt', required=True, help='folder of SALT_mon_mean.<step>.data/.meta')
     ap.add_argument('--data', required=True, help='folder of profile files (e.g. a run\'s ecco_arrays/)')
     ap.add_argument('--out', required=True, help='output folder for <name>_model.nc')
-    ap.add_argument('--grid', help='LLC90 grid folder (XC, YC, RC, RF, hFacC); default paths.grid_dir')
+    ap.add_argument('--grid', help='the fields\' grid folder (XC, YC, RC, RF, hFacC); default paths.grid_dir (LLC90). '
+                    'For LLC270 fields (ECCO V5), the LLC270 grid folder')
     ap.add_argument('--start', default='1992-01-01', help='model start date (default 1992-01-01, ECCO v4)')
     ap.add_argument('-n', type=int, default=4, help='parallel workers (default 4)')
     config_loader.add_arguments(ap)
