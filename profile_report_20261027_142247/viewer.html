@@ -1,0 +1,1611 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Cost map explorer — Profile Analysis — 20261027_142247 (WOD flags, XBT max depth 2900 m)</title>
+<style>
+
+.navrow { display: flex; align-items: center; gap: 1em; padding: 0.35em 1em; background: #f2f6fb; border-bottom: 1px solid #d6e0ec; }
+.navrow .site { font: 600 13px -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; color: #345; white-space: nowrap; }
+.navrow .run { font: 12px -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; color: #778; margin-left: auto; }
+.sitenav { display: flex; gap: 0.25em; align-items: center; flex-wrap: wrap; font-family: -apple-system, BlinkMacSystemFont,
+  'Segoe UI', sans-serif; font-size: 13px; }
+.sitenav a { text-decoration: none; color: #1a5ca8; padding: 0.22em 0.65em; border: 1px solid #c9d7ea; border-radius: 4px;
+  background: #fff; white-space: nowrap; }
+.sitenav a:hover { background: #eef4fc; border-color: #1a5ca8; }
+.sitenav a.here { background: #1a5ca8; color: #fff; border-color: #1a5ca8; cursor: default; }
+.sitenav a.navq { color: #6c3483; border-color: #d9c8e6; }
+.sitenav a.navq.here { background: #6c3483; color: #fff; border-color: #6c3483; }
+
+:root { --accent: #1a5ca8; --border: #d0d0d0; }
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; color: #222; font-size: 14px; }
+#header { padding: 0.5em 1em; border-bottom: 2px solid var(--border); display: flex; gap: 1em; align-items: center; }
+#header h1 { font-size: 1.05em; font-weight: 600; }
+#header a { color: var(--accent); font-size: 0.85em; }
+.row { display: flex; align-items: center; gap: 0.3em; padding: 0.3em 1em; flex-wrap: wrap; border-bottom: 1px solid #eee; background: #f7f7f7; }
+.lab { font-size: 0.75em; color: #888; text-transform: uppercase; letter-spacing: 0.04em; min-width: 7.5em; }
+.tab { padding: 0.25em 0.65em; border: 1px solid var(--border); border-radius: 4px; cursor: pointer; background: #fff; font-size: 0.86em; }
+.tab.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+.tab[disabled] { opacity: 0.3; cursor: default; }
+select { font-size: 0.86em; padding: 0.15em; max-width: 26em; }
+#trange { position: relative; width: 30em; height: 2.6em; margin: 0 0.4em; }
+.step { font-size: 0.75em; padding: 0.1em 0.35em; border: 1px solid var(--border); border-radius: 3px; background: #fff;
+  cursor: pointer; line-height: 1.2; color: #333; }
+.step:hover:not([disabled]) { background: #e8f0fb; border-color: var(--accent); }
+.step[disabled] { opacity: 0.3; cursor: default; }
+.stepgrp { display: inline-flex; flex-direction: column; align-items: center; gap: 1px; margin: 0 0.15em; }
+.stepgrp .cap { font-size: 0.62em; color: #999; }
+#shiftgrp { display: inline-flex; align-items: center; gap: 0.25em; margin: 0 0.8em 0 0.2em; padding-left: 0.8em;
+  border-left: 1px solid #ddd; }
+#shiftgrp .cap { font-size: 0.75em; color: #777; }
+#tticks { position: absolute; left: 7px; right: 7px; top: 1.6em; height: 1em; font-size: 0.7em; color: #888; }
+#tticks span { position: absolute; transform: translateX(-50%); }
+#trange input[type=range] { position: absolute; left: 0; top: 0.3em; width: 100%; pointer-events: none;
+  -webkit-appearance: none; appearance: none; background: none; margin: 0; }
+#trange input[type=range]::-webkit-slider-thumb { pointer-events: auto; -webkit-appearance: none; width: 14px;
+  height: 14px; border-radius: 50%; background: var(--accent); border: 2px solid #fff; box-shadow: 0 0 0 1px var(--accent); cursor: pointer; }
+#trange input[type=range]::-moz-range-thumb { pointer-events: auto; width: 12px; height: 12px; border-radius: 50%;
+  background: var(--accent); border: 2px solid #fff; cursor: pointer; }
+#ttrack { position: absolute; left: 7px; right: 7px; top: 0.75em; height: 4px; background: #ddd; border-radius: 2px; }
+#tfill { position: absolute; top: 0; height: 4px; background: var(--accent); border-radius: 2px; }
+#timelab { font-size: 0.86em; font-weight: 600; display: inline-block; width: 13.5em; white-space: nowrap;
+  overflow: hidden; text-overflow: ellipsis; }   /* fixed width: the buttons after it never move */
+.tbtn { font-size: 0.8em; padding: 0.1em 0.4em; }
+#maps { display: flex; flex-wrap: wrap; gap: 10px; padding: 0.8em 1em 0.3em; align-items: flex-start; justify-content: center; }
+#mapwrap { position: relative; }
+#busy { position: absolute; inset: 0; background: rgba(255,255,255,0.72); display: none; z-index: 5;
+  align-items: center; justify-content: center; }
+#busy.on { display: flex; }
+#busy .box { background: #fff; border: 1px solid #c5d9f1; border-radius: 6px; padding: 0.7em 1.1em;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.15); display: flex; align-items: center; gap: 0.7em; font-size: 0.95em; }
+#busy .spin { width: 18px; height: 18px; border: 3px solid #c5d9f1; border-top-color: var(--accent);
+  border-radius: 50%; animation: spin 0.8s linear infinite; }
+#busy .bar { width: 160px; height: 6px; background: #eee; border-radius: 3px; overflow: hidden; display: none; }
+#busy .bar > div { height: 100%; width: 0; background: var(--accent); }
+@keyframes spin { to { transform: rotate(360deg); } }
+#status { min-height: 1.3em; }
+/* the settings stay at the top of the window while scrolling; "fold" shrinks them to one summary line */
+#controls { position: sticky; top: 0; z-index: 8; background: #f7f7f7; box-shadow: 0 1px 3px rgba(0,0,0,0.15); }
+#foldbar { display: flex; align-items: center; gap: 0.8em; padding: 0.2em 1em; font-size: 0.85em; border-bottom: 1px solid #eee; }
+#foldbar .tab { font-size: 0.8em; padding: 0.1em 0.5em; }
+#foldsum { color: #555; display: none; }
+#controls.folded #ctlrows { display: none; }
+#controls.folded #foldsum { display: inline; }
+html { scroll-padding-top: 4em; }
+#status.pending { color: var(--accent); font-weight: 600; }
+.mapbox { position: relative; }
+.mapbox .t { font-size: 0.8em; color: #555; text-align: center; margin-bottom: 2px; }
+canvas { border: 1px solid #ccc; display: block; }
+#legend { display: flex; align-items: flex-start; gap: 1.2em; padding: 0.2em 1em 0.6em; font-size: 0.85em; }
+#cbarbox { display: flex; flex-direction: column; align-items: center; }
+#cbar { display: block; }
+#cbtxt { margin-top: 2px; font-size: 0.9em; color: #333; }
+.cbar2box { display: flex; flex-direction: column; align-items: center; margin-top: 4px; font-size: 0.85em; }
+#cbar2 { border: none; }
+#cbtxt2 { margin-top: 2px; color: #333; }
+#legend .opts { display: flex; gap: 0.8em; align-items: center; padding-top: 0.2em; }
+#guide { margin: 0.3em 1em 1.2em; max-width: 72em; font-size: 0.86em; line-height: 1.5; color: #333; }
+#guide summary { cursor: pointer; color: var(--accent); font-weight: 600; }
+#guide table { border-collapse: collapse; margin: 0.4em 0 0.8em; }
+#guide th, #guide td { border: 1px solid #ddd; padding: 3px 7px; text-align: left; vertical-align: top; }
+#guide th { background: #f0f0f0; }
+#guide h4 { margin: 0.9em 0 0.2em; font-size: 1em; }
+.hdr-guide { color: var(--accent); cursor: pointer; font-size: 0.85em; }
+.row.diag { background: #f3f0f7; }
+.dnote { font-size: 0.78em; color: #888; font-style: italic; margin-left: 0.6em; }
+#status { color: #888; font-size: 0.85em; padding: 0 1em; }
+#info { padding: 0.4em 1em 1em; font-size: 0.85em; color: #444; line-height: 1.5; max-width: 70em; }
+details.tool { margin: 0.4em 1em 0.2em; border: 1px solid #ddd2ea; border-radius: 6px; background: #faf8fc; }
+details.tool > summary { cursor: pointer; padding: 0.45em 0.8em; font-size: 0.9em; list-style: none; }
+details.tool > summary::-webkit-details-marker { display: none; }
+details.tool > summary::before { content: '▶ '; color: #6c3483; font-size: 0.8em; }
+details.tool[open] > summary::before { content: '▼ '; }
+#toolrow { display: flex; gap: 1.2em; padding: 0 0.8em 0.7em; flex-wrap: nowrap; align-items: flex-start; }
+#toolrow #prof { flex: 0 0 auto; max-width: 575px; }
+#toolrow #prof .rangebox { max-width: 545px; }
+#toolrow #peakp { flex: 1 1 auto; min-width: 26em; }
+#peaknotice { margin: 0.3em 1em 0; padding: 0.4em 0.8em; background: #f4effa; border-left: 3px solid #6c3483; font-size: 0.86em; line-height: 1.5; }
+#peaknotice button { margin-left: 0.6em; }
+body.simple .x { display: none !important; }
+body.simple #dmodes .tab[data-v="100m"], body.simple #dmodes .tab[data-v="15"], body.simple #dmodes .tab[data-v="30"],
+body.simple #dmodes .tab[data-v="spike"] { display: none; }
+#modesw { margin-left: auto; display: inline-flex; gap: 0.2em; align-items: center; }
+#modesw .tab { font-size: 0.8em; padding: 0.15em 0.55em; }
+#lower { display: flex; gap: 1.2em; padding: 0 1em 1em; flex-wrap: wrap; align-items: flex-start; }
+.panel { border: 1px solid #ddd; border-radius: 5px; padding: 0.5em 0.7em; background: #fcfcfc; }
+.ptitle { font-weight: 600; font-size: 0.9em; margin-bottom: 0.3em; }
+.rangebox { font-size: 0.84em; background: #f6f3fa; border: 1px solid #ddd2ea; border-radius: 5px; padding: 0.35em 0.6em; margin: 0.2em 0 0.4em; line-height: 1.5; }
+.rangeuse { display: flex; gap: 0.9em; align-items: center; flex-wrap: wrap; margin-top: 0.25em; }
+.tab.primary { background: #6c3483; color: #fff; border-color: #6c3483; font-weight: 600; }
+.pmode { font-size: 0.85em; display: flex; gap: 0.6em; align-items: center; margin: 0.2em 0 0.3em; }
+.explain { background: #f4effa; border-left: 3px solid #6c3483; padding: 0.35em 0.6em; margin: 0.2em 0 0.5em; line-height: 1.5; }
+.popts { font-size: 0.82em; display: flex; gap: 0.8em; align-items: center; flex-wrap: wrap; margin-bottom: 0.3em; }
+#binp { min-width: 34em; max-width: 46em; font-size: 0.85em; line-height: 1.45; }
+#binp table { border-collapse: collapse; margin: 0.3em 0; }
+#binp td, #binp th { border: 1px solid #e3e3e3; padding: 1px 6px; text-align: right; }
+#binp th { background: #f3f3f3; }
+#binp td:first-child, #binp th:first-child { text-align: left; }
+#binlinks a { color: var(--accent); font-weight: 600; margin-right: 1em; }
+canvas.clickable { cursor: pointer; }
+#peakp { min-width: 34em; max-width: 46em; font-size: 0.85em; line-height: 1.45; }
+#peakp table { border-collapse: collapse; margin: 0.3em 0; }
+#peakp td, #peakp th { border: 1px solid #e3e3e3; padding: 1px 6px; text-align: right; }
+#peakp th { background: #f3f3f3; } #peakp td:first-child, #peakp th:first-child { text-align: left; }
+#peakp tr.pick { cursor: pointer; } #peakp tr.pick:hover { background: #eef4fc; }
+#peakp ol { margin: 0.2em 0 0.4em 1.3em; }
+#regp { min-width: 34em; max-width: 46em; font-size: 0.85em; line-height: 1.45; }
+/* the per-year charts never run past their panel's border (they are drawn at 560 px and scaled down to fit) */
+#rcan, #bcan { max-width: 100%; height: auto; }
+#regp, #binp { box-sizing: border-box; overflow: hidden; }
+#regp table { border-collapse: collapse; margin: 0.3em 0; }
+#regp td, #regp th { border: 1px solid #e3e3e3; padding: 1px 6px; text-align: right; }
+#regp th { background: #f3f3f3; } #regp td:first-child, #regp th:first-child { text-align: left; }
+#regp tr.pick { cursor: pointer; } #regp tr.pick:hover { background: #eef4fc; }
+#regbox { position: fixed; border: 1.5px dashed #6c3483; background: rgba(108,52,131,0.08); pointer-events: none; display: none; z-index: 9; }
+.tab.armed { background: #6c3483; color: #fff; border-color: #6c3483; }
+#hover { position: fixed; z-index: 9; pointer-events: none; background: rgba(255,255,255,0.95); border: 1px solid #aaa;
+         padding: 2px 6px; font-size: 0.8em; display: none; }
+</style>
+</head>
+<body>
+<div class="navrow"><span class="site">ECCO in situ profiles</span><nav class="sitenav" aria-label="pages of this site"><a href="index.html" title="The figures of the analyses, per obs class and cost type">Analyses</a><a href="viewer.html" class="here" title="Cost maps for any depth, years and region; the peak tool">Cost map explorer</a><a href="https://brucelaughlin.github.io/ecco-bin-viewer/run_20261027_142247/" id="nav-data" title="The observations themselves: every profile, per geodesic bin">In situ data viewer</a><a href="questions.html" class="navq" title="Common questions, each opening a page set up to answer it">What do you want to know?</a><a href="guide.html" title="How to use every page; what the terms mean; how the attribution works">Guide</a></nav><span class="run" title="the run these pages are made from">Profile Analysis — 20261027_142247 (WOD flags, XBT max depth 2900 m)</span></div>
+<div id="header"><h1>Cost map explorer</h1>
+  <button class="tab" id="copylink" title="Copy a link that opens exactly this view (settings, depth, years, region)">copy link to this view</button>
+  <span id="modesw" title="Simple: the everyday choices only. Expert: every option (depth bands and groups, flagged spikes,
+single year, log scale, regions)"><button class="tab" data-m="simple">simple</button><button class="tab" data-m="expert">expert</button></span></div>
+<div id="controls">
+<div id="foldbar"><button class="tab" id="fold" title="Fold the settings to one line (they stay at the top while you scroll)">&#9650; fold settings</button>
+  <span id="foldsum"></span></div>
+<div id="ctlrows">
+<div class="row"><span class="lab">Source</span><span id="srcs"></span></div>
+<div class="row"><span class="lab">Cost type</span><span id="cts"></span></div>
+<div class="row"><span class="lab">Variable</span><span id="vars"></span></div>
+<div class="row"><span class="lab">Cost</span><span id="parts"></span></div>
+<div class="row diag"><span class="lab">Misfit, &sigma;</span><span id="diags"></span>
+  <span class="dnote">not cost terms: the signed misfits use a red–blue scale centered on 0</span></div>
+<div class="row"><span class="lab">Depth</span><span id="dmodes"></span><select id="dsel"></select>
+  <span id="drange" style="display:none">from <select id="dr0"></select> to <select id="dr1"></select></span></div>
+<div class="row"><span class="lab">Time</span>
+  <button class="tab" id="tall">all years</button>
+  <div id="trange"><div id="ttrack"><div id="tfill"></div></div><div id="tticks"></div>
+    <input type="range" id="tlo" min="0" max="34" step="1" value="0">
+    <input type="range" id="thi" min="0" max="34" step="1" value="34"></div>
+  <span id="timelab"></span>
+  <span class="stepgrp"><span><button class="step" data-h="lo" data-d="-1" title="first year: one year earlier">&#9664;</button><button
+    class="step" data-h="lo" data-d="1" title="first year: one year later">&#9654;</button></span><span class="cap">first year</span></span>
+  <span class="stepgrp"><span><button class="step" data-h="hi" data-d="-1" title="last year: one year earlier">&#9664;</button><button
+    class="step" data-h="hi" data-d="1" title="last year: one year later">&#9654;</button></span><span class="cap">last year</span></span>
+  <span id="shiftgrp"><button class="step" id="shl" title="move the whole window one year earlier">&#9664;&#9664;</button>
+    <span class="cap">shift window</span>
+    <button class="step" id="shr" title="move the whole window one year later">&#9654;&#9654;</button></span>
+  <button class="tab tbtn x" id="tone" title="show one year at a time: both handles together">single year</button></div>
+<div class="row" id="regrow"><span class="lab">Region</span>
+  <button class="tab" id="regmode" title="Drag a box on any map to add its bins to the region; shift-drag removes them; shift-click adds or removes one bin">draw a region</button>
+  <span class="dnote">or a named area:</span>
+  <input id="regname" list="regnames" placeholder="e.g. Labrador Sea" size="18"><datalist id="regnames"></datalist>
+  <button class="tab" id="regclear">clear</button>
+  <span id="regtxt" class="dnote">No region. Draw a box on a map, or pick a named area; its panel (below the maps) compares it with the rest of the world.</span></div>
+</div>
+<div id="status"></div>
+</div>
+<details id="peaktool" class="tool"><summary><b>Optional: depth profile and peak attribution</b>
+  <span class="dnote">&mdash; not needed for the maps. Open to see the selection&rsquo;s cost against depth (as analysis&nbsp;02), choose a
+  depth range around a bump, and find where it comes from (<a href="guide.html#attribution">how it works</a>).</span></summary>
+  <div id="toolrow">
+  <div id="prof" class="panel"><div class="ptitle">Depth profile of the selection <span class="dnote" id="profnote">(as analysis 02)</span></div>
+    <div class="rangebox"><b>Depth range</b> (the shaded band on the plot): from <select id="sb0"></select> to <select id="sb1"></select>
+      <div class="dnote">Set it with the menus, or on the plot: drag the band's top or bottom edge (the handles), drag inside it to move it,
+        or drag across an empty part of the plot to draw a new one. Nothing happens until you use it:</div>
+      <div class="rangeuse"><button class="tab primary" id="peakgo">Investigate the peak in this range</button>
+        <label title="Draw a second (blue) curve averaged over one fixed list of places: only those with data at every depth of the range.
+Where the red curve (all places) jumps and the blue one doesn't, the jump comes from a change in which places are averaged, not from a worse fit"><input type="checkbox" id="samebins"> also draw the curve over the same bins at every depth of the range</label>
+        <button class="tab" id="sbupdate" style="display:none" title="The band moved since the blue curve was drawn">redraw the blue curve for this range</button></div>
+      <span id="sbnote" class="dnote"></span></div>
+    <canvas id="pcan" width="520" height="430"></canvas></div>
+  <div id="peakp" class="panel" style="display:none"><div class="ptitle">Peak <span class="dnote">(the steps are fixed; the numbers are for you to read; <a href="guide.html#attribution">how it works</a>)</span></div>
+    <div id="peaktxt"></div></div>
+  </div></details>
+<div id="peaknotice" style="display:none"></div>
+<div id="mapwrap"><div id="maps"></div>
+  <div id="busy"><div class="box"><div class="spin"></div><div><div id="busymsg">working…</div>
+    <div class="bar" id="busybar"><div></div></div></div></div></div></div>
+<div id="legend"><div id="cbarbox"><canvas id="cbar" width="440" height="32"></canvas><span id="cbtxt"></span></div>
+  <div class="opts"><label title="Depth lines of the seafloor: the 200 m shelf edge, and the one(s) nearest the depths shown"><input type="checkbox" id="isob" checked> isobaths <span id="isobtxt" class="dnote"></span></label>
+  <label class="x"><input type="checkbox" id="logscale"> log color scale</label>
+  <label><span id="vmaxlab">max</span> <input type="number" id="vmax" step="any" style="width:6em"></label>
+  <button class="tab" id="vauto">auto (98th pct)</button><span id="scalenote" class="dnote"></span></div></div>
+<div id="info"></div>
+<div id="lower">
+  <div id="regp" class="panel" style="display:none"><div class="ptitle">Region vs the rest <span class="dnote">(current class, cost type, variable, cost part, depths, years)</span></div>
+    <div id="regsum"></div><canvas id="rcan" width="560" height="190"></canvas><div id="regtop"></div><div id="regplat"></div></div>
+  <div id="binp" class="panel"><div class="ptitle">Clicked bin</div><div id="bintxt" class="dnote">Click a bin on a map for its breakdown.</div>
+    <canvas id="bcan" width="560" height="200" style="display:none"></canvas><div id="binlinks"></div></div>
+</div>
+<details id="guide"><summary>Guide: what every option means</summary>
+<p>The map explorer shows, for one obs class at a time, how well the observations fit a reference (climatology or
+the model) in each <strong>geodesic bin</strong>: 10,242 cells of roughly equal area covering the globe. You choose
+what to show with the rows of buttons; the maps redraw at once. Everything here is computed from the same saved
+results as the report&rsquo;s figures.</p>
+
+<h4>The rows of buttons</h4>
+<table>
+<tr><th>Row</th><th>Option</th><th>What it means</th></tr>
+<tr><td rowspan="1">Source</td><td>CTD_WOD, PFL, &hellip;</td><td>The obs class (instrument type): CTD and bottle casts,
+  gliders (GLD), ice-tethered profilers (ITP), seal tags (MEOP), moorings (MRB), Argo floats (PFL), XBTs. Each is
+  analyzed on its own.</td></tr>
+<tr><td rowspan="2">Cost type</td><td>vs_clim</td><td>Reference = the WOA23 climatology (1991&ndash;2020 average) at the profile&rsquo;s
+  location, month and depths.</td></tr>
+<tr><td>vs V4r6, vs V5r1</td><td>Reference = an ECCO model (v4r6, or V5r1 on its finer grid), from its <em>monthly-mean</em> T and S
+  sampled at the profile&rsquo;s grid cell, month and depths (approximate: not the model&rsquo;s value at the profile&rsquo;s exact time).
+  No model values after 2025.</td></tr>
+<tr><td>Variable</td><td>T, S</td><td>Temperature or salinity. S is grayed out for classes without salinity (XBT).</td></tr>
+<tr><td rowspan="4">Cost</td><td>unsplit</td><td>The <strong>cost per datum</strong>: (&Delta;V/&sigma;)&sup2;, where &Delta;V is observation
+  minus reference and &sigma; the assumed error of the observation. 1 means &ldquo;one assumed error away&rdquo;; 4 means two.
+  Averaged over the bin&rsquo;s data in the selected depths and years. &ldquo;True weights&rdquo;: the area factor &gamma; and the spatial
+  scaling factor sf are left out, so this is purely misfit relative to &sigma;.</td></tr>
+<tr><td>anomaly (split)</td><td>The same, after removing the bin&rsquo;s <em>long-term mean misfit</em> at each depth level: it measures how well
+  the <em>variations in time</em> are fit, ignoring a steady offset. This is the first term of ECCO&rsquo;s split cost
+  (<code>cost_profiles.F</code>). The long-term mean is computed from this obs class&rsquo;s own data, all years.</td></tr>
+<tr><td>mean term (split)</td><td>The second term of the split cost: the steady offset itself, (mean observation &minus; mean reference)&sup2;,
+  weighted by the bin&rsquo;s combined error w&#772; = 1/max(s/n, s/9), s the mean of &sigma;&sup2; over the bin&rsquo;s n data (as
+  <code>cost_profiles.F</code>). One value per bin and level; averaged over the selected levels. Defined over the whole record, so
+  the time selection is off. Its values are typically much larger than the per-datum cost, since it doesn&rsquo;t shrink with
+  the number of data: compare maps of the mean term with each other, not with the other parts.</td></tr>
+<tr><td># data</td><td>The number of observations (profile values) in each bin for the selected depths and years: the
+  &ldquo;n&rdquo; behind the averages. Bins with very few data give noisy averages.</td></tr>
+<tr><td rowspan="3">Misfit, &sigma;</td><td>misfit (ref &minus; obs)</td><td><strong>Not a cost term.</strong> The
+  average of the signed misfit, reference minus observation, over the bin&rsquo;s data in the selected depths and years, in
+  &deg;C (T) or psu (S). Red: the reference (climatology or model) is warmer or saltier than the observations; blue: colder or
+  fresher. The color scale is centered on zero; type a value in &ldquo;max &plusmn;&rdquo; to set its range. Use it with the time range
+  to see whether a steady offset is constant or <em>drifting</em>. It is related to the split&rsquo;s mean term (this offset over
+  the whole record, squared and weighted), but here it keeps its sign, has units, and can be limited to any years.</td></tr>
+<tr><td>normalized misfit (ref &minus; obs)/&sigma;</td><td>The same, with each value divided by its assumed error &sigma;
+  first (true weights, no &gamma; or scaling factor): &plusmn;1 means one assumed error. Its square, averaged, is the unsplit cost.
+  Same red&ndash;blue scale centered on zero.</td></tr>
+<tr><td>&sigma; (assumed error)</td><td>The mean assumed error of the observations, &sigma; = 1/&radic;w with the true weights, in
+  &deg;C or psu: the errors the costs are measured against. Where the cost is high, check whether &sigma; is small there.</td></tr>
+<tr><td rowspan="6">Depth</td><td>all depths</td><td>All depth levels together (each data counts once, so the upper ocean, which
+  has more and closer-spaced levels, dominates).</td></tr>
+<tr><td>single level</td><td>One of the 97 standard depth levels (2&nbsp;m to 6000&nbsp;m); pick it in the list.</td></tr>
+<tr><td>100 m bands</td><td>All levels in a 100&nbsp;m range (0&ndash;100&nbsp;m, 100&ndash;200&nbsp;m, &hellip;). Below 2000&nbsp;m the levels are 200&nbsp;m
+  apart, so the bands there are 200&nbsp;m wide and hold one level each (e.g. 2200&ndash;2400&nbsp;m (1 level)); nothing is skipped.</td></tr>
+<tr><td>15 groups / 30 groups</td><td>The 97 levels split into 15 or 30 consecutive groups of about equal numbers of levels.</td></tr>
+<tr><td>flagged spikes</td><td>Levels where the mean cost per datum of this class stands out: above 0.5 and at least 1.4 times the
+  median of the levels 300&ndash;1000&nbsp;m above and below it (levels with at least 30 data). The list gives the level&rsquo;s
+  value and that median, and whether it was flagged in the unsplit or anomaly cost. Use it to find <em>where</em> a peak in
+  the report&rsquo;s cost-vs-depth plots (analyses 2 and 9) comes from.</td></tr>
+<tr><td>(list)</td><td>The level, band, group or spike to show.</td></tr>
+<tr><td rowspan="5">Time</td><td>all years</td><td>Every year of the record. Fast: uses a small all-years summary.</td></tr>
+<tr><td>the two handles</td><td>A range of years: drag the left handle for the first year and the right one for the last. The map
+  shows the average over every datum in those years. Choosing years downloads that class&rsquo;s year-by-year data in 5-year
+  pieces, only those the range needs (up to about 20&nbsp;MB per piece for Argo, a few MB for most classes), so the first
+  range in a period can take a few seconds; after that, changes are quick.</td></tr>
+<tr><td>&#9664; &#9654; first year / last year</td><td>(Right of the year label.) Move that end of the range by one year. If the two ends would cross,
+  the other is pushed along.</td></tr>
+<tr><td>&#9664;&#9664; shift window &#9654;&#9654;</td><td>Move the whole range by one year, keeping its length (e.g. 2012&ndash;2016 &rarr;
+  2013&ndash;2017), to slide a fixed-length window through the record or compare neighboring periods. Keyboard: <kbd>[</kbd>
+  and <kbd>]</kbd>. Stops at the ends of the record. With the color scale fixed for the view, what changes on the map
+  between steps is real.</td></tr>
+<tr><td>single year</td><td>Locks the handles together, so dragging, the step buttons and the shift buttons all move a one-year
+  window.</td></tr>
+</table>
+
+<h4>Loading</h4>
+<p>While data are downloading or the maps are being recomputed, the maps are dimmed and a box in the middle says what is
+happening, with the download progress in MB. While you drag the time handles, the year label follows at once and a blue
+note says the maps will update when you let go; they recompute a moment after you stop. The first time range in a
+period downloads that class&rsquo;s year-by-year data (tens of MB for Argo on a slow connection can take half a minute);
+after that it is kept, and changes take well under a second.</p>
+
+<h4>The maps and the color bar</h4>
+<p><strong>Maps:</strong> global (equal-area projection, starting at the western tip of Australia), and north and south polar
+stereographic views. White = no data in that bin for the selection; gray = land. Hover a bin to see its number and value.</p>
+<p><strong>Color bar:</strong> ticks give the values. The scale runs from 0 to the 98th percentile of the bins, and values above it get
+the top color (so a few extreme bins don&rsquo;t wash out the rest). It is <strong>fixed for a view</strong>: computed once from all
+years for the current obs class, cost type, variable and depth selection, and kept while you move the time range, so
+differences between years are real and not rescaling. Unsplit and anomaly share one scale (same units), so switching
+between them is a fair comparison. It is recomputed when you change the class, cost type, variable or depth, and for
+the mean term, number of data, misfits and &sigma;, which have their own scales. The note next to the color bar says which
+applies. <strong>max</strong>: set the top of the scale yourself (kept until you press <strong>auto</strong>), e.g. to compare
+two depths on the same scale. <strong>auto</strong>: back to the automatic scale. <strong>log color scale</strong>: spreads small values out (covers three powers of
+ten below the max).</p>
+
+<h4>Below the maps: the depth profile and the clicked bin (since 2026-11-02)</h4>
+<p><b>Depth profile of the selection</b>: for the current class, cost type, variable, cost part and years, the mean over bins at each
+depth level (red), as analysis&nbsp;02 draws it, with the number of bins per level (gray, log scale, right). <b>Same bins at every
+depth</b> adds a blue curve over only the bins that have data at <em>every</em> level of the chosen range (default 2000&ndash;2800&nbsp;m).
+A jump in the red curve that the blue one does not show comes from <em>which bins are counted</em> changing with depth, not from the
+water. (Example: PFL vs V4r6 mean term at 2200&ndash;2400&nbsp;m: red 4.9&ndash;5.6, blue 2.3&ndash;2.4; most floats stop at 2000&nbsp;m,
+so those levels hold far fewer bins, mostly subpolar North Atlantic ones.)</p>
+<p><b>Clicked bin</b>: click any bin on a map. The panel shows its center, and per depth level (the selected levels) the number of
+data, the unsplit and anomaly costs, the mean term, and the mean reference &minus; observation, the normalized misfit and &sigma; (all years); a bar chart of the
+selected cost part per year (for the mean term: reference &minus; observation per year, since the mean term itself has no years); and a link
+that opens the <b>in situ data viewer</b> on that bin, zoomed in to the individual profiles, at the same class, reference
+(climatology or model), variable, depth and years.</p>
+
+<h4>Region: is it here? (since 2026-11-03)</h4>
+<p>Click <b>select region</b>, then drag a box on any map: its bins join the region (outlined in purple); shift-drag removes bins,
+shift-click adds or removes one bin. The region is a set of bins, so it stays when you change class, cost type, variable,
+depth or years. With a region:</p>
+<ul>
+<li>the depth profile shows the <b>region</b> (purple; faint where it has fewer than 5 bins), the <b>rest of the world</b> (gray) and all
+  bins (light red). If a feature disappears from the rest-of-the-world curve, the region accounts for it. With &ldquo;same bins&rdquo;
+  on, both curves use only bins with data at every level of the range.</li>
+<li>a table: the region&rsquo;s share of the bins with data, of the data, and of the <b>summed</b> cost (or count), at the
+  selected depths and years, and how many times its share of bins that is. (Not shown for the misfits and &sigma;, which don&rsquo;t add up.)</li>
+<li>per year: the region (bars; faint with fewer than 5 bins) against the rest of the world (line).</li>
+<li>the region&rsquo;s ten largest bins; click a row for that bin&rsquo;s breakdown and the link to its profiles.</li>
+</ul>
+<p><b>Caution:</b> a region drawn around the darkest bins will always carry a large share. Judge it by its share of the term
+<em>relative to</em> its share of bins and data, and by the rest-of-the-world curve, not by the share alone.</p>
+
+<h4>Peak: where does a bump in the depth profile come from? (since 2026-11-03)</h4>
+<p>Choose a <b>depth range</b> around the bump: it is the shaded band on the depth-profile plot. Set it with the &ldquo;from / to&rdquo;
+menus, or on the plot: drag the band&rsquo;s top or bottom edge (the purple handles), drag inside it to move it, or drag across an empty
+part of the plot to draw a new band. Choosing a range does nothing by itself; then press <b>Investigate the peak in this range</b>
+(or follow &ldquo;investigate&rdquo; under analysis&nbsp;02 in the report). A short plain-language summary comes first.
+The page runs three fixed steps and reports the numbers; it does not interpret them:</p>
+<ol>
+<li><b>Peak</b>: the level with the largest value of the curve in the range, its number of bins, and the levels just above and below.</li>
+<li><b>Same bins</b>: the same over only the bins with data at the peak <em>and</em> both neighbors. The part of the peak&rsquo;s excess over
+  its neighbors that disappears is due to <em>which bins are counted</em> changing with depth; the rest is in a fixed set of bins.</li>
+<li><b>Where</b>: the top 10&nbsp;% of bins at the peak, grouped into clusters of neighbors (bin centers within 600&nbsp;km), each with its
+  share of bins and of the summed value. The largest cluster becomes the region (the region panel and its tables fill in); click
+  another cluster to switch. A cluster holds only the high bins; widen the region by dragging on the maps.</li>
+</ol>
+<p>Cluster names are descriptive: the smallest Natural Earth sea, gulf or bay containing most of the cluster&rsquo;s bin centers,
+otherwise a coarse hand-drawn box (e.g. &ldquo;subpolar North Atlantic&rdquo;, &ldquo;Brazil Basin&rdquo;) or the ocean; the center coordinates follow.</p>
+<p><b>Platforms in the region</b> (in the region panel): the region&rsquo;s platforms (Argo floats by WMO number, ITPs, seal tags,
+moorings; for WOD ship classes the ship or platform code, which is coarser), with profiles, years, share of the region&rsquo;s value
+and mean obs&nbsp;&minus;&nbsp;reference. The explorer stores costs per bin, level and year, not per profile, so a platform&rsquo;s share
+is apportioned: each (bin, year)&rsquo;s value is divided among its platforms by their numbers of profiles there (with a value at the
+selected depths). It is exact where a platform is alone in a bin and year. <b>Since 2026-11-04</b> the table is computed profile by profile
+instead, from the in situ data viewer&rsquo;s profile details: each profile&rsquo;s own cost, or for the mean term w&#772;&middot;(mean misfit)&middot;(its
+misfit)/n, so the parts add up to the term (a profile pulling against its bin&rsquo;s mean gets a negative part). Rebuilt this way the mean term
+agrees with the analysis to 0.14&nbsp;% of its total (PFL vs model, 2400&nbsp;m; the rest is the details&rsquo; rounding to 0.001). The apportioned
+split is used only if the details can&rsquo;t be loaded. &ldquo;show profiles&rdquo; opens the in situ data viewer with that platform&rsquo;s profiles
+ringed in cyan.</p>
+
+<h4>Reading it</h4>
+<ul>
+<li>Values near 1 mean the misfit is about what the assumed errors &sigma; allow; much larger values point to a poor fit, a
+too-small &sigma;, or bad data. With few data (# data) a single bad profile can dominate a bin.</li>
+<li>If unsplit is high but anomaly is low in a region, the misfit there is mostly a steady offset (see the mean term).
+  The misfit (ref &minus; obs) shows that offset&rsquo;s sign and size; compare early and late year ranges to see if it changes.</li>
+<li>The time range shows whether a high cost is persistent or limited to some years (e.g. one cruise or float).</li>
+<li>Data notes, open decisions and corrections are on the report&rsquo;s <em>Notes &amp; errata</em> page.</li>
+</ul>
+<p style="color:#777">Precision: values are stored to 3 significant digits. Time resolution: one year. Bins are the same geodesic bins
+as the report and the ECCO split cost.</p>
+</details>
+<div id="hover"></div><div id="regbox"></div>
+<script>
+'use strict';
+const INDEX_URL = 'viewer/index.json', GRID_URL = 'viewer/grid.json';
+const DATA_FORMAT = 2;
+// the in situ data viewer's reference for a cost type: vs_clim -> clim, vs_<model> -> <model> (e.g. vs_V5r1 -> V5r1)
+const refOf = ct => ct === 'vs_clim' ? 'clim' : ct.slice(3);
+// the cost-type tabs' text: 'vs climatology', 'vs V4r6', ...
+const ctLabel = ct => ct === 'vs_clim' ? 'vs climatology' : 'vs ' + ct.slice(3);                  // the record layout this page reads (viewer.py DATA_FORMAT)
+const vurl = u => u + '?v=' + ((INDEX && INDEX.version) || '');   // this build's files only (never a cached older one)
+const PARTS = {unsplit: 'cost per datum, unsplit', anomaly: 'cost per datum, split anomaly term',
+               mean: 'split mean term (per bin; all years)', count: 'number of data',
+               bias: 'mean misfit, reference − observation (not a cost)',
+               nmis: 'mean normalized misfit, (reference − observation)/σ (not a cost)',
+               sig: 'mean σ, the assumed error of the observations (not a cost)'};
+// the diagnostics (not cost terms, so not additive over bins); the signed ones use the red–blue scale centered on 0
+const DIAG = p => p === 'bias' || p === 'nmis' || p === 'sig', SIGNED = p => p === 'bias' || p === 'nmis';
+// a record set's values for the current part (null for the count: weights only); the mean term has no per-year
+// values, so per-year charts show the mean misfit for it
+const valArr = (c, part = S.part) => part === 'anomaly' ? c.ma : part === 'bias' || part === 'mean' ? c.bias
+  : part === 'nmis' ? c.nmis : part === 'sig' ? c.sig : part === 'count' ? null : c.mu;
+const S = {isobaths: true, src: null, ct: null, V: 'T', part: 'unsplit', dmode: 'level', dsel: 0, t0: 0, t1: 0, all: true,
+           vmax: null, log: false, same: false, sb0: 0, sb1: 0};
+let INDEX, GRID, GRIDS = {}, CACHE = {};
+
+async function getGz(url, label, onProgress) {  // download (with progress in the overlay) and gunzip
+  const r = await fetch(vurl(url));
+  if (!r.ok) throw new Error(url + ': ' + r.status);
+  const total = +r.headers.get('content-length') || 0;
+  let got = 0;
+  const counted = new TransformStream({ transform(chunk, ctl) {
+    got += chunk.length;
+    if (onProgress) onProgress(got, total);
+    else if (label) busy(label + ' — ' + (got / 1e6).toFixed(1) + (total ? ' of ' + (total / 1e6).toFixed(1) : '') + ' MB',
+                    total ? got / total : null);
+    ctl.enqueue(chunk); } });
+  const ds = new DecompressionStream('gzip');
+  return new Uint8Array(await new Response(r.body.pipeThrough(counted).pipeThrough(ds)).arrayBuffer());
+}
+// the loading overlay: shown over the maps whenever data is loading or the maps are being recomputed
+function busy(msg, frac) {
+  const b = document.getElementById('busy'), bar = document.getElementById('busybar');
+  if (msg === null) { b.classList.remove('on'); return; }
+  document.getElementById('busymsg').textContent = msg;
+  bar.style.display = frac == null ? 'none' : 'block';
+  if (frac != null) bar.firstElementChild.style.width = Math.round(100 * frac) + '%';
+  b.classList.add('on');
+}
+const paint = () => new Promise(r => requestAnimationFrame(() => setTimeout(r, 0)));  // let the overlay draw
+function f16(u) {               // float16 bits -> number
+  const s = (u & 0x8000) ? -1 : 1, e = (u >> 10) & 0x1f, f = u & 0x3ff;
+  if (e === 0) return s * Math.pow(2, -14) * (f / 1024);
+  if (e === 31) return f ? NaN : s * Infinity;
+  return s * Math.pow(2, e - 15) * (1 + f / 1024);
+}
+const F16 = new Float32Array(65536);           // float16 bits -> number, as a lookup table
+for (let u = 0; u < 65536; u++) F16[u] = f16(u);
+function parse(buf, withMean) { // see viewer.py for the layout (little-endian columns)
+  const dv = new DataView(buf.buffer, buf.byteOffset, buf.byteLength);
+  let o = 0; const out = {};
+  const raw16 = n => {             // n uint16 at offset o (copied, so alignment doesn't matter)
+    const a = new Uint16Array(n), b = new Uint8Array(a.buffer);
+    b.set(buf.subarray(o, o + 2 * n)); o += 2 * n; return a; };
+  const u16 = n => raw16(n);
+  const u8 = n => { const a = buf.slice(o, o + n); o += n; return a; };
+  const h16 = n => { const r = raw16(n), a = new Float32Array(n); for (let i = 0; i < n; i++) a[i] = F16[r[i]]; return a; };
+  const recs = () => { const n = dv.getUint32(o, true); o += 4;
+    return {bin: u16(n), lev: u8(n), blk: u8(n), mu: h16(n), ma: h16(n), n: u16(n), bias: h16(n), nmis: h16(n), sig: h16(n)}; };
+  for (const V of ['T', 'S']) {
+    const c = recs();
+    if (withMean) { const m = dv.getUint32(o, true); o += 4; c.mt = {bin: u16(m), lev: u8(m), v: h16(m)}; }
+    out[V] = c;
+  }
+  return out;
+}
+async function data(src, ct) {          // the all-years summary (small): loaded first
+  const key = src + '|' + ct;
+  if (!CACHE[key]) {
+    const lab = 'Loading ' + src + ', ' + ct;
+    busy(lab + '…'); await paint();
+    const raw = await getGz('viewer/' + INDEX.files[key], lab);
+    busy('Unpacking ' + src + ', ' + ct + '…'); await paint();
+    CACHE[key] = parse(raw, true);
+  }
+  return CACHE[key];
+}
+const YCACHE = {};
+async function yearData(src, ct) {      // year-by-year data: only the pieces covering the selected years
+  const key = src + '|' + ct, need = INDEX.years_files[key].filter(p => p.last >= S.t0 && p.first <= S.t1);
+  const todo = need.filter(p => !YCACHE[p.file]);
+  if (todo.length) {                     // download the missing pieces in parallel, with combined progress
+    const span = INDEX.blocks[todo[0].first] + '–' + INDEX.blocks[todo[todo.length - 1].last];
+    const lab = 'Loading ' + src + ' ' + ct + ', years ' + span + ' (first time only)';
+    busy(lab + '…'); await paint();
+    const got = {}, tot = {};
+    const show = () => { const g = Object.values(got).reduce((a, b) => a + b, 0), t = Object.values(tot).reduce((a, b) => a + b, 0);
+      busy(lab + ' — ' + (g / 1e6).toFixed(1) + (t ? ' of ' + (t / 1e6).toFixed(1) : '') + ' MB', t ? g / t : null); };
+    const raws = await Promise.all(todo.map(p => getGz('viewer/' + p.file, null, (g, t) => { got[p.file] = g; tot[p.file] = t; show(); })));
+    busy('Unpacking years ' + span + '…'); await paint();
+    todo.forEach((p, i) => { YCACHE[p.file] = parse(raws[i], false); });
+  }
+  const out = {};                        // the needed pieces, joined per variable
+  for (const V of ['T', 'S']) {
+    const parts = need.map(p => YCACHE[p.file][V]);
+    const cat = k => { const n = parts.reduce((a, q) => a + q[k].length, 0), a = new parts[0][k].constructor(n);
+                       let o = 0; for (const q of parts) { a.set(q[k], o); o += q[k].length; } return a; };
+    out[V] = {}; for (const k of ['bin', 'lev', 'blk', 'mu', 'ma', 'n', 'bias', 'nmis', 'sig']) out[V][k] = cat(k);
+  }
+  return out;
+}
+// ---------- the depth profile of the current selection (as analysis 02), optionally over the same bins ----------
+// Each level: mean over bins of the bin's value (unsplit / anomaly / bias: data-weighted over the bin's data;
+// mean term: per bin, as the report's 02). "Same bins": only bins with data at every level from sb0 to sb1.
+function levelBinValues(d, yd) {          // Map level -> {bin -> [sum, weight]} for the current part and years
+  const useYears = !S.all && S.part !== 'mean', c = useYears ? yd[S.V] : d[S.V], out = new Map();
+  const add = (lev, bin, x, w) => { let m = out.get(lev); if (!m) out.set(lev, m = new Map()); const e = m.get(bin); if (e) { e[0] += x * w; e[1] += w; } else m.set(bin, [x * w, w]); };
+  if (S.part === 'mean') { const m = d[S.V].mt; for (let i = 0; i < m.bin.length; i++) if (Number.isFinite(m.v[i])) add(m.lev[i], m.bin[i], m.v[i], 1); }
+  else {
+    const val = valArr(c),
+          t0 = useYears ? S.t0 : 0, t1 = useYears ? S.t1 : 255;
+    for (let i = 0; i < c.bin.length; i++) {
+      if (c.blk[i] < t0 || c.blk[i] > t1) continue;
+      const x = val ? val[i] : c.n[i]; if (!Number.isFinite(x)) continue;
+      add(c.lev[i], c.bin[i], x, val ? c.n[i] : 1);
+    }
+  }
+  return out;
+}
+// ---------- region: a set of bins (geographic, so it stays when class or cost type change) ----------
+let REGION = null, REGMODE = false;
+const MIN_BINS = 5;                      // curves / bars with fewer bins (or data) than this are drawn faint
+function regionText() {
+  const t = document.getElementById('regtxt');
+  t.textContent = REGION && REGION.size ? `${REGION.size} bins selected (outlined in purple; its numbers are in the region panel below the maps). Drag to add, shift-drag to remove, shift-click toggles one bin.`
+    : 'No region. Draw a box on a map, or pick a named area; its panel (below the maps) compares it with the rest of the world.';
+}
+function regionChanged() { regionText(); render(); }   // render() writes the address
+// common ocean regions that are no single Natural Earth area (the chatbot's list, tools.py OCEAN_REGIONS): lon0 > lon1
+// crosses the dateline
+const OCEAN_REGIONS = [['eastern tropical Pacific', -140, -70, -20, 20], ['western tropical Pacific', 120, -170, -20, 20],
+  ['tropical Pacific', 120, -70, -20, 20], ['North Pacific', 120, -100, 20, 66], ['South Pacific', 145, -70, -60, -20],
+  ['subpolar North Atlantic', -65, -5, 45, 66], ['subtropical North Atlantic', -80, -15, 15, 45], ['North Atlantic', -100, 20, 0, 70],
+  ['tropical Atlantic', -60, 15, -15, 15], ['South Atlantic', -70, 20, -60, 0], ['Indian Ocean', 20, 120, -60, 30],
+  ['Southern Ocean', -180, 180, -90, -50], ['Arctic', -180, 180, 66, 90], ['Gulf Stream region', -80, -45, 32, 45],
+  ['Kuroshio region', 130, 175, 25, 42], ['Agulhas region', 10, 40, -45, -30]];
+function regionByName(nm) {             // Set of bin ids: a common ocean region (box) or a Natural Earth area (bin_name)
+  const R_ = new Set(), low = nm.toLowerCase(), box = OCEAN_REGIONS.find(r => r[0].toLowerCase() === low);
+  if (box) { const [, a, b, c, d] = box;
+    for (let i = 0; i < INDEX.bin_center.length / 2; i++) { let lo = INDEX.bin_center[2 * i]; const la = INDEX.bin_center[2 * i + 1]; if (lo > 180) lo -= 360;
+      if ((a <= b ? lo >= a && lo <= b : lo >= a || lo <= b) && la >= c && la <= d) R_.add(i + 1); }
+    return R_; }
+  const k = INDEX.bin_names ? INDEX.bin_names.findIndex(n => n.toLowerCase() === low) : -1;
+  if (k > 0) INDEX.bin_name.forEach((v, i) => { if (v === k) R_.add(i + 1); });
+  return R_;
+}
+
+// How a level's value is formed from its bins, as analysis 02: the mean term is one value per bin, so bins count
+// equally; costs and the bias are per datum, so a level's value is the data-weighted mean (sum over bins of the
+// bin's summed value / total data) = cost per datum; the count is the total number of data. A bin's
+// contribution is its part of that: its summed cost (or its mean term), so contributions add up over bins.
+const perBin = () => S.part === 'mean';
+function agg(m, keep) {                    // [value, number of bins, summed contributions] of one level
+  let sx = 0, sw = 0, n = 0;
+  for (const [b, [x, w]] of m) { if (keep && !keep.has(b)) continue; n++;
+    if (perBin()) { sx += x / w; sw += 1; } else if (S.part === 'count') { sx += x; sw = 1; } else { sx += x; sw += w; } }
+  return [n ? sx / sw : NaN, n, sx];
+}
+const contrib = e => perBin() ? e[0] / e[1] : e[0];     // a bin's additive contribution at one level
+
+let PROF = null;
+function profileCurves(d, yd) {
+  const lb = levelBinValues(d, yd), nd = INDEX.depth.length, all = new Float64Array(nd).fill(NaN), nb = new Int32Array(nd);
+  const same = new Float64Array(nd).fill(NaN), nbs = new Int32Array(nd);
+  const ap = S.sbApplied || [S.sb0, S.sb1], k0 = Math.min(+ap[0], +ap[1]), k1 = Math.max(+ap[0], +ap[1]);
+  let keep = null;
+  if (S.same) { keep = null; for (let k = k0; k <= k1; k++) { const m = lb.get(k); const ids = new Set(m ? m.keys() : []);
+      keep = keep === null ? ids : new Set([...keep].filter(b => ids.has(b))); } }
+  const reg = new Float64Array(nd).fill(NaN), rest = new Float64Array(nd).fill(NaN), nbr = new Int32Array(nd), nbo = new Int32Array(nd);
+  const R_ = REGION && REGION.size ? REGION : null;
+  for (let k = 0; k < nd; k++) {
+    const m = lb.get(k); if (!m) continue;
+    [all[k], nb[k]] = agg(m);
+    if (keep) { const [v, n] = agg(m, keep); if (n) { same[k] = v; nbs[k] = n; } }
+    if (R_) {
+      const inR = keep ? new Set([...m.keys()].filter(b => R_.has(b) && keep.has(b))) : new Set([...m.keys()].filter(b => R_.has(b)));
+      const outR = new Set([...m.keys()].filter(b => !R_.has(b) && (!keep || keep.has(b))));
+      const [vr, nr] = agg(m, inR), [vo, no] = agg(m, outR);
+      if (nr) { reg[k] = vr; nbr[k] = nr; } if (no) { rest[k] = vo; nbo[k] = no; }
+    }
+  }
+  return {all, nb, same, nbs, nkeep: keep ? keep.size : 0, k0, k1, reg, rest, nbr, nbo, region: !!R_};
+}
+function drawProfile() {
+  const c = document.getElementById('pcan'), g = c.getContext('2d'), W = c.width, H = c.height;
+  g.clearRect(0, 0, W, H);
+  if (!PROF) return;
+  const {all, same, nb, nbs, k0, k1} = PROF, z = INDEX.depth, L = 60, R = 70, B = 40;
+  // the bottom axis fits the main curves (all bins / same bins / rest of the world). If the region's curve would run
+  // past it, the region gets its own axis along the top (purple), so nothing is cut off and nothing is squashed.
+  const vals = [...all, ...(S.same ? same : []), ...(PROF.region ? PROF.rest : [])].filter(Number.isFinite);
+  if (!vals.length) return;
+  let lo = Math.min(0, ...vals), hi = Math.max(...vals); if (SIGNED(S.part)) { const m = Math.max(Math.abs(lo), Math.abs(hi)); lo = -m; hi = m; }
+  if (hi === lo) hi = lo + 1;
+  const rv = PROF.region ? PROF.reg.filter(Number.isFinite) : [];
+  const ownAxis = rv.length > 0 && (Math.max(...rv) > hi * 1.02 || Math.min(...rv) < lo - 0.02 * (hi - lo));
+  let rlo = lo, rhi = hi;
+  if (ownAxis) { rlo = Math.min(0, ...rv); rhi = Math.max(...rv);
+    if (SIGNED(S.part)) { const m = Math.max(Math.abs(rlo), Math.abs(rhi)); rlo = -m; rhi = m; } if (rhi === rlo) rhi = rlo + 1; }
+  const T = ownAxis ? 32 : 10;
+  const zmax = Math.max(...z), X = v => L + (W - L - R) * (v - lo) / (hi - lo), Y = d => T + (H - T - B) * d / zmax;
+  PROFGEOM = {T, B, H, zmax};
+  g.strokeStyle = '#ccc'; g.lineWidth = 1; g.strokeRect(L, T, W - L - R, H - T - B);
+  g.font = '10px sans-serif'; g.fillStyle = '#444'; g.textAlign = 'right'; g.textBaseline = 'middle';
+  for (let d = 0; d <= zmax; d += 1000) { g.fillText(d + ' m', L - 4, Y(d)); g.strokeStyle = '#eee'; g.beginPath(); g.moveTo(L, Y(d)); g.lineTo(W - R, Y(d)); g.stroke(); }
+  g.textAlign = 'center'; g.textBaseline = 'top';
+  for (const t of niceTicks(lo, hi, 5)) { g.fillText(fmt(t), X(t), H - B + 4); g.strokeStyle = '#eee'; g.beginPath(); g.moveTo(X(t), T); g.lineTo(X(t), H - B); g.stroke(); }
+  g.fillText(PARTS[S.part], (L + W - R) / 2, H - B + 18);
+  // the depth range: a shaded band from the first to the last selected level, with a handle at each edge
+  { // drawn from the current selection (S.sb0 / S.sb1), so it follows a drag live; the curves are not recomputed
+    const r0 = Math.min(+S.sb0, +S.sb1), r1 = Math.max(+S.sb0, +S.sb1);
+    const za = z[r0], zb = z[r1], ya = Y(za), yb = Math.max(Y(zb), ya + 3);
+    g.fillStyle = 'rgba(108,52,131,0.10)'; g.fillRect(L, ya, W - L - R, yb - ya);
+    g.strokeStyle = '#6c3483'; g.lineWidth = 1.5; g.beginPath(); g.moveTo(L, ya); g.lineTo(W - R, ya); g.moveTo(L, yb); g.lineTo(W - R, yb); g.stroke();
+    for (const y of [ya, yb]) { g.fillStyle = '#6c3483'; g.beginPath(); g.moveTo(L - 1, y - 6); g.lineTo(L + 9, y); g.lineTo(L - 1, y + 6); g.closePath(); g.fill();
+      g.beginPath(); g.moveTo(W - R + 1, y - 6); g.lineTo(W - R - 9, y); g.lineTo(W - R + 1, y + 6); g.closePath(); g.fill();
+      g.fillRect((L + W - R) / 2 - 14, y - 2, 28, 4); }
+    g.font = '11px sans-serif'; g.textAlign = 'right'; g.textBaseline = 'bottom';
+    const lab = `range ${za}–${zb} m` + (PEAKDONE && PEAKDONE[0] === r0 && PEAKDONE[1] === r1 ? ' (investigated: see the right)' : '');
+    const tw = g.measureText(lab).width; g.fillStyle = 'rgba(255,255,255,0.85)'; g.fillRect(W - R - 10 - tw - 3, ya - 15, tw + 6, 14);
+    g.fillStyle = '#6c3483'; g.fillText(lab, W - R - 10, ya - 2);
+    RANGEPX = {ya, yb}; }
+  const XR = v => L + (W - L - R) * (v - rlo) / (rhi - rlo);          // the region's axis (= X without its own axis)
+  const line = (arr, col, w, xf = X) => { g.strokeStyle = col; g.lineWidth = w; g.beginPath(); let on = false;
+    for (let k = 0; k < arr.length; k++) { if (!Number.isFinite(arr[k])) { on = false; continue; } const x = xf(arr[k]), y = Y(z[k]); if (on) g.lineTo(x, y); else { g.moveTo(x, y); on = true; } } g.stroke(); };
+  if (ownAxis) {                                     // the region's axis along the top, in purple
+    g.font = '10px sans-serif'; g.fillStyle = '#6c3483'; g.strokeStyle = '#6c3483'; g.lineWidth = 1; g.textAlign = 'center'; g.textBaseline = 'bottom';
+    g.beginPath(); g.moveTo(L, T); g.lineTo(W - R, T); g.stroke();
+    for (const t of niceTicks(rlo, rhi, 5)) { const x = XR(t); g.beginPath(); g.moveTo(x, T); g.lineTo(x, T - 4); g.stroke(); g.fillText(fmt(t), x, T - 5); }
+    g.textAlign = 'left'; g.fillText('purple curve (region): this top axis; the other curves: the bottom axis', L, T - 18);
+  }
+  // with a region: the curves are over the region's bins and the rest's bins (with "same bins": of those, the
+  // bins with data at every level of the range); levels with fewer than MIN_BINS region bins are drawn faint
+  if (PROF.region) {
+    const faint = (arr, nn) => arr.map((v, k) => nn[k] >= MIN_BINS ? v : NaN);
+    line(PROF.rest, 'rgba(90,90,90,0.9)', 1.6); line(all, 'rgba(192,57,43,0.8)', 1.4);
+    line(PROF.reg, 'rgba(108,52,131,0.3)', 2, XR); line(faint(PROF.reg, PROF.nbr), '#6c3483', 2.4, XR);
+  } else { line(all, '#c0392b', 1.6); if (S.same) line(same, '#1a5ca8', 2); }
+  // number of bins on a log axis at the right edge
+  const nmax = Math.max(...nb, 1), XN = n => W - R + 6 + (R - 12) * Math.log10(Math.max(n, 1)) / Math.log10(Math.max(nmax, 10));
+  g.strokeStyle = '#999'; g.lineWidth = 1; g.beginPath(); let on = false;
+  for (let k = 0; k < nb.length; k++) { if (!nb[k]) { on = false; continue; } if (on) g.lineTo(XN(nb[k]), Y(z[k])); else { g.moveTo(XN(nb[k]), Y(z[k])); on = true; } } g.stroke();
+  g.fillStyle = '#777'; g.textAlign = 'center'; g.fillText('# bins', W - R / 2, H - B + 4); g.fillText('(log)', W - R / 2, H - B + 16);
+  g.font = '9px sans-serif'; g.textBaseline = 'bottom';
+  for (let t = 1; t <= Math.max(nmax, 10); t *= 10) { const x = XN(t); g.strokeStyle = '#bbb'; g.beginPath(); g.moveTo(x, T); g.lineTo(x, T + 4); g.stroke();
+    g.fillText(t >= 1000 ? (t / 1000) + 'k' : String(t), x, T + 14); }
+  // legend at the bottom left (deep water, where the curves are short of the left edge less often: drawn on a white box)
+  g.font = '11px sans-serif'; g.textAlign = 'left';
+  const sameTxt = S.same ? ` (of the ${PROF.nkeep} bins with data at every level ${z[k0]}–${z[k1]} m)` : '';   // k0/k1: the applied range
+  const leg = PROF.region
+    ? [['all bins with data', 'rgba(192,57,43,0.8)'], ['region' + (ownAxis ? ' (top axis)' : '') + sameTxt + (PROF.nbr.some((n, k) => n > 0 && n < MIN_BINS) ? `; pale where under ${MIN_BINS} bins` : ''), '#6c3483'], ['rest of the world' + sameTxt, 'rgba(90,90,90,0.9)']]
+    : [['all bins with data', '#c0392b']].concat(S.same ? [[`same ${PROF.nkeep} bins (data at every level ${z[k0]}–${z[k1]} m)`, '#1a5ca8']] : []);
+  const lw = Math.max(...leg.map(([t]) => g.measureText(t).width)) + 30, ly = H - B - 8 - 15 * leg.length;
+  g.fillStyle = 'rgba(255,255,255,0.92)'; g.fillRect(W - R - lw - 6, ly - 4, lw, 15 * leg.length + 6);
+  leg.forEach(([t, col], i) => { g.strokeStyle = col; g.lineWidth = 2; g.beginPath(); g.moveTo(W - R - lw, ly + 6 + 15 * i); g.lineTo(W - R - lw + 18, ly + 6 + 15 * i); g.stroke();
+    g.fillStyle = '#333'; g.textBaseline = 'middle'; g.fillText(t, W - R - lw + 22, ly + 6 + 15 * i); });
+  document.getElementById('profnote').textContent = perBin() ? '(each level: the mean over bins, as analysis 02)'
+    : S.part === 'count' ? '(each level: the number of data)' : '(each level: the mean over all data, i.e. per datum, as analysis 02)';
+  document.getElementById('sbnote').textContent = S.same ? `${PROF.nkeep} bins have data at every level from ${z[k0]} to ${z[k1]} m` : '';
+}
+
+// ---------- the peak tool: drag over a depth range on the profile plot ----------
+// Fixed steps, no judgment: (1) the level with the largest value of the drawn curve in the range; (2) how much of
+// its excess over the neighboring levels comes from which bins are counted: the same calculation over only the bins
+// that have data at the peak and at both neighbors; (3) where it comes from: bins ranked by their value at the
+// peak, the high ones grouped into clusters of neighboring bins (centers within CLUSTER_KM), each cluster's share
+// of bins and of the summed value. The largest cluster becomes the region.
+const CLUSTER_KM = 600, HIGH_Q = 0.9;
+let PROFGEOM = null, PEAKBAND = null, RANGEPX = null, PEAKDONE = null, PEAKFOR = '';   // PEAKDONE: [k0, k1] last investigated   // the plot's depth axis; the depth band being / last investigated                    // the profile plot's depth axis, for mouse -> depth
+function hav(la1, lo1, la2, lo2) { const r = Math.PI / 180, a = Math.sin((la2 - la1) * r / 2) ** 2 + Math.cos(la1 * r) * Math.cos(la2 * r) * Math.sin((lo2 - lo1) * r / 2) ** 2; return 12742 * Math.asin(Math.sqrt(a)); }
+function peakStale() {                // the selection changed: the peak results are for the old one
+  const out = document.getElementById('peaktxt');
+  out.innerHTML = `<div class="explain">These results were for <b>${PEAKFOR}</b>. You changed the selection, so they are out of date; ` +
+    `click <b>investigate</b> to redo them for this one. The depth and the purple outline are left as they were.</div>`;
+  document.getElementById('peaknotice').style.display = 'none';
+  PEAKBAND = null; PEAKDONE = null;
+}
+async function investigatePeak(zA, zB) {
+  document.getElementById('peaktool').open = true;          // the tool opens (e.g. from the report's "investigate" link)
+  PEAKBAND = [Math.min(zA, zB), Math.max(zA, zB)];
+  PEAKFOR = `${S.src}, ${ctLabel(S.ct)}, ${S.V}, ${PARTS[S.part]}`;
+  { // the depth range (menus, band) shows exactly what is investigated
+    const zz = INDEX.depth, inb = zz.map((x, k) => k).filter(k => zz[k] >= PEAKBAND[0] && zz[k] <= PEAKBAND[1]);
+    if (inb.length) { S.sb0 = inb[0]; S.sb1 = inb[inb.length - 1]; document.getElementById('sb0').value = S.sb0; document.getElementById('sb1').value = S.sb1; }
+    PEAKDONE = [S.sb0, S.sb1]; if (S.same) S.sbApplied = [S.sb0, S.sb1]; }
+  const d = await data(S.src, S.ct), yd = (!S.all && S.part !== 'mean') ? await yearData(S.src, S.ct) : null;
+  const z = INDEX.depth, lb = levelBinValues(d, yd), val = (m, b) => { const e = m.get(b); return e ? contrib(e) : NaN; };   // a bin's contribution
+  const meanOf = (k, keep) => { const m = lb.get(k); if (!m) return [NaN, 0]; const [v, n] = agg(m, keep); return [v, n]; };
+  const lo = Math.min(zA, zB), hi = Math.max(zA, zB), ks = z.map((x, k) => k).filter(k => z[k] >= lo && z[k] <= hi && lb.has(k));
+  const box = document.getElementById('peakp'), out = document.getElementById('peaktxt'); box.style.display = '';
+  if (!ks.length) { out.innerHTML = 'No levels with data in that range.'; return; }
+  const kp = ks.reduce((a, k) => meanOf(k)[0] > meanOf(a)[0] ? k : a, ks[0]);
+  const have = [...lb.keys()].sort((a, b) => a - b), ia = have.indexOf(kp), ku = have[ia - 1], kd = have[ia + 1];
+  const [vp, np] = meanOf(kp), [vu, nu] = ku !== undefined ? meanOf(ku) : [NaN, 0], [vd, nd] = kd !== undefined ? meanOf(kd) : [NaN, 0];
+  const nbr = [vu, vd].filter(Number.isFinite), base = nbr.length ? nbr.reduce((a, b) => a + b) / nbr.length : NaN;
+  // (2) the same over the bins with data at the peak and both neighbors
+  const ids = k => new Set(lb.get(k) ? lb.get(k).keys() : []);
+  let keep = ids(kp); for (const k of [ku, kd]) if (k !== undefined) { const o = ids(k); keep = new Set([...keep].filter(b => o.has(b))); }
+  const [sp] = meanOf(kp, keep), su = ku !== undefined ? meanOf(ku, keep)[0] : NaN, sd = kd !== undefined ? meanOf(kd, keep)[0] : NaN;
+  const sn = [su, sd].filter(Number.isFinite), sbase = sn.length ? sn.reduce((a, b) => a + b) / sn.length : NaN;
+  const ex = vp - base, sex = sp - sbase, fromSampling = Number.isFinite(ex) && ex > 0 && Number.isFinite(sex) ? Math.max(0, Math.min(1, 1 - sex / ex)) : NaN;
+  // (3) clusters of high bins at the peak
+  const m = lb.get(kp), bins = [...m.keys()].map(b => [b, val(m, b)]).filter(([, v]) => Number.isFinite(v)).sort((a, b) => b[1] - a[1]);
+  const tot = bins.reduce((a, [, v]) => a + v, 0), thr = bins[Math.floor((1 - HIGH_Q) * (bins.length - 1))][1];
+  const high = bins.filter(([, v]) => v >= thr), center = b => [INDEX.bin_center[2 * (b - 1) + 1], INDEX.bin_center[2 * (b - 1)]];
+  const cl = [], seen = new Set();
+  for (const [b] of high) { if (seen.has(b)) continue; const c = [b]; seen.add(b);
+    for (let i = 0; i < c.length; i++) { const [la, lo2] = center(c[i]);
+      for (const [o] of high) if (!seen.has(o)) { const [lb2, lob] = center(o); if (hav(la, lo2, lb2, lob) <= CLUSTER_KM) { seen.add(o); c.push(o); } } }
+    cl.push(c); }
+  const additive = !DIAG(S.part);
+  const cls = cl.map(c => { const s = c.reduce((a, b) => a + val(m, b), 0); let x = 0, y = 0, zz = 0;
+      for (const b of c) { const [la, lo2] = center(b).map(v => v * Math.PI / 180); x += Math.cos(la) * Math.cos(lo2); y += Math.cos(la) * Math.sin(lo2); zz += Math.sin(la); }
+      return {bins: c, s, lat: Math.atan2(zz, Math.hypot(x, y)) * 180 / Math.PI, lon: Math.atan2(y, x) * 180 / Math.PI}; })
+    .sort((a, b) => additive ? b.s - a.s : Math.abs(b.s) - Math.abs(a.s));
+  const pc = (a, b) => b ? (100 * a / b).toFixed(1) + ' %' : '–', dir = (la, lo2) => `${Math.abs(la).toFixed(0)}°${la >= 0 ? 'N' : 'S'} ${Math.abs(lo2).toFixed(0)}°${lo2 >= 0 ? 'E' : 'W'}`;
+  // a cluster's name: the name most of its bins carry (index.json bin_names; descriptive, from Natural Earth and coarse boxes)
+  const nameOf = c => { if (!INDEX.bin_name) return ''; const n = new Map();
+    for (const b of c.bins) { const k = INDEX.bin_names[INDEX.bin_name[b - 1]]; if (k) n.set(k, (n.get(k) || 0) + 1); }
+    let best = '', m = 0; for (const [k, v] of n) if (v > m) { best = k; m = v; } return best; };
+  const where = c => { const nm = nameOf(c); return nm ? `${nm} (${dir(c.lat, c.lon)})` : dir(c.lat, c.lon); };
+  const big = cls[0], samp = Number.isFinite(fromSampling) ? Math.round(100 * fromSampling) : null;
+  let h = `<div class="explain"><b>In short:</b> between ${Math.round(lo)} and ${Math.round(hi)} m the curve is highest at <b>${z[kp]} m</b>. ` +
+    (samp === null ? '' : samp >= 50
+      ? `<b>${samp} % of the jump comes from averaging over a different set of places at ${z[kp]} m than at the depths above and below it</b>, ` +
+        `not from a worse fit at ${z[kp]} m. Over only the ${keep.size} places with data at all three depths, the jump nearly disappears ` +
+        `(${fmt(sp)} against ${fmt(sbase)}). `
+      : `<b>${100 - samp} % of the jump is a worse fit at ${z[kp]} m:</b> it is still there over only the ${keep.size} places with data at all ` +
+        `three depths (${fmt(sp)} against ${fmt(sbase)}). `) +
+    (additive && big ? `The bins with the highest values are mostly in the <b>${where(big)}</b> (${pc(big.bins.length, bins.length)} of the bins, ${pc(big.s, tot)} of the total); that area is now outlined in purple on the maps, and the region panel shows its numbers and its platforms.` : '') +
+    `</div><b>${S.src}, ${S.ct}, ${S.V}: ${PARTS[S.part]}; ${timeText()}.</b> The steps:<ol>` +
+    `<li><b>Peak:</b> ${z[kp]} m, ${fmt(vp)} over ${np} bins` + (Number.isFinite(base) ? `; the levels around it (${ku !== undefined ? z[ku] + ' m: ' + fmt(vu) + ', ' + nu + ' bins' : ''}${ku !== undefined && kd !== undefined ? '; ' : ''}${kd !== undefined ? z[kd] + ' m: ' + fmt(vd) + ', ' + nd + ' bins' : ''}) average ${fmt(base)}.` : '.') + '</li>' +
+    `<li><b>Same places:</b> over only the ${keep.size} places with data at the peak and at both depths around it, the peak is ${fmt(sp)} and the two depths around it average ${fmt(sbase)}` +
+      (Number.isFinite(fromSampling) ? `: <b>${(100 * fromSampling).toFixed(0)} %</b> of the jump comes from a different set of places being averaged at ${z[kp]} m, ` +
+        `${(100 * (1 - fromSampling)).toFixed(0)} % is a worse fit there (<a href="guide.html#samebins">what this means</a>).` : '.') + '</li>' +
+    `<li><b>Where:</b> the top ${Math.round(100 * (1 - HIGH_Q))} % of bins at ${z[kp]} m (${high.length} bins, values ≥ ${fmt(thr)}) form ${cls.length} cluster${cls.length > 1 ? 's' : ''} (neighbors within ${CLUSTER_KM} km). ` +
+      (additive ? `They hold ${pc(high.reduce((a, [, v]) => a + v, 0), tot)} of the summed value at this level.` : '') + '</li></ol>';
+  h += `<table><tr><th>cluster</th><th>center</th><th>bins</th><th>share of bins</th>${additive ? '<th>share of the summed value</th>' : '<th>mean</th>'}</tr>`;
+  cls.slice(0, 8).forEach((c, i) => { h += `<tr class="pick" data-i="${i}"><td>${i + 1}</td><td style="text-align:left">${where(c)}</td><td>${c.bins.length}</td><td>${pc(c.bins.length, bins.length)}</td>` +
+    (additive ? `<td><b>${pc(c.s, tot)}</b></td>` : `<td>${fmt(c.s / c.bins.length)}</td>`) + '</tr>'; });
+  h += '</table><span class="dnote">Click a row to outline a different cluster instead. The outline holds only the high bins; to include their ' +
+    'surroundings, use "select region" above the maps and drag a box.</span>';
+  out.innerHTML = h;
+  out.querySelectorAll('tr.pick').forEach(r => r.addEventListener('click', () => { REGION = new Set(cls[+r.dataset.i].bins); regionChanged(); }));
+  // the maps show the peak level (the clusters are the high bins there); say so above the maps, with a way back
+  const prevDepth = {dmode: S.dmode, dsel: S.dsel, r0: S.r0, r1: S.r1};
+  if (S.dmode !== 'level' || +S.dsel !== kp) { S.dmode = 'level'; S.dsel = kp; fillDepthSelect(); document.getElementById('dsel').value = kp; }
+  const nt = document.getElementById('peaknotice');
+  nt.innerHTML = `<b>The maps now show ${z[kp]} m</b>, the peak level of ${Math.round(lo)}–${Math.round(hi)} m (the depth row above was set to it); ` +
+    `the purple outline is the largest cluster of high bins <i>at that level</i>.` +
+    (prevDepth.dmode !== 'level' || +prevDepth.dsel !== kp ? `<button class="tab" id="peakback">back to the depth you had</button>` : '') +
+    `<button class="tab" id="peakclear">clear the outline</button>`;
+  nt.style.display = '';
+  const pb = document.getElementById('peakback');
+  if (pb) pb.onclick = () => { S.dmode = prevDepth.dmode; S.dsel = prevDepth.dsel; S.r0 = prevDepth.r0; S.r1 = prevDepth.r1; fillDepthSelect(); document.getElementById('dsel').value = S.dsel;
+    nt.style.display = 'none'; render(); };
+  document.getElementById('peakclear').onclick = () => { REGION = null; PEAKBAND = null; nt.style.display = 'none'; regionChanged(); };
+  REGION = new Set(cls[0].bins); regionChanged();
+}
+
+// ---------- platforms in the region (data viewer's platforms.bin + profiles.bin: one row per profile) ----------
+// Each profile's chain bin, platform and years; the explorer has costs per (bin, level, year) only, so a platform's
+// share is apportioned: each (bin, year) cell's value at the selected levels is divided among the platforms by
+// their numbers of profiles in that cell. The rule is stated with the table.
+const PLATS = {};
+async function platformsOf(src) {
+  if (PLATS[src] !== undefined) return PLATS[src];
+  if (!INDEX.bin_viewer) return (PLATS[src] = null);
+  try {
+    busy('Loading the platforms of ' + src + ' (from the in situ data viewer)…'); await paint();
+    const base = INDEX.bin_viewer + src + '/';
+    const [pb, pf, pj] = await Promise.all([getGz(base + 'platforms.bin'), getGz(base + 'profiles.bin'),
+      fetch(base + 'platforms.json').then(r => r.body.pipeThrough(new DecompressionStream('gzip'))).then(b => new Response(b).json())]);
+    const n = new DataView(pb.buffer, pb.byteOffset).getUint32(0, true), planes = (buf, o, n, bytes, T) => { const a = new T(n), u = new Uint8Array(a.buffer);
+      for (let b = 0; b < bytes; b++) { const src2 = buf.subarray(o + b * n, o + (b + 1) * n); for (let i = 0; i < n; i++) u[i * bytes + b] = src2[i]; } return a; };
+    const cb = planes(pb, 4, n, 2, Uint16Array), pi = planes(pb, 4 + 2 * n, n, 4, Uint32Array), year = planes(pf, 4 + 8 * n, n, 2, Uint16Array);
+    busy(null);
+    // which profiles have a value at a level: the data viewer's level files (climatology or model anomaly)
+    const vi = await fetch(INDEX.bin_viewer + 'index.json').then(r => r.json());
+    return (PLATS[src] = {cb, pi, year, names: pj.names, kind: pj.kind, vi, has: {}});
+  } catch (e) { busy(null); return (PLATS[src] = null); }
+}
+async function profilesWithData(P, src, lv) {   // Set of profile indices with a value at any of these levels
+  const ref = refOf(S.ct), V = S.V, key = ref + V + (lv ? lv.join(',') : 'all');
+  if (P.has[key]) return P.has[key];
+  const base = ref === 'clim' ? INDEX.bin_viewer + src + '/' : ((P.vi.ref_urls || {})[ref] ? P.vi.ref_urls[ref] + '/' + src + '/model/' : INDEX.bin_viewer + src + '/model/');
+  const info = ref === 'clim' ? P.vi.classes[src] : P.vi.classes[src].refs?.[ref];
+  const levels = (lv || info.levels[V]).filter(k => info.levels[V].includes(k)), out = new Uint8Array(P.cb.length);
+  busy(`Loading which ${src} profiles have ${V} at the selected depths…`); await paint();
+  for (const k of levels) {
+    const b = await getGz(base + `${V}_${String(k).padStart(2, '0')}.bin`), m = new DataView(b.buffer, b.byteOffset).getUint32(0, true);
+    const ix = new Uint32Array(m), u = new Uint8Array(ix.buffer);
+    for (let q = 0; q < 4; q++) { const sp = b.subarray(4 + q * m, 4 + (q + 1) * m); for (let i = 0; i < m; i++) u[i * 4 + q] = sp[i]; }
+    let acc = 0; for (let i = 0; i < m; i++) { acc += ix[i]; out[acc] = 1; }     // format 2: differences
+  }
+  busy(null);
+  return (P.has[key] = out);
+}
+// Exact platform shares, from the data viewer's profile details (every profile's obs, reference, sigma and QC code):
+//  - unsplit cost: each kept value's own (ref − obs)² / σ² (true weights), summed per platform;
+//  - mean term of a bin and level: J = w̄ (mean misfit)², w̄ = 1 / max(s/n, s/9), s = mean σ² over the bin's kept values
+//    (as cost_profiles.F; true weights = 1/σ²). Profile i's part is w̄ · (mean misfit) · misfit_i / n: the parts add up to
+//    J exactly; a profile pulling the other way gets a negative part;
+//  - anomaly term: each kept value's (misfit − bin mean misfit)² / σ².
+// Falls back to the apportioned split (below) if the details can't be loaded.
+async function detailRows(src, js) {        // per profile index: rows [{k, m: obs − ref, s2: σ², kept}] for S.V
+  const vi = (await platformsOf(src)).vi, info = vi.detail && vi.detail[src]; if (!info) return null;
+  const C = info.chunk, urls = (vi.detail_urls || {})[src] || [], scale = info.scale || {obs: 1000, clim: 1000, model: 1000, sig: 10000};
+  const base = c => { for (const [a, b, u] of urls) if (c >= a && c <= b) return u; return INDEX.bin_viewer.replace(/\/$/, ''); };
+  const byChunk = new Map(); for (const j of js) { const c = Math.floor(j / C); if (!byChunk.has(c)) byChunk.set(c, []); byChunk.get(c).push(j); }
+  const out = new Map(), useModel = S.ct !== 'vs_clim';
+  let done = 0; const tot = byChunk.size;
+  for (const [c, list] of byChunk) {
+    busy(`Loading profile details for the region (${++done} of ${tot})…`, done / tot); if (done % 5 === 1) await paint();
+    const b = await getGz(`${base(c)}/detail/${src}/c${String(c).padStart(4, '0')}.bin`);
+    const dv = new DataView(b.buffer, b.byteOffset), P = dv.getUint32(0, true); let o = 4 + 8 * P;
+    const pl = (n, bytes, T) => { const a = new T(n), u = new Uint8Array(a.buffer);
+      for (let q = 0; q < bytes; q++) { const sp = b.subarray(o + q * n, o + (q + 1) * n); for (let i = 0; i < n; i++) u[i * bytes + q] = sp[i]; } o += bytes * n; return a; };
+    for (const V of ['T', 'S']) {
+      const cnt = b.slice(o, o + P); o += P; let n = 0; for (const x of cnt) n += x;
+      const lev = b.slice(o, o + n); o += n; const mask = b.slice(o, o + n); o += n; const code = pl(n, 2, Uint16Array);
+      const cols = {}; for (const k of ['obs', 'clim', 'model', 'sig']) cols[k] = pl(n, 4, Int32Array);
+      if (V !== S.V) continue;
+      const start = new Int32Array(P + 1); for (let i = 0; i < P; i++) start[i + 1] = start[i] + cnt[i];
+      for (const j of list) { const q = j % C, rows = []; const acc = {obs: 0, clim: 0, model: 0, sig: 0};
+        for (let i = start[q]; i < start[q + 1]; i++) { for (const k in acc) acc[k] += cols[k][i];
+          const refOk = useModel ? (mask[i] & 2) : (mask[i] & 1), sig = acc.sig / scale.sig;
+          if (!refOk || !(mask[i] & 4) || !(sig > 0)) continue;
+          rows.push({k: lev[i], m: acc.obs / scale.obs - (useModel ? acc.model / scale.model : acc.clim / scale.clim), s2: sig * sig, kept: code[i] === 0}); }
+        out.set(j, rows); }
+    }
+  }
+  busy(null);
+  return out;
+}
+function renderPlatformTable(el, P, X) {
+  const unit = S.V === 'T' ? '°C' : 'psu', ref = (S.ct === 'vs_clim' ? 'climatology' : S.ct.slice(3));
+  const rows = [...X.share].filter(([pi]) => pi !== 0xFFFFFFFF).sort((a, b) => b[1] - a[1]).slice(0, 12);
+  const nPlat = [...X.nprof.keys()].filter(k => k !== 0xFFFFFFFF).length, what = S.part === 'mean' ? 'mean term' : S.part === 'anomaly' ? 'anomaly cost' : S.part === 'count' ? 'data' : 'unsplit cost';
+  let h = `<div class="ptitle" style="margin-top:0.6em">Platforms in the region <span class="dnote">(${P.kind}; ${nPlat} with kept data at the selected depths; computed profile by profile)</span></div>` +
+    `<table><tr><th>${P.kind}</th><th>profiles</th><th>years</th><th>share of the region's ${what}</th><th>mean ${ref} − obs (${unit})</th><th></th></tr>`;
+  for (const [pi, x] of rows) { const nm = P.names[pi], ys = X.yrs.get(pi) || ['–', '–'], mb = X.mw.get(pi) ? -X.mis.get(pi) / X.mw.get(pi) : NaN;   // ref − obs
+    const q = new URLSearchParams({src: S.src, ref: refOf(S.ct), V: S.V, platform: nm});
+    const lvv = levelsSelected(); if (lvv && lvv.length === 1) q.set('k', lvv[0]); q.set('back', location.href.split('#')[0]);
+    h += `<tr><td>${nm}</td><td>${X.nprof.get(pi) || 0}</td><td>${ys[0]}–${ys[1]}</td><td><b>${X.total ? (100 * x / X.total).toFixed(1) + ' %' : '–'}</b></td>` +
+      `<td>${Number.isFinite(mb) ? (mb >= 0 ? '+' : '') + mb.toFixed(3) : '–'}</td><td><a href="${INDEX.bin_viewer}?${q}">show profiles</a></td></tr>`; }
+  h += '</table><span class="dnote">Computed profile by profile from every profile\'s own values (the in situ data viewer\'s profile details, ' +
+    'rounded to 0.001), kept values only; rebuilt this way, the mean term agrees with the analysis to 0.14 % of its total (PFL vs model, 2400 m). ' +
+    (S.part === 'mean' ? 'For the mean term w̄·(mean misfit)² of each bin and level, a profile\'s part is w̄·(mean misfit)·(its misfit)/n, so the parts add up to the term; a profile pulling against the bin\'s mean gets a negative part. '
+                       : S.part === 'anomaly' ? 'Each value\'s (misfit − its bin\'s mean misfit)²/σ². ' : S.part === 'count' ? '' : 'Each value\'s (ref − obs)²/σ² (true weights). ') +
+    '"show profiles" opens the in situ data viewer with that platform\'s profiles ringed.</span>';
+  el.innerHTML = h;
+}
+async function regionPlatformsExact(d, P) {
+  const lv = levelsSelected(), lset = lv ? new Set(lv) : null, y0 = +INDEX.blocks[0];
+  // contributions come from the profiles in the time window; the bin means of the split use all years, as the analysis
+  const inT = j => S.all || S.part === 'mean' || (P.year[j] - y0 >= S.t0 && P.year[j] - y0 <= S.t1);
+  const needAll = S.part === 'mean' || S.part === 'anomaly';
+  const js = []; for (let j = 0; j < P.cb.length; j++) if (REGION.has(P.cb[j]) && (needAll || inT(j))) js.push(j);
+  if (!js.length) return null;
+  const rows = await detailRows(S.src, js); if (!rows) return null;
+  // per (bin, level): the kept values with their profile
+  const cells = new Map();
+  for (const j of js) for (const r of rows.get(j) || []) { if (!r.kept || (lset && !lset.has(r.k))) continue;
+    const key = P.cb[j] * 128 + r.k; if (!cells.has(key)) cells.set(key, []); cells.get(key).push([j, r.m, r.s2]); }
+  const share = new Map(), mis = new Map(), mw = new Map(), nprof = new Map(), yrs = new Map(), add = (m, k, x) => m.set(k, (m.get(k) || 0) + x);
+  let total = 0;
+  for (const vals of cells.values()) {
+    const n = vals.length; let mean = 0, s = 0; for (const [, m, s2] of vals) { mean += m; s += s2; } mean /= n; s /= n;
+    const wbar = 1 / Math.max(s / n, s / 9);
+    for (const [j, m, s2] of vals) {
+      if (!inT(j)) continue;
+      const pi = P.pi[j], c = S.part === 'mean' ? wbar * mean * m / n : S.part === 'anomaly' ? (m - mean) ** 2 / s2 : S.part === 'count' ? 1 : m * m / s2;
+      add(share, pi, c); total += c; add(mis, pi, m); add(mw, pi, 1); }
+  }
+  for (const j of js) { if (!inT(j) || !(rows.get(j) || []).some(r => r.kept && (!lset || lset.has(r.k)))) continue;
+    const pi = P.pi[j]; add(nprof, pi, 1); const ys = yrs.get(pi) || [9999, 0]; ys[0] = Math.min(ys[0], P.year[j]); ys[1] = Math.max(ys[1], P.year[j]); yrs.set(pi, ys); }
+  return {share, total, mis, mw, nprof, yrs, ncell: cells.size};
+}
+async function regionPlatforms(d) {
+  const el = document.getElementById('regplat'); el.innerHTML = '';
+  if (!REGION || !REGION.size) return;
+  const P = await platformsOf(S.src);
+  if (!P) { el.innerHTML = '<span class="dnote">(Platform table: needs the in situ data viewer\'s platform files.)</span>'; return; }
+  if (!DIAG(S.part)) {
+    let X = null; try { X = await regionPlatformsExact(d, P); } catch (e) { console.warn(e); busy(null); }
+    if (X) { renderPlatformTable(el, P, X); return; }
+  }
+  const y0 = +INDEX.blocks[0], lv = levelsSelected(), lset = lv ? new Set(lv) : null;
+  const withData = await profilesWithData(P, S.src, lv);
+  // profiles per (bin, year) cell and per platform, in the region and the time window
+  const cell = new Map(), perPlat = new Map(), yrs = new Map();
+  for (let j = 0; j < P.cb.length; j++) { const b = P.cb[j]; if (!REGION.has(b) || !withData[j]) continue; const t = P.year[j] - y0;
+    if (!S.all && S.part !== 'mean' && (t < S.t0 || t > S.t1)) continue;
+    const key = b * 256 + t, e = cell.get(key) || new Map(); e.set(P.pi[j], (e.get(P.pi[j]) || 0) + 1); cell.set(key, e);
+    perPlat.set(P.pi[j], (perPlat.get(P.pi[j]) || 0) + 1); const ys = yrs.get(P.pi[j]) || [9999, 0]; ys[0] = Math.min(ys[0], P.year[j]); ys[1] = Math.max(ys[1], P.year[j]); yrs.set(P.pi[j], ys); }
+  // the value per (bin, year) at the selected levels: the mean term has no years, so use its per-bin value, spread over the bin's years by profiles
+  const yAll = (S.part === 'mean') ? null : await (async () => { const a = S.all, t0 = S.t0, t1 = S.t1; S.all = false; S.t0 = 0; S.t1 = INDEX.blocks.length - 1; const r = await yearData(S.src, S.ct); S.all = a; S.t0 = t0; S.t1 = t1; return r; })();
+  const share = new Map(), bias = new Map(), bw = new Map();
+  const add = (pi, x) => share.set(pi, (share.get(pi) || 0) + x);
+  if (S.part === 'mean') {
+    const mt = d[S.V].mt, perBin = new Map();
+    for (let i = 0; i < mt.bin.length; i++) { if (!REGION.has(mt.bin[i]) || (lset && !lset.has(mt.lev[i])) || !Number.isFinite(mt.v[i])) continue; perBin.set(mt.bin[i], (perBin.get(mt.bin[i]) || 0) + mt.v[i]); }
+    const binProf = new Map(); for (const [key, e] of cell) { const b = Math.floor(key / 256), m2 = binProf.get(b) || new Map(); for (const [pi, n] of e) m2.set(pi, (m2.get(pi) || 0) + n); binProf.set(b, m2); }
+    for (const [b, v] of perBin) { const m2 = binProf.get(b); if (!m2) continue; const n = [...m2.values()].reduce((a, c) => a + c, 0); for (const [pi, c] of m2) add(pi, v * c / n); }
+  } else {
+    const c = yAll[S.V], val = valArr(c);
+    for (let i = 0; i < c.bin.length; i++) { if (!REGION.has(c.bin[i]) || (lset && !lset.has(c.lev[i]))) continue;
+      if (!S.all && (c.blk[i] < S.t0 || c.blk[i] > S.t1)) continue;
+      const e = cell.get(c.bin[i] * 256 + c.blk[i]); if (!e) continue; const x = val ? val[i] * c.n[i] : c.n[i]; if (!Number.isFinite(x)) continue;
+      const n = [...e.values()].reduce((a, q) => a + q, 0); for (const [pi, q] of e) add(pi, x * q / n); }
+  }
+  // mean ref − obs per platform (from the bias records, apportioned the same way)
+  { const c = (yAll || await (async () => { const a = S.all, t0 = S.t0, t1 = S.t1; S.all = false; S.t0 = 0; S.t1 = INDEX.blocks.length - 1; const r = await yearData(S.src, S.ct); S.all = a; S.t0 = t0; S.t1 = t1; return r; })())[S.V];
+    for (let i = 0; i < c.bin.length; i++) { if (!REGION.has(c.bin[i]) || (lset && !lset.has(c.lev[i])) || !Number.isFinite(c.bias[i])) continue;
+      if (!S.all && S.part !== 'mean' && (c.blk[i] < S.t0 || c.blk[i] > S.t1)) continue;
+      const e = cell.get(c.bin[i] * 256 + c.blk[i]); if (!e) continue; const n = [...e.values()].reduce((a, q) => a + q, 0);
+      for (const [pi, q] of e) { const w = c.n[i] * q / n; bias.set(pi, (bias.get(pi) || 0) + c.bias[i] * w); bw.set(pi, (bw.get(pi) || 0) + w); } } }
+  const tot = [...share.values()].reduce((a, b) => a + b, 0), additive = !DIAG(S.part);
+  const rows = [...share].filter(([pi]) => pi !== 0xFFFFFFFF).sort((a, b) => additive ? b[1] - a[1] : Math.abs(b[1]) - Math.abs(a[1])).slice(0, 12);
+  const unit = S.V === 'T' ? '°C' : 'psu', nPlat = [...perPlat.keys()].filter(k => k !== 0xFFFFFFFF).length;
+  let h = `<div class="ptitle" style="margin-top:0.6em">Platforms in the region <span class="dnote">(${P.kind}; ${nPlat} with data at the selected depths)</span></div>` +
+    `<table><tr><th>${P.kind}</th><th>profiles</th><th>years</th>${additive ? '<th>share of the region\'s value</th>' : ''}<th>mean ref − obs (${unit})</th><th></th></tr>`;
+  for (const [pi, x] of rows) { const nm = P.names[pi], ys = yrs.get(pi), mb = bw.get(pi) ? bias.get(pi) / bw.get(pi) : NaN;
+    const q = new URLSearchParams({src: S.src, ref: refOf(S.ct), V: S.V, platform: nm});
+    const lvv = levelsSelected(); if (lvv && lvv.length === 1) q.set('k', lvv[0]);
+    q.set('back', location.href.split('#')[0]);
+    h += `<tr><td>${nm}</td><td>${perPlat.get(pi)}</td><td>${ys[0]}–${ys[1]}</td>${additive ? `<td><b>${tot ? (100 * x / tot).toFixed(1) + ' %' : '–'}</b></td>` : ''}` +
+      `<td>${Number.isFinite(mb) ? (mb >= 0 ? '+' : '') + mb.toFixed(3) : '–'}</td><td><a href="${INDEX.bin_viewer}?${q}">show profiles</a></td></tr>`; }
+  h += '</table><span class="dnote">How shares are split: the explorer stores values per bin, level and year, not per profile, so each (bin, year)\'s ' +
+    'value at the selected levels is divided among its platforms by their numbers of profiles there (profiles with a value at those levels)' + (S.part === 'mean' ? ' (the mean term has no years: per bin, by profiles over all years)' : '') +
+    '. Approximate for one platform among others in the same bin and year; exact when a platform is alone there. "show profiles" opens the in situ data viewer with that platform\'s profiles marked.</span>';
+  el.innerHTML = h;
+}
+
+// ---------- the region panel: shares, per-year region vs rest, the region's top bins ----------
+async function drawRegion(d) {
+  const box = document.getElementById('regp');
+  if (!REGION || !REGION.size) { box.style.display = 'none'; return; }
+  box.style.display = '';
+  const yd = (!S.all && S.part !== 'mean') ? await yearData(S.src, S.ct) : null;
+  const lb = levelBinValues(d, yd), lv = levelsSelected(), lset = lv ? new Set(lv) : null;
+  // per bin over the selected levels: sum of the bin's level values (the map value is their mean), data, levels
+  const per = new Map();
+  // data per bin come from the cost records (the mean term has one value per bin and level, no data)
+  const pts = new Map(), cc = (!S.all && S.part !== 'mean') ? yd[S.V] : d[S.V];
+  for (let i = 0; i < cc.bin.length; i++) { if (lset && !lset.has(cc.lev[i])) continue; if (!S.all && S.part !== 'mean' && (cc.blk[i] < S.t0 || cc.blk[i] > S.t1)) continue;
+    pts.set(cc.bin[i], (pts.get(cc.bin[i]) || 0) + cc.n[i]); }
+  for (const [k, m] of lb) { if (lset && !lset.has(k)) continue;      // per bin: summed contribution, -, levels, weight (data)
+    for (const [b, xw] of m) { const e = per.get(b) || [0, 0, 0, 0]; e[0] += contrib(xw); e[2] += 1; e[3] += perBin() ? 1 : xw[1]; per.set(b, e); } }
+  for (const [b, e] of per) e[1] = pts.get(b) || 0;
+  const tot = {s: 0, n: 0, pts: 0}, rg = {s: 0, n: 0, pts: 0};   // n: bin-levels (mean term) or data (costs): the divisor of the mean
+  for (const [b, [sv, pts, nl, wt]] of per) { const dv = perBin() ? nl : wt; tot.s += sv; tot.n += dv; tot.pts += pts; if (REGION.has(b)) { rg.s += sv; rg.n += dv; rg.pts += pts; } }
+  const nbT = per.size, nbR = [...per.keys()].filter(b => REGION.has(b)).length;
+  const pc = (a, b) => b ? (100 * a / b).toFixed(1) + ' %' : '–', mean = (s, n) => S.part === 'count' ? Math.round(s).toLocaleString() : n ? fmt(s / n) : '–';
+  const what = S.part === 'count' ? '# data' : DIAG(S.part) ? PARTS[S.part].split(',')[0].replace(/ \(.*/, '') : S.part === 'mean' ? 'mean term' : S.part + ' cost';
+  const additive = !DIAG(S.part);
+  let h = `<table><tr><th></th><th>bins with data</th><th>data</th><th>${perBin() ? 'mean per bin and level' : S.part === 'count' ? 'data' : 'per datum'}</th>${additive ? '<th>share of the summed ' + what + '</th>' : ''}</tr>` +
+    `<tr><td>region</td><td>${nbR} (${pc(nbR, nbT)})</td><td>${Math.round(rg.pts).toLocaleString()} (${pc(rg.pts, tot.pts)})</td><td>${mean(rg.s, rg.n)}</td>${additive ? '<td><b>' + pc(rg.s, tot.s) + '</b></td>' : ''}</tr>` +
+    `<tr><td>rest of the world</td><td>${nbT - nbR}</td><td>${Math.round(tot.pts - rg.pts).toLocaleString()}</td><td>${mean(tot.s - rg.s, tot.n - rg.n)}</td>${additive ? '<td>' + pc(tot.s - rg.s, tot.s) + '</td>' : ''}</tr>` +
+    `<tr><td>all</td><td>${nbT}</td><td>${Math.round(tot.pts).toLocaleString()}</td><td>${mean(tot.s, tot.n)}</td>${additive ? '<td>100 %</td>' : ''}</tr></table>`;
+  if (additive && nbR) { const ratio = (rg.s / tot.s) / (nbR / nbT);
+    h += `<span class="dnote">The region holds ${pc(nbR, nbT)} of the bins with data and ${pc(rg.s, tot.s)} of the summed ${what}: ` +
+      `${ratio.toFixed(1)}× its share of bins. A region drawn around the darkest bins will always look important; ` +
+      `compare its share of the term with its share of bins and data, and check the rest-of-the-world curve.</span>`; }
+  if (nbR < MIN_BINS) h += `<br><span class="dnote" style="color:#b03a2e">Only ${nbR} bins with data here: noisy.</span>`;
+  document.getElementById('regsum').innerHTML = h;
+  // the region's top bins
+  const top = [...per].filter(([b]) => REGION.has(b)).sort((a, b) => b[1][0] - a[1][0]).slice(0, 10);
+  let t = `<table><tr><th>bin</th><th>center</th><th>data</th><th>${perBin() ? what + ' (mean over levels)' : S.part === 'count' ? 'data' : what + ' per datum'}</th>${additive ? '<th>share of all</th>' : ''}</tr>`;
+  for (const [b, [sv, pts, nl, wt]] of top) { const lo = INDEX.bin_center ? INDEX.bin_center[2 * (b - 1)] : NaN, la = INDEX.bin_center ? INDEX.bin_center[2 * (b - 1) + 1] : NaN;
+    t += `<tr class="pick" data-b="${b}"><td>${b}</td><td>${la.toFixed(1)}°${la >= 0 ? 'N' : 'S'} ${Math.abs(lo).toFixed(1)}°${lo >= 0 ? 'E' : 'W'}</td><td>${Math.round(pts)}</td><td>${perBin() ? fmt(sv / nl) : S.part === 'count' ? Math.round(sv) : fmt(sv / wt)}</td>${additive ? '<td>' + pc(sv, tot.s) + '</td>' : ''}</tr>`; }
+  t += '</table><span class="dnote">The region\'s largest bins at the selected depths (click a row for its breakdown).</span>';
+  document.getElementById('regtop').innerHTML = t;
+  document.querySelectorAll('#regtop tr.pick').forEach(r => r.addEventListener('click', () => showBin(+r.dataset.b)));
+  regionPlatforms(d);
+  // per year: region vs rest (the mean term has no years: ref − obs instead)
+  const all = S.all, t0 = S.t0, t1 = S.t1; S.all = false; S.t0 = 0; S.t1 = INDEX.blocks.length - 1;
+  busy('Loading the years for the region…'); await paint();
+  const yAll = await yearData(S.src, S.ct); S.all = all; S.t0 = t0; S.t1 = t1; busy(null);
+  const c = yAll[S.V], val = valArr(c);
+  const nb = INDEX.blocks.length, sr = new Float64Array(nb), wr = new Float64Array(nb), so = new Float64Array(nb), wo = new Float64Array(nb), br = new Array(nb).fill(0).map(() => new Set());
+  for (let i = 0; i < c.bin.length; i++) { if (lset && !lset.has(c.lev[i])) continue;
+    const x = val ? val[i] : c.n[i]; if (!Number.isFinite(x)) continue; const w = val ? c.n[i] : 1;
+    if (REGION.has(c.bin[i])) { sr[c.blk[i]] += x * w; wr[c.blk[i]] += w; br[c.blk[i]].add(c.bin[i]); } else { so[c.blk[i]] += x * w; wo[c.blk[i]] += w; } }
+  const cnt = S.part === 'count';
+  const vr = [...sr].map((s, i) => wr[i] ? (cnt ? s : s / wr[i]) : NaN), vo = [...so].map((s, i) => wo[i] ? (cnt ? s : s / wo[i]) : NaN);
+  const cv = document.getElementById('rcan'), g = cv.getContext('2d'), W = cv.width, H = cv.height; g.clearRect(0, 0, W, H);
+  const okv = [...vr, ...(cnt ? [] : vo)].filter(Number.isFinite); if (!okv.length) return;
+  let lo = Math.min(0, ...okv), hi = Math.max(0, ...okv); if (hi === lo) hi = lo + 1; const pad = 0.08 * (hi - lo); if (lo < 0) lo -= pad; if (hi > 0) hi += pad;
+  const L = 50, R2 = 10, T = 30, B = 24, bw = (W - L - R2) / nb, yv = x => T + (H - T - B) * (hi - x) / (hi - lo);
+  g.font = '10px sans-serif'; g.fillStyle = '#444'; g.textAlign = 'right'; g.textBaseline = 'middle';
+  for (const tk of niceTicks(lo, hi, 4)) { g.fillText(fmt(tk), L - 4, yv(tk)); g.strokeStyle = '#eee'; g.beginPath(); g.moveTo(L, yv(tk)); g.lineTo(W - R2, yv(tk)); g.stroke(); }
+  for (let i = 0; i < nb; i++) { if (!Number.isFinite(vr[i])) continue; g.fillStyle = br[i].size >= MIN_BINS ? '#6c3483' : 'rgba(108,52,131,0.3)';
+    const a = yv(Math.max(0, Math.min(vr[i], hi))), b2 = yv(Math.min(0, Math.max(vr[i], lo))); g.fillRect(L + i * bw + 1, Math.min(a, b2), bw - 2, Math.max(1, Math.abs(b2 - a))); }
+  if (!cnt) {   // the rest of the world: a gray line with a thin white edge (visible over the dark bars) and a dot per year
+    // with data (a year without data on either side has no line, only its dot)
+    const path = () => { g.beginPath(); let on = false;
+      for (let i = 0; i < nb; i++) { if (!Number.isFinite(vo[i])) { on = false; continue; } const x = L + (i + 0.5) * bw, y = yv(vo[i]); if (on) g.lineTo(x, y); else { g.moveTo(x, y); on = true; } } };
+    g.lineJoin = 'round';
+    for (const [lw, col] of [[4, '#fff'], [1.5, 'rgba(70,70,70,0.95)']]) { g.strokeStyle = col; g.lineWidth = lw; path(); g.stroke(); }
+    for (let i = 0; i < nb; i++) { if (!Number.isFinite(vo[i])) continue; const x = L + (i + 0.5) * bw, y = yv(vo[i]);
+      for (const [rad, col] of [[3, '#fff'], [2, 'rgba(70,70,70,0.95)']]) { g.fillStyle = col; g.beginPath(); g.arc(x, y, rad, 0, 2 * Math.PI); g.fill(); } } }
+  g.textAlign = 'center'; g.textBaseline = 'top'; g.fillStyle = '#444';
+  for (let i = 0; i < nb; i += 5) g.fillText(INDEX.blocks[i], L + (i + 0.5) * bw, H - B + 4);
+  // two short lines, so nothing runs past the chart's edge: what is plotted, then what bars and line are
+  g.textAlign = 'left'; g.fillText(`Per year at the selected depths: ${S.part === 'mean' ? 'ref − obs' : PARTS[S.part]} (no bar, or a gap in the line: no data that year)`, L, 2);
+  g.fillStyle = '#666'; g.fillText(`bars: the purple-outlined region (pale: under ${MIN_BINS} of its bins have data)` +
+    (cnt ? '' : '; line and dots: the rest of the world'), L, 14);
+}
+
+// ---------- the clicked bin: its values at the selected depths, per level and per year, and links ----------
+let PICK = null;
+function binBreakdown(d, yd, b) {
+  const c = (!S.all && S.part !== 'mean') ? yd[S.V] : d[S.V], cAll = d[S.V], lv = levelsSelected(), lset = lv ? new Set(lv) : null;
+  const perLev = new Map();
+  for (let i = 0; i < cAll.bin.length; i++) { if (cAll.bin[i] !== b) continue;
+    perLev.set(cAll.lev[i], {n: cAll.n[i], mu: cAll.mu[i], ma: cAll.ma[i], bias: cAll.bias[i], nmis: cAll.nmis[i], sig: cAll.sig[i]}); }
+  const mt = new Map(); const m = d[S.V].mt; for (let i = 0; i < m.bin.length; i++) if (m.bin[i] === b) mt.set(m.lev[i], m.v[i]);
+  return {perLev, mt, lset};
+}
+async function binYears(b) {               // per-year values of the bin at the selected levels (loads all year pieces)
+  const all = S.all, t0 = S.t0, t1 = S.t1; S.all = false; S.t0 = 0; S.t1 = INDEX.blocks.length - 1;
+  const yd = await yearData(S.src, S.ct); S.all = all; S.t0 = t0; S.t1 = t1;
+  const c = yd[S.V], lv = levelsSelected(), lset = lv ? new Set(lv) : null, sum = new Float64Array(INDEX.blocks.length), w = new Float64Array(INDEX.blocks.length);
+  const val = valArr(c);
+  for (let i = 0; i < c.bin.length; i++) { if (c.bin[i] !== b || (lset && !lset.has(c.lev[i]))) continue;
+    const x = val ? val[i] : c.n[i]; if (!Number.isFinite(x)) continue; sum[c.blk[i]] += val ? x * c.n[i] : x; w[c.blk[i]] += val ? c.n[i] : 1; }
+  return {sum, w, what: S.part === 'mean' ? 'bias' : S.part};
+}
+async function showBin(b) {
+  PICK = b;
+  const d = await data(S.src, S.ct), yd = (!S.all && S.part !== 'mean') ? await yearData(S.src, S.ct) : null;
+  const {perLev, mt, lset} = binBreakdown(d, yd, b), z = INDEX.depth, unit = S.V === 'T' ? '°C' : 'psu';
+  const lon = INDEX.bin_center ? INDEX.bin_center[2 * (b - 1)] : null, lat = INDEX.bin_center ? INDEX.bin_center[2 * (b - 1) + 1] : null;
+  const rows = [...perLev.keys()].sort((a, c) => a - c).filter(k => !lset || lset.has(k));
+  let html = `<b>Bin ${b}</b>` + (lon !== null ? ` (center ${lat.toFixed(1)}°${lat >= 0 ? 'N' : 'S'}, ${Math.abs(lon).toFixed(1)}°${lon >= 0 ? 'E' : 'W'})` : '') +
+    `; ${S.src}, ${S.ct}, ${S.V}; all years.<br>`;
+  if (!rows.length) html += 'No data at the selected depths.';
+  else {
+    html += `<table><tr><th>depth</th><th># data</th><th>unsplit</th><th>anomaly</th><th>mean term</th><th>ref − obs (${unit})</th><th>(ref − obs)/σ</th><th>σ (${unit})</th></tr>`;
+    const shown = rows.length > 14 ? rows.filter((_, i) => i % Math.ceil(rows.length / 14) === 0 || i === rows.length - 1) : rows;
+    for (const k of shown) { const r = perLev.get(k);
+      html += `<tr><td>${z[k]} m</td><td>${r.n}</td><td>${fmt(r.mu)}</td><td>${Number.isFinite(r.ma) ? fmt(r.ma) : '–'}</td><td>${mt.has(k) && Number.isFinite(mt.get(k)) ? fmt(mt.get(k)) : '–'}</td><td>${Number.isFinite(r.bias) ? (r.bias >= 0 ? '+' : '') + r.bias.toFixed(3) : '–'}</td><td>${Number.isFinite(r.nmis) ? (r.nmis >= 0 ? '+' : '') + r.nmis.toFixed(2) : '–'}</td><td>${Number.isFinite(r.sig) ? fmt(r.sig) : '–'}</td></tr>`; }
+    html += '</table>' + (shown.length < rows.length ? `<span class="dnote">${shown.length} of ${rows.length} levels shown</span><br>` : '');
+    html += '<span class="dnote">Costs: (ΔV/σ)², true weights, over all years. Mean term: per bin and level, as the map&rsquo;s mean term.</span>';
+  }
+  document.getElementById('bintxt').innerHTML = html; document.getElementById('bintxt').className = '';
+  // links: the in situ data viewer at this bin, depth, years and reference
+  const links = document.getElementById('binlinks'); links.innerHTML = '';
+  if (INDEX.bin_viewer && lon !== null) {
+    const q = new URLSearchParams({src: S.src, ref: refOf(S.ct), lon: lon.toFixed(2), lat: lat.toFixed(2), V: S.V, bin: b});
+    const lv = levelsSelected(); if (lv && lv.length === 1) q.set('k', lv[0]); else if (lv) q.set('levels', lv[0] + '-' + lv[lv.length - 1]);
+    if (!S.all) { q.set('y0', INDEX.blocks[S.t0]); q.set('y1', INDEX.blocks[S.t1]); }
+    q.set('back', location.href.split('#')[0]);
+    links.innerHTML = `<a href="${INDEX.bin_viewer}?${q}">Open the profiles of bin ${b} in the in situ data viewer (outlined there) &rarr;</a>`;
+  }
+  // per-year chart
+  busy('Loading the years of bin ' + b + '…'); await paint();
+  const Y = await binYears(b); busy(null);
+  const cv = document.getElementById('bcan'), g = cv.getContext('2d'), W = cv.width, H = cv.height; cv.style.display = '';
+  g.clearRect(0, 0, W, H);
+  const v = [...Y.sum].map((s, i) => Y.w[i] ? (Y.what === 'count' ? s : s / Y.w[i]) : NaN), ok = v.filter(Number.isFinite);
+  if (!ok.length) return;
+  let lo = Math.min(0, ...ok), hi = Math.max(0, ...ok); if (hi === lo) hi = lo + 1;
+  const pad = 0.08 * (hi - lo); if (lo < 0) lo -= pad; if (hi > 0) hi += pad;
+  const L = 50, R2 = 10, T = 18, B = 24, nb = INDEX.blocks.length, bw = (W - L - R2) / nb;
+  const yv = x => T + (H - T - B) * (hi - x) / (hi - lo);
+  g.font = '10px sans-serif'; g.fillStyle = '#444'; g.textAlign = 'right'; g.textBaseline = 'middle';
+  for (const t of niceTicks(lo, hi, 4)) { g.fillText(fmt(t), L - 4, yv(t)); g.strokeStyle = '#eee'; g.beginPath(); g.moveTo(L, yv(t)); g.lineTo(W - R2, yv(t)); g.stroke(); }
+  for (let i = 0; i < nb; i++) { if (!Number.isFinite(v[i])) continue; g.fillStyle = SIGNED(Y.what) ? (v[i] >= 0 ? '#c0392b' : '#2471a3') : '#e67e22';
+    const y0 = yv(Math.max(0, Math.min(v[i], hi))), y1 = yv(Math.min(0, Math.max(v[i], lo))); g.fillRect(L + i * bw + 1, Math.min(y0, y1), bw - 2, Math.max(1, Math.abs(y1 - y0))); }
+  g.textAlign = 'center'; g.textBaseline = 'top'; g.fillStyle = '#444';
+  for (let i = 0; i < nb; i += 5) g.fillText(INDEX.blocks[i], L + (i + 0.5) * bw, H - B + 4);
+  g.textAlign = 'left'; g.fillText(`per year at the selected depths: ${Y.what === 'bias' ? 'ref − obs (' + unit + ')' : PARTS[Y.what]}`, L, 2);
+}
+
+function status(t) { const s = document.getElementById('status'); s.textContent = t || ''; s.className = ''; }
+
+function levelsSelected() {
+  const nd = INDEX.depth.length;
+  if (S.dmode === 'all') return null;
+  if (S.dmode === 'level' || S.dmode === 'spike') return [ +S.dsel ];
+  if (S.dmode === 'range') { const a = Math.min(S.r0, S.r1), b = Math.max(S.r0, S.r1); return Array.from({length: b - a + 1}, (_, i) => a + i); }
+  return INDEX.groups[S.dmode][S.dsel].levels;
+}
+function computeBins(d, yd, allYears) {   // per-bin value for the current selection: Float32Array(10243), NaN = none
+  const sum = new Float64Array(10243), cnt = new Float64Array(10243);
+  const useYears = !allYears && !S.all && S.part !== 'mean';
+  const c = useYears ? yd[S.V] : d[S.V];
+  const lv = levelsSelected(), lset = lv ? new Set(lv) : null;
+  if (S.part === 'mean') {
+    const m = d[S.V].mt;
+    for (let i = 0; i < m.bin.length; i++) {
+      if (lset && !lset.has(m.lev[i])) continue;
+      if (Number.isFinite(m.v[i])) { sum[m.bin[i]] += m.v[i]; cnt[m.bin[i]] += 1; }
+    }
+  } else {
+    const val = valArr(c),
+          t0 = useYears ? S.t0 : 0, t1 = useYears ? S.t1 : 255;
+    for (let i = 0; i < c.bin.length; i++) {
+      if (c.blk[i] < t0 || c.blk[i] > t1) continue;
+      if (lset && !lset.has(c.lev[i])) continue;
+      const w = c.n[i];
+      if (S.part === 'count') { sum[c.bin[i]] += w; cnt[c.bin[i]] = 1; }
+      else if (Number.isFinite(val[i])) { sum[c.bin[i]] += val[i] * w; cnt[c.bin[i]] += w; }
+    }
+  }
+  const out = new Float32Array(10243).fill(NaN);
+  for (let b = 1; b < 10243; b++) if (cnt[b] > 0) out[b] = S.part === 'count' ? sum[b] : sum[b] / cnt[b];
+  return out;
+}
+function p98(v) {
+  const a = Array.from(v).filter(Number.isFinite).map(x => SIGNED(S.part) ? Math.abs(x) : x).sort((x, y) => x - y);
+  return a.length ? a[Math.min(a.length - 1, Math.floor(0.98 * a.length))] || 1 : 1;
+}
+const YLORRD = [[255,255,204],[255,237,160],[254,217,118],[254,178,76],[253,141,60],[252,78,42],[227,26,28],[189,0,38],[128,0,38]];
+const RDBU = [[5,48,97],[33,102,172],[67,147,195],[146,197,222],[209,229,240],[247,247,247],[253,219,199],[244,165,130],[214,96,77],[178,24,43],[103,0,31]];
+function ramp(stops, x) {
+  const t = Math.max(0, Math.min(1, x)) * (stops.length - 1), i = Math.min(stops.length - 2, Math.floor(t)), f = t - i;
+  return stops[i].map((c, k) => Math.round(c + f * (stops[i + 1][k] - c)));
+}
+function color(x) { return SIGNED(S.part) ? ramp(RDBU, x) : ramp(YLORRD, x); }
+function scale(v, vmax) {
+  if (SIGNED(S.part)) return 0.5 + 0.5 * v / vmax;          // symmetric: -vmax .. +vmax
+  if (S.log) { const lo = Math.max(vmax / 1e3, 1e-6); return (Math.log10(Math.max(v, lo)) - Math.log10(lo)) / (Math.log10(vmax) - Math.log10(lo)); }
+  return v / vmax;
+}
+function drawMap(canvas, view, vals, vmax) {
+  const g = GRIDS[view], {nx, ny} = GRID[view], ctx = canvas.getContext('2d');
+  const img = ctx.createImageData(nx, ny), px = img.data;
+  for (let p = 0; p < nx * ny; p++) {
+    const b = g[p], q = 4 * p;
+    if (b < 0) { px[q] = 211; px[q + 1] = 211; px[q + 2] = 211; px[q + 3] = 255; continue; }
+    const v = vals[b];
+    if (!Number.isFinite(v)) { px[q] = px[q + 1] = px[q + 2] = 255; px[q + 3] = 255; continue; }
+    const [r, gg, bb] = color(scale(v, vmax)); px[q] = r; px[q + 1] = gg; px[q + 2] = bb; px[q + 3] = 255;
+  }
+  if (REGION && REGION.size) {                // the region's outline: 2 px purple inside its edge, 1 px white outside it
+    const inR = (xx, yy) => xx >= 0 && yy >= 0 && xx < nx && yy < ny && g[yy * nx + xx] > 0 && REGION.has(g[yy * nx + xx]);
+    const set = (p, r, gg, bb) => { const q = 4 * p; px[q] = r; px[q + 1] = gg; px[q + 2] = bb; px[q + 3] = 255; };
+    for (let y = 0; y < ny; y++) for (let x = 0; x < nx; x++) {
+      const p = y * nx + x, me = inR(x, y);
+      let near1 = false, near2 = false;
+      for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) { if (inR(x + dx, y + dy) === me) continue;
+        if (Math.abs(dx) <= 1 && Math.abs(dy) <= 1) near1 = true; else near2 = true; }
+      if (me && (near1 || near2)) set(p, 108, 52, 131);
+      else if (!me && near1) set(p, 255, 255, 255);
+    }
+  }
+  ctx.putImageData(img, 0, 0);
+  ctx.strokeStyle = 'rgba(120,120,120,0.8)'; ctx.lineWidth = 0.6;
+  for (const poly of GRID[view].coast) {
+    ctx.beginPath(); ctx.moveTo(poly[0], poly[1]);
+    for (let i = 2; i < poly.length; i += 2) ctx.lineTo(poly[i], poly[i + 1]);
+    ctx.closePath(); ctx.stroke();
+  }
+  // isobaths for the selected depths (see isobathsFor), drawn faint over the colors, with a few depth labels
+  const B = GRID[view].bathy;
+  if (S.isobaths && B) {
+    const labs = [], taken = new Set(), k = canvas.width / Math.max(1, canvas.clientWidth);
+    for (const d of isobathsFor()) {
+      const shelf = d === 200;
+      ctx.strokeStyle = shelf ? 'rgba(30,30,30,0.55)' : 'rgba(20,40,90,0.6)'; ctx.lineWidth = shelf ? 0.6 : 0.8;
+      for (const p of B[d] || []) {
+        ctx.beginPath(); ctx.moveTo(p[0], p[1]);
+        let len = 0;
+        for (let i = 2; i < p.length; i += 2) { ctx.lineTo(p[i], p[i + 1]); len += Math.hypot(p[i] - p[i - 2], p[i + 1] - p[i - 1]); }
+        ctx.stroke();
+        if (len > 140 * k) { const m = 2 * Math.floor(p.length / 4), gx = Math.floor(p[m] / (130 * k)), gy = Math.floor(p[m + 1] / (130 * k));
+          if (!taken.has(gx + ',' + gy)) { taken.add(gx + ',' + gy); labs.push([p[m], p[m + 1], d]); } }
+      }
+    }
+    // k: canvas pixels per screen pixel, so the labels are ~10 px on screen on every map
+    ctx.font = Math.round(10 * k) + 'px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    for (const [x, y, d] of labs) { ctx.lineWidth = 3 * k; ctx.strokeStyle = 'rgba(255,255,255,0.85)'; ctx.strokeText(d + ' m', x, y);
+      ctx.fillStyle = d === 200 ? '#333' : '#1a2a5a'; ctx.fillText(d + ' m', x, y); }
+  }
+}
+// Which isobaths to draw for the selected depths: the 200 m shelf edge always, and the level(s) nearest the depths
+// shown (the seafloor at that depth: a bin is only colored offshore of it). All depths: 200, 1000 and 3000 m.
+const ISOBATHS = [200, 1000, 2000, 3000, 4000, 5000];
+function isobathsFor() {
+  const lv = levelsSelected();
+  if (!lv) return [200, 1000, 3000];
+  const z0 = INDEX.depth[lv[0]], z1 = INDEX.depth[lv.at(-1)], near = z => ISOBATHS.reduce((a, b) => Math.abs(b - z) < Math.abs(a - z) ? b : a);
+  const out = new Set([200, near(z0), near(z1)]);
+  for (const d of ISOBATHS) if (d > z0 && d < z1) out.add(d);
+  return [...out].sort((a, b) => a - b);
+}
+function niceTicks(lo, hi, n) {    // about n round-numbered ticks between lo and hi
+  const raw = (hi - lo) / n, mag = Math.pow(10, Math.floor(Math.log10(raw)));
+  const step = [1, 2, 2.5, 5, 10].map(m => m * mag).find(st => st >= raw) || raw;
+  const out = []; for (let v = Math.ceil(lo / step) * step; v <= hi + 1e-9 * step; v += step) out.push(+v.toPrecision(10));
+  return out;
+}
+function drawBar(vmax) {
+  const c = document.getElementById('cbar'), ctx = c.getContext('2d');
+  const W = c.width, x0 = 10, x1 = W - 10, h = 14;
+  ctx.clearRect(0, 0, W, c.height);
+  for (let x = x0; x < x1; x++) { const [r, g, b] = color((x - x0) / (x1 - x0 - 1)); ctx.fillStyle = `rgb(${r},${g},${b})`; ctx.fillRect(x, 0, 1, h); }
+  ctx.strokeStyle = '#999'; ctx.strokeRect(x0 - 0.5, 0.5, x1 - x0, h);
+  ctx.fillStyle = '#333'; ctx.strokeStyle = '#333'; ctx.font = '11px sans-serif'; ctx.textAlign = 'center';
+  let ticks, pos;
+  if (SIGNED(S.part)) {
+    ticks = niceTicks(-vmax, vmax, 6);
+    pos = v => x0 + (x1 - x0) * (v + vmax) / (2 * vmax);
+  } else if (S.log) {
+    const lo = Math.max(vmax / 1e3, 1e-6);
+    ticks = []; for (let e = Math.ceil(Math.log10(lo)); e <= Math.floor(Math.log10(vmax)); e++) ticks.push(Math.pow(10, e));
+    pos = v => x0 + (x1 - x0) * (Math.log10(v) - Math.log10(lo)) / (Math.log10(vmax) - Math.log10(lo));
+  } else {
+    ticks = niceTicks(0, vmax, 6);
+    pos = v => x0 + (x1 - x0) * v / vmax;
+  }
+  for (const v of ticks) {
+    const x = Math.round(pos(v)) + 0.5;
+    ctx.beginPath(); ctx.moveTo(x, h); ctx.lineTo(x, h + 4); ctx.stroke();
+    ctx.fillText(fmt(v), x, h + 15);
+  }
+  const unit = S.V === 'T' ? '°C' : 'psu';
+  const ref = (S.ct === 'vs_clim' ? 'climatology' : S.ct.slice(3));
+  const txt = SIGNED(S.part)
+    ? `${PARTS[S.part]}${S.part === 'bias' ? ', ' + unit : ''}: red = the ${ref} is warmer/saltier than the observations, blue = colder/fresher; ` +
+      `the scale is centered on 0 (set ± with "max"); beyond ±${fmt(vmax)} the end colors`
+    : `${PARTS[S.part]}${S.part === 'count' ? '' : S.part === 'sig' ? ', ' + unit : ', (ΔV/σ)², true weights'}${S.log ? '; log scale' : ''}; ` +
+      `values above ${fmt(vmax)} use the top color`;
+  document.getElementById('cbtxt').textContent = txt;
+  // the same bar under the global map (on a laptop screen the one below the polar maps is out of sight)
+  const c2 = document.getElementById('cbar2');
+  if (c2) { c2.getContext('2d').clearRect(0, 0, c2.width, c2.height); c2.getContext('2d').drawImage(c, 0, 0); document.getElementById('cbtxt2').textContent = txt; }
+}
+function fmt(x) {
+  if (x === 0 || Math.abs(x) < 1e-12) return '0';
+  const a = Math.abs(x);
+  if (a >= 1e6) return (x / 1e6).toPrecision(3).replace(/\.?0+$/, '') + 'M';
+  if (a >= 1e4) return (x / 1e3).toPrecision(3).replace(/\.?0+$/, '') + 'k';
+  if (a < 1e-2) return x.toExponential(1);
+  return (+x.toPrecision(3)).toString();
+}
+
+let VALS = null, RENDER_ID = 0;
+const SCALE = {};                       // view key -> automatic color-scale max (98th percentile, all years)
+function scaleKey() {
+  const p = (S.part === 'anomaly') ? 'unsplit' : S.part;   // unsplit and anomaly: same units, same scale
+  return [S.src, S.ct, S.V, p, S.dmode, S.dmode === 'range' ? S.r0 + '-' + S.r1 : S.dsel].join('|');
+}
+// ---------- the address holds the whole view, so any view can be bookmarked, copied or sent ----------
+// src, ct, V, part, depth (all | k<level> | <mode>:<group> | spike:<level>), years (all | <y0>-<y1>), region (bin ids,
+// ranges compressed), range (<from>-<to> m, the depth band) and same (1 = the same-bins curve on), log, max.
+function regionCode(R) { if (!R || !R.size) return ''; const a = [...R].sort((x, y) => x - y), out = [];
+  for (let i = 0; i < a.length; i++) { let j = i; while (j + 1 < a.length && a[j + 1] === a[j] + 1) j++; out.push(j > i ? `${a[i]}-${a[j]}` : `${a[i]}`); i = j; }
+  return out.join('.'); }
+function regionDecode(t) { const R = new Set(); for (const part of (t || '').split('.')) { if (!part) continue;
+  const [a, b] = part.split('-').map(Number); if (Number.isFinite(a)) for (let x = a; x <= (Number.isFinite(b) ? b : a); x++) R.add(x); } return R; }
+function viewQuery() {
+  const q = new URLSearchParams({src: S.src, ct: S.ct, V: S.V, part: S.part});
+  q.set('depth', S.dmode === 'all' ? 'all' : S.dmode === 'level' ? 'k' + S.dsel : S.dmode === 'range' ? `r${Math.min(S.r0, S.r1)}-${Math.max(S.r0, S.r1)}` : `${S.dmode}:${S.dsel}`);
+  q.set('years', S.all || S.part === 'mean' ? 'all' : `${INDEX.blocks[S.t0]}-${INDEX.blocks[S.t1]}`);
+  const z = INDEX.depth; q.set('range', `${z[Math.min(+S.sb0, +S.sb1)]}-${z[Math.max(+S.sb0, +S.sb1)]}`);
+  if (S.same) q.set('same', '1'); if (S.log) q.set('log', '1'); if (S.vmax) q.set('max', String(S.vmax));
+  const rc = regionCode(REGION); if (rc) q.set('region', rc);
+  return q;
+}
+function writeAddress() { const q = viewQuery(); history.replaceState(null, '', location.pathname + '?' + q.toString() + location.hash);
+  // the navigation bar's links open on the same class (and, for the data viewer, reference, variable and depth)
+  const nd = document.getElementById('nav-data');
+  if (nd && INDEX.bin_viewer) { const v = new URLSearchParams({src: S.src, ref: refOf(S.ct), V: S.V});
+    const lv = levelsSelected(); if (lv && lv.length === 1) v.set('k', lv[0]); v.set('back', location.href.split('#')[0]); nd.href = INDEX.bin_viewer + '?' + v; }
+  const na = document.querySelector('.sitenav a[href^="index.html"]');
+  if (na) na.href = 'index.html?' + new URLSearchParams({src: S.src, ct: S.ct}); }
+
+async function render() {
+  const id = ++RENDER_ID;
+  if (!INDEX.files[S.src + '|' + S.ct]) { status('no data for ' + S.src + ' ' + S.ct); return; }
+  syncControls();
+  let d;
+  try {
+    d = await data(S.src, S.ct);
+    const yd = (!S.all && S.part !== 'mean') ? await yearData(S.src, S.ct) : null;
+    if (id !== RENDER_ID) return;              // a newer selection came in meanwhile
+    busy('Updating maps for ' + S.src + ', ' + timeText() + '…'); await paint();
+    if (id !== RENDER_ID) return;
+    VALS = computeBins(d, yd);
+  } catch (e) { busy(null); status('error: ' + e.message); throw e; }
+  status('');
+  busy(null);
+  writeAddress();
+  // color scale: fixed for a view (class, cost type, variable, depth selection; unsplit and anomaly share
+  // it), from all years, so moving the time range shows real changes; a typed max overrides it
+  const vk = scaleKey();
+  if (!(vk in SCALE)) {
+    if (S.part === 'unsplit' || S.part === 'anomaly') {
+      const keep = S.part; const both = [];
+      for (const pt of ['unsplit', 'anomaly']) { S.part = pt; both.push(p98(computeBins(d, null, true))); }
+      S.part = keep; SCALE[vk] = Math.max(...both);
+    } else SCALE[vk] = p98(S.part === 'mean' ? VALS : computeBins(d, null, true));
+  }
+  const vmax = S.vmax || SCALE[vk];
+  document.getElementById('vmax').placeholder = fmt(SCALE[vk]);
+  document.getElementById('scalenote').textContent = S.vmax ? 'scale: your max' :
+    (S.part === 'mean' || S.part === 'count' ? 'scale: auto for this view' : 'scale: fixed for this view (from all years), so time changes show');
+  for (const view of ['global', 'NH', 'SH']) drawMap(document.getElementById('c_' + view), view, VALS, vmax);
+  document.getElementById('isobtxt').textContent = GRID.global.bathy ? '(' + isobathsFor().join(', ') + ' m)' : '(none in this build)';
+  drawBar(vmax);
+  PROF = profileCurves(d, (!S.all && S.part !== 'mean') ? await yearData(S.src, S.ct) : null); drawProfile();
+  drawRegion(d);
+  if (PICK) showBin(PICK);
+  syncControls();
+  const nb = VALS.filter(Number.isFinite).length;
+  const lv = levelsSelected();
+  const dtxt = lv ? (lv.length === 1 ? INDEX.depth[lv[0]] + ' m' : INDEX.depth[lv[0]] + '–' + INDEX.depth[lv[lv.length - 1]] + ' m') : 'all depths';
+  const ttxt = S.part === 'mean' ? 'all years (the mean term is defined over the whole record)' : timeText();
+  document.getElementById('info').innerHTML =
+    `<b>${S.src}</b>, ${S.ct}, ${S.V}: ${PARTS[S.part]}; ${dtxt}; ${ttxt}. ${nb} bins with data. ` +
+    (S.part === 'bias' ? 'Each bin: mean of (reference &minus; observation) over its data in the selected levels and years, in ' +
+       (S.V === 'T' ? '&deg;C' : 'psu') + '. A diagnostic of steady offsets and their change over time; it is not part of the cost. ' :
+     S.part === 'nmis' ? 'Each bin: mean of (reference &minus; observation)/&sigma; over its data in the selected levels and years (true weights, ' +
+       'so &sigma; is the assumed error alone). &plusmn;1 is one assumed error. Not part of the cost (the unsplit cost is the mean of its square). ' :
+     S.part === 'sig' ? 'Each bin: mean of &sigma;, the assumed error of the observations (true weights 1/&sigma;&sup2;), over its data in the selected levels and years, in ' +
+       (S.V === 'T' ? '&deg;C' : 'psu') + '. The errors the costs are measured against. ' :
+     S.part === 'mean' ? 'Mean term: w&#772;&middot;(V&#772;&minus;V&#772;<sub>ref</sub>)&sup2; per bin and level (own bin means, all years), averaged over the selected levels. ' :
+     'Each bin: mean of (&Delta;V/&sigma;)&sup2; over its data in the selected levels and years. ') +
+    'The color scale is fixed for this view across years; unsplit and anomaly share it. ' +
+    'Hover a bin for its value.';
+}
+function foldSummary() {
+  const lv = levelsSelected(), d = lv ? (lv.length === 1 ? INDEX.depth[lv[0]] + ' m' : INDEX.depth[lv[0]] + '–' + INDEX.depth[lv.at(-1)] + ' m') : 'all depths';
+  document.getElementById('foldsum').textContent = `${S.src} · ${S.ct} · ${S.V} · ${PARTS[S.part].split(/[,(]/)[0].trim()} · ${d} · ` +
+    (S.part === 'mean' ? 'whole record' : timeText());
+}
+function syncControls() {
+  foldSummary();
+  const set = (id, attr, cur) => document.querySelectorAll('#' + id + ' .tab').forEach(t => t.classList.toggle('active', t.dataset[attr] === cur));
+  set('srcs', 'v', S.src); set('cts', 'v', S.ct); set('vars', 'v', S.V); set('parts', 'v', S.part); set('dmodes', 'v', S.dmode);
+  set('diags', 'v', S.part);
+  document.getElementById('logscale').disabled = SIGNED(S.part);
+  document.getElementById('vmaxlab').textContent = SIGNED(S.part) ? 'max ±' : 'max';
+  const lo = document.getElementById('tlo'), hi = document.getElementById('thi'), tall = document.getElementById('tall');
+  const noTime = S.part === 'mean';
+  lo.disabled = hi.disabled = tall.disabled = document.getElementById('tone').disabled = noTime;
+  tall.classList.toggle('active', S.all && !noTime);
+  lo.value = S.t0; hi.value = S.t1;
+  const n = INDEX.blocks.length - 1, f = document.getElementById('tfill');
+  f.style.left = (S.all ? 0 : 100 * S.t0 / n) + '%'; f.style.width = (S.all ? 100 : 100 * (S.t1 - S.t0) / n) + '%';
+  f.style.opacity = noTime ? 0.25 : 1;
+  const tl = document.getElementById('timelab');
+  tl.textContent = noTime ? 'whole record (mean term)' : timeText();
+  tl.title = noTime ? 'The mean term is defined over the whole record, so no time selection' : '';
+  const a = S.all ? 0 : S.t0, z = S.all ? n : S.t1;
+  const dis = (sel, off) => document.querySelectorAll(sel).forEach(b => b.disabled = noTime || off);
+  dis('.step[data-h=lo][data-d="-1"]', a <= 0); dis('.step[data-h=lo][data-d="1"]', a >= n);
+  dis('.step[data-h=hi][data-d="-1"]', z <= 0); dis('.step[data-h=hi][data-d="1"]', z >= n);
+  dis('#shl', a <= 0); dis('#shr', z >= n);
+  document.querySelector('#vars .tab[data-v=S]').disabled = !hasS();
+}
+function timeText() {
+  if (S.all) return 'all years (' + INDEX.blocks[0] + '–' + INDEX.blocks[INDEX.blocks.length - 1] + ')';
+  return S.t0 === S.t1 ? INDEX.blocks[S.t0] : INDEX.blocks[S.t0] + '–' + INDEX.blocks[S.t1];
+}
+function hasS() { const c = CACHE[S.src + '|' + S.ct]; return !c || c.S.bin.length > 0; }
+function fillDepthSelect() {
+  const sel = document.getElementById('dsel'); sel.innerHTML = '';
+  let opts = [];
+  if (S.dmode === 'all') opts = [];
+  else if (S.dmode === 'level') opts = INDEX.depth.map((z, k) => [k, z + ' m (level ' + (k + 1) + ')']);
+  else if (S.dmode === 'range') opts = [];
+  else if (S.dmode === 'spike') {
+    const sp = (INDEX.spikes[S.src + '|' + S.ct] || {})[S.V] || [];
+    opts = sp.map(s => [s.level, `${INDEX.depth[s.level]} m: ${s.part} ${fmt(s.value)} vs ${fmt(s.median)} around it`]);
+    if (!opts.length) opts = [[-1, 'no spikes flagged for this selection']];
+  } else opts = INDEX.groups[S.dmode].map((g, i) => [i, `${g.label} (${g.levels.length} level${g.levels.length > 1 ? 's' : ''}: ${INDEX.depth[g.levels[0]]}${g.levels.length > 1 ? '–' + INDEX.depth[g.levels.at(-1)] : ''} m)`]);
+  sel.style.display = opts.length ? '' : 'none';
+  const dr = document.getElementById('drange'); dr.style.display = S.dmode === 'range' ? '' : 'none';
+  if (S.dmode === 'range') { const o = INDEX.depth.map((z, k) => `<option value="${k}">${z} m</option>`).join('');
+    for (const [id, key] of [['dr0', 'r0'], ['dr1', 'r1']]) { const e = document.getElementById(id); if (!e.options.length) e.innerHTML = o; e.value = S[key]; } }
+  for (const [v, t] of opts) { const o = document.createElement('option'); o.value = v; o.textContent = t; sel.appendChild(o); }
+  if (opts.length) { if (![...sel.options].some(o => o.value == S.dsel)) S.dsel = opts[0][0]; sel.value = S.dsel; }
+  if (S.dmode === 'spike' && +S.dsel < 0) S.dmode = 'all';
+}
+function tabs(id, items, key, onpick) {
+  const el = document.getElementById(id);
+  el.innerHTML = items.map(([v, t]) => `<button class="tab" data-v="${v}">${t}</button>`).join(' ');
+  el.querySelectorAll('.tab').forEach(b => b.addEventListener('click', () => { if (!b.disabled) { onpick(b.dataset.v); } }));
+}
+function hover(e, view) {
+  const c = e.target, r = c.getBoundingClientRect();
+  const x = Math.floor((e.clientX - r.left) / r.width * GRID[view].nx), y = Math.floor((e.clientY - r.top) / r.height * GRID[view].ny);
+  const b = GRIDS[view][y * GRID[view].nx + x], h = document.getElementById('hover');
+  if (b > 0 && VALS) { h.style.display = 'block'; h.style.left = e.clientX + 12 + 'px'; h.style.top = e.clientY + 12 + 'px';
+    h.textContent = `bin ${b}: ${Number.isFinite(VALS[b]) ? fmt(VALS[b]) : 'no data'} (click for details)`; } else h.style.display = 'none';
+}
+async function init() {
+  busy('Loading the map explorer…');
+  INDEX = await (await fetch(INDEX_URL, {cache: 'no-store'})).json();
+  if ((INDEX.format || 1) !== DATA_FORMAT) {           // this page and its data are from different builds
+    busy(null); status('This page is out of date with its data: reload it (Cmd-Shift-R or Ctrl-Shift-R).'); return; }
+  GRID = await (await fetch(vurl(GRID_URL))).json();
+  for (const v of ['global', 'NH', 'SH']) {
+    const b = await getGz('viewer/grid_' + v + '.bin');
+    GRIDS[v] = new Int16Array(b.buffer, b.byteOffset, b.byteLength / 2);
+  }
+  const maps = document.getElementById('maps');
+  for (const [v, t] of [['global', 'Global (equal area, from 113°E)'], ['NH', 'North polar'], ['SH', 'South polar']]) {
+    const box = document.createElement('div'); box.className = 'mapbox';
+    box.innerHTML = `<div class="t">${t}</div><canvas id="c_${v}" width="${GRID[v].nx}" height="${GRID[v].ny}"></canvas>` +
+      (v === 'global' ? '<div class="cbar2box"><canvas id="cbar2" width="440" height="32"></canvas><span id="cbtxt2"></span></div>' : '');
+    maps.appendChild(box);
+    box.querySelector('canvas').addEventListener('mousemove', e => hover(e, v));
+    box.querySelector('canvas').addEventListener('mouseleave', () => document.getElementById('hover').style.display = 'none');
+    const cv = box.querySelector('canvas'); cv.classList.add('clickable');
+    const pix = e => { const r = cv.getBoundingClientRect();
+      return [Math.max(0, Math.min(GRID[v].nx - 1, Math.floor((e.clientX - r.left) / r.width * GRID[v].nx))),
+              Math.max(0, Math.min(GRID[v].ny - 1, Math.floor((e.clientY - r.top) / r.height * GRID[v].ny)))]; };
+    let drag = null;
+    cv.addEventListener('mousedown', e => { if (!REGMODE) return; e.preventDefault(); drag = {x: e.clientX, y: e.clientY, p: pix(e), rm: e.shiftKey}; });
+    window.addEventListener('mousemove', e => { if (!drag) return; const bx = document.getElementById('regbox');
+      bx.style.display = 'block'; bx.style.left = Math.min(drag.x, e.clientX) + 'px'; bx.style.top = Math.min(drag.y, e.clientY) + 'px';
+      bx.style.width = Math.abs(e.clientX - drag.x) + 'px'; bx.style.height = Math.abs(e.clientY - drag.y) + 'px';
+      bx.style.borderColor = drag.rm ? '#b03a2e' : '#6c3483'; });
+    window.addEventListener('mouseup', e => { if (!drag) return; document.getElementById('regbox').style.display = 'none';
+      const [x0, y0] = drag.p, [x1, y1] = pix(e), rm = drag.rm, small = Math.abs(e.clientX - drag.x) < 4 && Math.abs(e.clientY - drag.y) < 4; drag = null;
+      if (small) return;                         // a click, handled below
+      REGION = REGION || new Set();
+      for (let y = Math.min(y0, y1); y <= Math.max(y0, y1); y++) for (let x = Math.min(x0, x1); x <= Math.max(x0, x1); x++) {
+        const b = GRIDS[v][y * GRID[v].nx + x]; if (b > 0) { if (rm) REGION.delete(b); else REGION.add(b); } }
+      regionChanged(); });
+    cv.addEventListener('click', e => { const [x, y] = pix(e), b = GRIDS[v][y * GRID[v].nx + x]; if (b <= 0) return;
+      if (e.shiftKey) { REGION = REGION || new Set(); if (REGION.has(b)) REGION.delete(b); else REGION.add(b); regionChanged(); }
+      else if (!REGMODE) showBin(b); });
+  }
+  // same-bins controls: default range 2000-2800 m if the grid has it
+  const opt = INDEX.depth.map((z, k) => `<option value="${k}">${z} m</option>`).join('');
+  document.getElementById('sb0').innerHTML = opt; document.getElementById('sb1').innerHTML = opt;
+  const near = m => INDEX.depth.reduce((a, z, k) => Math.abs(z - m) < Math.abs(INDEX.depth[a] - m) ? k : a, 0);
+  S.sb0 = near(2000); S.sb1 = near(2800);
+  document.getElementById('sb0').value = S.sb0; document.getElementById('sb1').value = S.sb1;
+  { // the depth range on the plot. Grab near an edge (handle): move that edge; grab inside: move the band; grab outside:
+    // draw a new band from where the drag starts to where it ends. A click without dragging changes nothing. Edges snap
+    // to depth levels. Using the range is a separate step (the button below the menus, or the same-bins checkbox).
+    const pc = document.getElementById('pcan'), z = INDEX.depth;
+    const yOf = e => { const r = pc.getBoundingClientRect(); return (e.clientY - r.top) / r.height * pc.height; };
+    const zAt = y => { const G = PROFGEOM; return G ? Math.max(0, Math.min(G.zmax, (y - G.T) / (G.H - G.T - G.B) * G.zmax)) : 0; };
+    const nearestK = d => z.reduce((a, x, k) => Math.abs(x - d) < Math.abs(z[a] - d) ? k : a, 0);
+    const setRange = (a, b, redraw = true) => { S.sb0 = Math.min(a, b); S.sb1 = Math.max(a, b);
+      document.getElementById('sb0').value = S.sb0; document.getElementById('sb1').value = S.sb1; if (redraw) { if (S.same) render(); else drawProfile(); } };
+    const grip = y => { if (!RANGEPX) return 'none'; const {ya, yb} = RANGEPX;
+      if (Math.abs(y - ya) <= 7) return 'top'; if (Math.abs(y - yb) <= 7) return 'bottom'; if (y > ya && y < yb) return 'move'; return 'new'; };
+    let drag = null;
+    pc.addEventListener('mousemove', e => { const y = yOf(e);
+      if (!drag) { const gr = grip(y); pc.style.cursor = gr === 'top' || gr === 'bottom' ? 'ns-resize' : gr === 'move' ? 'grab' : 'crosshair'; return; }
+      const k = nearestK(zAt(y)); drag.moved = drag.moved || Math.abs(y - drag.y0) > 3; if (!drag.moved) return;
+      if (drag.kind === 'top') setRange(k, drag.k1, false);
+      else if (drag.kind === 'bottom') setRange(drag.k0, k, false);
+      else if (drag.kind === 'move') { const dk = k - drag.kAt, n = z.length - 1, a = Math.max(0, Math.min(n - (drag.k1 - drag.k0), drag.k0 + dk)); setRange(a, a + drag.k1 - drag.k0, false); }
+      else setRange(drag.kAt, k, false);
+      drawProfile(); });
+    pc.addEventListener('mousedown', e => { const y = yOf(e), kind = grip(y); e.preventDefault();
+      drag = {kind, y0: y, kAt: nearestK(zAt(y)), k0: +S.sb0, k1: +S.sb1, moved: false}; if (kind === 'move') pc.style.cursor = 'grabbing'; });
+    window.addEventListener('mouseup', () => { if (!drag) return; drag = null; pc.style.cursor = 'crosshair'; rangeChanged(); });
+    document.getElementById('peakgo').addEventListener('click', async () => {
+      if (S.same) { S.sbApplied = [S.sb0, S.sb1]; await render(); }
+      await investigatePeak(z[Math.min(+S.sb0, +S.sb1)], z[Math.max(+S.sb0, +S.sb1)]); rangeChanged();
+      document.getElementById('peakp').scrollIntoView({behavior: 'smooth', block: 'nearest'}); });
+    pc.style.cursor = 'crosshair'; }
+  document.getElementById('regmode').addEventListener('click', e => { REGMODE = !REGMODE; e.target.classList.toggle('armed', REGMODE);
+    e.target.textContent = REGMODE ? 'drawing: drag on a map (click here when done)' : 'draw a region';
+    document.querySelectorAll('#maps canvas').forEach(c => c.style.cursor = REGMODE ? 'crosshair' : 'pointer'); });
+  document.getElementById('regclear').addEventListener('click', () => { REGION = null; document.getElementById('regname').value = ''; regionChanged(); });
+  // named areas: every Natural Earth marine area that holds bins (index.json bin_names), plus the common ocean regions
+  if (INDEX.bin_name) {
+    const count = new Map(); INDEX.bin_name.forEach(i => count.set(i, (count.get(i) || 0) + 1));
+    const names = [...count.keys()].map(i => INDEX.bin_names[i]).filter(Boolean);
+    document.getElementById('regnames').innerHTML = [...OCEAN_REGIONS.map(r => r[0]), ...names.sort()].map(n => `<option value="${n}">`).join('');
+  }
+  document.getElementById('regname').addEventListener('change', e => { const nm = e.target.value.trim(); if (!nm) return;
+    const R_ = regionByName(nm); if (!R_ || !R_.size) { document.getElementById('regtxt').textContent = `No area called "${nm}" here; pick one from the list.`; return; }
+    REGION = R_; regionChanged(); });
+  // the same-bins curve: drawn for the range when the box is ticked, and redrawn for a new range only when asked
+  // (the "update" button that appears, or "Investigate"), so moving the band itself never recomputes anything
+  const rangeChanged = () => { const ap = S.sbApplied || [S.sb0, S.sb1], stale = S.same && (+ap[0] !== +S.sb0 || +ap[1] !== +S.sb1);
+    document.getElementById('sbupdate').style.display = stale ? '' : 'none'; drawProfile(); };
+  window.rangeChanged = rangeChanged;
+  document.getElementById('samebins').addEventListener('change', e => { S.same = e.target.checked; S.sbApplied = [S.sb0, S.sb1]; render().then(rangeChanged); });
+  document.getElementById('sbupdate').addEventListener('click', () => { S.sbApplied = [S.sb0, S.sb1]; render().then(rangeChanged); });
+  document.getElementById('sb0').addEventListener('change', e => { S.sb0 = +e.target.value; rangeChanged(); });
+  document.getElementById('sb1').addEventListener('change', e => { S.sb1 = +e.target.value; rangeChanged(); });
+  const keys = Object.keys(INDEX.files), srcs = [...new Set(keys.map(k => k.split('|')[0]))], cts = [...new Set(keys.map(k => k.split('|')[1]))];
+  const q = new URLSearchParams(location.search);
+  S.src = q.get('src') && srcs.includes(q.get('src')) ? q.get('src') : srcs[0];
+  S.ct = q.get('ct') && cts.includes(q.get('ct')) ? q.get('ct') : cts.find(c => c !== 'vs_clim') || cts[0];   // default: the (first) model
+  if (q.get('V') === 'S') S.V = 'S';
+  if (q.get('part') && PARTS[q.get('part')]) S.part = q.get('part');
+  const re = () => { S.vmax = null; document.getElementById('vmax').value = ''; fillDepthSelect();
+    // the peak tool's results belong to one class, cost type, variable and part: say they are out of date (the depth
+    // and the outline stay as they are; redoing them here moved the depth without being asked)
+    if (PEAKBAND) peakStale(); render(); };
+  tabs('srcs', srcs.map(s => [s, s]), 'src', v => { S.src = v; if (!hasS()) S.V = 'T'; re(); });
+  tabs('cts', cts.map(s => [s, ctLabel(s)]), 'ct', v => { S.ct = v; re(); });
+  tabs('vars', [['T', 'T'], ['S', 'S']], 'V', v => { S.V = v; re(); });
+  const partTabs = [['unsplit', 'unsplit'], ['anomaly', 'anomaly (split)']];
+  if (INDEX.core_split === 'own') partTabs.push(['mean', 'mean term (split)']);
+  partTabs.push(['count', '# data']);
+  tabs('parts', partTabs, 'part', v => { S.part = v; re(); });
+  tabs('diags', [['bias', 'misfit (ref − obs)'], ['nmis', 'normalized misfit (ref − obs)/σ'], ['sig', 'σ (assumed error)']], 'part', v => { S.part = v; S.log = false;
+    document.getElementById('logscale').checked = false; re(); });
+  tabs('dmodes', [['all', 'all depths'], ['level', 'single level'], ['range', 'from – to'], ['100m', '100 m bands'], ['15', '15 groups'], ['30', '30 groups'], ['spike', 'flagged spikes']], 'dmode',
+       v => { S.dmode = v; S.dsel = 0; if (v === 'range' && S.r0 == null) { S.r0 = 0; S.r1 = INDEX.depth.findIndex(z => z >= 500); } re(); });
+  for (const [id, key] of [['dr0', 'r0'], ['dr1', 'r1']]) document.getElementById(id).addEventListener('change', e => {
+    S[key] = +e.target.value; S.vmax = null; document.getElementById('vmax').value = ''; render(); });
+  document.getElementById('dsel').addEventListener('change', e => { S.dsel = e.target.value; S.vmax = null; document.getElementById('vmax').value = ''; render(); });
+  const lo = document.getElementById('tlo'), hi = document.getElementById('thi'), nb = INDEX.blocks.length - 1;
+  lo.max = hi.max = nb; S.t0 = 0; S.t1 = nb;
+  document.getElementById('tticks').innerHTML = INDEX.blocks.map((y, i) =>
+    (+y % 5 === 0 && i > 1 && i < nb - 1) || i === 0 || i === nb ? `<span style="left:${100 * i / nb}%">${y}</span>` : '').join('');
+  let single = false, timer = null;
+  const schedule = (verb) => {                 // label now, maps after a short pause (clicks and drags)
+    syncControls();
+    const st = document.getElementById('status');
+    st.textContent = 'Selected ' + timeText() + ': the maps update ' + verb + '…'; st.className = 'pending';
+    clearTimeout(timer);
+    timer = setTimeout(() => { st.textContent = ''; st.className = ''; render(); }, 350);
+  };
+  const moved = which => {
+    let a = +lo.value, b = +hi.value;
+    if (single) { if (which === 'lo') b = a; else a = b; }
+    else if (a > b) { if (which === 'lo') b = a; else a = b; }
+    S.t0 = a; S.t1 = b; S.all = false;
+    schedule('when you let go');
+  };
+  const fromAll = () => { if (S.all) { S.all = false; S.t0 = 0; S.t1 = nb; } };
+  // ◀ ▶ next to each end: move that end by one year (the other end is pushed along if they would cross)
+  document.querySelectorAll('.step[data-h]').forEach(b => b.addEventListener('click', () => {
+    if (S.part === 'mean') return;
+    fromAll();
+    const d = +b.dataset.d;
+    if (single) { const v = Math.max(0, Math.min(nb, S.t0 + d)); S.t0 = S.t1 = v; }
+    else if (b.dataset.h === 'lo') { S.t0 = Math.max(0, Math.min(nb, S.t0 + d)); if (S.t0 > S.t1) S.t1 = S.t0; }
+    else { S.t1 = Math.max(0, Math.min(nb, S.t1 + d)); if (S.t1 < S.t0) S.t0 = S.t1; }
+    schedule('in a moment');
+  }));
+  // ◀◀ ▶▶: move the whole window by one year, keeping its length (stops at the ends of the record)
+  const shift = d => {
+    if (S.part === 'mean') return;
+    fromAll();
+    if (S.t0 + d < 0 || S.t1 + d > nb) return;
+    S.t0 += d; S.t1 += d;
+    schedule('in a moment');
+  };
+  document.getElementById('shl').addEventListener('click', () => shift(-1));
+  document.getElementById('shr').addEventListener('click', () => shift(1));
+  lo.addEventListener('input', () => moved('lo'));
+  hi.addEventListener('input', () => moved('hi'));
+  document.getElementById('tall').addEventListener('click', () => { S.all = true; S.t0 = 0; S.t1 = nb; single = false;
+    document.getElementById('tone').classList.remove('active'); render(); });
+  document.getElementById('tone').addEventListener('click', e => {
+    single = !single; e.target.classList.toggle('active', single);
+    if (single) { S.t1 = S.t0; S.all = false; } render(); });
+  document.getElementById('logscale').addEventListener('change', e => { S.log = e.target.checked; render(); });
+  document.getElementById('isob').addEventListener('change', e => { S.isobaths = e.target.checked; render(); });
+  document.getElementById('vmax').addEventListener('change', e => { S.vmax = +e.target.value || null; render(); });
+  document.getElementById('vauto').addEventListener('click', () => { S.vmax = null; document.getElementById('vmax').value = ''; render(); });
+  // fit the three maps (same height) to the window width
+  // the global map across the whole width, the two polar maps side by side below it (each half the width)
+  const fit = () => {
+    const avail = document.getElementById('maps').clientWidth - 32 - 4;
+    const gw = Math.max(600, avail), gc = document.getElementById('c_global');
+    gc.style.width = gw + 'px'; gc.style.height = Math.round(gw * GRID.global.ny / GRID.global.nx) + 'px';
+    const pw = Math.max(300, Math.floor((avail - 10) / 2));
+    for (const v of ['NH', 'SH']) { const c = document.getElementById('c_' + v); c.style.width = pw + 'px'; c.style.height = Math.round(pw * GRID[v].ny / GRID[v].nx) + 'px'; }
+  };
+  fit(); window.addEventListener('resize', fit);
+  // simple / expert mode: simple hides the less-used options; a view that uses one of them shows in expert mode
+  const needsExpert = () => ['100m', '15', '30', 'spike'].includes(S.dmode) || S.log;
+  const setMode = m => { document.body.classList.toggle('simple', m === 'simple');
+    document.querySelectorAll('#modesw .tab').forEach(b => b.classList.toggle('active', b.dataset.m === m));
+    try { localStorage.setItem('explorerMode', m); } catch (e) {} };
+  let saved = null; try { saved = localStorage.getItem('explorerMode'); } catch (e) {}
+  window.initMode = () => setMode(needsExpert() ? 'expert' : (saved || 'simple'));   // called once the address is read
+  document.querySelectorAll('#modesw .tab').forEach(b => b.addEventListener('click', () => {
+    if (b.dataset.m === 'simple' && needsExpert()) {
+      if (!confirm('This view uses expert options (depth bands or groups, spikes or the log scale). Switch to simple and reset them?')) return;
+      if (['100m', '15', '30', 'spike'].includes(S.dmode)) { S.dmode = 'all'; fillDepthSelect(); }
+      S.log = false; document.getElementById('logscale').checked = false; render(); }
+    setMode(b.dataset.m); }));
+  document.getElementById('fold').addEventListener('click', e => {
+    const c = document.getElementById('controls'), f = c.classList.toggle('folded');
+    e.target.innerHTML = f ? '&#9660; show settings' : '&#9650; fold settings';
+    try { localStorage.setItem('explorerFolded', f ? '1' : ''); } catch (err) {} });
+  try { if (localStorage.getItem('explorerFolded')) document.getElementById('fold').click(); } catch (err) {}
+  document.getElementById('copylink').addEventListener('click', async e => { writeAddress();
+    try { await navigator.clipboard.writeText(location.href); e.target.textContent = 'link copied'; }
+    catch (err) { prompt('Copy this link:', location.href); }
+    setTimeout(() => e.target.textContent = 'copy link to this view', 1800); });
+  S.dmode = 'all';
+  { // depth, years, range, same bins, region, log, max from the address
+    const d = q.get('depth');
+    if (d && d !== 'all') { if (/^k\d+$/.test(d)) { S.dmode = 'level'; S.dsel = +d.slice(1); }
+      else if (/^r\d+-\d+$/.test(d)) { const [a, b] = d.slice(1).split('-').map(Number); S.dmode = 'range'; S.r0 = a; S.r1 = b; }
+      else { const [m, v] = d.split(':'); if (['100m', '15', '30', 'spike'].includes(m)) { S.dmode = m; S.dsel = +v; } } }
+    const y = q.get('years'); if (y && y !== 'all') { const [a, b] = y.split('-'), ia = INDEX.blocks.indexOf(a), ib = INDEX.blocks.indexOf(b);
+      if (ia >= 0 && ib >= 0) { S.all = false; S.t0 = Math.min(ia, ib); S.t1 = Math.max(ia, ib); } }
+    const rg = q.get('range'); if (rg) { const [a, b] = rg.split('-').map(Number), near = m => INDEX.depth.reduce((x, zz, k) => Math.abs(zz - m) < Math.abs(INDEX.depth[x] - m) ? k : x, 0);
+      if (Number.isFinite(a) && Number.isFinite(b)) { S.sb0 = near(a); S.sb1 = near(b); document.getElementById('sb0').value = S.sb0; document.getElementById('sb1').value = S.sb1; } }
+    if (q.get('same') === '1') { S.same = true; S.sbApplied = [S.sb0, S.sb1]; document.getElementById('samebins').checked = true; document.getElementById('peaktool').open = true; }
+    if (q.get('log') === '1') { S.log = true; document.getElementById('logscale').checked = true; }
+    if (q.get('max')) { S.vmax = +q.get('max') || null; if (S.vmax) document.getElementById('vmax').value = S.vmax; }
+    if (q.get('region')) { REGION = regionDecode(q.get('region')); regionText(); }
+  }
+  fillDepthSelect(); if (S.dmode !== 'all') document.getElementById('dsel').value = S.dsel;
+  initMode();
+  await render();
+  // ?peak=<from>-<to> (meters): investigate the largest value of the profile in that range (link from the report);
+  // it outlines a region, so the page switches to expert mode to show the region tools
+  if (q.get('peak')) { const [a, b] = q.get('peak').split('-').map(Number); if (Number.isFinite(a) && Number.isFinite(b)) {
+    await investigatePeak(a, b); initMode(); document.getElementById('peaktool').scrollIntoView({block: 'start'}); } }
+}
+init().catch(e => status('error: ' + e.message));
+</script>
+</body>
+</html>

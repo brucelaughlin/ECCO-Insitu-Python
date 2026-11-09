@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><title>Guide — Profile Analysis — 20261027_142247 (WOD flags, XBT max depth 2900 m)</title><style>
+* { box-sizing: border-box; }
+body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; color: #222; font-size: 15px; display: flex; }
+#toc { position: sticky; top: 0; height: 100vh; overflow-y: auto; width: 17em; flex-shrink: 0; background: #f6f7f9;
+  border-right: 1px solid #ddd; padding: 1em 0.9em; font-size: 0.9em; }
+#toc h1 { font-size: 1.05em; margin: 0 0 0.6em; }
+#toc a { display: block; color: #1a5ca8; text-decoration: none; padding: 0.18em 0.3em; border-radius: 3px; }
+#toc a:hover { background: #e8f0fb; }
+#toc a.sub { padding-left: 1.3em; font-size: 0.95em; color: #345; }
+#toc a.on { background: #1a5ca8; color: #fff; }
+#toc .links { margin-top: 1.2em; border-top: 1px solid #ddd; padding-top: 0.6em; }
+#toc input { width: 100%; padding: 0.3em; margin-bottom: 0.6em; border: 1px solid #ccc; border-radius: 4px; }
+main { max-width: 52em; padding: 1.2em 2em 4em; line-height: 1.6; }
+main h2 { font-size: 1.3em; margin: 1.8em 0 0.4em; padding-top: 0.4em; border-top: 1px solid #eee; }
+main h2:first-child { margin-top: 0.2em; border-top: none; }
+table.g { border-collapse: collapse; margin: 0.6em 0; font-size: 0.92em; }
+table.g td, table.g th { border: 1px solid #ddd; padding: 4px 8px; text-align: left; vertical-align: top; }
+table.g th { background: #f2f2f2; }
+p.f { background: #f8f6fb; border-left: 3px solid #6c3483; padding: 0.4em 0.8em; font-family: Georgia, serif; }
+p.note { color: #666; font-style: italic; }
+code { background: #f0f0f0; padding: 1px 4px; border-radius: 3px; font-size: 0.9em; }
+.hide { display: none; }
+
+.navrow { display: flex; align-items: center; gap: 1em; padding: 0.35em 1em; background: #f2f6fb; border-bottom: 1px solid #d6e0ec; }
+.navrow .site { font: 600 13px -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; color: #345; white-space: nowrap; }
+.navrow .run { font: 12px -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; color: #778; margin-left: auto; }
+.sitenav { display: flex; gap: 0.25em; align-items: center; flex-wrap: wrap; font-family: -apple-system, BlinkMacSystemFont,
+  'Segoe UI', sans-serif; font-size: 13px; }
+.sitenav a { text-decoration: none; color: #1a5ca8; padding: 0.22em 0.65em; border: 1px solid #c9d7ea; border-radius: 4px;
+  background: #fff; white-space: nowrap; }
+.sitenav a:hover { background: #eef4fc; border-color: #1a5ca8; }
+.sitenav a.here { background: #1a5ca8; color: #fff; border-color: #1a5ca8; cursor: default; }
+.sitenav a.navq { color: #6c3483; border-color: #d9c8e6; }
+.sitenav a.navq.here { background: #6c3483; color: #fff; border-color: #6c3483; }
+
+.topnav { position: fixed; top: 0; left: 0; right: 0; z-index: 10; }
+body { padding-top: 2.6em; } #toc { top: 2.6em !important; height: calc(100vh - 2.6em) !important; }</style></head>
+<body>
+<div class="topnav"><div class="navrow"><span class="site">ECCO in situ profiles</span><nav class="sitenav" aria-label="pages of this site"><a href="index.html" title="The figures of the analyses, per obs class and cost type">Analyses</a><a href="viewer.html" title="Cost maps for any depth, years and region; the peak tool">Cost map explorer</a><a href="https://brucelaughlin.github.io/ecco-bin-viewer/run_20261027_142247/" title="The observations themselves: every profile, per geodesic bin">In situ data viewer</a><a href="questions.html" class="navq" title="Common questions, each opening a page set up to answer it">What do you want to know?</a><a href="guide.html" class="here" title="How to use every page; what the terms mean; how the attribution works">Guide</a></nav><span class="run" title="the run these pages are made from">Profile Analysis — 20261027_142247 (WOD flags, XBT max depth 2900 m)</span></div></div>
+<nav id="toc"><h1>Guide</h1><input id="q" placeholder="search this guide" aria-label="search this guide"><a href="#start" class="">Start here</a><a href="#terms" class="">Terms</a><a href="#costperdatum" class="">Cost per datum, step by step</a><a href="#report" class="">The Analyses page</a><a href="#explorer" class="">The cost map explorer</a><a href="#viewer" class="">The in situ data viewer</a><a href="#attribution" class="">Attribution: from a cost peak to the profiles behind it</a><a href="#peak" class="sub">1. The peak</a><a href="#samebins" class="sub">2. Same bins: a worse fit at that depth, or a different set of places?</a><a href="#contrib" class="sub">3. Bin contributions</a><a href="#clusters" class="sub">4. Clusters and their names</a><a href="#region" class="sub">5. Region vs the rest</a><a href="#platforms" class="sub">6. Platforms, profile by profile</a><a href="#profiles" class="sub">7. Profiles</a><a href="#example" class="sub">Worked example</a><a href="#cautions" class="">Cautions</a></nav>
+<main><section id="start"><h2>Start here</h2>
+<p>The site has three main pages, plus this guide and the questions page. The row of buttons at the top of every page
+links to all of them (the page you are on is filled in), so any page is one click from any other.</p>
+<table class="g">
+<tr><th>Page</th><th>What it shows</th><th>Use it to</th></tr>
+<tr><td><b>Analyses</b> (the first page)</td><td>Fixed figures of the analyses (01&ndash;10 core, 11&ndash;13 supplemental) for each
+  obs class and cost type</td><td>see the overall picture: where and at what depths the observations disagree with the
+  climatology or the model</td></tr>
+<tr><td><b>Cost map explorer</b></td><td>The same costs drawn live: maps for any depth, years and cost part; the depth profile;
+  regions; the peak tool</td><td>find <em>where</em> a feature in the analyses comes from</td></tr>
+<tr><td><b>In situ data viewer</b></td><td>The observations themselves: anomalies per geodesic bin, every profile when zoomed in, the
+  profile panel</td><td>look at the profiles and platforms behind a feature</td></tr>
+</table>
+<p><b>Not sure where to start?</b> The <a href="questions.html">What do you want to know?</a> page lists common questions; each opens a page
+already set up to answer it. <b>Every view is a link:</b> the address of the explorer and of the data viewer holds all their settings
+(use &ldquo;copy link&rdquo;), so you can bookmark a view or send it to someone.</p>
+<p>A typical path: a bump in an analysis&nbsp;02 curve &rarr; &ldquo;investigate&rdquo; (below the figure) &rarr; the explorer finds the peak,
+tells whether the jump is a worse fit at that depth or a different set of places averaged there, outlines the bins that carry it and lists their platforms &rarr; &ldquo;show profiles&rdquo; opens the
+data viewer on one platform &rarr; click a profile to see it whole. Section&nbsp;<a href="#attribution">Attribution</a> explains each step.</p>
+<p class="note">This page is the manual. Run-specific findings, decisions and corrections are on the Analyses page&rsquo;s
+<b>Notes &amp; errata</b> page.</p>
+</section><section id="terms"><h2>Terms</h2>
+<table class="g">
+<tr><th>Term</th><th>Meaning</th></tr>
+<tr><td>obs class</td><td>A kind of instrument: CTD/bottle casts (CTD_WOD), gliders (GLD_WOD), ice-tethered profilers (ITP), seal tags
+  (MEOP), moorings (MRB_WOD), Argo floats (PFL), XBTs (XBT_WOD). Each is analyzed on its own.</td></tr>
+<tr><td>reference, V<sub>ref</sub></td><td>What an observation V is compared with: the WOA23 climatology (&ldquo;vs climatology&rdquo;) or an ECCO
+  model (&ldquo;vs V4r6&rdquo;, &ldquo;vs V5r1&rdquo;: each model&rsquo;s monthly means at the profile&rsquo;s model grid cell and
+  month). &ldquo;Compare V4r6 and V5r1&rdquo; shows the two models side by side.</td></tr>
+<tr><td>misfit &Delta;V</td><td>V &minus; V<sub>ref</sub>, in &deg;C or psu.</td></tr>
+<tr><td>&sigma;</td><td>The assumed error of an observation: how far from the reference it is expected to be. Not the instrument&rsquo;s
+  accuracy (much smaller); a derived map per depth (the Analyses page&rsquo;s Terminology says where it comes from). In the explorer, &ldquo;&sigma;
+  (assumed error)&rdquo; maps it.</td></tr>
+<tr><td>weight w</td><td>Each observation&rsquo;s own: w = &gamma;&middot;sf/&sigma;&sup2;, with &gamma; the model grid cell&rsquo;s area factor and sf the spatial
+  scaling (both 0&ndash;1). An observation&rsquo;s cost is w&middot;(&Delta;V)&sup2;; ECCO&rsquo;s cost is the sum over observations.</td></tr>
+<tr><td>cost per datum</td><td>The average of (misfit&nbsp;/&nbsp;&sigma;)&sup2; over many values (step by step, with an example:
+  <a href="#costperdatum">Cost per datum, step by step</a>). 1 means one assumed error away; 4 means two.
+  Analysis&nbsp;09 is this against depth (the same as analysis&nbsp;02&rsquo;s red lines).</td></tr>
+<tr><td>geodesic bin</td><td>One of 10,242 cells of roughly equal area (about 220&nbsp;km across) covering the globe.</td></tr>
+<tr><td>depth level</td><td>One of the 97 standard depths (2&nbsp;m to 6000&nbsp;m): 2&ndash;5&nbsp;m apart in the top 100&nbsp;m (23 levels), wider below
+  (50&nbsp;m around 1000&nbsp;m, 100&nbsp;m from 1100 to 2000&nbsp;m), 200&nbsp;m apart below 2000&nbsp;m.</td></tr>
+<tr><td>unsplit cost</td><td>w&middot;(&Delta;V)&sup2; per value: the whole misfit.</td></tr>
+<tr><td>split: anomaly and mean term</td><td>ECCO&rsquo;s split of the cost per geodesic bin <i>i</i> and level <i>k</i>:
+  <b>anomaly term</b> per value w&middot;(&Delta;V &minus; &Delta;V&#772;<sub>i,k</sub>)&sup2;, the misfit after removing the bin&rsquo;s
+  long-term mean misfit &Delta;V&#772;<sub>i,k</sub>; and <b>mean term</b> per bin and level
+  J<sub>i,k</sub> = w&#772;&middot;(&Delta;V&#772;<sub>i,k</sub>)&sup2;, the steady offset itself, with
+  w&#772; = 1/max(s/n, s/9), s = mean(1/w) over the bin&rsquo;s n values. (The &ldquo;9&rdquo; caps how much n independent values can
+  sharpen the bin mean.)</td></tr>
+<tr><td>weights final / nosf / true</td><td>w = &gamma;&middot;sf/&sigma;&sup2; as ECCO uses it (final); without the spatial scaling sf (nosf);
+  without &gamma; and sf, i.e. 1/&sigma;&sup2; (true). The explorer and the attribution use <b>true</b> weights.</td></tr>
+<tr><td>kept / rejected</td><td>The processing chain&rsquo;s quality control (step 06) sets a value&rsquo;s weight to 0 when it fails a test; such a
+  value is <em>rejected</em> and enters no cost. Everything here uses kept values only.</td></tr>
+<tr><td>platform</td><td>The instrument a profile comes from: an Argo float (WMO number), an ITP, a seal tag, a mooring; for the WOD ship
+  classes, a ship or program code (coarser).</td></tr>
+</table>
+</section><section id="costperdatum"><h2>Cost per datum, step by step</h2>
+<p>Most of the site&rsquo;s numbers are a <b>cost per datum</b>. It is the average of a simple score that every single
+observation gets. Here is how it is made, with a real example.</p>
+<ol>
+<li><b>A datum is one observation:</b> one temperature (or salinity) value, at one depth, in one profile. More than one are
+  <b>data</b>, so &ldquo;# data&rdquo; on the site is a count of these. A single Argo profile with 70 depth levels gives about 70 data
+  for T and 70 for S.</li>
+<li><b>Its misfit</b> is the reference minus the observation (the reference is the model or the climatology). Example: Argo
+  float 6903082 at 2400&nbsp;m on 29 March 2025 measured 2.810&nbsp;&deg;C; the model says 3.269&nbsp;&deg;C; the misfit is
+  +0.46&nbsp;&deg;C.</li>
+<li><b>Divide by &sigma;.</b> &sigma; is how big a misfit we <em>expect</em> for that value at that place and depth (a map made in
+  advance: about 0.9&nbsp;&deg;C near the surface, about 0.1&nbsp;&deg;C deep down). Dividing asks &ldquo;how many expected misfits is
+  this?&rdquo; Example: &sigma; is 0.134&nbsp;&deg;C there, so 0.46&nbsp;/&nbsp;0.134 = 3.4: this value is 3.4 expected misfits off.</li>
+<li><b>Square it.</b> 3.4&sup2; &asymp; 11.8: that is this datum&rsquo;s cost. Squaring makes every cost positive, whichever way the misfit
+  points, and makes big misfits count much more than small ones:
+  <table class="g"><tr><th>misfit, in units of &sigma;</th><th>cost of that datum</th></tr>
+  <tr><td>0.5</td><td>0.25</td></tr><tr><td>1</td><td>1</td></tr><tr><td>2</td><td>4</td></tr><tr><td>3.4</td><td>11.8</td></tr></table></li>
+<li><b>&ldquo;Per datum&rdquo; is the average</b> of those costs over many data. In analysis&nbsp;02, the value at 2400&nbsp;m is the
+  average cost of every datum the class has at 2400&nbsp;m. So:
+  <ul><li><b>about 1:</b> on average, the observations are about as far from the reference as &sigma; predicts;</li>
+  <li><b>well above 1:</b> a worse fit than &sigma; predicts (or &sigma; is too small there);</li>
+  <li><b>below 1:</b> a better fit than &sigma; predicts.</li></ul></li>
+</ol>
+<p><b>Why an average and not a total?</b> A total grows with the amount of data: a depth or class with ten times more data would
+have about ten times the total even if it fit just as well. The average lets you compare depths, classes and years that have
+very different amounts of data. (The total is in analysis&nbsp;04.)</p>
+<p><b>One caution.</b> It is an average of squares, so a few big misfits pull it up a lot. An average of 1 can mean every datum is
+about 1&nbsp;&sigma; off, or that eight data in nine fit almost perfectly and the ninth is 3&nbsp;&sigma; off (its cost is 9, and 9
+spread over nine data is 1). The histogram, analysis&nbsp;08, shows which.</p>
+<p><b>Weights.</b> &ldquo;Per datum&rdquo; on this site always means the plain score above, (misfit&nbsp;/&nbsp;&sigma;)&sup2;. The model&rsquo;s
+own cost also multiplies each score by two more numbers between 0 and 1: &gamma; (for the size of the model&rsquo;s grid cell) and sf
+(so that crowded places don&rsquo;t count more). Those are the <code>final</code> and <code>nosf</code> lines in analysis&nbsp;02; the
+red <code>true</code> lines, and analysis&nbsp;09, are the plain score.</p>
+</section><section id="report"><h2>The Analyses page</h2>
+<p>Choose the obs class, cost type and analysis with the tabs. Click a figure to see it full width. The side panel describes
+the figure; <b>Terminology</b> and <b>Metadata</b> open in it. Within a class, a figure uses the same axes in every cost type,
+so the tabs can be compared by eye.</p>
+<p>Analysis&nbsp;02 (cost per datum against depth) is where most investigations start. Below it, the
+<b>&ldquo;Investigate it&rdquo;</b> box opens the cost map explorer on the same class and cost type with a chosen cost part, variable
+and depth range, and runs the peak tool there (section <a href="#peak">The peak tool</a>).</p>
+</section><section id="explorer"><h2>The cost map explorer</h2>
+<p><b>Simple / expert</b> (top right): simple shows the everyday choices; expert adds the mean-bias diagnostic, depth bands and groups,
+flagged spikes, single year, the log color scale and regions. A link that uses an expert option opens in expert mode; your choice is
+remembered in this browser.</p>
+<p><b>Rows of buttons</b> (top): class, cost type, variable, cost part (unsplit, anomaly, mean term, number of data), the misfit,
+normalized misfit and &sigma; (ref &minus; obs, (ref &minus; obs)/&sigma;, the assumed error; not costs), depth (all, one level, 100&nbsp;m bands, groups of levels, flagged spikes) and time
+(all years, or any range; the mean term has no years).</p>
+<p><b>Maps:</b> the global map (equal area) and the two polar maps; each bin colored by the selection. Hover a bin for its value;
+<b>click a bin</b> for its breakdown (the &ldquo;Clicked bin&rdquo; panel: per level, per year, and a link to its profiles).</p>
+<p><b>Optional: depth profile and peak attribution</b> (the folded panel between the buttons and the maps; not needed for the maps).
+Open it for the <b>depth profile of the selection</b>: the curve analysis&nbsp;02 draws, for the current class, cost type, variable, part and years:
+for costs, at each level the mean over all its values (cost per datum); for the mean term, the mean over bins; for &ldquo;# data&rdquo;,
+the number of values. On the right, the number of bins per level (log scale).</p>
+<p><b>Depth range</b> (the shaded band on the profile): set it with the from/to menus or on the plot &mdash; drag the band&rsquo;s top or
+bottom edge (the handles), drag inside to move it, drag across an empty part to draw a new one. Choosing a range does nothing by
+itself. It is used by:</p>
+<ul><li><b>Investigate the peak in this range</b> (the peak tool), and</li>
+<li><b>also draw the curve over the same bins at every depth of the range</b>: a second, blue curve over only the bins that have data
+at every level of the range (section <a href="#samebins">Same bins</a>). If you move the band afterwards, the blue curve keeps its old range
+until you press &ldquo;redraw the blue curve for this range&rdquo; (or Investigate).</li></ul>
+<p>Moving the band only moves the band: the curves and maps are recomputed only by those buttons.</p>
+<p><b>Region</b>: &ldquo;select region&rdquo;, then drag a box on any map (shift-drag removes bins, shift-click toggles one bin). The region is
+outlined in purple and the region panel opens (section <a href="#region">Region vs the rest</a>).</p>
+</section><section id="viewer"><h2>The in situ data viewer</h2>
+<p>The observations themselves: per geodesic bin, the mean anomaly (face color) and its standard deviation (edge color) at any depth
+or depth range and any years, against the climatology or the model. Zoomed in past the threshold, each bin splits into one cell per
+profile, with the true locations as red dots. Polar maps are below the world map.</p>
+<p><b>Platform box:</b> type or pick a platform to ring all its profiles in cyan, at any zoom (its track).</p>
+<p><b>Click a profile</b> (a red dot or a ring, zoomed in) for the <b>profile panel</b>:</p>
+<ul>
+<li><b>this profile</b>: observation (black), climatology (blue), model (red; monthly mean), and up to 60 neighbors in gray (same bin,
+  &plusmn;2 years, other platforms); on the right, reference &minus; obs with &plusmn;1&sigma; and &plusmn;2&sigma; bands; &times; marks values the
+  chain rejected; the values at the map&rsquo;s depth are listed, with the rejection reason if any.</li>
+<li><b>this platform over time</b>: all the platform&rsquo;s profiles as a depth &times; time picture of reference &minus; obs.</li>
+<li><b>largest misfits here</b>: the bin&rsquo;s profiles ranked by |&Delta;V|/&sigma; at the map&rsquo;s depth; click a row to open one.</li>
+</ul>
+</section><section id="attribution"><h2>Attribution: from a cost peak to the profiles behind it</h2>
+<p>&ldquo;Attribution&rdquo; here means: for a feature in a cost curve (a peak at some depth), find how much of it is due to <em>which data are
+counted</em> at that depth, <em>which bins</em> carry it, and <em>which platforms and profiles</em> are in them. Every step is a fixed
+calculation on the saved results; nothing is fitted or judged. The page reports the numbers; reading them is up to you.</p>
+<p>The steps, in the order the tools apply them:</p>
+<ol>
+<li><a href="#peak">Find the peak</a> in the chosen depth range.</li>
+<li><a href="#samebins">Same bins</a>: is the jump a worse fit at that depth, or a different set of places being averaged there?</li>
+<li><a href="#contrib">Bin contributions</a>: how much each bin adds to the curve at the peak.</li>
+<li><a href="#clusters">Clusters</a>: group the largest contributors into areas, and name them.</li>
+<li><a href="#region">Region vs the rest</a>: does the feature disappear without the area?</li>
+<li><a href="#platforms">Platforms</a>: which instruments, profile by profile.</li>
+<li><a href="#profiles">Profiles</a>: look at them.</li>
+</ol>
+<p>A worked example (PFL, vs V4r6, T, mean term, 2000&ndash;2600&nbsp;m) runs through all of them at the <a href="#example">end</a>.</p>
+</section><section id="peak"><h2>1. The peak</h2>
+<p>Let c<sub>k</sub> be the curve at level k (what the depth profile draws). For costs it is the cost per datum over all values at the
+level: c<sub>k</sub> = &Sigma;<sub>i</sub> C<sub>i,k</sub> / &Sigma;<sub>i</sub> N<sub>i,k</sub>, with C<sub>i,k</sub> the summed cost and
+N<sub>i,k</sub> the number of values in bin i. For the mean term it is the mean over the B<sub>k</sub> bins with data:
+c<sub>k</sub> = &Sigma;<sub>i</sub> J<sub>i,k</sub> / B<sub>k</sub>. These are exactly analysis&nbsp;02&rsquo;s curves.</p>
+<p>The <b>peak</b> is the level p with the largest c<sub>k</sub> in the depth range. Its <b>neighbors</b> are the nearest levels with data
+above (p&minus;) and below (p+); the <b>excess</b> is E = c<sub>p</sub> &minus; (c<sub>p&minus;</sub> + c<sub>p+</sub>)/2.</p>
+</section><section id="samebins"><h2>2. Same bins: a worse fit at that depth, or a different set of places?</h2>
+<p><b>The question.</b> Each point on the cost-against-depth curve (one per depth) is an <em>average over the places (geodesic bins) that have data at
+that depth</em>. That list of places is not the same at every depth: most Argo floats stop at 2000&nbsp;m, so below 2000&nbsp;m far
+fewer places have data. When the curve jumps at one depth, there are two possible reasons:</p>
+<ul>
+<li><b>A. A worse fit at that depth.</b> In the same places, the misfit really is larger at that depth than above and below it.</li>
+<li><b>B. A different set of places is averaged at that depth than at the depths above and below it.</b> No place needs to fit worse:
+  the average changes because some places drop out of the list (or join it), and the ones left are unusual.</li>
+</ul>
+<p><b>An everyday version of B:</b> a class&rsquo;s average test score drops on Friday. Nobody did worse; half the class was absent, and
+the absent half were the strong students. Friday&rsquo;s average is over a different set of students than Thursday&rsquo;s.</p>
+<p><b>The example</b> (PFL, vs V4r6, T, mean term). The curve at 2400&nbsp;m and the depths around it:</p>
+<table class="g">
+<tr><th>depth</th><th>places with data at that depth</th><th>average</th></tr>
+<tr><td>2200&nbsp;m</td><td>1,181</td><td>4.90</td></tr>
+<tr><td>2400&nbsp;m</td><td>1,046</td><td><b>5.57</b> (the jump)</td></tr>
+<tr><td>2600&nbsp;m</td><td>410</td><td>2.62</td></tr>
+</table>
+<p>The three averages are over three different lists of places. At 2400&nbsp;m, many of the places still on the list are in the subpolar
+North Atlantic, where the misfits are large; at 2600&nbsp;m most of them have dropped out.</p>
+<p><b>The test:</b> average all three depths over <em>one</em> list: only the places with data at all three depths (410 of them).
+Then the list can&rsquo;t change from depth to depth.</p>
+<table class="g">
+<tr><th>depth</th><th>the same 410 places</th><th>average</th></tr>
+<tr><td>2200 and 2600&nbsp;m</td><td>410</td><td>2.79 (the two averaged)</td></tr>
+<tr><td>2400&nbsp;m</td><td>410</td><td>2.83</td></tr>
+</table>
+<ul>
+<li>If the jump is still there over the same places, it is <b>A</b>: those places really fit worse at that depth.</li>
+<li>If the jump disappears over the same places, it is <b>B</b>: it came from averaging over a different set of places.</li>
+</ul>
+<p>Here the jump almost disappears (2.83 against 2.79), so the peak tool reports that <b>98&nbsp;%</b> of the jump comes from a different
+set of places being averaged at 2400&nbsp;m (B), and 2&nbsp;% from a worse fit at 2400&nbsp;m (A).</p>
+<p><b>That doesn&rsquo;t make the peak wrong.</b> The North Atlantic places really do fit badly; the jump just tells you about those places,
+not about the ocean as a whole at 2400&nbsp;m.</p>
+<p><b>The exact numbers</b> (for checking): the jump is the peak&rsquo;s value minus the average of the two depths around it, over all
+places (E = 5.57 &minus; (4.90 + 2.62)/2 = 1.81) and over the same places (E<sup>S</sup> = 2.83 &minus; 2.79 = 0.04). The share due to a
+different set of places is 1 &minus; E<sup>S</sup>/E = 1 &minus; 0.04/1.81 &asymp; 98&nbsp;%.</p>
+<p><b>On the plot:</b> the checkbox &ldquo;also draw the curve over the same bins at every depth of the range&rdquo; adds a blue curve over
+one list of places: those with data at every depth of the range. Where the red curve (all places) jumps and the blue one (the same places)
+doesn&rsquo;t, the jump comes from a change in which places are averaged.</p>
+</section><section id="contrib"><h2>3. Bin contributions</h2>
+<p>Each bin&rsquo;s part of the curve at the peak, chosen so the parts add up:</p>
+<ul>
+<li>costs: bin i contributes its summed cost C<sub>i,p</sub>; the curve is &Sigma;C/&Sigma;N, so the bin&rsquo;s <b>share</b> of the level is
+  C<sub>i,p</sub>/&Sigma;<sub>j</sub>C<sub>j,p</sub>.</li>
+<li>mean term: bin i contributes J<sub>i,p</sub>; share J<sub>i,p</sub>/&Sigma;<sub>j</sub>J<sub>j,p</sub>.</li>
+</ul>
+<p>A share always comes with the bin&rsquo;s share of the <em>bins</em> (or values): a region holding 4&nbsp;% of the bins and 34&nbsp;% of the term
+carries 8&times; its share. A large share from many bins is ordinary; a large share from few bins points to those few places.</p>
+</section><section id="clusters"><h2>4. Clusters and their names</h2>
+<p>The bins at the peak whose contribution is in the top 10&nbsp;% are grouped into <b>clusters</b>: two high bins belong to the same
+cluster if their centers are within 600&nbsp;km (chained, so a cluster can be long). Each cluster gets its center (the mean
+direction of its bins&rsquo; centers), its number of bins, its share of the bins and its share of the summed value at the peak. The
+largest cluster is outlined on the maps and becomes the region; click another row to switch.</p>
+<p><b>What depth the maps show:</b> the clusters are the high bins <em>at the peak level</em>, so the maps switch to that single level (the
+depth row at the top changes to it) and a note above the maps says so, with buttons to go back to the depth you had and to clear the
+outline. The outline is a set of bins, so it stays if you change the depth afterwards; only its meaning (&ldquo;high at the peak level&rdquo;)
+is tied to that level.</p>
+<p><b>Names</b> are descriptive only: the smallest Natural Earth sea, gulf or bay containing most of the cluster&rsquo;s bin centers;
+otherwise a coarse hand-drawn box (e.g. &ldquo;subpolar North Atlantic&rdquo;, &ldquo;Brazil Basin&rdquo;, &ldquo;Antarctic Circumpolar Current
+(south of Australia)&rdquo;); otherwise the ocean. The coordinates are always shown next to the name.</p>
+<p>A cluster holds only the high bins. To include their surroundings (to compare with nearby, well-fit bins), widen the region by
+dragging on the maps.</p>
+</section><section id="region"><h2>5. Region vs the rest</h2>
+<p>For any set of bins R (a cluster, or one you drag):</p>
+<ul>
+<li>the depth profile draws the curve over R (purple), over the rest of the world (gray) and over all bins (light red), each formed
+  as in step&nbsp;1. If the region&rsquo;s curve runs past the plot, it gets its own axis along the top. Levels where R has fewer than 5 bins
+  are drawn pale. <b>The decisive check:</b> if the feature is gone from the gray curve, R accounts for it.</li>
+<li>a table: R&rsquo;s bins with data, its number of data, the curve over R and over the rest (per datum, or per bin for the mean term),
+  and R&rsquo;s share of the summed value, with how many times its share of bins that is;</li>
+<li>per year: R (bars) against the rest (line); for the mean term, which has no years, reference &minus; obs per year;</li>
+<li>R&rsquo;s ten largest bins (click one for its breakdown).</li>
+</ul>
+<p><b>Caution:</b> a region drawn around the darkest bins will always carry a large share. Judge it by its share relative to its share
+of bins and values, and by the rest-of-the-world curve, not by the share alone.</p>
+</section><section id="platforms"><h2>6. Platforms, profile by profile</h2>
+<p>The region panel lists the platforms in R with their profiles, years, mean reference &minus; obs and <b>share of the region&rsquo;s
+value</b>. The shares are computed profile by profile from every profile&rsquo;s own values (the data viewer&rsquo;s profile details), kept
+values at the selected levels only, true weights (w = 1/&sigma;&sup2;):</p>
+<ul>
+<li><b>unsplit cost</b>: each value&rsquo;s own (&Delta;V/&sigma;)&sup2;, summed per platform;</li>
+<li><b>anomaly term</b>: each value&rsquo;s (&Delta;V &minus; &Delta;V&#772;<sub>i,k</sub>)&sup2;/&sigma;&sup2;, with &Delta;V&#772;<sub>i,k</sub> the bin&rsquo;s mean
+  misfit over all years;</li>
+<li><b>mean term</b>: J<sub>i,k</sub> = w&#772;&middot;(&Delta;V&#772;)&sup2; is shared among the bin&rsquo;s n values as
+  w&#772;&middot;&Delta;V&#772;&middot;&Delta;V<sub>v</sub>/n for value v. The parts add up to J exactly (since &Sigma;<sub>v</sub>&Delta;V<sub>v</sub> =
+  n&middot;&Delta;V&#772;); a value pulling against its bin&rsquo;s mean gets a negative part.</li>
+</ul>
+<p>Shares are of the region&rsquo;s total over its platforms. With a time window, values outside it are left out of the shares, but the
+bin means of the split use all years, as the analysis does.</p>
+<p><b>Checked</b> (2026-11-04): the mean term rebuilt this way from the profile details agrees with the analysis for every bin
+(PFL vs model, T, 2400&nbsp;m: 1,046 bins, identical counts) to 0.14&nbsp;% of its total; the difference is the details&rsquo; rounding
+to 0.001. If the details can&rsquo;t be loaded, the table falls back to splitting each (bin, year)&rsquo;s value among its platforms by
+their numbers of profiles there, and says so.</p>
+</section><section id="profiles"><h2>7. Profiles</h2>
+<p>&ldquo;show profiles&rdquo; opens the in situ data viewer with the platform&rsquo;s profiles ringed, at the same class, reference and depth.
+Zoom in and click one for the profile panel (section <a href="#viewer">The in situ data viewer</a>). What to look for:</p>
+<ul>
+<li><b>against its neighbors</b> (gray): if the platform agrees with other platforms nearby and the reference doesn&rsquo;t, the
+  difference is in the reference (or real ocean variability the reference misses); if it alone is off, suspect the platform;</li>
+<li><b>over time</b> (second tab): a difference that persists from profile to profile is a water-mass (or model) difference; one
+  that creeps is a likely sensor drift; a single bad profile stands alone;</li>
+<li><b>against &sigma;</b>: how many assumed errors the misfit is; above about 3 is unusual;</li>
+<li><b>rejected values</b> (&times;): the chain already excluded them.</li>
+</ul>
+</section><section id="example"><h2>Worked example</h2>
+<p>PFL (Argo), vs V4r6, T, mean term, depth range 2000&ndash;2600&nbsp;m (run 20261027_142247):</p>
+<ol>
+<li><b>Peak:</b> 2400&nbsp;m, 5.57 over 1,046 bins; neighbors 2200&nbsp;m 4.90 (1,181 bins) and 2600&nbsp;m 2.62 (410 bins).</li>
+<li><b>Same bins:</b> over only the 410 places with data at all three depths, 2.83 against 2.79: the jump nearly disappears, so 98&nbsp;%
+  of it comes from a different set of places being averaged at 2400&nbsp;m. Most floats stop at 2000&nbsp;m; the few deeper ones are in a
+  few regions.</li>
+<li><b>Clusters:</b> the largest is the subpolar North Atlantic (56&deg;N 38&deg;W): 4.1&nbsp;% of the bins, 33.8&nbsp;% of the term.</li>
+<li><b>Region vs the rest:</b> the region&rsquo;s mean term per bin is 45.9 against 3.84 for the rest of the world.</li>
+<li><b>Platforms:</b> four floats deployed there since 2021 (6903082, 6903871, 6903085, 1902621) carry about 40&nbsp;% of the region&rsquo;s term,
+  each with model &minus; obs about +0.37 to +0.40&nbsp;&deg;C.</li>
+<li><b>Profiles:</b> float 6903082 at 2400&nbsp;m in March 2025: obs 2.810&nbsp;&deg;C, model 3.269&nbsp;&deg;C (&minus;0.46&nbsp;&deg;C, 3.4&sigma;); it agrees with
+  the other floats nearby; the cold layer at 2000&ndash;2500&nbsp;m persists over its life.</li>
+</ol>
+<p><i>Reading (not a test the tools run):</i> the model is warmer than the floats in the subpolar North Atlantic at 2000&ndash;2500&nbsp;m; the
+global mean term peaks at 2400&nbsp;m because, at that depth, the North Atlantic is a much bigger share of the places with data. The model values are monthly means, not the model&rsquo;s
+values at each profile&rsquo;s time.</p>
+</section><section id="cautions"><h2>Cautions</h2>
+<ul>
+<li><b>Few bins or values</b> make any number noisy: look at the counts shown next to everything (pale = under 5 bins).</li>
+<li><b>Regions drawn after looking</b> always look important; compare shares with shares of bins and values.</li>
+<li><b>The model costs are approximate:</b> monthly-mean model fields, so sub-monthly variability counts as misfit; no model values after
+  December 2025.</li>
+<li><b>Precision:</b> the explorer stores 3 significant digits per value; the profile details 0.001 (&sigma; 0.0001).</li>
+<li><b>Platform IDs</b> for the WOD ship classes are ship or program codes, not single instruments.</li>
+</ul>
+</section></main>
+<script>
+const links = [...document.querySelectorAll('#toc a[href^="#"]')], secs = links.map(a => document.getElementById(a.getAttribute('href').slice(1)));
+const onScroll = () => { let cur = secs[0]; for (const s of secs) if (s && s.getBoundingClientRect().top < 120) cur = s;
+  links.forEach(a => a.classList.toggle('on', a.getAttribute('href') === '#' + cur.id)); };
+document.addEventListener('scroll', onScroll); onScroll();
+document.getElementById('q').addEventListener('input', e => { const q = e.target.value.trim().toLowerCase();
+  secs.forEach((s, i) => { const hit = !q || s.textContent.toLowerCase().includes(q); s.classList.toggle('hide', !hit);
+    links[i].classList.toggle('hide', !hit); }); });
+</script>
+</body></html>
