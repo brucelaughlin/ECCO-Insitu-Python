@@ -2,6 +2,20 @@
 
 ## ⟶ RESUME HERE (2026-11-08) — the latest state; the sections below are older
 
+**Later on 2026-11-08: ECCO V5r1 added (built locally, NOT yet published).**
+- V5r1 monthly means (LLC270, 1200 s steps): `~/ecco/yip/ecco_model_data/V5r1/`; model equivalents:
+  `.../V5r1/model_equivalents/netCDF` (`ecco-insitu monthly-estim --grid <grid_llc270_common>`; grid and months
+  from the .meta headers since commit 2767cfb).
+- Analysis with both models: `~/ecco/yip/insitu_reports/profile_analyses_20261108_142247`
+  (`profile-analyze --model V4r6=<dir> --model V5r1=<dir>`; V4r6 identical to the old vs_model). Comparison
+  figures: `--compare-only`. Site build: `docs/reports/profile_report_20261027_142247_new` (976 MB: near the
+  GitHub Pages 1 GB limit; NOT swapped in yet).
+- Data viewer: V5r1 level files in `~/ecco/yip/bin_viewer_data/run_20261027_142247_V5r1_site/` (775 MB) for a
+  new repository `ecco-bin-viewer-v5r1` (the user has to create it); index.json already points at it.
+- **Open question for the user:** V5r1's Black Sea is very warm at depth (13.6 °C at 1200 m vs about 8.9 °C
+  observed); CTD vs V5r1: the Black Sea box is 25 % of the summed cost from 0.3 % of the bins (PFL: 6 %). It
+  dominates V5r1's mean term and the comparison maps. Checked: not a reading error (the V5r1 field itself).
+
 **Everything is committed and pushed (last code commit 98a8c10).** All 136 tests pass. Demo to the team: Monday
 2026-11-09.
 
