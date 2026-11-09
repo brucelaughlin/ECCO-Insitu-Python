@@ -55,60 +55,60 @@ _ANALYSIS_TITLES = {
 
 _ANALYSIS_DESC = {
     '01': (
-        'Mean observed T and S at each depth level, over all points of this obs class with '
+        'Mean observed T and S at each depth level, over all data of this obs class with '
         'weight&nbsp;&gt;&nbsp;0 (all years pooled). Observed values only: no reference or cost, so '
-        'this figure is the same for every cost type. Levels with no points are left blank. '
-        'Right panel: number of points at each level.'
+        'this figure is the same for every cost type. Levels with no data are left blank. '
+        'Right panel: number of data at each level.'
     ),
     '02': (
         'Three lines per weight version (colors), each a mean at every depth level <em>k</em>:'
-        '<br>&bull; <strong>unsplit</strong> (dashed): mean over all points at the level of '
+        '<br>&bull; <strong>unsplit</strong> (dashed): mean over all data at the level of '
         '<em>w</em>&nbsp;&middot;&nbsp;(V&nbsp;&minus;&nbsp;V<sub>ref</sub>)&sup2;.'
-        '<br>&bull; <strong>anomaly</strong> (solid), the split&rsquo;s first term: mean over the points of '
+        '<br>&bull; <strong>anomaly</strong> (solid), the split&rsquo;s first term: mean over the data of '
         '<em>w</em>&nbsp;&middot;&nbsp;(V&prime;&nbsp;&minus;&nbsp;V&prime;<sub>ref</sub>)&sup2;, with '
         'V&prime;&nbsp;=&nbsp;V&nbsp;&minus;&nbsp;V&#772;<sub>i,k</sub> and '
         'V&prime;<sub>ref</sub>&nbsp;=&nbsp;V<sub>ref</sub>&nbsp;&minus;&nbsp;V&#772;<sub>ref,i,k</sub> '
-        '(V&#772;: time mean of the bin&rsquo;s points, geodesic bin <em>i</em>).'
+        '(V&#772;: time mean of the bin&rsquo;s data, geodesic bin <em>i</em>).'
         '<br>&bull; <strong>mean</strong> (dotted), the split&rsquo;s second term: mean over the geodesic bins '
         'with data of <em>w&#772;</em><sub>i,k</sub>&nbsp;&middot;&nbsp;(V&#772;<sub>i,k</sub>&nbsp;&minus;&nbsp;'
         'V&#772;<sub>ref,i,k</sub>)&sup2;, one term per bin, with the bin weight '
         '<em>w&#772;</em>&nbsp;=&nbsp;1/max(<em>s</em>/<em>n</em>,&nbsp;<em>s</em>/9), <em>s</em>&nbsp;=&nbsp;mean(1/<em>w</em>) '
         '(as <code>cost_profiles.F</code>).'
         '<br>The bin means V&#772; are this obs class&rsquo;s own (see Terminology and Notes: our choice). '
-        'Right panel: number of points at each level.'
+        'Right panel: number of data at each level.'
     ),
     '03': (
         'Cost per datum, (&Delta;V/&sigma;)&sup2; with &gamma; and sf removed (<code>true</code> '
-        'weights), averaged over all points in each month of the record: unsplit (dashed) and the split&rsquo;s '
+        'weights), averaged over all data in each month of the record: unsplit (dashed) and the split&rsquo;s '
         'anomaly term (solid; own bin means).'
     ),
     '04': (
-        'For each month of the record, the cost summed over every point (all profiles and depth levels) '
+        'For each month of the record, the cost summed over every datum (all profiles and depth levels) '
         'of this obs class in that month, unsplit, one line per weight version (<code>final</code>, '
         '<code>nosf</code>, <code>true</code>), log scale. Not an average: not divided by the number of '
-        'points. Top panel: number of points per month. Dividing the <code>true</code> line by it gives '
+        'data. Top panel: number of data per month. Dividing the <code>true</code> line by it gives '
         'analysis&nbsp;3 (unsplit).'
     ),
     '05': (
         'For each geodesic bin (10,242 bins of roughly equal area): the sum of <em>w</em>&nbsp;&middot;&nbsp;'
         '(V&nbsp;&minus;&nbsp;V<sub>ref</sub>)&sup2; over every profile in the bin and every depth level of '
-        'those profiles, all years, <code>final</code> weights, unsplit. Each point counts with its own '
+        'those profiles, all years, <code>final</code> weights, unsplit. Each datum counts with its own '
         'weight <em>w</em> only: depth levels are not weighted by layer thickness. '
         '<strong>Second figure, thickness weighted:</strong> for each profile, '
         '&Sigma;<sub>k</sub>&nbsp;<em>c<sub>k</sub></em>&nbsp;&Delta;z<sub>k</sub>&nbsp;/&nbsp;&Sigma;<sub>k</sub>&nbsp;&Delta;z<sub>k</sub> '
         'over the profile&rsquo;s non-empty levels <em>k</em> (<em>c<sub>k</sub></em> its cost at level '
         '<em>k</em>, &Delta;z<sub>k</sub> the layer thickness: edges halfway between levels, the top edge at the '
         'surface), then summed over the profiles in the bin (whole profile only). <strong>Depth</strong> row: '
-        'the same map for the points in one depth band only (our choice of bands; see Notes). Maps: '
+        'the same map for the data in one depth band only (our choice of bands; see Notes). Maps: '
         'equal-area global map starting at the western tip of Australia, and north and south polar '
         'stereographic maps. Bins with no data are blank. The color scale ends at the 98th percentile; '
         'higher values use the top color. Click a figure to see it full width.'
     ),
     '06': (
-        'For each geodesic bin: the cost summed over all depth levels and points, divided by the number '
-        'of points (cost per datum), <code>true</code> weights, unsplit. Bottom row: the number of profiles in '
+        'For each geodesic bin: the cost summed over all depth levels and data, divided by the number '
+        'of data (cost per datum), <code>true</code> weights, unsplit. Bottom row: the number of profiles in '
         'each bin (the &ldquo;n&rdquo; behind the per-datum values; for a depth band, profiles with at least one '
-        'point in it). <strong>Cost</strong> row: unsplit, the split&rsquo;s anomaly term, or its mean term '
+        'datum in it). <strong>Cost</strong> row: unsplit, the split&rsquo;s anomaly term, or its mean term '
         '(per bin, averaged over the bin&rsquo;s levels). <strong>Depth</strong> row: per depth band (unsplit); for any '
         'depth, cost part or 5-year period use the <strong>Cost map explorer</strong> (top right). Bins with no data are blank. The color '
         'scale ends at the 98th percentile; higher values use the top color. Click a figure to see it full width.'
@@ -118,37 +118,37 @@ _ANALYSIS_DESC = {
         '<strong>Cost</strong> row: unsplit, the split&rsquo;s anomaly term, or its mean term (one value per '
         'geodesic bin and level, averaged over the bins whose centers are in the band). The mean term has its '
         'own color scale. The color scale ends at the 98th percentile; higher values use the top color. '
-        'Right panel: number of points at each level.'
+        'Right panel: number of data at each level.'
     ),
     '08': (
-        'Distribution of log&#x2081;&#x2080; of each point&rsquo;s cost, unsplit, one line per weight '
-        'version, normalized to sum to 1. For <code>true</code>, 0 means the point is 1&sigma; from the '
+        'Distribution of log&#x2081;&#x2080; of each datum&rsquo;s cost, unsplit, one line per weight '
+        'version, normalized to sum to 1. For <code>true</code>, 0 means the datum is 1&sigma; from the '
         'reference and 2 means 10&sigma;. Dotted line: cost&nbsp;=&nbsp;100, step&nbsp;06&rsquo;s '
-        'single-point QC limit against climatology.'
+        'single-datum QC limit against climatology.'
     ),
     '09': (
         '<strong>The same numbers as analysis&nbsp;2&rsquo;s red lines</strong> (the <code>true</code> weights), on an axis of '
-        'their own: at each depth level, the mean over its points of (&Delta;V/&sigma;)&sup2;, unsplit (dashed) and the '
+        'their own: at each depth level, the mean over its data of (&Delta;V/&sigma;)&sup2;, unsplit (dashed) and the '
         'split&rsquo;s anomaly term (solid; own bin means). With the true weight 1/&sigma;&sup2;, the value is the '
         'squared misfit in units of the assumed error: 1 means the observations are, on average, one &sigma; from '
-        'the reference. The mean term isn&rsquo;t a mean over points (one value per bin), so it is only in '
-        'analysis&nbsp;2. Right panel: number of points at each level.'
+        'the reference. The mean term isn&rsquo;t a mean over data (one value per bin), so it is only in '
+        'analysis&nbsp;2. Right panel: number of data at each level.'
     ),
     '10': (
-        'Mean (&Delta;V/&sigma;)&sup2; (<code>true</code> weights) over all points in each depth range: '
+        'Mean (&Delta;V/&sigma;)&sup2; (<code>true</code> weights) over all data in each depth range: '
         '0&ndash;100, 0&ndash;250, 0&ndash;500, 0&ndash;700 and 0&ndash;2000&nbsp;m (each range starts at '
         'the surface): unsplit and the split&rsquo;s anomaly term (own bin means).'
     ),
     '11': (
         '<strong>Supplemental; not one of the ten core analyses.</strong> As analysis&nbsp;9 '
-        '(cost per datum vs depth, <code>true</code> weights), but with the data split by year: points '
-        'from the years the climatology covers (blue; WOA23 here averages 1991&ndash;2020) and points from '
+        '(cost per datum vs depth, <code>true</code> weights), but with the data split by year: data '
+        'from the years the climatology covers (blue; WOA23 here averages 1991&ndash;2020) and data from '
         'after them (red, labeled with the class&rsquo;s own last year), unsplit (dashed) and split (solid). '
         'The legend gives each line&rsquo;s '
         '0&ndash;2000&nbsp;m mean. Data from after the climatology&rsquo;s years can&rsquo;t be in it, so '
         'comparing the two shows how much of the fit to climatology is because the climatology was built '
         'from the same data. Shown for every cost type; for vs_model the split is just by year. Only made '
-        'for obs classes with data after the climatology&rsquo;s years. Right panel: number of points, '
+        'for obs classes with data after the climatology&rsquo;s years. Right panel: number of data, '
         'by period.'
     ),
     '12': (
@@ -179,7 +179,7 @@ _ANALYSIS_SHORT = {
 _GLOSSARY_HTML = """
 <p><strong>Weights and &sigma;.</strong> Every observation (one value of T or S at one depth level) has its own weight
 <em>w</em>, and its cost is <em>w</em>&nbsp;&middot;&nbsp;(&Delta;V)&sup2;. ECCO&rsquo;s cost is the sum over all observations. Every
-cost in this report is a mean of that per-observation cost (over the points at a depth, in a month, in a bin), except the
+cost in this report is a mean of that per-observation cost (over the data at a depth, in a month, in a bin), except the
 split&rsquo;s mean term, which is one value per bin. The processing chain builds <em>w</em> = &gamma;&nbsp;&middot;&nbsp;sf&nbsp;/&nbsp;&sigma;&sup2;
 in three steps:</p>
 <table class="gloss-table">
@@ -202,7 +202,7 @@ from 1992&ndash;2023 observations and smoothed toward its neighbors. South of 60
 &Delta;V&nbsp;=&nbsp;V&nbsp;&minus;&nbsp;V<sub>ref</sub>, squared, so its sign doesn&rsquo;t matter here. Analysis&nbsp;2 draws all three; analysis&nbsp;9 is
 its <code>true</code> lines alone.</p>
 <table class="gloss-table">
-<tr><th>Label</th><th>Cost per point</th><th>Meaning</th></tr>
+<tr><th>Label</th><th>Cost per datum</th><th>Meaning</th></tr>
 <tr><td><code>final</code></td><td>&gamma; &middot; sf &middot; (&Delta;V/&sigma;)&sup2;</td>
     <td>As ECCO weights it: area factor &gamma; and step-11 spatial scaling factor sf both kept</td></tr>
 <tr><td><code>nosf</code></td><td>&gamma; &middot; (&Delta;V/&sigma;)&sup2;</td>
@@ -221,15 +221,15 @@ weights, not because the fit is better; <code>true</code> is the one to read as 
     <td><em>J</em> = <em>w</em>&nbsp;&middot;&nbsp;(V&nbsp;&minus;&nbsp;V<sub>ref</sub>)&sup2;. The mean misfit is not removed.</td></tr>
 <tr><td><code>split</code></td>
     <td>The cost split into two terms, as in ECCO v4r6&rsquo;s <code>cost_profiles.F</code>. With V&#772;<sub>i,k</sub>
-        and V&#772;<sub>ref,i,k</sub> the time means over the points in geodesic bin <em>i</em> at level <em>k</em>
+        and V&#772;<sub>ref,i,k</sub> the time means over the data in geodesic bin <em>i</em> at level <em>k</em>
         (all years and months pooled):
-        <br><strong>anomaly term</strong>, per point:
+        <br><strong>anomaly term</strong>, per datum:
         <em>w</em>&nbsp;&middot;&nbsp;((V&nbsp;&minus;&nbsp;V&#772;)&nbsp;&minus;&nbsp;(V<sub>ref</sub>&nbsp;&minus;&nbsp;V&#772;<sub>ref</sub>))&sup2;;
         <br><strong>mean term</strong>, per bin and level:
         <em>w&#772;</em>&nbsp;&middot;&nbsp;(V&#772;&nbsp;&minus;&nbsp;V&#772;<sub>ref</sub>)&sup2;, with
         <em>w&#772;</em>&nbsp;=&nbsp;1&nbsp;/&nbsp;max(<em>s</em>/<em>n</em>,&nbsp;<em>s</em>/9), <em>s</em>&nbsp;=&nbsp;mean(1/<em>w</em>),
-        <em>n</em>&nbsp;=&nbsp;number of points.
-        <br><strong>Which points make the bin means:</strong> in this report, this obs class&rsquo;s own points
+        <em>n</em>&nbsp;=&nbsp;number of data.
+        <br><strong>Which data make the bin means:</strong> in this report, this obs class&rsquo;s own data
         (our choice, 2026-10-29; see Notes). <code>cost_profiles.F</code> pools all obs classes instead: that
         version is supplemental analysis&nbsp;12, and it equals <code>ecco-insitu model-cost</code> for vs_model.</td></tr>
 </table>
@@ -373,7 +373,7 @@ def _year_split_html(metas):
         parts.append(f'<p><em>{_html.escape(name)}</em> (climatology years {y0}&ndash;{y1})</p>'
                      '<table class="gloss-table notes-table"><tr><th>cost type</th><th>obs class</th><th>var</th>'
                      f'<th>unsplit {y0}&ndash;{y1}</th><th>unsplit after</th><th>change</th>'
-                     f'<th>split {y0}&ndash;{y1}</th><th>split after</th><th>points in / after</th></tr>'
+                     f'<th>split {y0}&ndash;{y1}</th><th>split after</th><th>data in / after</th></tr>'
                      + body + '</table>')
     if not parts:
         return ''
@@ -418,18 +418,18 @@ and the 97 levels are 2&ndash;5&nbsp;m apart near the surface (23 levels in the 
 below 2000&nbsp;m (6 levels in 2000&ndash;3000&nbsp;m). The thickness-weighted version (second analysis&nbsp;5
 figure) gives each level its layer thickness instead, so a 200&nbsp;m deep layer counts about 70 times a 3&nbsp;m
 surface layer.</li>
-<li><strong>Analysis 11 (supplemental)</strong> splits the data by year. Points from after the climatology&rsquo;s
+<li><strong>Analysis 11 (supplemental)</strong> splits the data by year. Data from after the climatology&rsquo;s
 years (WOA23 1991&ndash;2020) can&rsquo;t have been used to build it, so a much lower vs_clim cost for the older data
 than for the newer would suggest the climatology fits partly because it contains those data. Other causes of a
 difference between periods: real change in the ocean, and a different mix of instruments and regions (compare the
 count panel).</li>
-<li><strong>Use the count panels.</strong> A high mean cost at a depth with few points (right-hand panels) can
+<li><strong>Use the count panels.</strong> A high mean cost at a depth with few data (right-hand panels) can
 come from one region.</li>
 <li><strong>Analysis 5 vs 6:</strong> 5 is high where there is a lot of data or poor fit; 6 removes the
 data-count effect. A region high in 6 but not in 5 has few, poorly fit observations.</li>
 <li><strong>Analysis 7</strong> shows whether misfit is concentrated in latitude bands (fronts, ice edges)
 or depths.</li>
-<li><strong>Analysis 8:</strong> most points should lie well left of the QC line; a heavy right tail or a
+<li><strong>Analysis 8:</strong> most data should lie well left of the QC line; a heavy right tail or a
 second peak suggests outliers.</li>
 </ul>
 
@@ -449,12 +449,12 @@ casts have only coarse levels with T to 0.1&nbsp;&deg;C, and one is listed as a 
 which removes these 10 values and nothing else. {_xbt_cap_status(metas)}</p>
 
 <p><strong>Argo (PFL) cost below 2000&nbsp;m, vs_model</strong> (run 20261027_142247, <code>true</code> weights,
-unsplit). Below 2000&nbsp;m only Deep Argo floats remain: 1.25&nbsp;million points at 2000&nbsp;m, 29&nbsp;thousand
+unsplit). Below 2000&nbsp;m only Deep Argo floats remain: 1.25&nbsp;million data at 2000&nbsp;m, 29&nbsp;thousand
 at 2200&nbsp;m, 10&nbsp;thousand at 2600&nbsp;m, in a few regions. So the mean there describes those regions, not the
 globe.</p>
 <ul>
 <li><strong>T, 2200&ndash;2400&nbsp;m</strong> (cost per datum 0.93&ndash;1.03 vs about 0.64 just above): 18% of the
-points are in the subpolar North Atlantic (40&ndash;70&deg;N, 60&deg;W&ndash;0&deg;) and carry 44% of the cost; there
+data are in the subpolar North Atlantic (40&ndash;70&deg;N, 60&deg;W&ndash;0&deg;) and carry 44% of the cost; there
 the model is on average 0.16&nbsp;&deg;C warmer than the observations, and the cost per datum is 2.4 against the
 model and 1.1 against climatology.</li>
 <li><strong>S, 2600&ndash;3000&nbsp;m</strong> (0.67&ndash;0.73 vs climatology&rsquo;s 0.09&ndash;0.10): 68% of the
@@ -526,8 +526,8 @@ is left out of analysis&nbsp;2. See also HANDOFF.md.</li>
 <li><strong>The pooled (Fortran) split</strong> (since 2026-10-28; core analyses until 2026-10-29, now
 supplemental analysis&nbsp;12) removes one mean per (geodesic bin, depth) over all obs classes pooled, as ECCO
 v4r6&rsquo;s <code>cost_profiles.F</code>, with the mean term under Metadata. Checked: for run 20261027 (all seven obs classes, vs_model), the
-anomaly cost summed over classes, its point count, the mean term and its number of terms all equal
-<code>ecco-insitu model-cost</code>&rsquo;s on the same files (T: 2.87925&times;10&#8311; over 245,226,456 points;
+anomaly cost summed over classes, its data count, the mean term and its number of terms all equal
+<code>ecco-insitu model-cost</code>&rsquo;s on the same files (T: 2.87925&times;10&#8311; over 245,226,456 data;
 mean term 1.96488&times;10&#8309; over 589,586 terms). <code>model-cost</code> reproduces the team&rsquo;s v4r6 cost
 bars; neither is yet checked against a model run&rsquo;s own cost output. Because the pooled mean depends on
 which classes are included, a report made with <code>--sources</code> has a different pooled split.</li>
@@ -538,7 +538,7 @@ plus all depths (<code>MAP_DEPTH_BANDS</code> in <code>compute.py</code>; changi
 100&nbsp;m band, 15 or 30 groups of levels, flagged cost spikes, 5-year period, and cost part, from the saved
 per-bin data, so the images only cover the standard bands.</li>
 <li><strong>Cost map explorer: flagged spikes.</strong> A level is flagged when its mean cost per datum (<code>true</code>
-weights, unsplit or anomaly, levels with at least 30 points) is above 0.5 and at least 1.4 times the median of the
+weights, unsplit or anomaly, levels with at least 30 data) is above 0.5 and at least 1.4 times the median of the
 levels 300&ndash;1000&nbsp;m above and below it. Broad bumps are flagged at each of their levels. These thresholds are
 our choice (<code>_spikes</code> in <code>diagnostics/profile_analyses/viewer.py</code>).</li>
 <li><strong>Cost map explorer: the mean-bias diagnostic</strong> (since 2026-10-31). The signed misfit, observation minus
@@ -557,7 +557,7 @@ Only values the chain kept (weight&nbsp;&gt;&nbsp;0). Checked: its bin counts, m
 reproduce a direct computation from the yearly files (GLD 2017, level 1). It opens on the class shown here, and
 its &larr;&nbsp;report button comes back; its own Guide lists every difference from the original app.</li>
 <li><strong>Two small differences from <code>model-cost</code>:</strong> profiles without a geodesic bin (about
-14,000 of 441 million weighted values in run 20261027_142247) have no split cost here; and points whose
+14,000 of 441 million weighted values in run 20261027_142247) have no split cost here; and data whose
 climatology is missing are left out of all costs here, while ECCO keeps them in the model cost
 (none in these runs).</li>
 <li><strong>Split vs climatology</strong> is our extension; ECCO splits only the model&ndash;data cost.</li>
@@ -572,10 +572,10 @@ the histogram text said 2 means 100&sigma; (it means 10&sigma;); the WOD-flags n
 good (0 means accepted) and listed Argo and MEOP among the WOD classes (they aren&rsquo;t);
 the split was described as mirroring <code>cost_profiles.F</code> (until 2026-10-28 it used each obs
 class&rsquo;s own mean, now <code>split_own</code>, and left out the mean term); and the map bins with no data were drawn as zero cost (now blank).</li>
-<li><strong>Analysis 1 changed on 2026-10-28.</strong> It used to average only the points that had a reference
-value for the selected cost type (the same points as the costs), so it differed between the cost-type tabs:
-under vs_model it left out every point with no model value. Measured on run 20261027_142247:
-CTD 14% fewer points under vs_model (mean T differed by up to 0.64&nbsp;&deg;C, at 40&nbsp;m), gliders 4% (0.13&nbsp;&deg;C),
+<li><strong>Analysis 1 changed on 2026-10-28.</strong> It used to average only the data that had a reference
+value for the selected cost type (the same data as the costs), so it differed between the cost-type tabs:
+under vs_model it left out every datum with no model value. Measured on run 20261027_142247:
+CTD 14% fewer data under vs_model (mean T differed by up to 0.64&nbsp;&deg;C, at 40&nbsp;m), gliders 4% (0.13&nbsp;&deg;C),
 XBT 3% (0.17&nbsp;&deg;C, at 2200&nbsp;m), Argo 1% (0.02&nbsp;&deg;C). It now averages every observation with
 weight&nbsp;&gt;&nbsp;0 and is the same in every tab. The old version shows the observations behind each cost
 type&rsquo;s costs, so it may be worth having again. <em>To revert:</em> in

@@ -17,7 +17,7 @@ without one image per combination. It needs two kinds of files, written under ``
 
 Record blocks (little-endian columns): ``uint32 n``, then n values of each column in turn: ``uint16 bin``
 (1-based), ``uint8 level``, ``uint8 block`` (year index; 255 = all years), ``float16`` mean cost per datum
-unsplit, ``float16`` mean cost per datum of the split's anomaly term, ``uint16`` point count, ``float16``
+unsplit, ``float16`` mean cost per datum of the split's anomaly term, ``uint16`` data count, ``float16``
 mean signed misfit V_ref - V (degC or psu), ``float16`` mean (V_ref - V)/sigma, ``float16`` mean sigma (true weights). The summary file has, per variable T then
 S, one record block and then the mean term: ``uint32 m`` and m values each of ``uint16 bin``, ``uint8
 level``, ``float16`` mean term. The years file has one record block per variable. float16 keeps
@@ -54,20 +54,20 @@ results as the report&rsquo;s figures.</p>
 <tr><td>Variable</td><td>T, S</td><td>Temperature or salinity. S is grayed out for classes without salinity (XBT).</td></tr>
 <tr><td rowspan="4">Cost</td><td>unsplit</td><td>The <strong>cost per datum</strong>: (&Delta;V/&sigma;)&sup2;, where &Delta;V is observation
   minus reference and &sigma; the assumed error of the observation. 1 means &ldquo;one assumed error away&rdquo;; 4 means two.
-  Averaged over the bin&rsquo;s points in the selected depths and years. &ldquo;True weights&rdquo;: the area factor &gamma; and the spatial
+  Averaged over the bin&rsquo;s data in the selected depths and years. &ldquo;True weights&rdquo;: the area factor &gamma; and the spatial
   scaling factor sf are left out, so this is purely misfit relative to &sigma;.</td></tr>
 <tr><td>anomaly (split)</td><td>The same, after removing the bin&rsquo;s <em>long-term mean misfit</em> at each depth level: it measures how well
   the <em>variations in time</em> are fit, ignoring a steady offset. This is the first term of ECCO&rsquo;s split cost
-  (<code>cost_profiles.F</code>). The long-term mean is computed from this obs class&rsquo;s own points, all years.</td></tr>
+  (<code>cost_profiles.F</code>). The long-term mean is computed from this obs class&rsquo;s own data, all years.</td></tr>
 <tr><td>mean term (split)</td><td>The second term of the split cost: the steady offset itself, (mean observation &minus; mean reference)&sup2;,
-  weighted by the bin&rsquo;s combined error w&#772; = 1/max(s/n, s/9), s the mean of &sigma;&sup2; over the bin&rsquo;s n points (as
+  weighted by the bin&rsquo;s combined error w&#772; = 1/max(s/n, s/9), s the mean of &sigma;&sup2; over the bin&rsquo;s n data (as
   <code>cost_profiles.F</code>). One value per bin and level; averaged over the selected levels. Defined over the whole record, so
   the time selection is off. Its values are typically much larger than the per-datum cost, since it doesn&rsquo;t shrink with
-  the number of points: compare maps of the mean term with each other, not with the other parts.</td></tr>
-<tr><td># points</td><td>The number of observations (profile values) in each bin for the selected depths and years: the
-  &ldquo;n&rdquo; behind the averages. Bins with very few points give noisy averages.</td></tr>
+  the number of data: compare maps of the mean term with each other, not with the other parts.</td></tr>
+<tr><td># data</td><td>The number of observations (profile values) in each bin for the selected depths and years: the
+  &ldquo;n&rdquo; behind the averages. Bins with very few data give noisy averages.</td></tr>
 <tr><td rowspan="3">Misfit, &sigma;</td><td>misfit (ref &minus; obs)</td><td><strong>Not a cost term.</strong> The
-  average of the signed misfit, reference minus observation, over the bin&rsquo;s points in the selected depths and years, in
+  average of the signed misfit, reference minus observation, over the bin&rsquo;s data in the selected depths and years, in
   &deg;C (T) or psu (S). Red: the reference (climatology or model) is warmer or saltier than the observations; blue: colder or
   fresher. The color scale is centered on zero; type a value in &ldquo;max &plusmn;&rdquo; to set its range. Use it with the time range
   to see whether a steady offset is constant or <em>drifting</em>. It is related to the split&rsquo;s mean term (this offset over
@@ -77,20 +77,20 @@ results as the report&rsquo;s figures.</p>
   Same red&ndash;blue scale centered on zero.</td></tr>
 <tr><td>&sigma; (assumed error)</td><td>The mean assumed error of the observations, &sigma; = 1/&radic;w with the true weights, in
   &deg;C or psu: the errors the costs are measured against. Where the cost is high, check whether &sigma; is small there.</td></tr>
-<tr><td rowspan="6">Depth</td><td>all depths</td><td>All depth levels together (each point counts once, so the upper ocean, which
+<tr><td rowspan="6">Depth</td><td>all depths</td><td>All depth levels together (each data counts once, so the upper ocean, which
   has more and closer-spaced levels, dominates).</td></tr>
 <tr><td>single level</td><td>One of the 97 standard depth levels (2&nbsp;m to 6000&nbsp;m); pick it in the list.</td></tr>
 <tr><td>100 m bands</td><td>All levels in a 100&nbsp;m range (0&ndash;100&nbsp;m, 100&ndash;200&nbsp;m, &hellip;). Below 2000&nbsp;m the levels are 200&nbsp;m
   apart, so the bands there are 200&nbsp;m wide and hold one level each (e.g. 2200&ndash;2400&nbsp;m (1 level)); nothing is skipped.</td></tr>
 <tr><td>15 groups / 30 groups</td><td>The 97 levels split into 15 or 30 consecutive groups of about equal numbers of levels.</td></tr>
 <tr><td>flagged spikes</td><td>Levels where the mean cost per datum of this class stands out: above 0.5 and at least 1.4 times the
-  median of the levels 300&ndash;1000&nbsp;m above and below it (levels with at least 30 points). The list gives the level&rsquo;s
+  median of the levels 300&ndash;1000&nbsp;m above and below it (levels with at least 30 data). The list gives the level&rsquo;s
   value and that median, and whether it was flagged in the unsplit or anomaly cost. Use it to find <em>where</em> a peak in
   the report&rsquo;s cost-vs-depth plots (analyses 2 and 9) comes from.</td></tr>
 <tr><td>(list)</td><td>The level, band, group or spike to show.</td></tr>
 <tr><td rowspan="5">Time</td><td>all years</td><td>Every year of the record. Fast: uses a small all-years summary.</td></tr>
 <tr><td>the two handles</td><td>A range of years: drag the left handle for the first year and the right one for the last. The map
-  shows the average over every point in those years. Choosing years downloads that class&rsquo;s year-by-year data in 5-year
+  shows the average over every datum in those years. Choosing years downloads that class&rsquo;s year-by-year data in 5-year
   pieces, only those the range needs (up to about 20&nbsp;MB per piece for Argo, a few MB for most classes), so the first
   range in a period can take a few seconds; after that, changes are quick.</td></tr>
 <tr><td>&#9664; &#9654; first year / last year</td><td>(Right of the year label.) Move that end of the range by one year. If the two ends would cross,
@@ -118,7 +118,7 @@ the top color (so a few extreme bins don&rsquo;t wash out the rest). It is <stro
 years for the current obs class, cost type, variable and depth selection, and kept while you move the time range, so
 differences between years are real and not rescaling. Unsplit and anomaly share one scale (same units), so switching
 between them is a fair comparison. It is recomputed when you change the class, cost type, variable or depth, and for
-the mean term, number of points, misfits and &sigma;, which have their own scales. The note next to the color bar says which
+the mean term, number of data, misfits and &sigma;, which have their own scales. The note next to the color bar says which
 applies. <strong>max</strong>: set the top of the scale yourself (kept until you press <strong>auto</strong>), e.g. to compare
 two depths on the same scale. <strong>auto</strong>: back to the automatic scale. <strong>log color scale</strong>: spreads small values out (covers three powers of
 ten below the max).</p>
@@ -131,7 +131,7 @@ A jump in the red curve that the blue one does not show comes from <em>which bin
 water. (Example: PFL vs_model mean term at 2200&ndash;2400&nbsp;m: red 4.9&ndash;5.6, blue 2.3&ndash;2.4; most floats stop at 2000&nbsp;m,
 so those levels hold far fewer bins, mostly subpolar North Atlantic ones.)</p>
 <p><b>Clicked bin</b>: click any bin on a map. The panel shows its center, and per depth level (the selected levels) the number of
-points, the unsplit and anomaly costs, the mean term, and the mean reference &minus; observation, the normalized misfit and &sigma; (all years); a bar chart of the
+data, the unsplit and anomaly costs, the mean term, and the mean reference &minus; observation, the normalized misfit and &sigma; (all years); a bar chart of the
 selected cost part per year (for the mean term: reference &minus; observation per year, since the mean term itself has no years); and a link
 that opens the <b>in situ data viewer</b> on that bin, zoomed in to the individual profiles, at the same class, reference
 (climatology or model), variable, depth and years.</p>
@@ -144,13 +144,13 @@ depth or years. With a region:</p>
 <li>the depth profile shows the <b>region</b> (purple; faint where it has fewer than 5 bins), the <b>rest of the world</b> (gray) and all
   bins (light red). If a feature disappears from the rest-of-the-world curve, the region accounts for it. With &ldquo;same bins&rdquo;
   on, both curves use only bins with data at every level of the range.</li>
-<li>a table: the region&rsquo;s share of the bins with data, of the points, and of the <b>summed</b> cost (or count), at the
+<li>a table: the region&rsquo;s share of the bins with data, of the data, and of the <b>summed</b> cost (or count), at the
   selected depths and years, and how many times its share of bins that is. (Not shown for the misfits and &sigma;, which don&rsquo;t add up.)</li>
 <li>per year: the region (bars; faint with fewer than 5 bins) against the rest of the world (line).</li>
 <li>the region&rsquo;s ten largest bins; click a row for that bin&rsquo;s breakdown and the link to its profiles.</li>
 </ul>
 <p><b>Caution:</b> a region drawn around the darkest bins will always carry a large share. Judge it by its share of the term
-<em>relative to</em> its share of bins and points, and by the rest-of-the-world curve, not by the share alone.</p>
+<em>relative to</em> its share of bins and data, and by the rest-of-the-world curve, not by the share alone.</p>
 
 <h4>Peak: where does a bump in the depth profile come from? (since 2026-11-03)</h4>
 <p>Choose a <b>depth range</b> around the bump: it is the shaded band on the depth-profile plot. Set it with the &ldquo;from / to&rdquo;
@@ -182,7 +182,7 @@ ringed in cyan.</p>
 <h4>Reading it</h4>
 <ul>
 <li>Values near 1 mean the misfit is about what the assumed errors &sigma; allow; much larger values point to a poor fit, a
-too-small &sigma;, or bad data. With few points (# points) a single bad profile can dominate a bin.</li>
+too-small &sigma;, or bad data. With few data (# data) a single bad profile can dominate a bin.</li>
 <li>If unsplit is high but anomaly is low in a region, the misfit there is mostly a steady offset (see the mean term).
   The misfit (ref &minus; obs) shows that offset&rsquo;s sign and size; compare early and late year ranges to see if it changes.</li>
 <li>The time range shows whether a high cost is persistent or limited to some years (e.g. one cruise or float).</li>
@@ -358,14 +358,14 @@ _COLS = (('bin', '<u2'), ('lev', 'u1'), ('blk', 'u1'), ('mu', '<f2'), ('ma', '<f
 
 
 def _cells(nc, V, core, nd):
-    """Per non-empty (year, bin, level): mean cost per datum unsplit and anomaly, point count, and the means of
+    """Per non-empty (year, bin, level): mean cost per datum unsplit and anomaly, data count, and the means of
     reference - obs, (reference - obs)/sigma and sigma."""
     if f'viewer__{V}__unsplit__cell' not in nc.variables:
         return None
     cell = nc[f'viewer__{V}__unsplit__cell'][:]
     su = nc[f'viewer__{V}__unsplit__sum'][:].astype(np.float64)
     nn = nc[f'viewer__{V}__unsplit__n'][:].astype(np.float64)
-    ca = nc[f'viewer__{V}__{core}__cell'][:]          # a subset of unsplit's cells (points with a bin mean)
+    ca = nc[f'viewer__{V}__{core}__cell'][:]          # a subset of unsplit's cells (data with a bin mean)
     sa = np.full(len(cell), np.nan); na = np.zeros(len(cell))
     pos = np.searchsorted(cell, ca)
     sa[pos], na[pos] = nc[f'viewer__{V}__{core}__sum'][:], nc[f'viewer__{V}__{core}__n'][:]

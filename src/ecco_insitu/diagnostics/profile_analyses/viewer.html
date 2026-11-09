@@ -218,7 +218,7 @@ const INDEX_URL = 'viewer/index.json', GRID_URL = 'viewer/grid.json';
 const DATA_FORMAT = 2;                  // the record layout this page reads (viewer.py DATA_FORMAT)
 const vurl = u => u + '?v=' + ((INDEX && INDEX.version) || '');   // this build's files only (never a cached older one)
 const PARTS = {unsplit: 'cost per datum, unsplit', anomaly: 'cost per datum, split anomaly term',
-               mean: 'split mean term (per bin; all years)', count: 'number of points',
+               mean: 'split mean term (per bin; all years)', count: 'number of data',
                bias: 'mean misfit, reference − observation (not a cost)',
                nmis: 'mean normalized misfit, (reference − observation)/σ (not a cost)',
                sig: 'mean σ, the assumed error of the observations (not a cost)'};
@@ -318,7 +318,7 @@ async function yearData(src, ct) {      // year-by-year data: only the pieces co
   return out;
 }
 // ---------- the depth profile of the current selection (as analysis 02), optionally over the same bins ----------
-// Each level: mean over bins of the bin's value (unsplit / anomaly / bias: point-weighted over the bin's points;
+// Each level: mean over bins of the bin's value (unsplit / anomaly / bias: data-weighted over the bin's data;
 // mean term: per bin, as the report's 02). "Same bins": only bins with data at every level from sb0 to sb1.
 function levelBinValues(d, yd) {          // Map level -> {bin -> [sum, weight]} for the current part and years
   const useYears = !S.all && S.part !== 'mean', c = useYears ? yd[S.V] : d[S.V], out = new Map();
@@ -337,7 +337,7 @@ function levelBinValues(d, yd) {          // Map level -> {bin -> [sum, weight]}
 }
 // ---------- region: a set of bins (geographic, so it stays when class or cost type change) ----------
 let REGION = null, REGMODE = false;
-const MIN_BINS = 5;                      // curves / bars with fewer bins (or points) than this are drawn faint
+const MIN_BINS = 5;                      // curves / bars with fewer bins (or data) than this are drawn faint
 function regionText() {
   const t = document.getElementById('regtxt');
   t.textContent = REGION && REGION.size ? `${REGION.size} bins selected (outlined in purple; its numbers are in the region panel below the maps). Drag to add, shift-drag to remove, shift-click toggles one bin.`
@@ -364,8 +364,8 @@ function regionByName(nm) {             // Set of bin ids: a common ocean region
 }
 
 // How a level's value is formed from its bins, as analysis 02: the mean term is one value per bin, so bins count
-// equally; costs and the bias are per point, so a level's value is the point-weighted mean (sum over bins of the
-// bin's summed value / total points) = cost per datum; the count is the total number of points. A bin's
+// equally; costs and the bias are per datum, so a level's value is the data-weighted mean (sum over bins of the
+// bin's summed value / total data) = cost per datum; the count is the total number of data. A bin's
 // contribution is its part of that: its summed cost (or its mean term), so contributions add up over bins.
 const perBin = () => S.part === 'mean';
 function agg(m, keep) {                    // [value, number of bins, summed contributions] of one level
@@ -473,7 +473,7 @@ function drawProfile() {
   leg.forEach(([t, col], i) => { g.strokeStyle = col; g.lineWidth = 2; g.beginPath(); g.moveTo(W - R - lw, ly + 6 + 15 * i); g.lineTo(W - R - lw + 18, ly + 6 + 15 * i); g.stroke();
     g.fillStyle = '#333'; g.textBaseline = 'middle'; g.fillText(t, W - R - lw + 22, ly + 6 + 15 * i); });
   document.getElementById('profnote').textContent = perBin() ? '(each level: the mean over bins, as analysis 02)'
-    : S.part === 'count' ? '(each level: the number of points)' : '(each level: the mean over all points, i.e. per datum, as analysis 02)';
+    : S.part === 'count' ? '(each level: the number of data)' : '(each level: the mean over all data, i.e. per datum, as analysis 02)';
   document.getElementById('sbnote').textContent = S.same ? `${PROF.nkeep} bins have data at every level from ${z[k0]} to ${z[k1]} m` : '';
 }
 
@@ -646,7 +646,7 @@ async function detailRows(src, js) {        // per profile index: rows [{k, m: o
 function renderPlatformTable(el, P, X) {
   const unit = S.V === 'T' ? '°C' : 'psu', ref = S.ct === 'vs_model' ? 'model' : 'climatology';
   const rows = [...X.share].filter(([pi]) => pi !== 0xFFFFFFFF).sort((a, b) => b[1] - a[1]).slice(0, 12);
-  const nPlat = [...X.nprof.keys()].filter(k => k !== 0xFFFFFFFF).length, what = S.part === 'mean' ? 'mean term' : S.part === 'anomaly' ? 'anomaly cost' : S.part === 'count' ? 'points' : 'unsplit cost';
+  const nPlat = [...X.nprof.keys()].filter(k => k !== 0xFFFFFFFF).length, what = S.part === 'mean' ? 'mean term' : S.part === 'anomaly' ? 'anomaly cost' : S.part === 'count' ? 'data' : 'unsplit cost';
   let h = `<div class="ptitle" style="margin-top:0.6em">Platforms in the region <span class="dnote">(${P.kind}; ${nPlat} with kept data at the selected depths; computed profile by profile)</span></div>` +
     `<table><tr><th>${P.kind}</th><th>profiles</th><th>years</th><th>share of the region's ${what}</th><th>mean ${ref} − obs (${unit})</th><th></th></tr>`;
   for (const [pi, x] of rows) { const nm = P.names[pi], ys = X.yrs.get(pi) || ['–', '–'], mb = X.mw.get(pi) ? -X.mis.get(pi) / X.mw.get(pi) : NaN;   // ref − obs
@@ -750,34 +750,34 @@ async function drawRegion(d) {
   box.style.display = '';
   const yd = (!S.all && S.part !== 'mean') ? await yearData(S.src, S.ct) : null;
   const lb = levelBinValues(d, yd), lv = levelsSelected(), lset = lv ? new Set(lv) : null;
-  // per bin over the selected levels: sum of the bin's level values (the map value is their mean), points, levels
+  // per bin over the selected levels: sum of the bin's level values (the map value is their mean), data, levels
   const per = new Map();
-  // points per bin come from the cost records (the mean term has one value per bin and level, no points)
+  // data per bin come from the cost records (the mean term has one value per bin and level, no data)
   const pts = new Map(), cc = (!S.all && S.part !== 'mean') ? yd[S.V] : d[S.V];
   for (let i = 0; i < cc.bin.length; i++) { if (lset && !lset.has(cc.lev[i])) continue; if (!S.all && S.part !== 'mean' && (cc.blk[i] < S.t0 || cc.blk[i] > S.t1)) continue;
     pts.set(cc.bin[i], (pts.get(cc.bin[i]) || 0) + cc.n[i]); }
-  for (const [k, m] of lb) { if (lset && !lset.has(k)) continue;      // per bin: summed contribution, -, levels, weight (points)
+  for (const [k, m] of lb) { if (lset && !lset.has(k)) continue;      // per bin: summed contribution, -, levels, weight (data)
     for (const [b, xw] of m) { const e = per.get(b) || [0, 0, 0, 0]; e[0] += contrib(xw); e[2] += 1; e[3] += perBin() ? 1 : xw[1]; per.set(b, e); } }
   for (const [b, e] of per) e[1] = pts.get(b) || 0;
-  const tot = {s: 0, n: 0, pts: 0}, rg = {s: 0, n: 0, pts: 0};   // n: bin-levels (mean term) or points (costs): the divisor of the mean
+  const tot = {s: 0, n: 0, pts: 0}, rg = {s: 0, n: 0, pts: 0};   // n: bin-levels (mean term) or data (costs): the divisor of the mean
   for (const [b, [sv, pts, nl, wt]] of per) { const dv = perBin() ? nl : wt; tot.s += sv; tot.n += dv; tot.pts += pts; if (REGION.has(b)) { rg.s += sv; rg.n += dv; rg.pts += pts; } }
   const nbT = per.size, nbR = [...per.keys()].filter(b => REGION.has(b)).length;
   const pc = (a, b) => b ? (100 * a / b).toFixed(1) + ' %' : '–', mean = (s, n) => S.part === 'count' ? Math.round(s).toLocaleString() : n ? fmt(s / n) : '–';
-  const what = S.part === 'count' ? '# points' : DIAG(S.part) ? PARTS[S.part].split(',')[0].replace(/ \(.*/, '') : S.part === 'mean' ? 'mean term' : S.part + ' cost';
+  const what = S.part === 'count' ? '# data' : DIAG(S.part) ? PARTS[S.part].split(',')[0].replace(/ \(.*/, '') : S.part === 'mean' ? 'mean term' : S.part + ' cost';
   const additive = !DIAG(S.part);
-  let h = `<table><tr><th></th><th>bins with data</th><th>points</th><th>${perBin() ? 'mean per bin and level' : S.part === 'count' ? 'points' : 'per datum'}</th>${additive ? '<th>share of the summed ' + what + '</th>' : ''}</tr>` +
+  let h = `<table><tr><th></th><th>bins with data</th><th>data</th><th>${perBin() ? 'mean per bin and level' : S.part === 'count' ? 'data' : 'per datum'}</th>${additive ? '<th>share of the summed ' + what + '</th>' : ''}</tr>` +
     `<tr><td>region</td><td>${nbR} (${pc(nbR, nbT)})</td><td>${Math.round(rg.pts).toLocaleString()} (${pc(rg.pts, tot.pts)})</td><td>${mean(rg.s, rg.n)}</td>${additive ? '<td><b>' + pc(rg.s, tot.s) + '</b></td>' : ''}</tr>` +
     `<tr><td>rest of the world</td><td>${nbT - nbR}</td><td>${Math.round(tot.pts - rg.pts).toLocaleString()}</td><td>${mean(tot.s - rg.s, tot.n - rg.n)}</td>${additive ? '<td>' + pc(tot.s - rg.s, tot.s) + '</td>' : ''}</tr>` +
     `<tr><td>all</td><td>${nbT}</td><td>${Math.round(tot.pts).toLocaleString()}</td><td>${mean(tot.s, tot.n)}</td>${additive ? '<td>100 %</td>' : ''}</tr></table>`;
   if (additive && nbR) { const ratio = (rg.s / tot.s) / (nbR / nbT);
     h += `<span class="dnote">The region holds ${pc(nbR, nbT)} of the bins with data and ${pc(rg.s, tot.s)} of the summed ${what}: ` +
       `${ratio.toFixed(1)}× its share of bins. A region drawn around the darkest bins will always look important; ` +
-      `compare its share of the term with its share of bins and points, and check the rest-of-the-world curve.</span>`; }
+      `compare its share of the term with its share of bins and data, and check the rest-of-the-world curve.</span>`; }
   if (nbR < MIN_BINS) h += `<br><span class="dnote" style="color:#b03a2e">Only ${nbR} bins with data here: noisy.</span>`;
   document.getElementById('regsum').innerHTML = h;
   // the region's top bins
   const top = [...per].filter(([b]) => REGION.has(b)).sort((a, b) => b[1][0] - a[1][0]).slice(0, 10);
-  let t = `<table><tr><th>bin</th><th>center</th><th>points</th><th>${perBin() ? what + ' (mean over levels)' : S.part === 'count' ? 'points' : what + ' per datum'}</th>${additive ? '<th>share of all</th>' : ''}</tr>`;
+  let t = `<table><tr><th>bin</th><th>center</th><th>data</th><th>${perBin() ? what + ' (mean over levels)' : S.part === 'count' ? 'data' : what + ' per datum'}</th>${additive ? '<th>share of all</th>' : ''}</tr>`;
   for (const [b, [sv, pts, nl, wt]] of top) { const lo = INDEX.bin_center ? INDEX.bin_center[2 * (b - 1)] : NaN, la = INDEX.bin_center ? INDEX.bin_center[2 * (b - 1) + 1] : NaN;
     t += `<tr class="pick" data-b="${b}"><td>${b}</td><td>${la.toFixed(1)}°${la >= 0 ? 'N' : 'S'} ${Math.abs(lo).toFixed(1)}°${lo >= 0 ? 'E' : 'W'}</td><td>${Math.round(pts)}</td><td>${perBin() ? fmt(sv / nl) : S.part === 'count' ? Math.round(sv) : fmt(sv / wt)}</td>${additive ? '<td>' + pc(sv, tot.s) + '</td>' : ''}</tr>`; }
   t += '</table><span class="dnote">The region\'s largest bins at the selected depths (click a row for its breakdown).</span>';
@@ -839,7 +839,7 @@ async function showBin(b) {
     `; ${S.src}, ${S.ct}, ${S.V}; all years.<br>`;
   if (!rows.length) html += 'No data at the selected depths.';
   else {
-    html += `<table><tr><th>depth</th><th># points</th><th>unsplit</th><th>anomaly</th><th>mean term</th><th>ref − obs (${unit})</th><th>(ref − obs)/σ</th><th>σ (${unit})</th></tr>`;
+    html += `<table><tr><th>depth</th><th># data</th><th>unsplit</th><th>anomaly</th><th>mean term</th><th>ref − obs (${unit})</th><th>(ref − obs)/σ</th><th>σ (${unit})</th></tr>`;
     const shown = rows.length > 14 ? rows.filter((_, i) => i % Math.ceil(rows.length / 14) === 0 || i === rows.length - 1) : rows;
     for (const k of shown) { const r = perLev.get(k);
       html += `<tr><td>${z[k]} m</td><td>${r.n}</td><td>${fmt(r.mu)}</td><td>${Number.isFinite(r.ma) ? fmt(r.ma) : '–'}</td><td>${mt.has(k) && Number.isFinite(mt.get(k)) ? fmt(mt.get(k)) : '–'}</td><td>${Number.isFinite(r.bias) ? (r.bias >= 0 ? '+' : '') + r.bias.toFixed(3) : '–'}</td><td>${Number.isFinite(r.nmis) ? (r.nmis >= 0 ? '+' : '') + r.nmis.toFixed(2) : '–'}</td><td>${Number.isFinite(r.sig) ? fmt(r.sig) : '–'}</td></tr>`; }
@@ -1114,14 +1114,14 @@ async function render() {
   const ttxt = S.part === 'mean' ? 'all years (the mean term is defined over the whole record)' : timeText();
   document.getElementById('info').innerHTML =
     `<b>${S.src}</b>, ${S.ct}, ${S.V}: ${PARTS[S.part]}; ${dtxt}; ${ttxt}. ${nb} bins with data. ` +
-    (S.part === 'bias' ? 'Each bin: mean of (reference &minus; observation) over its points in the selected levels and years, in ' +
+    (S.part === 'bias' ? 'Each bin: mean of (reference &minus; observation) over its data in the selected levels and years, in ' +
        (S.V === 'T' ? '&deg;C' : 'psu') + '. A diagnostic of steady offsets and their change over time; it is not part of the cost. ' :
-     S.part === 'nmis' ? 'Each bin: mean of (reference &minus; observation)/&sigma; over its points in the selected levels and years (true weights, ' +
+     S.part === 'nmis' ? 'Each bin: mean of (reference &minus; observation)/&sigma; over its data in the selected levels and years (true weights, ' +
        'so &sigma; is the assumed error alone). &plusmn;1 is one assumed error. Not part of the cost (the unsplit cost is the mean of its square). ' :
-     S.part === 'sig' ? 'Each bin: mean of &sigma;, the assumed error of the observations (true weights 1/&sigma;&sup2;), over its points in the selected levels and years, in ' +
+     S.part === 'sig' ? 'Each bin: mean of &sigma;, the assumed error of the observations (true weights 1/&sigma;&sup2;), over its data in the selected levels and years, in ' +
        (S.V === 'T' ? '&deg;C' : 'psu') + '. The errors the costs are measured against. ' :
      S.part === 'mean' ? 'Mean term: w&#772;&middot;(V&#772;&minus;V&#772;<sub>ref</sub>)&sup2; per bin and level (own bin means, all years), averaged over the selected levels. ' :
-     'Each bin: mean of (&Delta;V/&sigma;)&sup2; over its points in the selected levels and years. ') +
+     'Each bin: mean of (&Delta;V/&sigma;)&sup2; over its data in the selected levels and years. ') +
     'The color scale is fixed for this view across years; unsplit and anomaly share it. ' +
     'Hover a bin for its value.';
 }
@@ -1301,7 +1301,7 @@ async function init() {
   tabs('vars', [['T', 'T'], ['S', 'S']], 'V', v => { S.V = v; re(); });
   const partTabs = [['unsplit', 'unsplit'], ['anomaly', 'anomaly (split)']];
   if (INDEX.core_split === 'own') partTabs.push(['mean', 'mean term (split)']);
-  partTabs.push(['count', '# points']);
+  partTabs.push(['count', '# data']);
   tabs('parts', partTabs, 'part', v => { S.part = v; re(); });
   tabs('diags', [['bias', 'misfit (ref − obs)'], ['nmis', 'normalized misfit (ref − obs)/σ'], ['sig', 'σ (assumed error)']], 'part', v => { S.part = v; S.log = false;
     document.getElementById('logscale').checked = false; re(); });

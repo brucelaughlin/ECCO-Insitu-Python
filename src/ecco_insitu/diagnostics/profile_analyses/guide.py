@@ -69,8 +69,9 @@ data viewer on one platform &rarr; click a profile to see it whole. Section&nbsp
 <p>Most of the site&rsquo;s numbers are a <b>cost per datum</b>. It is the average of a simple score that every single
 observation gets. Here is how it is made, with a real example.</p>
 <ol>
-<li><b>A datum is one number:</b> one temperature (or salinity) value, at one depth, in one profile. A single Argo profile with
-  70 depth levels gives about 70 data for T and 70 for S.</li>
+<li><b>A datum is one observation:</b> one temperature (or salinity) value, at one depth, in one profile. More than one are
+  <b>data</b>, so &ldquo;# data&rdquo; on the site is a count of these. A single Argo profile with 70 depth levels gives about 70 data
+  for T and 70 for S.</li>
 <li><b>Its misfit</b> is the reference minus the observation (the reference is the model or the climatology). Example: Argo
   float 6903082 at 2400&nbsp;m on 29 March 2025 measured 2.810&nbsp;&deg;C; the model says 3.269&nbsp;&deg;C; the misfit is
   +0.46&nbsp;&deg;C.</li>
@@ -110,14 +111,14 @@ and depth range, and runs the peak tool there (section <a href="#peak">The peak 
 <p><b>Simple / expert</b> (top right): simple shows the everyday choices; expert adds the mean-bias diagnostic, depth bands and groups,
 flagged spikes, single year, the log color scale and regions. A link that uses an expert option opens in expert mode; your choice is
 remembered in this browser.</p>
-<p><b>Rows of buttons</b> (top): class, cost type, variable, cost part (unsplit, anomaly, mean term, number of points), the misfit,
+<p><b>Rows of buttons</b> (top): class, cost type, variable, cost part (unsplit, anomaly, mean term, number of data), the misfit,
 normalized misfit and &sigma; (ref &minus; obs, (ref &minus; obs)/&sigma;, the assumed error; not costs), depth (all, one level, 100&nbsp;m bands, groups of levels, flagged spikes) and time
 (all years, or any range; the mean term has no years).</p>
 <p><b>Maps:</b> the global map (equal area) and the two polar maps; each bin colored by the selection. Hover a bin for its value;
 <b>click a bin</b> for its breakdown (the &ldquo;Clicked bin&rdquo; panel: per level, per year, and a link to its profiles).</p>
 <p><b>Optional: depth profile and peak attribution</b> (the folded panel between the buttons and the maps; not needed for the maps).
 Open it for the <b>depth profile of the selection</b>: the curve analysis&nbsp;02 draws, for the current class, cost type, variable, part and years:
-for costs, at each level the mean over all its values (cost per datum); for the mean term, the mean over bins; for &ldquo;# points&rdquo;,
+for costs, at each level the mean over all its values (cost per datum); for the mean term, the mean over bins; for &ldquo;# data&rdquo;,
 the number of values. On the right, the number of bins per level (log scale).</p>
 <p><b>Depth range</b> (the shaded band on the profile): set it with the from/to menus or on the plot &mdash; drag the band&rsquo;s top or
 bottom edge (the handles), drag inside to move it, drag across an empty part to draw a new one. Choosing a range does nothing by
@@ -169,7 +170,7 @@ c<sub>k</sub> = &Sigma;<sub>i</sub> J<sub>i,k</sub> / B<sub>k</sub>. These are e
 above (p&minus;) and below (p+); the <b>excess</b> is E = c<sub>p</sub> &minus; (c<sub>p&minus;</sub> + c<sub>p+</sub>)/2.</p>
 """),
     ('samebins', '2. Same bins: a worse fit at that depth, or a different set of places?', """
-<p><b>The question.</b> Each point of the cost-against-depth curve is an <em>average over the places (geodesic bins) that have data at
+<p><b>The question.</b> Each point on the cost-against-depth curve (one per depth) is an <em>average over the places (geodesic bins) that have data at
 that depth</em>. That list of places is not the same at every depth: most Argo floats stop at 2000&nbsp;m, so below 2000&nbsp;m far
 fewer places have data. When the curve jumps at one depth, there are two possible reasons:</p>
 <ul>
@@ -241,7 +242,7 @@ dragging on the maps.</p>
 <li>the depth profile draws the curve over R (purple), over the rest of the world (gray) and over all bins (light red), each formed
   as in step&nbsp;1. If the region&rsquo;s curve runs past the plot, it gets its own axis along the top. Levels where R has fewer than 5 bins
   are drawn pale. <b>The decisive check:</b> if the feature is gone from the gray curve, R accounts for it.</li>
-<li>a table: R&rsquo;s bins with data, values (points), the curve over R and over the rest (per datum, or per bin for the mean term),
+<li>a table: R&rsquo;s bins with data, its number of data, the curve over R and over the rest (per datum, or per bin for the mean term),
   and R&rsquo;s share of the summed value, with how many times its share of bins that is;</li>
 <li>per year: R (bars) against the rest (line); for the mean term, which has no years, reference &minus; obs per year;</li>
 <li>R&rsquo;s ten largest bins (click one for its breakdown).</li>

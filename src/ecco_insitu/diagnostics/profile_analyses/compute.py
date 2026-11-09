@@ -41,10 +41,10 @@ Model-equivalent folders (--model-equivalents, --run-b) may hold either
 A yearly file with no model values for some profiles leaves those out of the model costs, and the count
 is printed.
 
-Split vs unsplit (per point; w = weight, V = observation, Vref = reference):
+Split vs unsplit (per datum; w = weight, V = observation, Vref = reference):
   unsplit    w (V - Vref)²                       the mean misfit is not removed
   split      w (V - Vref - b)²,  b = mean(V) - mean(Vref) per (geodesic bin, depth), pooled
-             over all obs classes, points with w > 0 (and, for model costs, Vref != 0):
+             over all obs classes, data with w > 0 (and, for model costs, Vref != 0):
              ECCO v4r6 cost_profiles.F's anomaly term. Costs are still tallied per obs class.
              ECCO's mean term, w_mean (mean(Vref) - mean(V))², w_mean = 1/max(s/n, s/9),
              s = mean(1/w), is pooled, so it is reported once per cost type (meta.json and
@@ -90,7 +90,7 @@ CORE_SPLIT = 'own'
 # Depth bands for the per-depth maps of analyses 5 and 6 (decision 2026-10-29: bands, not all 97 levels;
 # see HANDOFF.md). Upper edges in m; 'all' (the whole profile) is always added.
 MAP_DEPTH_BANDS = (50, 100, 250, 500, 1000, 2000, 4000, None)
-# Map viewer (report): sums of the cost per datum (true weights) and point counts per (time block, bin,
+# Map viewer (report): sums of the cost per datum (true weights) and data counts per (time block, bin,
 # level), for unsplit and both splits. Block k covers VIEWER_YEAR0 + k*VIEWER_BLOCK_YEARS ...
 # (+ VIEWER_BLOCK_YEARS - 1); 1-year blocks since 2026-10-31 (was 5). Stored sparsely (non-empty cells).
 VIEWER_YEAR0 = 1992
@@ -329,7 +329,7 @@ def _new_acc(n_depths):
 
 def _new_pooled(n_depths):
     """Sums per (bin, depth) of data, reference and 1/weight (one per weight version: 'invw' is the final
-    weight, as cost_profiles.F) and the point count; for the bin means and the split's mean term."""
+    weight, as cost_profiles.F) and the data count; for the bin means and the split's mean term."""
     def z():
         return np.zeros((N_BINS + 1, n_depths))
     return {V: {'d': z(), 'm': z(), 'invw': z(), 'invw_nosf': z(), 'invw_true': z(),
@@ -337,7 +337,7 @@ def _new_pooled(n_depths):
 
 
 def _add_pooled(p, flat, val, ref, w, okb, sf, gamma):
-    """Add points ``okb`` of one file to the (bin, depth) sums ``p`` (see _new_pooled)."""
+    """Add data ``okb`` of one file to the (bin, depth) sums ``p`` (see _new_pooled)."""
     wv = _weight_versions(w, sf, gamma)
     np.add.at(p['d'].ravel(),         flat, val[okb])
     np.add.at(p['m'].ravel(),         flat, ref[okb])
@@ -373,10 +373,10 @@ def _pooled_stats(pooled, indsamples=PROFILES_MEAN_INDSAMPLES):
 
 
 def _mean_term(p, wv='final', indsamples=PROFILES_MEAN_INDSAMPLES):
-    """The split's mean term from (bin, depth) sums of one set of points (see _pooled_stats), as in
+    """The split's mean term from (bin, depth) sums of one set of data (see _pooled_stats), as in
     cost_profiles.F: J_m(i, k) = w_mean (mean(Vref) - mean(V))^2 for geodesic bin i and level k, with the
-    bin weight w_mean = 1 / max(s/n, s/indsamples), s = mean(1/w) over the bin's points, w being weight
-    version ``wv`` of each point. Returns the cost per (bin, level), the point count, the mean over bins at
+    bin weight w_mean = 1 / max(s/n, s/indsamples), s = mean(1/w) over the bin's data, w being weight
+    version ``wv`` of each datum. Returns the cost per (bin, level), the data count, the mean over bins at
     each level ('per_depth') and the number of bins with a value ('nbins')."""
     n = p['n']
     with np.errstate(invalid='ignore', divide='ignore'):
@@ -432,7 +432,7 @@ def map_band_labels():
 
 
 def _add_costs(acc, V, mode, mf, ok, w, sf, gamma, ym, bi_safe, lb, dz, band=None):
-    """Add one file's costs (misfit ``mf`` at points ``ok``) to every analysis, for each weight version."""
+    """Add one file's costs (misfit ``mf`` at data ``ok``) to every analysis, for each weight version."""
     weights = _weight_versions(w, sf, gamma)
     if band is None:
         band = _band_index(np.cumsum(dz) - dz / 2)
@@ -482,7 +482,7 @@ def _add_costs(acc, V, mode, mf, ok, w, sf, gamma, ym, bi_safe, lb, dz, band=Non
 
 
 def _add_viewer(acc, V, part, mf, ok, w, sf, gamma, ym, bi_safe):
-    """Sum of the cost per datum ((misfit/sigma)^2, true weights) and point count per (time block, bin,
+    """Sum of the cost per datum ((misfit/sigma)^2, true weights) and data count per (time block, bin,
     level), for the report's map viewer. Kept sparse: per file, the unique (block, bin, level) cells and
     their sums are appended; _viewer_reduce merges them."""
     key = (V, part)
@@ -800,7 +800,7 @@ def _write_nc(res, source, run_ts, path, cost_types_used, pooled_sources=None):
             mb[i] = lbl
         nc.setncattr('core_split', CORE_SPLIT)
 
-        # map viewer: cost per datum sums and point counts per non-empty (time block, bin, level), true
+        # map viewer: cost per datum sums and data counts per non-empty (time block, bin, level), true
         # weights, sparse: cell index = (block * (N_BINS + 1) + bin) * n_depths + level
         if res.get('viewer'):
             nc.setncattr('viewer_year0', VIEWER_YEAR0)
@@ -1073,7 +1073,7 @@ def _log_lim(arrays):
 
 
 def _depth_figure(n_main, width_main=4.5, height=6):
-    """Figure with ``n_main`` depth panels and a narrow panel on the right for the number of points."""
+    """Figure with ``n_main`` depth panels and a narrow panel on the right for the number of data."""
     fig = plt.figure(figsize=(width_main * n_main + 1.8, height))
     gs = fig.add_gridspec(1, n_main + 1, width_ratios=[4] * n_main + [1.2], wspace=0.12)
     axes = [fig.add_subplot(gs[0, 0])]
@@ -1110,14 +1110,14 @@ def _count_ticks(axis, lim, max_labels=5):
 
 
 def _count_panel(ax, counts, depth, lim):
-    """Number of points per depth level (log scale), one line per variable."""
+    """Number of data per depth level (log scale), one line per variable."""
     for V, c in counts.items():
         ax.semilogx(np.where(c > 0, c, np.nan), depth, color=_V_COLOR[V], label=V, lw=1.1)
     _apply(ax.set_xlim, lim)
     _count_ticks(ax.xaxis, lim, 4)
     ax.tick_params(axis='x', labelsize=7, labelrotation=90)
     ax.grid(True, which='minor', axis='x', alpha=0.2, lw=0.4)
-    ax.set_xlabel('# points')
+    ax.set_xlabel('# data')
     ax.set_title('n')
     ax.tick_params(labelleft=False)
     if len(counts) > 1:
@@ -1194,8 +1194,8 @@ def _make_figures(res, source, fig_dir, lims=None, cost_type=None):
     _savefig(fig, fig_dir / '01_mean_T_S_depth.png')
 
     # ---- Analysis 2: cost vs depth, unsplit and the two terms of the split (core split) ----
-    # Each line is a mean over the geodesic bins' points at each level: unsplit cost, the split's anomaly
-    # term (mean over points), and its mean term (mean over bins, one term per bin). CORE_SPLIT picks which
+    # Each line is a mean over the geodesic bins' data at each level: unsplit cost, the split's anomaly
+    # term (mean over data), and its mean term (mean over bins, one term per bin). CORE_SPLIT picks which
     # bin means the split uses; the other split is shown in supplemental analysis 12.
     core = 'split_own' if CORE_SPLIT == 'own' else 'split'
     _part_ls = {'unsplit': '--', 'anomaly': '-', 'mean': ':'}
@@ -1296,7 +1296,7 @@ def _make_figures(res, source, fig_dir, lims=None, cost_type=None):
         if len(r['yyyymm']):
             nax.semilogy(_decimal_year(r['yyyymm']), np.where(r['count'] > 0, r['count'], np.nan),
                          color=_V_COLOR[V], label=V, lw=1.0)
-    nax.set_ylabel('# points\nper month')
+    nax.set_ylabel('# data\nper month')
     _count_ticks(nax.yaxis, lims[('a04', 'n')], 4)
     nax.tick_params(axis='y', labelsize=7)
     nax.grid(True, which='minor', axis='y', alpha=0.2, lw=0.4)
@@ -1319,7 +1319,7 @@ def _make_figures(res, source, fig_dir, lims=None, cost_type=None):
         _apply(ax.set_ylim, lims[('a04', V)])
         _apply(ax.set_xlim, lims['year'])
     axes[-1].set_xlabel('Year')
-    fig.suptitle(f'{source}: Analysis 4 — Total cost per month (sum over all points), unsplit{ctl}')
+    fig.suptitle(f'{source}: Analysis 4 — Total cost per month (sum over all data), unsplit{ctl}')
     _savefig(fig, fig_dir / f'04_total_cost_time_{source}.png')
 
     # ---- Analysis 5/6: spatial map ----
@@ -1423,7 +1423,7 @@ def _make_figures(res, source, fig_dir, lims=None, cost_type=None):
         _count_ticks(cax.xaxis, lims[('a11', 'n')], 4)
         cax.tick_params(axis='x', labelsize=7, labelrotation=90)
         cax.grid(True, which='minor', axis='x', alpha=0.2, lw=0.4)
-        cax.set_xlabel('# points')
+        cax.set_xlabel('# data')
         cax.set_title(f'n ({active_vars[0]})')
         cax.tick_params(labelleft=False)
         cax.legend(fontsize=7)

@@ -137,7 +137,7 @@ def cost_vs_depth(A, src, cost_type, variable='T', part='unsplit', depth_from=No
     rows = [[_r(z[i], 4), _r(v[i]), int(n[i])] for i in k[::step] if np.isfinite(v[i])]
     res = {'obs_class': src, 'cost_type': cost_type, 'variable': V, 'part': part,
            'columns': ['depth_m', 'cost_per_datum' if part != 'mean' else 'mean_term_mean_over_bins',
-                       'points' if part != 'mean' else 'bins'],
+                       'data' if part != 'mean' else 'bins'],
            'levels': rows, 'levels_shown': f'{len(rows)} of {len(k)} (every {step})' if step > 1 else 'all',
            'largest': {'depth_m': _r(z[kmax], 4), 'value': _r(v[kmax])},
            'mean_over_range': _r(np.nansum(v[k] * n[k]) / np.nansum(n[k])) if part != 'mean' else _r(np.nanmean(v[k]))}
@@ -165,10 +165,10 @@ def cost_vs_time(A, src, cost_type, variable='T', part='unsplit'):
     trend = np.polyfit(ys, vs, 1, w=np.sqrt(ns))[0] if len(ys) > 2 else np.nan
     srt = np.argsort(vs)
     res = {'obs_class': src, 'cost_type': cost_type, 'variable': V, 'part': part,
-           'columns': ['year', 'cost_per_datum', 'points'],
+           'columns': ['year', 'cost_per_datum', 'data'],
            'years': [[int(y), _r(v), int(n)] for y, v, n in per],
            'highest_years': [int(ys[i]) for i in srt[::-1][:3]], 'lowest_years': [int(ys[i]) for i in srt[:3]],
-           'trend_per_decade': _r(10 * trend), 'note': 'trend: least squares on the yearly means, weighted by sqrt(points)'}
+           'trend_per_decade': _r(10 * trend), 'note': 'trend: least squares on the yearly means, weighted by sqrt(data)'}
     return {'result': res, 'views': [
         {'page': 'report', 'params': {'src': src, 'ct': cost_type, 'an': '03'},
          'caption': f'Analysis 03: {src} {cost_type} cost per datum against time'}]}
@@ -192,7 +192,7 @@ def compare_classes(A, cost_type, variable='T', part='unsplit', depth_from=0, de
         rows.append([src, _r(val), int(cnt)])
     rows.sort(key=lambda r: -(r[1] or 0))
     return {'result': {'cost_type': cost_type, 'variable': V, 'part': part, 'depth_range_m': [depth_from, depth_to],
-                       'columns': ['obs_class', 'cost_per_datum' if part != 'mean' else 'mean_term', 'points' if part != 'mean' else 'bin_levels'],
+                       'columns': ['obs_class', 'cost_per_datum' if part != 'mean' else 'mean_term', 'data' if part != 'mean' else 'bin_levels'],
                        'classes': rows},
             'views': [{'page': 'report', 'params': {'src': rows[0][0] if rows else A.sources[0], 'ct': cost_type, 'an': '02'},
                        'caption': 'Analysis 02 (switch class with the Source tabs)'}]}
@@ -214,8 +214,8 @@ def compare_references(A, src, variable='T', part='unsplit', depth_from=0, depth
 
 
 def _bin_cost(A, src, ct, V, part, k):
-    """Per bin over the levels k: (value, weight). Costs: summed cost / points over all years (bins weighted by
-    points, as analysis 02); mean term: the mean over the levels with a value."""
+    """Per bin over the levels k: (value, weight). Costs: summed cost / data over all years (bins weighted by
+    data, as analysis 02); mean term: the mean over the levels with a value."""
     if part == 'mean':
         mt = A.get(src, ct, f'meanterm__{V}__true__by_bin_depth').astype(float)[:, k]
         n = np.sum(np.isfinite(mt), axis=1).astype(float)
@@ -287,7 +287,7 @@ def where_high(A, src, cost_type, variable='T', part='unsplit', depth_from=0, de
     depth_param = _group_param(A, k)
     res = {'obs_class': src, 'cost_type': cost_type, 'variable': V, 'part': part,
            'depth_range_m': [_r(z[k[0]], 4), _r(z[k[-1]], 4)], 'bins_with_data': int(len(ok)),
-           'highest_bins': [{'bin': int(b + 1), 'where': _where(A, b + 1), 'value': _r(val[b]), 'points': int(w[b])}
+           'highest_bins': [{'bin': int(b + 1), 'where': _where(A, b + 1), 'value': _r(val[b]), 'data': int(w[b])}
                             for b in order[:top]],
            'areas_of_the_top_10pct': cl,
            'note': 'bins are geodesic, ~220 km across; costs over all years'}
@@ -493,7 +493,7 @@ def find_region(A, name=None, lon_min=None, lon_max=None, lat_min=None, lat_max=
 def region_cost(A, src, cost_type, region=None, variable='T', part='unsplit', depth_from=0, depth_to=2000,
                 lon_min=None, lon_max=None, lat_min=None, lat_max=None):
     """The cost in a region (a named sea or ocean area, or a lon/lat box) against the rest of the world, over a depth
-    range, all years: the region's cost per datum (or mean term), its share of the bins, the points and the summed
+    range, all years: the region's cost per datum (or mean term), its share of the bins, the data and the summed
     cost, and its highest bins."""
     V, part = _var(variable), _part(part)
     label, ids = find_region(A, region, lon_min, lon_max, lat_min, lat_max)
@@ -507,7 +507,7 @@ def region_cost(A, src, cost_type, region=None, variable='T', part='unsplit', de
             return None
         if part == 'mean':
             return {'bins_with_data': int(m.sum()), 'mean_term_mean_over_bins': _r(np.mean(val[m]))}
-        return {'bins_with_data': int(m.sum()), 'points': int(w[m].sum()), 'cost_per_datum': _r(np.sum(val[m] * w[m]) / np.sum(w[m]))}
+        return {'bins_with_data': int(m.sum()), 'data': int(w[m].sum()), 'cost_per_datum': _r(np.sum(val[m] * w[m]) / np.sum(w[m]))}
     reg, rest = summ(inr), summ(~inr)
     if reg is None:
         raise ToolError(f'{label}: no {src} {V} data at {depth_from}–{depth_to} m')
