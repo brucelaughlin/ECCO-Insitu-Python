@@ -171,9 +171,9 @@ _ANALYSIS_DESC = {
 SUPPLEMENTAL = {'11': 'year split', '12': 'split: own vs pooled', '13': 'counts: time × depth'}
 # short names for the analysis buttons (written slanted above them); the full titles are in _ANALYSIS_TITLES
 _ANALYSIS_SHORT = {
-    '01': 'mean T, S', '02': 'cost vs depth', '03': 'cost vs time', '04': 'total cost', '05': 'cost map (sum)',
-    '06': 'cost map (per datum)', '07': 'zonal mean', '08': 'histogram', '09': 'cost in σ units', '10': 'depth ranges',
-    '11': 'inside vs after clim.', '12': 'own vs pooled', '13': 'obs counts',
+    '01': 'mean T, S', '02': 'cost vs depth', '03': 'cost vs time', '04': 'total cost', '05': 'map (sum)',
+    '06': 'map (per datum)', '07': 'zonal mean', '08': 'histogram', '09': 'cost in σ units', '10': 'depth ranges',
+    '11': 'clim. years split', '12': 'own vs pooled', '13': 'obs counts',
 }
 
 _GLOSSARY_HTML = """
@@ -682,10 +682,10 @@ body {
 #nav.folded #navrows { display: none; }
 #nav.folded #foldsum { display: inline; }
 /* the analysis buttons' short names, slanted up and to the right like a plot's tick labels */
-#an-row { padding-top: 6.8em; }
+#an-row { padding-top: 3.6em; }
 .an-wrap { position: relative; display: inline-block; }
 .an-name { position: absolute; left: 55%; bottom: 100%; margin-bottom: 0.2em; transform-origin: 0 100%;
-  transform: rotate(-52deg); white-space: nowrap; font-size: 0.74em; color: #567; pointer-events: none; }
+  transform: rotate(-28deg); white-space: nowrap; font-size: 0.74em; color: #567; pointer-events: none; }
 .an-wrap:has(.an-tab.active) .an-name { color: var(--accent); font-weight: 600; }
 .an-wrap:has(.sup-tab) .an-name { color: #889; }
 img.zoomable { cursor: zoom-in; }
