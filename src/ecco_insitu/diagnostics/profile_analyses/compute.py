@@ -104,6 +104,11 @@ CLIM_YEARS = (1991, 2020)
 PERIODS = ('in_clim_years', 'after_clim_years')
 COST_TYPES  = ('vs_clim',)   # plus vs_<model name> per model given (run(models=...))
 
+# Areas left out of the MODEL costs (not the climatology's, not analysis 1): profiles whose position falls in one of
+# these Natural Earth marine areas. Decided 2026-11-08 for the team demo: ECCO V5r1's Black Sea is far too warm at
+# depth (about 13.6 C at 1200 m against about 8.9 C observed) and alone gave 25 % of the CTD cost vs V5r1 (6 % of
+# Argo's); V4r6 has no Black Sea at all, so leaving it out keeps the two models comparable. Set to () to keep them.
+MODEL_EXCLUDED_AREAS = ('Black Sea', 'Sea of Azov', 'Sea of Marmara')
 N_BINS   = 10242          # geodesic bin ids 1..10242; index 0 unused
 N_DEPTHS = 97             # expected; actual depth array read from first file
 
@@ -529,6 +534,32 @@ def _viewer_reduce(v):
     return v
 
 
+_EXCL_GEOM = []
+
+
+def _in_excluded_area(lon, lat):
+    """True for positions inside MODEL_EXCLUDED_AREAS (Natural Earth 10 m marine areas)."""
+    if not MODEL_EXCLUDED_AREAS:
+        return np.zeros(len(lon), bool)
+    if not _EXCL_GEOM:
+        import cartopy.io.shapereader as shpreader
+        import shapely
+        recs = shpreader.Reader(shpreader.natural_earth(resolution='10m', category='physical',
+                                                        name='geography_marine_polys')).records()
+        want = {a.lower() for a in MODEL_EXCLUDED_AREAS}
+        geoms = [r.geometry for r in recs if str(r.attributes['name']).strip().lower() in want]
+        _EXCL_GEOM.append(shapely.union_all(geoms) if geoms else None)
+    g = _EXCL_GEOM[0]
+    if g is None:
+        return np.zeros(len(lon), bool)
+    import shapely
+    lo = np.where(lon > 180, lon - 360, lon)
+    ok = np.isfinite(lo) & np.isfinite(lat)
+    out = np.zeros(len(lon), bool)
+    out[ok] = shapely.contains_xy(g, lo[ok], lat[ok])
+    return out
+
+
 def _accumulate_file(acc, fd, cost_type, pass_, biases=None, pooled=None):
     """Add one file to the accumulators of one cost type.
 
@@ -567,6 +598,9 @@ def _accumulate_file(acc, fd, cost_type, pass_, biases=None, pooled=None):
         ok = ~_is_fill_value(val) & ~_is_fill_value(ref) & ~_is_fill_weight(w) & (w > 0)
         if cost_type != 'vs_clim':
             ok &= ref != 0          # the model's "no value" (cost_profiles.F mask)
+            if fd.get('excluded') is None:
+                fd['excluded'] = _in_excluded_area(fd['lon'], fd['lat'])
+            ok &= ~fd['excluded'][:, None]      # MODEL_EXCLUDED_AREAS (the Black Sea: see there)
         mf = val - ref
 
         if pass_ == 'unsplit':
@@ -2004,6 +2038,7 @@ def run(run_dir, out_dir, sources=None, estim_dir=None, estim_dir_b=None, n_work
         'sources': sorted(groups.keys()),
         'cost_types': cost_types,
         'models': {name: str(d) for name, d in models.items()},
+        'model_excluded_areas': list(MODEL_EXCLUDED_AREAS),
         'split_pooled_over': sorted(groups.keys()),
         'core_split': CORE_SPLIT,
         'clim_years': list(CLIM_YEARS),

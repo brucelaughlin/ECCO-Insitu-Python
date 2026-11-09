@@ -397,10 +397,27 @@ lower after 2020. MEOP S has no data after 2020.</p>
 """
 
 
+def _excluded_note(metas):
+    """The loud box at the top of the notes (and above the figures): areas left out of the model costs."""
+    areas = next((m.get('model_excluded_areas') for _, m in metas if m.get('model_excluded_areas')), None)
+    if not areas:
+        return ''
+    return (
+        '<div class="excl-note"><strong>&#9888; The Black Sea is left out of the model costs.</strong> '
+        f'Profiles in the {", ".join(areas[:-1])} and {areas[-1]} are <b>not counted</b> in any cost against V4r6 or V5r1 (every analysis, '
+        'map, explorer view and the chatbot); the climatology costs and analysis&nbsp;01 keep them. Why: ECCO V5r1&rsquo;s Black '
+        'Sea is far too warm at depth (about 13.6&nbsp;&deg;C at 1,200&nbsp;m against about 8.9&nbsp;&deg;C observed), so it alone was '
+        '<b>25&nbsp;%</b> of the CTD cost against V5r1 from 0.3&nbsp;% of the bins (Argo: 6&nbsp;%), and it hid the rest of the '
+        'comparison. V4r6 has no Black Sea, so leaving it out keeps the two models comparable. A choice for this demo '
+        '(2026-11-08): to keep the Black Sea, set <code>MODEL_EXCLUDED_AREAS = ()</code> in <code>compute.py</code> and re-run '
+        'the analysis.</div>')
+
+
 def _notes_html(metas):
     """The notes & errata page: interpretation, data notes, open decisions, and corrections."""
     return f"""
 <h2>Notes &amp; errata</h2>
+{_excluded_note(metas)}
 <p class="notes-lede">This run&rsquo;s findings, open decisions and corrections. How to use the pages and how the
 attribution tools work: the <a href="guide.html">Guide</a>.</p>
 <p class="notes-toc">On this page: <a href="#n-read">1. Reading the figures</a> &middot; <a href="#n-data">2. Data notes</a> &middot;
@@ -654,6 +671,9 @@ body {
 .tab.na { opacity: 0.35; pointer-events: none; }
 .sup-label { margin-left: 1.2em; min-width: 0; }
 .tab.sup-tab { border-style: dashed; }
+.excl-line { background: #fdecea; border-left: 4px solid #c0392b; padding: 0.3em 0.7em; margin: 0 0 0.6em; font-size: 0.85em; color: #4a1410; }
+.excl-note { background: #fdecea; border: 2px solid #c0392b; border-left-width: 6px; border-radius: 4px; padding: 0.6em 0.9em;
+  margin: 0.6em 0 1em; line-height: 1.5; color: #4a1410; font-size: 0.95em; }
 .tab.cmp-tab { border-color: #6c3483; color: #6c3483; margin-left: 0.8em; }
 .tab.cmp-tab.active { background: #6c3483; color: #fff; }
 #foldbar { display: flex; align-items: center; gap: 0.8em; padding: 0.2em 1em; font-size: 0.85em; }
@@ -1084,6 +1104,7 @@ var render = function () {{
   document.getElementById('map-hint-link').href = 'viewer.html?src=' + encodeURIComponent(curSource) +
     '&ct=' + encodeURIComponent(curCost);
   document.getElementById('peak-hint').style.display = (HAS_EXPLORER && curAn === '02') ? '' : 'none';
+  const xl = document.getElementById('excl-line'); if (xl) xl.style.display = curCost !== 'vs_clim' && !NO_COST.includes(curAn) ? '' : 'none';
   updatePeakLink();
   // both header buttons open on the class shown here
   document.getElementById('map-explorer').href = 'viewer.html?src=' + encodeURIComponent(curSource) +
@@ -1269,12 +1290,13 @@ render();
 <div id="zoom" hidden><img alt=""><span class="zoom-hint">click or Esc to close</span></div>
 <div id="notes-page" hidden>
   <div class="notes-inner">
-    <p><span class="hdr-link" id="close-notes">&larr; Back to the report</span></p>
+    <p><span class="hdr-link" id="close-notes">&larr; Back to the analyses</span></p>
     {_notes_html(metas)}
   </div>
 </div>
 <div id="main">
   <div id="fig-area">
+    {f'<div class="excl-line" id="excl-line" style="display:none">&#9888; <b>The Black Sea is left out of the model costs</b> for this demo (V5r1 is far too warm there; details at the top of <a href="#" onclick="document.getElementById(&apos;toggle-notes&apos;).click(); return false">Notes &amp; errata</a>).</div>' if _excluded_note(metas) else ''}
     <div class="map-hint" id="map-hint" style="display:none">These are fixed images for the standard depth bands.
       For any depth level or band, any range of years, the split terms, the misfits and &sigma;, open the
       <a href="viewer.html" id="map-hint-link">Cost map explorer &rarr;</a></div>

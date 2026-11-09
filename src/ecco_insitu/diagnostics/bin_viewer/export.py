@@ -427,6 +427,9 @@ def export_class(src, files, out, tree, kept_bins, estim=None, ref_name='model',
                     # the model's value at the profile; 0 or missing = no model value (as the cost analyses)
                     m = model[V] if model is not None and model.get(V) is not None else np.full((n, nlev), np.nan)
                     good = ok & np.isfinite(m) & (m != 0) & (np.abs(m) < 900)
+                    # as the cost analyses: no model anomaly in MODEL_EXCLUDED_AREAS (the Black Sea, for the demo)
+                    from ecco_insitu.diagnostics.profile_analyses.compute import _in_excluded_area
+                    good &= ~_in_excluded_area(lo, ds['prof_lat'][:].astype(np.float64))[:, None]
                     vals[ref_name, V].append(np.where(good, v - m, np.nan).astype(np.float32))
     lon, lat, year = np.concatenate(lon), np.concatenate(lat), np.concatenate(year)
     good = np.isfinite(lon) & np.isfinite(lat) & (np.abs(lat) <= 90)
