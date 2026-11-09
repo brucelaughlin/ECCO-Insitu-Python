@@ -272,12 +272,13 @@ def make_handler(A, model, site_dir, settings, log):
             if not limiter.ok():
                 return self._json(429, {'error': f'more than {settings["per_minute"]} questions in a minute; wait a little'})
             t = time.time()
-            log(f'Q: {q[:300]}  view={json.dumps(req.get("view"))[:200]}')
+            log(f'Q: {q}  view={json.dumps(req.get("view"))}')     # whole, so questions can be looked up later
             try:
                 out = answer(A, model, q, req.get('view'), settings['max_rounds'], log)
             except Exception as e:                    # report, don't crash the server
                 log(f'  ERROR {type(e).__name__}: {e}')
                 return self._json(502, {'error': str(e)})
+            log('  A: ' + (out.get('answer') or '').replace('\n', '\n     '))
             log(f'  answered in {time.time() - t:.1f} s; {len(out["tool_calls"])} tool call(s); usage {out.get("usage")}')
             return self._json(200, out)
 

@@ -506,12 +506,13 @@ def region_cost(A, src, cost_type, region=None, variable='T', part='unsplit', de
         if not m.any():
             return None
         if part == 'mean':
-            return {'bins_with_data': int(m.sum()), 'mean_term_mean_over_bins': _r(np.mean(val[m]))}
+            # pooled over every bin and level with a value, as the cost map explorer's region panel
+            return {'bins_with_data': int(m.sum()), 'mean_term_per_bin_and_level': _r(np.sum(val[m] * w[m]) / np.sum(w[m]))}
         return {'bins_with_data': int(m.sum()), 'data': int(w[m].sum()), 'cost_per_datum': _r(np.sum(val[m] * w[m]) / np.sum(w[m]))}
     reg, rest = summ(inr), summ(~inr)
     if reg is None:
         raise ToolError(f'{label}: no {src} {V} data at {depth_from}–{depth_to} m')
-    contrib = np.where(ok, val * (1 if part == 'mean' else w), 0)
+    contrib = np.where(ok, val * w, 0)            # the summed cost (mean term: summed over bins and levels)
     res = {'region': label, 'region_bins': int(len(ids)), 'obs_class': src, 'cost_type': cost_type, 'variable': V,
            'part': part, 'depth_range_m': [_r(A.depth[k[0]], 4), _r(A.depth[k[-1]], 4)], 'years': 'all',
            'region_result': reg, 'rest_of_world': rest,
