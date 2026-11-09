@@ -1008,9 +1008,12 @@ async function drawOneProfile(g, cv, pr, j, ref, unit) {
   const path = (pts, col, w, dash) => { g.strokeStyle = col; g.lineWidth = w; g.setLineDash(dash || []); g.beginPath(); let on = false;
     for (const [x, y] of pts) { if (!Number.isFinite(x)) { on = false; continue; } if (on) g.lineTo(x, y); else { g.moveTo(x, y); on = true; } } g.stroke(); g.setLineDash([]); };
   for (const q of nbr) path(q.filter(r => z[r.k] <= zmax).map(r => [X(r.obs), Y(z[r.k])]), 'rgba(150,150,150,0.35)', 1);
-  path(rows.map(r => [X(r.clim), Y(z[r.k])]), REFCOL.clim, 1.5, S.ref === 'clim' ? [] : [4, 3]);
-  path(rows.map(r => [X(r.model), Y(z[r.k])]), REFCOL.model, 1.5, detailRef() === 'model' ? [] : [4, 3]);
-  if (M2NAME()) path(rows.map(r => [X(r.model2), Y(z[r.k])]), REFCOL.model2, 1.5, detailRef() === 'model2' ? [] : [4, 3]);
+  // each reference keeps its own style (climatology dashed blue, models solid: the first red, the second orange, as in
+  // the comparison figures); the one the maps show is drawn thicker
+  const lw = r => detailRef() === r ? 2.4 : 1.3;
+  path(rows.map(r => [X(r.clim), Y(z[r.k])]), REFCOL.clim, lw('clim'), [4, 3]);
+  path(rows.map(r => [X(r.model), Y(z[r.k])]), REFCOL.model, lw('model'));
+  if (M2NAME()) path(rows.map(r => [X(r.model2), Y(z[r.k])]), REFCOL.model2, lw('model2'));
   path(rows.map(r => [X(r.obs), Y(z[r.k])]), REFCOL.obs, 2);
   // misfit panel: ±1σ and ±2σ bands, the misfit, rejected levels marked
   g.fillStyle = 'rgba(46,134,193,0.10)'; g.beginPath();
@@ -1033,8 +1036,8 @@ async function drawOneProfile(g, cv, pr, j, ref, unit) {
   for (const k of [lv[0], lv[lv.length - 1]]) { if (z[k] > zmax) continue; g.beginPath(); g.moveTo(L, Y(z[k])); g.lineTo(W - Rm, Y(z[k])); g.stroke(); } g.setLineDash([]);
   // legend
   g.textAlign = 'left'; g.textBaseline = 'middle'; g.font = '11px sans-serif';
-  const leg = [['observation', REFCOL.obs, []], ['climatology', REFCOL.clim, S.ref === 'clim' ? [] : [4, 3]], [refLabel('model') + ' (monthly mean)', REFCOL.model, detailRef() === 'model' ? [] : [4, 3]]]
-    .concat(M2NAME() ? [[M2NAME() + ' (monthly mean)', REFCOL.model2, detailRef() === 'model2' ? [] : [4, 3]]] : []);
+  const leg = [['observation', REFCOL.obs, []], ['climatology', REFCOL.clim, [4, 3]], [refLabel('model') + ' (monthly mean)', REFCOL.model, []]]
+    .concat(M2NAME() ? [[M2NAME() + ' (monthly mean)', REFCOL.model2, []]] : []);
   if (nbr.length) leg.push([`${nbr.length} neighbors (same bin, ±2 years, other platforms)`, 'rgba(150,150,150,0.8)', []]);
   let lx = L, ly = 8; leg.forEach(([t, c, d]) => { const wt = g.measureText(t).width + 34; if (lx + wt > W - Rm) { lx = L; ly += 14; }
     g.strokeStyle = c; g.lineWidth = 2; g.setLineDash(d); g.beginPath(); g.moveTo(lx, ly); g.lineTo(lx + 16, ly); g.stroke(); g.setLineDash([]);
