@@ -29,8 +29,9 @@ The 10 analyses (per obs class, for each cost type and split/unsplit mode):
 
 Cost types:
   vs_clim    (prof_V - prof_Vclim)²    always
-  vs_model   (prof_V - prof_Vestim)²   if --model-equivalents given
-  vs_run_b   same but --run-b          if --run-b given
+  vs_<NAME>  (prof_V - prof_Vestim)²   one per model: --model NAME=DIR (repeatable), e.g. --model V4r6=<dir>
+             --model V5r1=<dir> gives vs_V4r6 and vs_V5r1. (--model-equivalents DIR, the older form, is one
+             model named 'model': vs_model.)
 
 Model-equivalent folders (--model-equivalents, --run-b) may hold either
   - ``<yearly file name>_model.nc``, one per yearly file; or
@@ -61,6 +62,7 @@ import argparse
 import datetime
 import json
 import os
+import re
 import time as _time
 from collections import defaultdict
 from pathlib import Path
@@ -100,7 +102,7 @@ VIEWER_N_BLOCKS = 35     # 1992-2026
 # (its 'title', e.g. 'WOA23 1991-2020 ...'); this default is WOA23 decav91C0's
 CLIM_YEARS = (1991, 2020)
 PERIODS = ('in_clim_years', 'after_clim_years')
-COST_TYPES  = ('vs_clim', 'vs_model', 'vs_run_b')
+COST_TYPES  = ('vs_clim',)   # plus vs_<model name> per model given (run(models=...))
 
 N_BINS   = 10242          # geodesic bin ids 1..10242; index 0 unused
 N_DEPTHS = 97             # expected; actual depth array read from first file
@@ -559,7 +561,7 @@ def _accumulate_file(acc, fd, cost_type, pass_, biases=None, pooled=None):
         if cost_type == 'vs_clim':
             ref = fd[f'clim_{V}']
         else:
-            ref = fd.get(f'estim_{V}' if cost_type == 'vs_model' else f'estimb_{V}')
+            ref = (fd.get('estims') or {}).get(cost_type[3:], {}).get(V)   # the model named in vs_<name>
             if ref is None:
                 continue
         ok = ~_is_fill_value(val) & ~_is_fill_value(ref) & ~_is_fill_weight(w) & (w > 0)
@@ -1063,8 +1065,12 @@ def _shared_limits(results):
     return lims
 
 
-_CT_LABEL = {'vs_clim': 'vs climatology (WOA23)', 'vs_model': 'vs model (v4r6 monthly means)',
-             'vs_run_b': 'vs model run B (monthly means)'}
+_CT_LABEL = {'vs_clim': 'vs climatology (WOA23)', 'vs_model': 'vs model (v4r6 monthly means)'}
+
+
+def ct_label(ct):
+    """A cost type's label for figure titles: vs_<name> -> 'vs <name> (monthly means)'."""
+    return _CT_LABEL.get(ct) or (f'vs {ct[3:]} (monthly means)' if ct.startswith('vs_') else ct)
 
 
 def _log_lim(arrays):
@@ -1167,7 +1173,7 @@ def _apply(set_lim, lim):
 def _make_figures(res, source, fig_dir, lims=None, cost_type=None):
     """Generate all 10 analysis figures; ``lims`` (from _shared_limits) fixes the axis ranges."""
     lims = lims if lims is not None else _shared_limits({'_': res})
-    ctl = f' — {_CT_LABEL.get(cost_type, cost_type)}' if cost_type else ''
+    ctl = f' — {ct_label(cost_type)}' if cost_type else ''
     depth = res['depth']
     _dmax = float(np.nanmax(depth)) * 1.05  # bottom of every depth axis
 
@@ -1700,25 +1706,166 @@ def _make_spatial_map(res, source, fig_dir, active_vars, lims, ctl=''):
                 _savefig(fig, path, margins=False, dpi=140)
 
 # ---------------------------------------------------------------------------
+# Comparing two models (the report's "compare A and B" tab): figures from two cost types' results
+# ---------------------------------------------------------------------------
+_CMP_COLOR = ('tab:blue', 'tab:orange')      # model A, model B
+
+
+def _make_compare_figures(ra, rb, na, nb, source, fig_dir):
+    """Figures comparing two models' costs for one obs class, into ``fig_dir`` (named as the analyses they
+    compare, so the report shows them under the same tabs). Line plots get both models' lines on one plot (A
+    blue, B orange); maps and zonal sections show B - A of the cost per datum (red: B fits worse, blue:
+    better), on a scale centered on 0. Analyses where a comparison doesn't fit (01, 08, 12, 13) are left out."""
+    depth = ra['depth']
+    dmax = float(np.nanmax(depth)) * 1.05
+    active = [V for V in VARS if np.isfinite(ra['a01'][V]['mean']).any()]
+    if not active:
+        return
+    nv = len(VARS)
+    core = 'split_own' if CORE_SPLIT == 'own' else 'split'
+    tag = f' — {na} (blue) and {nb} (orange)'
+    names = ((ra, na, _CMP_COLOR[0]), (rb, nb, _CMP_COLOR[1]))
+
+    # 02 / 09: cost per datum against depth, true weights (02: also the mean term), both models
+    for an, with_mean in (('02', True), ('09', False)):
+        fig, axes, cax = _depth_figure(nv, 5, 6.5)
+        for ax, V in _panels(axes, active):
+            for r, name, col in names:
+                c = r[('a02', V, 'unsplit', 'true')]['count']
+                for sp, ls, lab in (('unsplit', '--', 'unsplit'), (core, '-', 'anomaly')):
+                    m = np.where(c >= _MIN_DEPTH_COUNT, r[('a02', V, sp, 'true')]['mean'], np.nan)
+                    ax.plot(m, depth, ls=ls, color=col, lw=1.3, label=f'{name} {lab}')
+                if with_mean and (V, 'true') in r.get('meanterm', {}):
+                    ax.plot(r['meanterm'][(V, 'true')]['per_depth'], depth, ls=':', color=col, lw=1.6, label=f'{name} mean term')
+            ax.set_xlabel(f'{V} cost per datum (true weights)' + (' / mean term' if with_mean else ''))
+            ax.set_ylabel('Depth (m)') if ax is axes[0] else None
+            ax.set_title(V); ax.legend(fontsize=7); ax.set_xlim(left=0)
+        _count_panel(cax, {V: ra[('a02', V, 'unsplit', 'true')]['count'] for V in active}, depth, None)
+        axes[0].set_ylim(dmax, 0)
+        fig.suptitle(f'{source}: Analysis {an} compared — cost per datum vs depth{tag}', fontsize=11)
+        _savefig(fig, fig_dir / f'{an}_cost_depth_{source}.png')
+
+    # 03: cost per datum against time, both models
+    fig, axes = plt.subplots(nv, 1, figsize=(10, 3.5 * nv + 1), sharex=True, squeeze=False)
+    axes = axes.flatten()
+    for ax, V in _panels(axes, active):
+        for r, name, col in names:
+            for sp, ls, lab in (('unsplit', '--', 'unsplit'), (core, '-', 'anomaly')):
+                t = r[('a03', V, sp, 'true')]
+                if len(t['yyyymm']):
+                    ax.plot(_decimal_year(t['yyyymm']), t['mean_per_datum'], ls=ls, color=col, lw=1.0, label=f'{name} {lab}')
+        ax.set_ylabel(f'{V} cost per datum'); ax.legend(fontsize=7, ncol=2); ax.set_ylim(bottom=0)
+    axes[-1].set_xlabel('Year')
+    fig.suptitle(f'{source}: Analysis 3 compared — cost per datum vs time (true weights){tag}')
+    _savefig(fig, fig_dir / f'03_cost_per_datum_time_{source}.png')
+
+    # 10: by depth range, both models side by side (unsplit)
+    fig, axes = plt.subplots(1, nv, figsize=(5 * nv + 1, 5), squeeze=False)
+    axes = axes.flatten(); x = np.arange(N_DEPTH_RANGES)
+    for ax, V in _panels(axes, active):
+        for i, (r, name, col) in enumerate(names):
+            ax.bar(x + (i - 0.5) * 0.38, r[('a10', V, 'unsplit', 'true')], 0.38, color=col, label=f'{name} unsplit', alpha=0.85)
+        ax.set_xticks(x); ax.set_xticklabels(DEPTH_RANGE_LABELS, rotation=30, ha='right', fontsize=8)
+        ax.set_ylabel(f'{V} cost per datum (true weights)'); ax.set_title(V); ax.legend(fontsize=7)
+    fig.suptitle(f'{source}: Analysis 10 compared — cost per datum by depth range{tag}')
+    _savefig(fig, fig_dir / f'10_depth_ranges_{source}.png')
+
+    # 07: zonal mean, B - A
+    lat_centers = (LAT_EDGES[:-1] + LAT_EDGES[1:]) / 2
+    for V in VARS:
+        for part, psfx in _PARTS:
+            path = fig_dir / f'07_zonal_{V}_{source}{psfx}.png'
+            tt = f'{source}: Analysis 7 compared — zonal mean {V} {_PART_TITLE[part]}: {nb} − {na}'
+            za, zb = (_zonal(ra, V, part, core) if V in active else None), (_zonal(rb, V, part, core) if V in active else None)
+            if za is None or zb is None:
+                _no_data_figure(path, (11, 6), V, tt + ' — not available'); continue
+            d = zb - za
+            vmax = _p98([np.abs(d)]) or 1
+            fig, ax = plt.subplots(figsize=(11, 6))
+            im = ax.contourf(lat_centers, depth, d.T, levels=np.linspace(-vmax, vmax, 21), cmap='RdBu_r', extend='both')
+            ax.set_ylim(dmax, 0); ax.set_xlim(LAT_EDGES[0], LAT_EDGES[-1])
+            plt.colorbar(im, ax=ax, label=f'{nb} − {na}: red = {nb} fits worse, blue = better', pad=0.02)
+            ax.set_xlabel('Latitude (°N)'); ax.set_ylabel('Depth (m)')
+            fig.suptitle(tt); _savefig(fig, path)
+
+    # 06: per-bin cost per datum maps, B - A (all depths and each depth band; unsplit, anomaly, mean term)
+    try:
+        import cartopy.crs as ccrs
+    except ImportError:
+        return
+    views = [('global', _global_proj(), 'Global (equal area)'),
+             ('NH', ccrs.NorthPolarStereo(), f'North of about {_POLAR_EDGE_LAT:.0f}°N'),
+             ('SH', ccrs.SouthPolarStereo(), f'South of about {_POLAR_EDGE_LAT:.0f}°S')]
+    rasters = _rasters()
+    bands = [(None, 'all depths', '')] + [(j, lab, f'__z{j}') for j, lab in enumerate(map_band_labels())]
+    cmap = plt.get_cmap('RdBu_r')
+    for V in VARS:
+        for part, psfx in _PARTS:
+            for j, blab, zs in bands:
+                if j is not None and part != 'unsplit':
+                    continue
+                path = fig_dir / f'06_spatial_{V}_{source}{psfx}{zs}.png'
+                tt = f'{source}: Analysis 6 compared — {V} {_PART_TITLE[part]} per geodesic bin, {blab}: {nb} − {na}'
+                size = (18, 5.0)
+                va = _bin_part(ra, V, part, core, j) if V in active else None
+                vb = _bin_part(rb, V, part, core, j) if V in active else None
+                if va is None or vb is None:
+                    _no_data_figure(path, size, V, tt + ' — not available'); continue
+                d = vb - va
+                vmax = _p98([np.abs(d)]) or 1
+                norm = mcolors.Normalize(-vmax, vmax)
+                fig = plt.figure(figsize=size)
+                _map_row(fig, _map_rects(0.24, 0.64, size), rasters, np.concatenate([[np.nan], d]), norm, cmap, views)
+                fig.colorbar(plt.cm.ScalarMappable(norm=norm, cmap=cmap), cax=fig.add_axes([0.3, 0.10, 0.4, 0.035]),
+                             orientation='horizontal', label=f'{V} {_PART_TITLE[part]}: {nb} − {na} (red: {nb} fits worse)')
+                fig.suptitle(tt, fontsize=11, y=0.985)
+                _savefig(fig, path, margins=False, dpi=140)
+
+
+def make_comparisons(out_dir, sources=None):
+    """For an analysis folder with two or more models, the comparison figures of the first two:
+    ``<class>/figures/compare_<A>_<B>/`` (the report shows them as a cost type of their own)."""
+    out_dir = Path(out_dir)
+    meta = json.loads((out_dir / 'meta.json').read_text())
+    mods = [ct for ct in meta['cost_types'] if ct != 'vs_clim']
+    if len(mods) < 2:
+        return None
+    a, b = mods[:2]
+    na, nb = a[3:], b[3:]
+    for src in meta['sources']:
+        if sources and src not in sources:
+            continue
+        fa = sorted((out_dir / src).glob(f'analysis_{src}_*_{a}.nc')); fb = sorted((out_dir / src).glob(f'analysis_{src}_*_{b}.nc'))
+        if not fa or not fb:
+            continue
+        _make_compare_figures(load_results(fa[-1]), load_results(fb[-1]), na, nb, src, out_dir / src / 'figures' / f'compare_{na}_{nb}')
+        print(f'  {src}: comparison figures ({na} vs {nb}) done')
+    meta['comparisons'] = [f'compare_{na}_{nb}']
+    (out_dir / 'meta.json').write_text(json.dumps(meta, indent=2))
+    return f'compare_{na}_{nb}'
+
+
+# ---------------------------------------------------------------------------
 # Orchestration
 # ---------------------------------------------------------------------------
 
-def _source_files(source, files, run_dir, estim_dir, estim_dir_b):
-    """Model-equivalent indexes for one obs class, and a loader that attaches them to each file."""
-    est_index = EstimIndex(estim_dir, run_dir) if estim_dir else None
-    est_index_b = EstimIndex(estim_dir_b, run_dir) if estim_dir_b else None
-    if est_index is not None:
-        found = sum(1 for f in files if (Path(estim_dir) / (Path(f).stem + '_model.nc')).exists()
-                    or Path(f).name in est_index.map)
-        print(f'    {source}: model equivalents for {found} of {len(files)} files')
+def _source_files(source, files, run_dir, models):
+    """Model-equivalent indexes for one obs class, and a loader that attaches them to each file:
+    ``fd['estims'][name][V]`` for every model in ``models`` ({name: folder})."""
+    idx = {name: EstimIndex(d, run_dir) for name, d in models.items()}
+    for name, ix in idx.items():
+        found = sum(1 for f in files if (Path(models[name]) / (Path(f).stem + '_model.nc')).exists() or Path(f).name in ix.map)
+        print(f'    {source}: {name} model equivalents for {found} of {len(files)} files')
 
     def load(f):
-        fd = _load_file(f, estim_index=est_index)
-        if fd is not None and est_index_b is not None:
-            fb = est_index_b.get(f, fd['n'], fd['depth'].size)
-            for V in VARS:
-                e = None if fb is None else fb[V]
-                fd[f'estimb_{V}'] = None if e is None else np.where(e == -9999, np.nan, e)
+        fd = _load_file(f)
+        if fd is None:
+            return None
+        fd['estims'] = {}
+        for name, ix in idx.items():
+            e = ix.get(f, fd['n'], fd['depth'].size)
+            fd['estims'][name] = {V: (None if e is None or e[V] is None else np.where(e[V] == -9999, np.nan, e[V]))
+                                  for V in VARS}
         return fd
     return load
 
@@ -1728,7 +1875,7 @@ def _progress(i):
         print(f' {i+1}', end='', flush=True)
 
 
-def run(run_dir, out_dir, sources=None, estim_dir=None, estim_dir_b=None, n_workers=None):
+def run(run_dir, out_dir, sources=None, estim_dir=None, estim_dir_b=None, n_workers=None, models=None):
     """Compute all standard analyses for every obs class (source) in ``run_dir``.
 
     Pass 1 reads every file once: unsplit costs, each class's own bias sums, and sums per
@@ -1763,7 +1910,13 @@ def run(run_dir, out_dir, sources=None, estim_dir=None, estim_dir_b=None, n_work
     out_dir.mkdir(parents=True, exist_ok=True)
     CLIM_YEARS = clim_years(run_dir)
 
-    cost_types = ['vs_clim'] + (['vs_model'] if estim_dir else []) + (['vs_run_b'] if estim_dir_b else [])
+    # the models to compare with: {name: model-equivalent folder}; the older arguments map to 'model' / 'run_b'
+    models = dict(models or {})
+    if estim_dir:
+        models.setdefault('model', estim_dir)
+    if estim_dir_b:
+        models.setdefault('run_b', estim_dir_b)
+    cost_types = ['vs_clim'] + [f'vs_{name}' for name in models]
 
     groups = {}
     for f in sorted(run_dir.rglob('*.nc')):
@@ -1790,7 +1943,7 @@ def run(run_dir, out_dir, sources=None, estim_dir=None, estim_dir_b=None, n_work
         if depth is not None:
             break
     n_d = len(depth)
-    loaders = {src: _source_files(src, files, run_dir, estim_dir, estim_dir_b) for src, files in groups.items()}
+    loaders = {src: _source_files(src, files, run_dir, models) for src, files in groups.items()}
 
     accs = {src: {ct: _new_acc(n_d) for ct in cost_types} for src in groups}
     pooled = {ct: _new_pooled(n_d) for ct in cost_types}
@@ -1850,8 +2003,7 @@ def run(run_dir, out_dir, sources=None, estim_dir=None, estim_dir_b=None, n_work
         'run': str(run_dir), 'out': str(out_dir),
         'sources': sorted(groups.keys()),
         'cost_types': cost_types,
-        'estim_dir': str(estim_dir) if estim_dir else None,
-        'estim_dir_b': str(estim_dir_b) if estim_dir_b else None,
+        'models': {name: str(d) for name, d in models.items()},
         'split_pooled_over': sorted(groups.keys()),
         'core_split': CORE_SPLIT,
         'clim_years': list(CLIM_YEARS),
@@ -1860,6 +2012,7 @@ def run(run_dir, out_dir, sources=None, estim_dir=None, estim_dir_b=None, n_work
         'created': datetime.datetime.now().isoformat(timespec='seconds'),
     }
     (out_dir / 'meta.json').write_text(json.dumps(meta, indent=2))
+    make_comparisons(out_dir, sources)
     print(f'All done in {_time.time() - t0:.0f}s → {out_dir}')
     return out_dir
 
@@ -1954,6 +2107,7 @@ def replot(out_dir, sources=None):
         print(f'  {src}: figures redrawn ({_time.time() - t0:.0f}s)')
     meta['core_split'] = CORE_SPLIT
     (out_dir / 'meta.json').write_text(json.dumps(meta, indent=2))
+    make_comparisons(out_dir, sources)
     print(f'Replotted {out_dir} in {_time.time() - t0:.0f}s (core split: {CORE_SPLIT})')
     return out_dir
 
@@ -1972,8 +2126,13 @@ def cli(argv=None):
                    help='Dir with <name>_model.nc files for vs-model cost')
     p.add_argument('--run-b', default=None, dest='estim_dir_b',
                    help='Second model-equivalent dir for vs-run-B cost')
+    p.add_argument('--model', action='append', default=[], metavar='NAME=DIR',
+                   help='a model to compare with: its name (the cost type is vs_NAME) and its model-equivalent folder; '
+                        'repeatable, e.g. --model V4r6=<dir> --model V5r1=<dir>')
     p.add_argument('-n', type=int, default=None,
                    help='Parallel workers (default: 1)')
+    p.add_argument('--compare-only', action='store_true',
+                   help='Only (re)draw the figures comparing the first two models in --out')
     p.add_argument('--replot', action='store_true',
                    help='Only redraw the figures in --out from its saved NetCDF files (no recomputing)')
     p.add_argument('--split', choices=('own', 'pooled'), default=None,
@@ -1983,9 +2142,20 @@ def cli(argv=None):
     a = p.parse_args(argv)
     if a.split:
         CORE_SPLIT = a.split
+    if a.compare_only:
+        make_comparisons(a.out, a.sources)
+        return
     if a.replot:
         replot(a.out, a.sources)
         return
     if not a.run:
         p.error('--run is required (unless --replot)')
-    run(a.run, a.out, a.sources, a.estim_dir, a.estim_dir_b, a.n)
+    models = {}
+    for m in a.model:
+        if '=' not in m:
+            p.error(f'--model {m!r}: expected NAME=DIR')
+        name, d = m.split('=', 1)
+        if not re.fullmatch(r'[A-Za-z0-9]+', name):
+            p.error(f'--model name {name!r}: letters and digits only (it becomes the cost type vs_{name})')
+        models[name] = d
+    run(a.run, a.out, a.sources, a.estim_dir, a.estim_dir_b, a.n, models=models)

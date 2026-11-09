@@ -71,7 +71,7 @@ QUESTIONS = [
      'analysis 02 for the chosen class; switch class with the Source tabs (cost type and analysis stay)',
      'report:?src={src}&ct={ct}&an=02'),
     ('Comparing', 'Is the fit better against the climatology or the model?',
-     'analysis 02; switch between vs_clim and vs_model with the Cost type tabs (axes are shared)',
+     'analysis 02; switch between the climatology and each model with the Cost type tabs (axes are shared)',
      'report:?src={src}&ct={ct}&an=02'),
     ('Comparing', 'Does the split depend on pooling the bin means over all classes (as ECCO does)?',
      'supplemental analysis 12: the anomaly term with own-class vs pooled bin means',
@@ -113,13 +113,13 @@ def page(title, sources, cost_types, depth, bin_viewer=None):
         f'<b>{_html.escape(q)}</b><span>{_html.escape(what)}</span></a>' for q, what, link in items[g]) for g in groups)
     opt = lambda vals, sel: ''.join(f'<option{" selected" if v == sel else ""}>{_html.escape(v)}</option>' for v in vals)
     src0 = 'PFL' if 'PFL' in sources else sources[0]
-    ct0 = 'vs_model' if 'vs_model' in cost_types else cost_types[0]
+    ct0 = next((c for c in cost_types if c != 'vs_clim'), cost_types[0])
     from ecco_insitu.diagnostics.profile_analyses import nav
     js = f"""
 const BINV = {json.dumps((bin_viewer or '').rstrip('/') + '/' if bin_viewer else '')}, K1000 = {k1000};
 function fill() {{
   const src = document.getElementById('src').value, ct = document.getElementById('ct').value, V = document.getElementById('V').value;
-  const ref = ct === 'vs_model' ? 'model' : 'clim';
+  const ref = ct === 'vs_clim' ? 'clim' : ct.slice(3);
   document.querySelectorAll('a.q').forEach(a => {{
     let t = a.dataset.t.replace(/{{src}}/g, src).replace(/{{ct}}/g, ct).replace(/{{V}}/g, V).replace(/{{ref}}/g, ref).replace(/{{k1000}}/g, K1000);
     const [kind, rest] = [t.slice(0, t.indexOf(':')), t.slice(t.indexOf(':') + 1)];

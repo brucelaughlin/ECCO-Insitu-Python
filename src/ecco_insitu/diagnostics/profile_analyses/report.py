@@ -147,7 +147,7 @@ _ANALYSIS_DESC = {
         'The legend gives each line&rsquo;s '
         '0&ndash;2000&nbsp;m mean. Data from after the climatology&rsquo;s years can&rsquo;t be in it, so '
         'comparing the two shows how much of the fit to climatology is because the climatology was built '
-        'from the same data. Shown for every cost type; for vs_model the split is just by year. Only made '
+        'from the same data. Shown for every cost type; for the models the split is just by year. Only made '
         'for obs classes with data after the climatology&rsquo;s years. Right panel: number of data, '
         'by period.'
     ),
@@ -155,7 +155,7 @@ _ANALYSIS_DESC = {
         '<strong>Supplemental.</strong> The split&rsquo;s anomaly term (cost per datum, <code>true</code> '
         'weights) computed two ways: with this obs class&rsquo;s own bin means (blue; what the core analyses '
         'show) and with bin means pooled over all obs classes (red; what ECCO v4r6&rsquo;s '
-        '<code>cost_profiles.F</code> does, and equal to <code>ecco-insitu model-cost</code> for vs_model). '
+        '<code>cost_profiles.F</code> does, and equal to <code>ecco-insitu model-cost</code> for vs V4r6). '
         'Unsplit for reference (dashed). The pooled version&rsquo;s mean term covers all classes together, so '
         'it can&rsquo;t be shown per class; its total is under Metadata.'
     ),
@@ -231,19 +231,25 @@ weights, not because the fit is better; <code>true</code> is the one to read as 
         <em>n</em>&nbsp;=&nbsp;number of data.
         <br><strong>Which data make the bin means:</strong> in this report, this obs class&rsquo;s own data
         (our choice, 2026-10-29; see Notes). <code>cost_profiles.F</code> pools all obs classes instead: that
-        version is supplemental analysis&nbsp;12, and it equals <code>ecco-insitu model-cost</code> for vs_model.</td></tr>
+        version is supplemental analysis&nbsp;12, and it equals <code>ecco-insitu model-cost</code> for vs V4r6.</td></tr>
 </table>
 
 <p><strong>Cost types</strong>: what V<sub>ref</sub> is.</p>
 <table class="gloss-table">
 <tr><th>Label</th><th>Meaning</th></tr>
 <tr><td><code>vs_clim</code></td><td>WOA23 climatology (<code>prof_Vclim</code>) at the profile&rsquo;s location and depths</td></tr>
-<tr><td><code>vs_model</code></td>
-    <td>Approximate model equivalent V<sub>estim</sub>: <strong>monthly-mean</strong> ECCO v4r6
-        THETA/SALT sampled at the profile&rsquo;s grid cell, month and depths (not the model&rsquo;s own
-        sampling at the profile&rsquo;s time). The last v4r6 field is December 2025, so later profiles have
-        no vs_model value.</td></tr>
-<tr><td><code>vs_run_b</code></td><td>The same, from a second set of monthly-mean model fields</td></tr>
+<tr><td><code>vs V4r6</code></td>
+    <td>The ECCO v4r6 model: its <strong>monthly-mean</strong> THETA/SALT sampled at the profile&rsquo;s grid cell
+        (LLC90, about 1&deg;), month and depths (approximate: not the model&rsquo;s own value at the profile&rsquo;s
+        time). The last field is December 2025, so later profiles have no model value.</td></tr>
+<tr><td><code>vs V5r1</code></td>
+    <td>The ECCO V5r1 model, the same way, on its finer grid (LLC270, about 1/3&deg;): each profile is compared with the
+        model cell nearest the profile itself. Also ends December 2025. The profiles, bins and &sigma; are the same as for
+        V4r6, so the two compare directly.</td></tr>
+<tr><td><code>compare V4r6 and V5r1</code></td>
+    <td>The two models side by side, for the analyses where that makes sense: line plots (02, 03, 09, 10) draw both
+        models (V4r6 blue, V5r1 orange); maps (06) and zonal sections (07) show V5r1 &minus; V4r6 of the cost per datum
+        (red: V5r1 fits worse there, blue: better), on a scale centered on 0.</td></tr>
 </table>
 <p><strong>Axes:</strong> within each obs class, a given figure uses the same axis and color ranges in every cost type.
 Figure titles name the cost type. Controls that don&rsquo;t change the selected figure are grayed out (cost type for
@@ -448,7 +454,7 @@ casts have only coarse levels with T to 0.1&nbsp;&deg;C, and one is listed as a 
 (<code>chain.xbt_max_depth</code>&nbsp;=&nbsp;2900): step&nbsp;06 zeroes XBT values deeper than 2900&nbsp;m,
 which removes these 10 values and nothing else. {_xbt_cap_status(metas)}</p>
 
-<p><strong>Argo (PFL) cost below 2000&nbsp;m, vs_model</strong> (run 20261027_142247, <code>true</code> weights,
+<p><strong>Argo (PFL) cost below 2000&nbsp;m, vs V4r6</strong> (run 20261027_142247, <code>true</code> weights,
 unsplit). Below 2000&nbsp;m only Deep Argo floats remain: 1.25&nbsp;million data at 2000&nbsp;m, 29&nbsp;thousand
 at 2200&nbsp;m, 10&nbsp;thousand at 2600&nbsp;m, in a few regions. So the mean there describes those regions, not the
 globe.</p>
@@ -525,7 +531,7 @@ supplemental analysis&nbsp;12 (anomaly term) and under Metadata (mean term, all 
 is left out of analysis&nbsp;2. See also HANDOFF.md.</li>
 <li><strong>The pooled (Fortran) split</strong> (since 2026-10-28; core analyses until 2026-10-29, now
 supplemental analysis&nbsp;12) removes one mean per (geodesic bin, depth) over all obs classes pooled, as ECCO
-v4r6&rsquo;s <code>cost_profiles.F</code>, with the mean term under Metadata. Checked: for run 20261027 (all seven obs classes, vs_model), the
+v4r6&rsquo;s <code>cost_profiles.F</code>, with the mean term under Metadata. Checked: for run 20261027 (all seven obs classes, vs V4r6), the
 anomaly cost summed over classes, its data count, the mean term and its number of terms all equal
 <code>ecco-insitu model-cost</code>&rsquo;s on the same files (T: 2.87925&times;10&#8311; over 245,226,456 data;
 mean term 1.96488&times;10&#8309; over 589,586 terms). <code>model-cost</code> reproduces the team&rsquo;s v4r6 cost
@@ -564,7 +570,7 @@ climatology is missing are left out of all costs here, while ECCO keeps them in 
 <li><strong>Analysis 4:</strong> the specification asks for total cost through time &ldquo;after all factors
 removed&rdquo;; that is the <code>true</code> line. The <code>final</code> and <code>nosf</code> lines are
 shown too.</li>
-<li><strong>vs_model is approximate:</strong> V<sub>estim</sub> comes from monthly means, so sub-monthly
+<li><strong>The model costs are approximate:</strong> V<sub>estim</sub> comes from monthly means, so sub-monthly
 variability shows up as misfit; profiles after December 2025 have no model value.</li>
 <li><strong>Corrections to earlier versions of this report</strong> (before 2026-10-28):
 the depth note said levels with fewer than 30 observations were hidden (only levels with none are);
@@ -574,8 +580,8 @@ the split was described as mirroring <code>cost_profiles.F</code> (until 2026-10
 class&rsquo;s own mean, now <code>split_own</code>, and left out the mean term); and the map bins with no data were drawn as zero cost (now blank).</li>
 <li><strong>Analysis 1 changed on 2026-10-28.</strong> It used to average only the data that had a reference
 value for the selected cost type (the same data as the costs), so it differed between the cost-type tabs:
-under vs_model it left out every datum with no model value. Measured on run 20261027_142247:
-CTD 14% fewer data under vs_model (mean T differed by up to 0.64&nbsp;&deg;C, at 40&nbsp;m), gliders 4% (0.13&nbsp;&deg;C),
+under vs V4r6 it left out every datum with no model value. Measured on run 20261027_142247:
+CTD 14% fewer data under vs V4r6 (mean T differed by up to 0.64&nbsp;&deg;C, at 40&nbsp;m), gliders 4% (0.13&nbsp;&deg;C),
 XBT 3% (0.17&nbsp;&deg;C, at 2200&nbsp;m), Argo 1% (0.02&nbsp;&deg;C). It now averages every observation with
 weight&nbsp;&gt;&nbsp;0 and is the same in every tab. The old version shows the observations behind each cost
 type&rsquo;s costs, so it may be worth having again. <em>To revert:</em> in
@@ -648,6 +654,8 @@ body {
 .tab.na { opacity: 0.35; pointer-events: none; }
 .sup-label { margin-left: 1.2em; min-width: 0; }
 .tab.sup-tab { border-style: dashed; }
+.tab.cmp-tab { border-color: #6c3483; color: #6c3483; margin-left: 0.8em; }
+.tab.cmp-tab.active { background: #6c3483; color: #fff; }
 #foldbar { display: flex; align-items: center; gap: 0.8em; padding: 0.2em 1em; font-size: 0.85em; }
 #foldbar .tab { font-size: 0.8em; padding: 0.1em 0.5em; }
 #foldsum { color: #555; display: none; }
@@ -878,10 +886,32 @@ def _collect_data(input_dirs):
 
 # ── interactive HTML ───────────────────────────────────────────────────────────
 
+def _ct_label(ct):
+    """A cost-type tab's text: vs_clim -> 'vs climatology', vs_V5r1 -> 'vs V5r1', compare_V4r6_V5r1 -> 'compare V4r6 and V5r1'."""
+    if ct == 'vs_clim':
+        return 'vs climatology'
+    if ct.startswith('compare_'):
+        a, b = ct[8:].split('_', 1)
+        return f'compare {a} and {b}'
+    return 'vs ' + ct[3:] if ct.startswith('vs_') else ct
+
+
+def _ct_title(ct):
+    if ct == 'vs_clim':
+        return 'Costs against the WOA23 climatology'
+    if ct.startswith('compare_'):
+        a, b = ct[8:].split('_', 1)
+        return (f'{a} and {b} side by side: line plots show both models (blue {a}, orange {b}); maps show {b} − {a} '
+                f'(red: {b} fits worse). Only the analyses where a comparison makes sense.')
+    return f'Costs against the {ct[3:]} model (its monthly means at each profile)'
+
+
 def _build_interactive_html(data, metas, title, bin_viewer=None):
     from ecco_insitu.diagnostics.profile_analyses import nav
     sources = sorted(data.keys())
-    all_cost_types = sorted({ct for src in data.values() for ct in src.keys()})
+    # cost types in reading order: the climatology, the models (as named in profile-analyze), the comparisons
+    _cts = {ct for src in data.values() for ct in src.keys()}
+    all_cost_types = sorted(_cts, key=lambda ct: (0 if ct == 'vs_clim' else 2 if ct.startswith('compare_') else 1, ct))
     all_analyses = sorted({
         an for src in data.values() for ct in src.values() for an in ct.keys()
     })
@@ -934,16 +964,16 @@ def _build_interactive_html(data, metas, title, bin_viewer=None):
         )
         if meta:
             meta_sections += _meta_table(meta)
-        estim = meta.get('estim_dir') if meta else None
+        estim = (meta.get('estim_dir') or meta.get('models')) if meta else None
         if estim and estim != 'None':
             meta_sections += (
                 '<p style="margin-top:0.5em;padding:0.4em 0.6em;'
                 'background:#fff8e8;border:1px solid #e8d080;border-radius:3px;'
                 'font-size:0.85em;line-height:1.4">'
-                '<strong>Note on vs_model:</strong> V<sub>estim</sub> was computed '
-                'from <strong>monthly-mean</strong> v4r6 THETA/SALT fields '
+                '<strong>Note on the model costs:</strong> V<sub>estim</sub> was computed '
+                'from each model&rsquo;s <strong>monthly-mean</strong> THETA/SALT fields '
                 '(not exact model state). Sub-monthly variability is not captured; '
-                'treat vs_model costs as approximate.'
+                'treat the model costs as approximate.'
                 '</p>'
             )
 
@@ -968,7 +998,8 @@ def _build_interactive_html(data, metas, title, bin_viewer=None):
         for s in sources
     )
     cost_tabs = ''.join(
-        f'<button class="tab cost-tab" data-ct="{_html.escape(ct)}">{_html.escape(ct)}</button>'
+        f'<button class="tab cost-tab{" cmp-tab" if ct.startswith("compare_") else ""}" data-ct="{_html.escape(ct)}" '
+        f'title="{_html.escape(_ct_title(ct))}">{_html.escape(_ct_label(ct))}</button>'
         for ct in all_cost_types
     )
     def _an_tab(an):
@@ -994,7 +1025,7 @@ const NO_COST = ['01', '13'];   // observations only: the same for every cost ty
 const BAND_ANALYSES = ['05', '06'];
 const PART_ANALYSES = ['06', '07'];
 
-let curSource = SOURCES[0], curCost = COST_TYPES.includes('vs_model') ? 'vs_model' : COST_TYPES[0],   // default: the model
+let curSource = SOURCES[0], curCost = COST_TYPES.find(c => c !== 'vs_clim' && !c.startsWith('compare_')) || COST_TYPES[0],   // default: the (first) model
     curAn = null, curBand = 'all', curPart = 'unsplit';
 let HAS_EXPLORER = false;
 const BIN_VIEWER_URL = {json.dumps(bin_viewer or '')};
@@ -1027,7 +1058,8 @@ var render = function () {{
     t.classList.toggle('na', noCost);
   }});
   document.getElementById('cost-note').textContent =
-    noCost ? 'not used: analysis ' + curAn + ' shows observed values only (no cost)' : '';
+    noCost ? 'not used: analysis ' + curAn + ' shows observed values only (no cost)'
+    : curCost.startsWith('compare_') ? 'the analyses where a comparison makes sense (02, 03, 06, 07, 09, 10); the others are grayed out' : '';
   // analysis tabs
   document.querySelectorAll('.an-tab').forEach(t => {{
     const ok = exists(curSource, curCost, t.dataset.an);

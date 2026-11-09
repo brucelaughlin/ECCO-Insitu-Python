@@ -49,8 +49,9 @@ results as the report&rsquo;s figures.</p>
   analyzed on its own.</td></tr>
 <tr><td rowspan="2">Cost type</td><td>vs_clim</td><td>Reference = the WOA23 climatology (1991&ndash;2020 average) at the profile&rsquo;s
   location, month and depths.</td></tr>
-<tr><td>vs_model</td><td>Reference = ECCO v4r6, from its <em>monthly-mean</em> T and S sampled at the profile&rsquo;s grid cell,
-  month and depths (approximate: not the model&rsquo;s value at the profile&rsquo;s exact time). No model values after 2025.</td></tr>
+<tr><td>vs V4r6, vs V5r1</td><td>Reference = an ECCO model (v4r6, or V5r1 on its finer grid), from its <em>monthly-mean</em> T and S
+  sampled at the profile&rsquo;s grid cell, month and depths (approximate: not the model&rsquo;s value at the profile&rsquo;s exact time).
+  No model values after 2025.</td></tr>
 <tr><td>Variable</td><td>T, S</td><td>Temperature or salinity. S is grayed out for classes without salinity (XBT).</td></tr>
 <tr><td rowspan="4">Cost</td><td>unsplit</td><td>The <strong>cost per datum</strong>: (&Delta;V/&sigma;)&sup2;, where &Delta;V is observation
   minus reference and &sigma; the assumed error of the observation. 1 means &ldquo;one assumed error away&rdquo;; 4 means two.
@@ -128,7 +129,7 @@ ten below the max).</p>
 depth level (red), as analysis&nbsp;02 draws it, with the number of bins per level (gray, log scale, right). <b>Same bins at every
 depth</b> adds a blue curve over only the bins that have data at <em>every</em> level of the chosen range (default 2000&ndash;2800&nbsp;m).
 A jump in the red curve that the blue one does not show comes from <em>which bins are counted</em> changing with depth, not from the
-water. (Example: PFL vs_model mean term at 2200&ndash;2400&nbsp;m: red 4.9&ndash;5.6, blue 2.3&ndash;2.4; most floats stop at 2000&nbsp;m,
+water. (Example: PFL vs V4r6 mean term at 2200&ndash;2400&nbsp;m: red 4.9&ndash;5.6, blue 2.3&ndash;2.4; most floats stop at 2000&nbsp;m,
 so those levels hold far fewer bins, mostly subpolar North Atlantic ones.)</p>
 <p><b>Clicked bin</b>: click any bin on a map. The panel shows its center, and per depth level (the selected levels) the number of
 data, the unsplit and anomaly costs, the mean term, and the mean reference &minus; observation, the normalized misfit and &sigma; (all years); a bar chart of the

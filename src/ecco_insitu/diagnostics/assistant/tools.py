@@ -297,7 +297,7 @@ def where_high(A, src, cost_type, variable='T', part='unsplit', depth_from=0, de
               'caption': f'Cost map explorer: {part} over {z[k[0]]:g}–{z[k[-1]]:g} m' + (' (largest area outlined)' if region else '')}]
     if A.bin_ll is not None:
         b = order[0]
-        views.append({'page': 'data', 'params': {'src': src, 'ref': 'model' if cost_type == 'vs_model' else 'clim', 'V': V,
+        views.append({'page': 'data', 'params': {'src': src, 'ref': 'clim' if cost_type == 'vs_clim' else cost_type[3:], 'V': V,
                                                  'bin': int(b + 1), 'lon': _r(A.bin_ll[b, 0], 5), 'lat': _r(A.bin_ll[b, 1], 5), 'k': k_mid},
                       'caption': f'In situ data viewer: the profiles of bin {b + 1} (the highest)'})
     return {'result': res, 'views': views}
@@ -547,7 +547,7 @@ def explain(A, topic):
         an = f'{int(t):02d}'
         return {'result': {'analysis': an, 'title': report._ANALYSIS_TITLES[an],
                            'description': _text(report._ANALYSIS_DESC.get(an, ''))},
-                'views': [{'page': 'report', 'params': {'src': 'PFL', 'ct': 'vs_model', 'an': an},
+                'views': [{'page': 'report', 'params': {'src': 'PFL', 'an': an},
                            'caption': f'Analysis {an} in the report'}]}
     if t in ('analyses', 'list', 'all'):
         return {'result': {'analyses': report._ANALYSIS_TITLES}, 'views': []}
@@ -576,7 +576,8 @@ TOOLS = {f.__name__: f for f in (explain, region_cost, list_contents, cost_vs_de
 
 # JSON schemas for the model (OpenAI tool format)
 _SRC = {'type': 'string', 'description': 'obs class, e.g. PFL (Argo floats), CTD_WOD, XBT_WOD, GLD_WOD (gliders), MRB_WOD (moorings), MEOP (seals), ITP'}
-_CT = {'type': 'string', 'enum': ['vs_clim', 'vs_model'], 'description': 'reference: the climatology or the model'}
+_CT = {'type': 'string', 'description': 'reference: vs_clim (the WOA23 climatology) or vs_<model> for a model, e.g. vs_V4r6, '
+       'vs_V5r1 (the analysis lists them: list_contents)'}
 _V = {'type': 'string', 'enum': ['T', 'S']}
 _PART = {'type': 'string', 'enum': list(PARTS), 'description': 'unsplit cost; or the split\'s anomaly term (variability in time) or mean term (steady offset per bin)'}
 _Z = {'type': 'number', 'description': 'meters'}

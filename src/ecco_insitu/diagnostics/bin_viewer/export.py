@@ -391,12 +391,14 @@ def write_bathy(out):
     (out / 'bathy.json').write_bytes(gzip.compress(json.dumps(levels, separators=(',', ':')).encode(), 9))
 
 
-def export_class(src, files, out, tree, kept_bins, estim=None):
+def export_class(src, files, out, tree, kept_bins, estim=None, ref_name='model', ref_only=False):
     """Profiles and anomalies of one obs class: V - V_clim always, and V - V_model if ``estim`` (an
-    :class:`ecco_insitu.diagnostics.profile_analyses.compute.EstimIndex`) is given (in ``<class>/model/``)."""
+    :class:`ecco_insitu.diagnostics.profile_analyses.compute.EstimIndex`) is given (in ``<class>/<ref_name>/``).
+    ``ref_only``: write only that model's level files (a second model added to an existing folder; the profile
+    order is recomputed the same way, so it matches the folder's profiles.bin)."""
     t0 = time.time()
     lon, lat, year, nlev = [], [], [], None
-    refs = ('clim', 'model') if estim is not None else ('clim',)
+    refs = ((ref_name,) if ref_only else ('clim', ref_name)) if estim is not None else ('clim',)
     vals = {(r, V): [] for r in refs for V in VARS}   # per file: (n_prof, n_lev) float32 anomaly, NaN = none
     for f in files:
         with netCDF4.Dataset(f) as ds:
@@ -416,15 +418,16 @@ def export_class(src, files, out, tree, kept_bins, estim=None):
                         vals[r, V].append(np.full((n, nlev), np.nan, np.float32))
                     continue
                 v = ds[f'prof_{V}'][:].astype(np.float64)
-                c = ds[f'prof_{V}clim'][:].astype(np.float64)
                 w = ds[f'prof_{V}weight'][:].astype(np.float64)
                 ok = (w > 0) & (w < 1e20) & (np.abs(v) < 900)
-                vals['clim', V].append(np.where(ok & (np.abs(c) < 900), v - c, np.nan).astype(np.float32))
+                if 'clim' in refs:
+                    c = ds[f'prof_{V}clim'][:].astype(np.float64)
+                    vals['clim', V].append(np.where(ok & (np.abs(c) < 900), v - c, np.nan).astype(np.float32))
                 if estim is not None:
                     # the model's value at the profile; 0 or missing = no model value (as the cost analyses)
                     m = model[V] if model is not None and model.get(V) is not None else np.full((n, nlev), np.nan)
                     good = ok & np.isfinite(m) & (m != 0) & (np.abs(m) < 900)
-                    vals['model', V].append(np.where(good, v - m, np.nan).astype(np.float32))
+                    vals[ref_name, V].append(np.where(good, v - m, np.nan).astype(np.float32))
     lon, lat, year = np.concatenate(lon), np.concatenate(lat), np.concatenate(year)
     good = np.isfinite(lon) & np.isfinite(lat) & (np.abs(lat) <= 90)
     _, b = tree.query(_sph2cart(lon, lat))
@@ -434,7 +437,8 @@ def export_class(src, files, out, tree, kept_bins, estim=None):
     d = out / src
     d.mkdir(parents=True, exist_ok=True)
     n = len(order)
-    (d / 'profiles.bin').write_bytes(encode_profiles(lon[order], lat[order], year[order], b[order]))
+    if not ref_only:
+        (d / 'profiles.bin').write_bytes(encode_profiles(lon[order], lat[order], year[order], b[order]))
     bo, kept = b[order], np.isin(b[order], kept_bins)
     info = {'n_profiles': int(n), 'years': [int(year[order].min()), int(year[order].max())]}
     for r in refs:
@@ -768,6 +772,36 @@ def write_page(out):
     shutil.copytree(here / 'vendor', out / 'vendor', dirs_exist_ok=True)
 
 
+def add_model(run_dir, out, name, estim_dir, site_out, url=None, sources=None):
+    """Add a second (third, ...) model to an existing viewer folder ``out``: its anomaly level files go to
+    ``site_out/<out name>/<class>/<name>/`` (published as a site of their own), and ``out/index.json`` gets the
+    model's levels, color scales, label and (``url``) where its files are. The page then offers it next to the
+    climatology and the first model."""
+    from ecco_insitu.diagnostics.profile_analyses.compute import EstimIndex
+    run_dir, out, site_out = common.yearly_dir(run_dir), Path(out), Path(site_out)
+    index = json.loads((out / 'index.json').read_text())
+    groups = {}
+    for f in sorted(run_dir.rglob('*.nc')):
+        src, _ = common.classify(f, run_dir)
+        if (not sources or src in sources) and src in index['classes']:
+            groups.setdefault(src, []).append(f)
+    tree, _ = _geodesic_tree()
+    estim = EstimIndex(estim_dir, run_dir)
+    dest = site_out / out.name
+    dest.mkdir(parents=True, exist_ok=True)
+    (dest / '.nojekyll').write_text('')
+    for src, files in sorted(groups.items()):
+        info = export_class(src, files, dest, tree, _kept_bins(out), estim, ref_name=name, ref_only=True)
+        index['classes'][src].setdefault('refs', {})[name] = info['refs'][name]
+    index.setdefault('refs', {'clim': 'climatology'})[name] = name
+    if url:
+        index.setdefault('ref_urls', {})[name] = url.rstrip('/')
+    (out / 'index.json').write_text(json.dumps(index, indent=1))
+    size = sum(p.stat().st_size for p in dest.rglob('*') if p.is_file()) / 1e6
+    print(f'{name}: level files in {dest} ({size:.0f} MB); index.json updated')
+    return dest
+
+
 def run(run_dir, out, sources=None, rebuild_bins=False, estim_dir=None):
     """Write the whole viewer folder for one processed run: bins, land, isobaths, every class, the page."""
     run_dir = common.yearly_dir(run_dir)
@@ -930,6 +964,10 @@ def publish_details(out, remotes, dry_run=False):
 def cli(argv=None):
     """``ecco-insitu bin-viewer``: build, convert, or publish (GitHub Pages) the viewer."""
     p = argparse.ArgumentParser(description='Write the geodesic bin viewer data.')
+    p.add_argument('--add-model', nargs=3, metavar=('NAME', 'DIR', 'SITE_DIR'),
+                   help='add a model to the existing --out folder: its name (e.g. V5r1), its model-equivalent folder, and '
+                        'the folder for its own site (published with --github ... on that folder); needs --run')
+    p.add_argument('--add-model-url', metavar='URL', help='with --add-model: the address its site will have')
     p.add_argument('--model-equivalents', metavar='DIR', default=None,
                    help='also V - model (the folder profile-analyze --model-equivalents reads)')
     p.add_argument('--run', help='processed run folder (or its yearly/)')
@@ -957,6 +995,11 @@ def cli(argv=None):
     a = p.parse_args(argv)
     if a.convert:
         convert_format1(a.out)
+    if a.add_model:
+        if not a.run:
+            p.error('--add-model needs --run')
+        add_model(a.run, a.out, a.add_model[0], a.add_model[1], a.add_model[2], a.add_model_url, a.sources)
+        return 0
     if a.split_model:
         split_for_github(a.out, *a.split_model)
     if a.bathy:

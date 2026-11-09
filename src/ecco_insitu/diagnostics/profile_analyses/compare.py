@@ -310,7 +310,7 @@ def cli(argv=None):
     p.add_argument('--sources', nargs='*', default=None,
                    help='Obs classes to compare (default: all found in inputs)')
     p.add_argument('--cost-type', default='vs_clim',
-                   choices=['vs_clim', 'vs_model', 'vs_run_b'],
+                   # vs_clim, or vs_<model name> as profile-analyze named it (vs_model, vs_V4r6, vs_V5r1, ...)
                    help='Which cost type to compare (default: vs_clim)')
     p.add_argument('--split-mode', default='unsplit', choices=['unsplit', 'split'],
                    help='Split or unsplit cost (default: unsplit)')

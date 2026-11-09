@@ -215,7 +215,11 @@ Where the red curve (all places) jumps and the blue one doesn't, the jump comes 
 <script>
 'use strict';
 const INDEX_URL = 'viewer/index.json', GRID_URL = 'viewer/grid.json';
-const DATA_FORMAT = 2;                  // the record layout this page reads (viewer.py DATA_FORMAT)
+const DATA_FORMAT = 2;
+// the in situ data viewer's reference for a cost type: vs_clim -> clim, vs_<model> -> <model> (e.g. vs_V5r1 -> V5r1)
+const refOf = ct => ct === 'vs_clim' ? 'clim' : ct.slice(3);
+// the cost-type tabs' text: 'vs climatology', 'vs V4r6', ...
+const ctLabel = ct => ct === 'vs_clim' ? 'vs climatology' : 'vs ' + ct.slice(3);                  // the record layout this page reads (viewer.py DATA_FORMAT)
 const vurl = u => u + '?v=' + ((INDEX && INDEX.version) || '');   // this build's files only (never a cached older one)
 const PARTS = {unsplit: 'cost per datum, unsplit', anomaly: 'cost per datum, split anomaly term',
                mean: 'split mean term (per bin; all years)', count: 'number of data',
@@ -591,7 +595,7 @@ async function platformsOf(src) {
   } catch (e) { busy(null); return (PLATS[src] = null); }
 }
 async function profilesWithData(P, src, lv) {   // Set of profile indices with a value at any of these levels
-  const ref = S.ct === 'vs_model' ? 'model' : 'clim', V = S.V, key = ref + V + (lv ? lv.join(',') : 'all');
+  const ref = refOf(S.ct), V = S.V, key = ref + V + (lv ? lv.join(',') : 'all');
   if (P.has[key]) return P.has[key];
   const base = ref === 'clim' ? INDEX.bin_viewer + src + '/' : ((P.vi.ref_urls || {})[ref] ? P.vi.ref_urls[ref] + '/' + src + '/model/' : INDEX.bin_viewer + src + '/model/');
   const info = ref === 'clim' ? P.vi.classes[src] : P.vi.classes[src].refs?.[ref];
@@ -618,7 +622,7 @@ async function detailRows(src, js) {        // per profile index: rows [{k, m: o
   const C = info.chunk, urls = (vi.detail_urls || {})[src] || [], scale = info.scale || {obs: 1000, clim: 1000, model: 1000, sig: 10000};
   const base = c => { for (const [a, b, u] of urls) if (c >= a && c <= b) return u; return INDEX.bin_viewer.replace(/\/$/, ''); };
   const byChunk = new Map(); for (const j of js) { const c = Math.floor(j / C); if (!byChunk.has(c)) byChunk.set(c, []); byChunk.get(c).push(j); }
-  const out = new Map(), useModel = S.ct === 'vs_model';
+  const out = new Map(), useModel = S.ct !== 'vs_clim';
   let done = 0; const tot = byChunk.size;
   for (const [c, list] of byChunk) {
     busy(`Loading profile details for the region (${++done} of ${tot})…`, done / tot); if (done % 5 === 1) await paint();
@@ -644,13 +648,13 @@ async function detailRows(src, js) {        // per profile index: rows [{k, m: o
   return out;
 }
 function renderPlatformTable(el, P, X) {
-  const unit = S.V === 'T' ? '°C' : 'psu', ref = S.ct === 'vs_model' ? 'model' : 'climatology';
+  const unit = S.V === 'T' ? '°C' : 'psu', ref = (S.ct === 'vs_clim' ? 'climatology' : S.ct.slice(3));
   const rows = [...X.share].filter(([pi]) => pi !== 0xFFFFFFFF).sort((a, b) => b[1] - a[1]).slice(0, 12);
   const nPlat = [...X.nprof.keys()].filter(k => k !== 0xFFFFFFFF).length, what = S.part === 'mean' ? 'mean term' : S.part === 'anomaly' ? 'anomaly cost' : S.part === 'count' ? 'data' : 'unsplit cost';
   let h = `<div class="ptitle" style="margin-top:0.6em">Platforms in the region <span class="dnote">(${P.kind}; ${nPlat} with kept data at the selected depths; computed profile by profile)</span></div>` +
     `<table><tr><th>${P.kind}</th><th>profiles</th><th>years</th><th>share of the region's ${what}</th><th>mean ${ref} − obs (${unit})</th><th></th></tr>`;
   for (const [pi, x] of rows) { const nm = P.names[pi], ys = X.yrs.get(pi) || ['–', '–'], mb = X.mw.get(pi) ? -X.mis.get(pi) / X.mw.get(pi) : NaN;   // ref − obs
-    const q = new URLSearchParams({src: S.src, ref: S.ct === 'vs_model' ? 'model' : 'clim', V: S.V, platform: nm});
+    const q = new URLSearchParams({src: S.src, ref: refOf(S.ct), V: S.V, platform: nm});
     const lvv = levelsSelected(); if (lvv && lvv.length === 1) q.set('k', lvv[0]); q.set('back', location.href.split('#')[0]);
     h += `<tr><td>${nm}</td><td>${X.nprof.get(pi) || 0}</td><td>${ys[0]}–${ys[1]}</td><td><b>${X.total ? (100 * x / X.total).toFixed(1) + ' %' : '–'}</b></td>` +
       `<td>${Number.isFinite(mb) ? (mb >= 0 ? '+' : '') + mb.toFixed(3) : '–'}</td><td><a href="${INDEX.bin_viewer}?${q}">show profiles</a></td></tr>`; }
@@ -732,7 +736,7 @@ async function regionPlatforms(d) {
   let h = `<div class="ptitle" style="margin-top:0.6em">Platforms in the region <span class="dnote">(${P.kind}; ${nPlat} with data at the selected depths)</span></div>` +
     `<table><tr><th>${P.kind}</th><th>profiles</th><th>years</th>${additive ? '<th>share of the region\'s value</th>' : ''}<th>mean ref − obs (${unit})</th><th></th></tr>`;
   for (const [pi, x] of rows) { const nm = P.names[pi], ys = yrs.get(pi), mb = bw.get(pi) ? bias.get(pi) / bw.get(pi) : NaN;
-    const q = new URLSearchParams({src: S.src, ref: S.ct === 'vs_model' ? 'model' : 'clim', V: S.V, platform: nm});
+    const q = new URLSearchParams({src: S.src, ref: refOf(S.ct), V: S.V, platform: nm});
     const lvv = levelsSelected(); if (lvv && lvv.length === 1) q.set('k', lvv[0]);
     q.set('back', location.href.split('#')[0]);
     h += `<tr><td>${nm}</td><td>${perPlat.get(pi)}</td><td>${ys[0]}–${ys[1]}</td>${additive ? `<td><b>${tot ? (100 * x / tot).toFixed(1) + ' %' : '–'}</b></td>` : ''}` +
@@ -850,7 +854,7 @@ async function showBin(b) {
   // links: the in situ data viewer at this bin, depth, years and reference
   const links = document.getElementById('binlinks'); links.innerHTML = '';
   if (INDEX.bin_viewer && lon !== null) {
-    const q = new URLSearchParams({src: S.src, ref: S.ct === 'vs_model' ? 'model' : 'clim', lon: lon.toFixed(2), lat: lat.toFixed(2), V: S.V, bin: b});
+    const q = new URLSearchParams({src: S.src, ref: refOf(S.ct), lon: lon.toFixed(2), lat: lat.toFixed(2), V: S.V, bin: b});
     const lv = levelsSelected(); if (lv && lv.length === 1) q.set('k', lv[0]); else if (lv) q.set('levels', lv[0] + '-' + lv[lv.length - 1]);
     if (!S.all) { q.set('y0', INDEX.blocks[S.t0]); q.set('y1', INDEX.blocks[S.t1]); }
     q.set('back', location.href.split('#')[0]);
@@ -1020,7 +1024,7 @@ function drawBar(vmax) {
     ctx.fillText(fmt(v), x, h + 15);
   }
   const unit = S.V === 'T' ? '°C' : 'psu';
-  const ref = S.ct === 'vs_model' ? 'model' : 'climatology';
+  const ref = (S.ct === 'vs_clim' ? 'climatology' : S.ct.slice(3));
   const txt = SIGNED(S.part)
     ? `${PARTS[S.part]}${S.part === 'bias' ? ', ' + unit : ''}: red = the ${ref} is warmer/saltier than the observations, blue = colder/fresher; ` +
       `the scale is centered on 0 (set ± with "max"); beyond ±${fmt(vmax)} the end colors`
@@ -1066,7 +1070,7 @@ function viewQuery() {
 function writeAddress() { const q = viewQuery(); history.replaceState(null, '', location.pathname + '?' + q.toString() + location.hash);
   // the navigation bar's links open on the same class (and, for the data viewer, reference, variable and depth)
   const nd = document.getElementById('nav-data');
-  if (nd && INDEX.bin_viewer) { const v = new URLSearchParams({src: S.src, ref: S.ct === 'vs_model' ? 'model' : 'clim', V: S.V});
+  if (nd && INDEX.bin_viewer) { const v = new URLSearchParams({src: S.src, ref: refOf(S.ct), V: S.V});
     const lv = levelsSelected(); if (lv && lv.length === 1) v.set('k', lv[0]); v.set('back', location.href.split('#')[0]); nd.href = INDEX.bin_viewer + '?' + v; }
   const na = document.querySelector('.sitenav a[href^="index.html"]');
   if (na) na.href = 'index.html?' + new URLSearchParams({src: S.src, ct: S.ct}); }
@@ -1289,7 +1293,7 @@ async function init() {
   const keys = Object.keys(INDEX.files), srcs = [...new Set(keys.map(k => k.split('|')[0]))], cts = [...new Set(keys.map(k => k.split('|')[1]))];
   const q = new URLSearchParams(location.search);
   S.src = q.get('src') && srcs.includes(q.get('src')) ? q.get('src') : srcs[0];
-  S.ct = q.get('ct') && cts.includes(q.get('ct')) ? q.get('ct') : cts.includes('vs_model') ? 'vs_model' : cts[0];   // default: the model
+  S.ct = q.get('ct') && cts.includes(q.get('ct')) ? q.get('ct') : cts.find(c => c !== 'vs_clim') || cts[0];   // default: the (first) model
   if (q.get('V') === 'S') S.V = 'S';
   if (q.get('part') && PARTS[q.get('part')]) S.part = q.get('part');
   const re = () => { S.vmax = null; document.getElementById('vmax').value = ''; fillDepthSelect();
@@ -1297,7 +1301,7 @@ async function init() {
     // (otherwise the text, the outline and the depth it chose would still be the old selection's)
     if (PEAKBAND) { const [a, b] = PEAKBAND; render().then(() => investigatePeak(a, b)); } else render(); };
   tabs('srcs', srcs.map(s => [s, s]), 'src', v => { S.src = v; if (!hasS()) S.V = 'T'; re(); });
-  tabs('cts', cts.map(s => [s, s]), 'ct', v => { S.ct = v; re(); });
+  tabs('cts', cts.map(s => [s, ctLabel(s)]), 'ct', v => { S.ct = v; re(); });
   tabs('vars', [['T', 'T'], ['S', 'S']], 'V', v => { S.V = v; re(); });
   const partTabs = [['unsplit', 'unsplit'], ['anomaly', 'anomaly (split)']];
   if (INDEX.core_split === 'own') partTabs.push(['mean', 'mean term (split)']);

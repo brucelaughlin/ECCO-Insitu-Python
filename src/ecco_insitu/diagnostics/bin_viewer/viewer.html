@@ -172,6 +172,12 @@ const S = {src: null, ref: 'model', pref: 'model', V: 'T', k: 0, dmode: 'level',
 // Where a reference's level files are: next to this page, or (index.json ref_urls) another site, so the data of one
 // viewer can be spread over several GitHub Pages sites of about 1 GB each (they all allow cross-site reads).
 const refBase = () => (INDEX.ref_urls || {})[S.ref] || DATA_URL;
+// a reference's name for labels: 'climatology', or the model's name from index.json refs (V4r6, V5r1, ...)
+const refLabel = r => r === 'clim' ? 'climatology' : ((INDEX.refs || {})[r] || r).replace(/^model \((.*)\)$/, 'model');
+const refName = () => refLabel(S.ref);
+// the profile details hold one model's values (the first model, 'model'): for another model the profile panel
+// shows that one, and says so
+const detailRef = () => S.ref === 'clim' || S.ref === 'model' ? S.ref : 'model';
 const REF = () => S.ref === 'clim' ? INDEX.classes[S.src] : INDEX.classes[S.src].refs[S.ref];
 function fixRef() {                    // the chosen reference (default: the model); the climatology for a class without model values
   S.ref = S.pref === 'clim' || INDEX.classes[S.src].refs?.[S.pref] ? S.pref : 'clim';
@@ -308,7 +314,7 @@ function siteNav(back) {
 }
 function foldSummary() {       // the folded bar's one line: what the maps show
   const el = document.getElementById('foldsum'); if (!el || !INDEX) return;
-  el.textContent = `${S.src} · ${S.ref === 'clim' ? 'climatology' : 'model'} − obs · ${S.V} · ${depthText().replace('displaying ', '')} · ` +
+  el.textContent = `${S.src} · ${refName()} − obs · ${S.V} · ${depthText().replace('displaying ', '')} · ` +
     (S.all ? 'all years' : (INDEX.years0 + S.t0) + '–' + (INDEX.years0 + S.t1)) + (PLATFORM ? ' · ' + PLATFORM.name : '');
 }
 async function loadClass(src) {
@@ -655,7 +661,7 @@ function titles() {
   let tot = 0; for (const e of STATS.values()) tot += e.n;
   const years = S.all ? `all years (${ci.years[0]}–${ci.years[1]})` : S.t0 === S.t1 ? `${INDEX.years0 + S.t0}` : `${INDEX.years0 + S.t0}–${INDEX.years0 + S.t1}`;
   document.getElementById('titlebox').textContent =
-    `variable: ${S.V}; shown: ${S.ref === 'clim' ? 'climatology' : 'model'} − observation (${S.ref === 'clim' ? 'climatology' : (INDEX.refs || {})[S.ref] || S.ref}); red: the reference is warmer/saltier\n` +
+    `variable: ${S.V}; shown: ${refName()} − observation (${S.ref === 'clim' ? 'climatology' : (INDEX.refs || {})[S.ref] || S.ref}); red: the reference is warmer/saltier\n` +
     `${nlev} total depth levels in file; ${depthText()}\n` +
     `${lv.length}/${nlev} total depth levels populated; geodesic bins populated at current depth level: ${W.nBins}/${INDEX.n_bins_grid}\n` +
     `profiles binned at current depth level: ${tot.toLocaleString()}; obs class: ${S.src}; years: ${years}\n` +
@@ -671,7 +677,7 @@ function titles() {
 function colorbars() {
   document.getElementById('fmax').placeholder = fmt(SC.auto);
   const unit = INDEX.units[S.V];
-  const what = S.ref === 'clim' ? `clim − obs ${S.V}` : `model − obs ${S.V}`;
+  const what = `${S.ref === 'clim' ? 'clim' : refName()} − obs ${S.V}`;
   // the same two bars beside the global map and beside each polar map (one color scale for all three)
   for (const [sfx, box] of [['', 'mapbox'], ['-N', 'box-N'], ['-S', 'box-S']]) {
     bar('cbl' + sfx, SC.edge, SC.qedge, QF_EDGE, x => edgeColor(x, SC), `${what} std (${unit})`, 'white', box);
@@ -812,7 +818,7 @@ function setupControls() {
   if (Object.keys(refs).length > 1) {
     document.getElementById('refgrp').style.display = '';
     const box = document.getElementById('refs');
-    box.innerHTML = Object.entries(refs).map(([r, t]) => `<button class="btn${r === S.ref ? ' on' : ''}" data-ref="${r}" title="${t}">${r === 'clim' ? 'climatology' : 'model'}</button>`).join('');
+    box.innerHTML = Object.entries(refs).map(([r, t]) => `<button class="btn${r === S.ref ? ' on' : ''}" data-ref="${r}" title="${t}">${refLabel(r)}</button>`).join('');
     box.querySelectorAll('button').forEach(b => b.onclick = () => {
       if (!INDEX.classes[S.src].refs?.[b.dataset.ref] && b.dataset.ref !== 'clim') return;
       S.ref = S.pref = b.dataset.ref; box.querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b));
@@ -953,7 +959,7 @@ async function showTab() {
   if (!INDEX.detail || !INDEX.detail[src]) { document.getElementById('ppmeta').textContent = 'No profile details in this data folder.'; return; }
   busy('Loading the profile…');
   const pr = await profileOf(src, j); busy(null);
-  const ref = S.ref === 'clim' ? 'climatology' : 'model', unit = S.V === 'T' ? '°C' : 'psu';
+  const ref = refLabel(detailRef()), unit = S.V === 'T' ? '°C' : 'psu';
   document.getElementById('pptitle').textContent = `${src} profile${name ? ' — ' + (pl.kind) + ' ' + name : ''}`;
   document.getElementById('ppmeta').innerHTML =
     `${ymd(pr.date)} ${hms(pr.time)} UTC; ${P.lat[j].toFixed(3)}°${P.lat[j] >= 0 ? 'N' : 'S'}, ${Math.abs(P.lon[j]).toFixed(3)}°${P.lon[j] >= 0 ? 'E' : 'W'}; geodesic bin ${P.bin[j]}<br>` +
@@ -970,7 +976,7 @@ const REFCOL = {obs: '#111', clim: '#2e86c1', model: '#c0392b'};
 async function drawOneProfile(g, cv, pr, j, ref, unit) {
   const rows = pr[S.V], z = INDEX.depth, W = cv.width, H = cv.height, L = 52, Rm = 10, T = 36, B = 36, gap = 30, w1 = (W - L - Rm - gap) * 0.55, w2 = W - L - Rm - gap - w1;
   if (!rows.length) { g.fillText(`No ${S.V} in this profile.`, 20, 40); return; }
-  const refv = r => S.ref === 'clim' ? r.clim : r.model;
+  const refv = r => detailRef() === 'clim' ? r.clim : r.model;
   // neighbors (gray): same bin, ±2 years, other platforms
   const nb = document.getElementById('ppnb').checked ? neighborsOf(j) : [], nbr = [];
   for (const i of nb) { const q = await profileOf(S.src, i); nbr.push(q[S.V]); }
@@ -998,7 +1004,7 @@ async function drawOneProfile(g, cv, pr, j, ref, unit) {
     for (const [x, y] of pts) { if (!Number.isFinite(x)) { on = false; continue; } if (on) g.lineTo(x, y); else { g.moveTo(x, y); on = true; } } g.stroke(); g.setLineDash([]); };
   for (const q of nbr) path(q.filter(r => z[r.k] <= zmax).map(r => [X(r.obs), Y(z[r.k])]), 'rgba(150,150,150,0.35)', 1);
   path(rows.map(r => [X(r.clim), Y(z[r.k])]), REFCOL.clim, 1.5, S.ref === 'clim' ? [] : [4, 3]);
-  path(rows.map(r => [X(r.model), Y(z[r.k])]), REFCOL.model, 1.5, S.ref === 'model' ? [] : [4, 3]);
+  path(rows.map(r => [X(r.model), Y(z[r.k])]), REFCOL.model, 1.5, detailRef() === 'model' ? [] : [4, 3]);
   path(rows.map(r => [X(r.obs), Y(z[r.k])]), REFCOL.obs, 2);
   // misfit panel: ±1σ and ±2σ bands, the misfit, rejected levels marked
   g.fillStyle = 'rgba(46,134,193,0.10)'; g.beginPath();
@@ -1021,7 +1027,7 @@ async function drawOneProfile(g, cv, pr, j, ref, unit) {
   for (const k of [lv[0], lv[lv.length - 1]]) { if (z[k] > zmax) continue; g.beginPath(); g.moveTo(L, Y(z[k])); g.lineTo(W - Rm, Y(z[k])); g.stroke(); } g.setLineDash([]);
   // legend
   g.textAlign = 'left'; g.textBaseline = 'middle'; g.font = '11px sans-serif';
-  const leg = [['observation', REFCOL.obs, []], ['climatology', REFCOL.clim, S.ref === 'clim' ? [] : [4, 3]], ['model (monthly mean)', REFCOL.model, S.ref === 'model' ? [] : [4, 3]]];
+  const leg = [['observation', REFCOL.obs, []], ['climatology', REFCOL.clim, S.ref === 'clim' ? [] : [4, 3]], [refLabel('model') + ' (monthly mean)', REFCOL.model, detailRef() === 'model' ? [] : [4, 3]]];
   if (nbr.length) leg.push([`${nbr.length} neighbors (same bin, ±2 years, other platforms)`, 'rgba(150,150,150,0.8)', []]);
   let lx = L, ly = 8; leg.forEach(([t, c, d]) => { const wt = g.measureText(t).width + 34; if (lx + wt > W - Rm) { lx = L; ly += 14; }
     g.strokeStyle = c; g.lineWidth = 2; g.setLineDash(d); g.beginPath(); g.moveTo(lx, ly); g.lineTo(lx + 16, ly); g.stroke(); g.setLineDash([]);
@@ -1032,7 +1038,8 @@ async function drawOneProfile(g, cv, pr, j, ref, unit) {
     return `${z[r.k]} m: obs ${r.obs.toFixed(3)}, ${ref} ${Number.isFinite(refv(r)) ? refv(r).toFixed(3) : '–'}, ${ref} − obs ${Number.isFinite(m) ? (m >= 0 ? '+' : '') + m.toFixed(3) : '–'} ${unit}, ` +
       `σ ${Number.isFinite(r.sig) ? r.sig.toFixed(3) : '–'}, (Δ/σ)² ${Number.isFinite(c) ? c.toFixed(2) : '–'}${r.code ? '; <b style="color:#d35400">rejected: ' + qcText(r.code) + '</b>' : ''}`; });
   const ends = zOwn < zmax / 1.04 - 1e-6 ? `This profile ends at <b>${zOwn} m</b>; the plot goes deeper for ${zNb > zOwn ? 'its neighbors' : "the map's depth"}. ` : '';
-  document.getElementById('ppfoot').innerHTML = (dv.length ? `<b>At the map's depth</b> (purple dashes): ${dv.join('<br>')}<br>` : '') + ends +
+  const other = detailRef() !== S.ref ? `<b>The maps show ${refName()}; this panel shows ${refLabel('model')}</b> (the profile details hold one model's values so far). ` : '';
+  document.getElementById('ppfoot').innerHTML = other + (dv.length ? `<b>At the map's depth</b> (purple dashes): ${dv.join('<br>')}<br>` : '') + ends +
     `Blue bands: ±1σ and ±2σ, the assumed error of the observation (the cost is (Δ/σ)²). ` +
     (nrej ? `<span style="color:#d35400">×</span> marks the ${nrej} level${nrej > 1 ? 's' : ''} the processing chain rejected (weight 0; reason on hover in the table below is not shown here — see the levels above). ` : 'No level of this profile was rejected. ') +
     `The model line is the monthly-mean approximation (not the model's value at the profile's exact time). Values are the processed files', to 0.001.`;
@@ -1045,7 +1052,7 @@ async function drawFloat(g, cv, j, ref, unit, name) {
   busy(`Loading ${idx.length} profiles of ${name}…`); await paint();
   const prs = []; for (const i of idx) { const q = await profileOf(S.src, i); prs.push([i, q]); } busy(null);
   prs.sort((a, b) => a[1].date - b[1].date || a[1].time - b[1].time);
-  const z = INDEX.depth, W = cv.width, H = cv.height, L = 52, Rm = 70, T = 26, B = 40, refv = r => S.ref === 'clim' ? r.clim : r.model;
+  const z = INDEX.depth, W = cv.width, H = cv.height, L = 52, Rm = 70, T = 26, B = 40, refv = r => detailRef() === 'clim' ? r.clim : r.model;
   let zmax = 0, am = 0; for (const [, q] of prs) for (const r of q[S.V]) { zmax = Math.max(zmax, z[r.k]); const m = refv(r) - r.obs; if (Number.isFinite(m)) am = Math.max(am, Math.abs(m)); }
   if (!zmax) { g.fillText(`No ${S.V} in these profiles.`, 20, 40); return; }
   const vals = []; for (const [, q] of prs) for (const r of q[S.V]) { const m = refv(r) - r.obs; if (Number.isFinite(m)) vals.push(Math.abs(m)); }
@@ -1085,7 +1092,7 @@ async function listMisfits(j, ref, unit) {
   const y0 = S.all ? 0 : INDEX.years0 + S.t0, y1 = S.all ? 9999 : INDEX.years0 + S.t1;
   for (let i = 0; i < P.bin.length; i++) if (P.bin[i] === b && P.year[i] >= y0 && P.year[i] <= y1) idx.push(i);
   busy(`Loading the ${idx.length} profiles of bin ${b}…`); await paint();
-  const rows = [], refv = r => S.ref === 'clim' ? r.clim : r.model, pl = CLASS[S.src].plat;
+  const rows = [], refv = r => detailRef() === 'clim' ? r.clim : r.model, pl = CLASS[S.src].plat;
   for (const i of idx) { const q = await profileOf(S.src, i);
     for (const r of q[S.V]) if (lv.includes(r.k)) { const m = refv(r) - r.obs; if (!Number.isFinite(m)) continue;
       rows.push({i, z: INDEX.depth[r.k], m, s: r.sig, n: Number.isFinite(r.sig) && r.sig > 0 ? Math.abs(m) / r.sig : NaN, code: r.code, date: q.date,
@@ -1189,7 +1196,7 @@ async function init() {
   if (q.get('platform')) setPlatform(q.get('platform'));
   if (q.get('bin')) { HIBIN = +q.get('bin'); const e = STATS.get(HIBIN), info = document.getElementById('bininfo');
     info.style.display = ''; info.innerHTML = `<b>Geodesic bin ${HIBIN}</b> (outlined in orange; its profiles ringed): ` +
-      (e ? `${e.n} profiles here at this depth and these years; mean ${S.ref === 'clim' ? 'clim' : 'model'} − obs ${e.mean.toFixed(3)} ${INDEX.units[S.V]}. Click a ring for the profile.` : 'no profiles at this depth and these years.') +
+      (e ? `${e.n} profiles here at this depth and these years; mean ${S.ref === 'clim' ? 'clim' : refName()} − obs ${e.mean.toFixed(3)} ${INDEX.units[S.V]}. Click a ring for the profile.` : 'no profiles at this depth and these years.') +
       ` <a href="#" id="binclear">clear</a>`;
     document.getElementById('binclear').onclick = ev => { ev.preventDefault(); HIBIN = null; info.style.display = 'none'; writeAddress(); draw(); };
     draw(); }

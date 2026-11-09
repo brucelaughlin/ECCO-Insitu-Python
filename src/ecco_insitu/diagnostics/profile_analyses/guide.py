@@ -36,8 +36,9 @@ data viewer on one platform &rarr; click a profile to see it whole. Section&nbsp
 <tr><th>Term</th><th>Meaning</th></tr>
 <tr><td>obs class</td><td>A kind of instrument: CTD/bottle casts (CTD_WOD), gliders (GLD_WOD), ice-tethered profilers (ITP), seal tags
   (MEOP), moorings (MRB_WOD), Argo floats (PFL), XBTs (XBT_WOD). Each is analyzed on its own.</td></tr>
-<tr><td>reference, V<sub>ref</sub></td><td>What an observation V is compared with: the WOA23 climatology (<code>vs_clim</code>) or the ECCO
-  v4r6 model (<code>vs_model</code>; monthly means sampled at the profile&rsquo;s grid cell and month).</td></tr>
+<tr><td>reference, V<sub>ref</sub></td><td>What an observation V is compared with: the WOA23 climatology (&ldquo;vs climatology&rdquo;) or an ECCO
+  model (&ldquo;vs V4r6&rdquo;, &ldquo;vs V5r1&rdquo;: each model&rsquo;s monthly means at the profile&rsquo;s model grid cell and
+  month). &ldquo;Compare V4r6 and V5r1&rdquo; shows the two models side by side.</td></tr>
 <tr><td>misfit &Delta;V</td><td>V &minus; V<sub>ref</sub>, in &deg;C or psu.</td></tr>
 <tr><td>&sigma;</td><td>The assumed error of an observation: how far from the reference it is expected to be. Not the instrument&rsquo;s
   accuracy (much smaller); a derived map per depth (the Analyses page&rsquo;s Terminology says where it comes from). In the explorer, &ldquo;&sigma;
@@ -159,7 +160,7 @@ calculation on the saved results; nothing is fitted or judged. The page reports 
 <li><a href="#platforms">Platforms</a>: which instruments, profile by profile.</li>
 <li><a href="#profiles">Profiles</a>: look at them.</li>
 </ol>
-<p>A worked example (PFL, vs_model, T, mean term, 2000&ndash;2600&nbsp;m) runs through all of them at the <a href="#example">end</a>.</p>
+<p>A worked example (PFL, vs V4r6, T, mean term, 2000&ndash;2600&nbsp;m) runs through all of them at the <a href="#example">end</a>.</p>
 """),
     ('peak', '1. The peak', """
 <p>Let c<sub>k</sub> be the curve at level k (what the depth profile draws). For costs it is the cost per datum over all values at the
@@ -180,7 +181,7 @@ fewer places have data. When the curve jumps at one depth, there are two possibl
 </ul>
 <p><b>An everyday version of B:</b> a class&rsquo;s average test score drops on Friday. Nobody did worse; half the class was absent, and
 the absent half were the strong students. Friday&rsquo;s average is over a different set of students than Thursday&rsquo;s.</p>
-<p><b>The example</b> (PFL, vs_model, T, mean term). The curve at 2400&nbsp;m and the depths around it:</p>
+<p><b>The example</b> (PFL, vs V4r6, T, mean term). The curve at 2400&nbsp;m and the depths around it:</p>
 <table class="g">
 <tr><th>depth</th><th>places with data at that depth</th><th>average</th></tr>
 <tr><td>2200&nbsp;m</td><td>1,181</td><td>4.90</td></tr>
@@ -282,7 +283,7 @@ Zoom in and click one for the profile panel (section <a href="#viewer">The in si
 </ul>
 """),
     ('example', 'Worked example', """
-<p>PFL (Argo), vs_model, T, mean term, depth range 2000&ndash;2600&nbsp;m (run 20261027_142247):</p>
+<p>PFL (Argo), vs V4r6, T, mean term, depth range 2000&ndash;2600&nbsp;m (run 20261027_142247):</p>
 <ol>
 <li><b>Peak:</b> 2400&nbsp;m, 5.57 over 1,046 bins; neighbors 2200&nbsp;m 4.90 (1,181 bins) and 2600&nbsp;m 2.62 (410 bins).</li>
 <li><b>Same bins:</b> over only the 410 places with data at all three depths, 2.83 against 2.79: the jump nearly disappears, so 98&nbsp;%
@@ -303,7 +304,7 @@ values at each profile&rsquo;s time.</p>
 <ul>
 <li><b>Few bins or values</b> make any number noisy: look at the counts shown next to everything (pale = under 5 bins).</li>
 <li><b>Regions drawn after looking</b> always look important; compare shares with shares of bins and values.</li>
-<li><b>vs_model is approximate:</b> monthly-mean model fields, so sub-monthly variability counts as misfit; no model values after
+<li><b>The model costs are approximate:</b> monthly-mean model fields, so sub-monthly variability counts as misfit; no model values after
   December 2025.</li>
 <li><b>Precision:</b> the explorer stores 3 significant digits per value; the profile details 0.001 (&sigma; 0.0001).</li>
 <li><b>Platform IDs</b> for the WOD ship classes are ship or program codes, not single instruments.</li>
