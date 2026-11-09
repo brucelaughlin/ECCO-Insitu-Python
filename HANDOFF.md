@@ -2,7 +2,8 @@
 
 ## ⟶ RESUME HERE (2026-11-08) — the latest state; the sections below are older
 
-**Later on 2026-11-08: ECCO V5r1 added (built locally, NOT yet published).**
+**Later on 2026-11-08: ECCO V5r1 added and PUBLISHED** (the analyses site, the data viewer, and the new V5r1 data site
+`brucelaughlin/ecco-bin-viewer-v5r1`; all three deploys succeeded; live pages checked).**
 - V5r1 monthly means (LLC270, 1200 s steps): `~/ecco/yip/ecco_model_data/V5r1/`; model equivalents:
   `.../V5r1/model_equivalents/netCDF` (`ecco-insitu monthly-estim --grid <grid_llc270_common>`; grid and months
   from the .meta headers since commit 2767cfb).
