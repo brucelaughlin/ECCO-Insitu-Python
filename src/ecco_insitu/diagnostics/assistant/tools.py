@@ -526,7 +526,8 @@ def region_cost(A, src, cost_type, region=None, variable='T', part='unsplit', de
     code = '.'.join(str(int(b)) for b in sorted(ids))
     return {'result': res, 'views': [{'page': 'explorer', 'params': {
         'src': src, 'ct': cost_type, 'V': V, 'part': part, 'depth': depth_param, 'years': 'all', 'region': code},
-        'caption': f'Cost map explorer with {label.split(" (")[0]} outlined (its panel: region vs the rest, per year, platforms)'}]}
+        'caption': f'{label.split(" (")[0]}: {src}, {cost_type.replace("_", " ")}, {V}, {"mean term" if part == "mean" else part} '
+                   f'(cost map explorer with the region outlined)'}]}
 
 
 def _text(html):
