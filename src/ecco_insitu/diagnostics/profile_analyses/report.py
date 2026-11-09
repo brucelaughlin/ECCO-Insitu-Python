@@ -682,10 +682,10 @@ body {
 #nav.folded #navrows { display: none; }
 #nav.folded #foldsum { display: inline; }
 /* the analysis buttons' short names, slanted up and to the right like a plot's tick labels */
-#an-row { padding-top: 4.6em; }
+#an-row { padding-top: 6.8em; }
 .an-wrap { position: relative; display: inline-block; }
 .an-name { position: absolute; left: 55%; bottom: 100%; margin-bottom: 0.2em; transform-origin: 0 100%;
-  transform: rotate(-38deg); white-space: nowrap; font-size: 0.74em; color: #567; pointer-events: none; }
+  transform: rotate(-52deg); white-space: nowrap; font-size: 0.74em; color: #567; pointer-events: none; }
 .an-wrap:has(.an-tab.active) .an-name { color: var(--accent); font-weight: 600; }
 .an-wrap:has(.sup-tab) .an-name { color: #889; }
 img.zoomable { cursor: zoom-in; }
@@ -1104,7 +1104,6 @@ var render = function () {{
   document.getElementById('map-hint-link').href = 'viewer.html?src=' + encodeURIComponent(curSource) +
     '&ct=' + encodeURIComponent(curCost);
   document.getElementById('peak-hint').style.display = (HAS_EXPLORER && curAn === '02') ? '' : 'none';
-  const xl = document.getElementById('excl-line'); if (xl) xl.style.display = curCost !== 'vs_clim' && !NO_COST.includes(curAn) ? '' : 'none';
   updatePeakLink();
   // both header buttons open on the class shown here
   document.getElementById('map-explorer').href = 'viewer.html?src=' + encodeURIComponent(curSource) +
@@ -1296,7 +1295,7 @@ render();
 </div>
 <div id="main">
   <div id="fig-area">
-    {f'<div class="excl-line" id="excl-line" style="display:none">&#9888; <b>The Black Sea is left out of the model costs</b> for this demo (V5r1 is far too warm there; details at the top of <a href="#" onclick="document.getElementById(&apos;toggle-notes&apos;).click(); return false">Notes &amp; errata</a>).</div>' if _excluded_note(metas) else ''}
+    
     <div class="map-hint" id="map-hint" style="display:none">These are fixed images for the standard depth bands.
       For any depth level or band, any range of years, the split terms, the misfits and &sigma;, open the
       <a href="viewer.html" id="map-hint-link">Cost map explorer &rarr;</a></div>

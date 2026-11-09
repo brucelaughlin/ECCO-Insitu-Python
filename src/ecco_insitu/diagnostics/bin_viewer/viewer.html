@@ -173,11 +173,14 @@ const S = {src: null, ref: 'model', pref: 'model', V: 'T', k: 0, dmode: 'level',
 // viewer can be spread over several GitHub Pages sites of about 1 GB each (they all allow cross-site reads).
 const refBase = () => (INDEX.ref_urls || {})[S.ref] || DATA_URL;
 // a reference's name for labels: 'climatology', or the model's name from index.json refs (V4r6, V5r1, ...)
-const refLabel = r => r === 'clim' ? 'climatology' : ((INDEX.refs || {})[r] || r).replace(/^model \((.*)\)$/, 'model');
+const refLabel = r => r === 'clim' ? 'climatology' : r === 'model2' ? (M2NAME() || 'model 2')
+  : ((INDEX.refs || {})[r] || r).replace(/^model \((.*)\)$/, 'model');
 const refName = () => refLabel(S.ref);
 // the profile details hold one model's values (the first model, 'model'): for another model the profile panel
 // shows that one, and says so
-const detailRef = () => S.ref === 'clim' || S.ref === 'model' ? S.ref : 'model';
+const detailRef = () => S.ref === 'clim' || S.ref === 'model' ? S.ref
+  : (INDEX.detail?.[S.src]?.model2_name === S.ref ? 'model2' : 'model');
+const M2NAME = () => INDEX.detail?.[S.src]?.model2_name;          // the second model in the details, if any
 const REF = () => S.ref === 'clim' ? INDEX.classes[S.src] : INDEX.classes[S.src].refs[S.ref];
 function fixRef() {                    // the chosen reference (default: the model); the climatology for a class without model values
   S.ref = S.pref === 'clim' || INDEX.classes[S.src].refs?.[S.pref] ? S.pref : 'clim';
@@ -902,7 +905,7 @@ function resetZoom() { for (const M of MAPS) setView(M, M.home, true); if (STATS
 let PICKED = null, PPTAB = 'profile';
 const paint = () => new Promise(r => requestAnimationFrame(() => setTimeout(r, 0)));   // let the busy overlay draw
 const DCACHE = new Map();
-const DSCALE = {obs: 1000, clim: 1000, model: 1000, sig: 10000};
+const DSCALE = {obs: 1000, clim: 1000, model: 1000, sig: 10000, model2: 1000};
 // where a class's detail chunk is: index.json detail_urls[src] = [[first chunk, last chunk, address], ...] (the details
 // are on their own GitHub Pages sites, a big class split over two), else next to this page
 const detailBase = (src, c) => { for (const [a, b, u] of (INDEX.detail_urls || {})[src] || []) if (c >= a && c <= b) return u; return DATA_URL; };
@@ -918,7 +921,8 @@ async function detailChunk(src, c) {
     const lev = b.slice(o, o + n); o += n; const mask = b.slice(o, o + n); o += n; const code = pl(n, 2, Uint16Array);
     const start = new Int32Array(P + 1); for (let i = 0; i < P; i++) start[i + 1] = start[i] + cnt[i];
     const vals = {};
-    for (const k of ['obs', 'clim', 'model', 'sig']) {
+    // the value columns: obs, clim, model, sig, and (newer folders) model2, a second model (index.json detail.columns)
+    for (const k of (INDEX.detail[src].columns || ['obs', 'clim', 'model', 'sig'])) {
       const d = pl(n, 4, Int32Array), x = new Float64Array(n);
       for (let i = 0; i < P; i++) { let acc = 0; for (let q = start[i]; q < start[i + 1]; q++) { acc += d[q]; x[q] = acc / DSCALE[k]; } }
       vals[k] = x;
@@ -932,7 +936,8 @@ async function profileOf(src, j) {          // one profile: {date, time, descr, 
   const C = INDEX.detail[src].chunk, D = await detailChunk(src, Math.floor(j / C)), q = j % C, out = {date: D.date[q], time: D.time[q], descr: D.descr[q]};
   for (const V of ['T', 'S']) { const X = D[V], rows = [];
     for (let i = X.start[q]; i < X.start[q + 1]; i++) rows.push({k: X.lev[i], obs: X.obs[i], clim: X.mask[i] & 1 ? X.clim[i] : NaN,
-      model: X.mask[i] & 2 ? X.model[i] : NaN, sig: X.mask[i] & 4 ? X.sig[i] : NaN, code: X.code[i]});
+      model: X.mask[i] & 2 ? X.model[i] : NaN, sig: X.mask[i] & 4 ? X.sig[i] : NaN, code: X.code[i],
+      model2: X.model2 && (X.mask[i] & 8) ? X.model2[i] : NaN});
     out[V] = rows; }
   return out;
 }
@@ -972,11 +977,11 @@ async function showTab() {
   else if (PPTAB === 'float') await drawFloat(g, cv, j, ref, unit, name);
   else { cv.style.display = 'none'; await listMisfits(j, ref, unit); }
 }
-const REFCOL = {obs: '#111', clim: '#2e86c1', model: '#c0392b'};
+const REFCOL = {obs: '#111', clim: '#2e86c1', model: '#c0392b', model2: '#e67e22'};
 async function drawOneProfile(g, cv, pr, j, ref, unit) {
   const rows = pr[S.V], z = INDEX.depth, W = cv.width, H = cv.height, L = 52, Rm = 10, T = 36, B = 36, gap = 30, w1 = (W - L - Rm - gap) * 0.55, w2 = W - L - Rm - gap - w1;
   if (!rows.length) { g.fillText(`No ${S.V} in this profile.`, 20, 40); return; }
-  const refv = r => detailRef() === 'clim' ? r.clim : r.model;
+  const refv = r => detailRef() === 'clim' ? r.clim : detailRef() === 'model2' ? r.model2 : r.model;
   // neighbors (gray): same bin, ±2 years, other platforms
   const nb = document.getElementById('ppnb').checked ? neighborsOf(j) : [], nbr = [];
   for (const i of nb) { const q = await profileOf(S.src, i); nbr.push(q[S.V]); }
@@ -985,7 +990,7 @@ async function drawOneProfile(g, cv, pr, j, ref, unit) {
   const zOwn = Math.max(...rows.map(r => z[r.k])), lvSel = currentLevels();
   const zNb = nbr.reduce((m, q) => Math.max(m, ...q.map(r => z[r.k])), 0);
   const zmax = Math.max(zOwn, zNb, ...lvSel.map(k => z[k])) * 1.04, Y = d => T + (H - T - B) * d / zmax;
-  const all = [...rows.map(r => r.obs), ...rows.map(refv)].filter(Number.isFinite);
+  const all = [...rows.map(r => r.obs), ...rows.map(refv), ...rows.map(r => r.model), ...rows.map(r => r.clim), ...(M2NAME() ? rows.map(r => r.model2) : [])].filter(Number.isFinite);
   for (const q of nbr) for (const r of q) if (z[r.k] <= zmax) all.push(r.obs);
   let lo = Math.min(...all), hi = Math.max(...all); const pad = 0.05 * (hi - lo || 1); lo -= pad; hi += pad;
   const X = v => L + w1 * (v - lo) / (hi - lo);
@@ -1005,6 +1010,7 @@ async function drawOneProfile(g, cv, pr, j, ref, unit) {
   for (const q of nbr) path(q.filter(r => z[r.k] <= zmax).map(r => [X(r.obs), Y(z[r.k])]), 'rgba(150,150,150,0.35)', 1);
   path(rows.map(r => [X(r.clim), Y(z[r.k])]), REFCOL.clim, 1.5, S.ref === 'clim' ? [] : [4, 3]);
   path(rows.map(r => [X(r.model), Y(z[r.k])]), REFCOL.model, 1.5, detailRef() === 'model' ? [] : [4, 3]);
+  if (M2NAME()) path(rows.map(r => [X(r.model2), Y(z[r.k])]), REFCOL.model2, 1.5, detailRef() === 'model2' ? [] : [4, 3]);
   path(rows.map(r => [X(r.obs), Y(z[r.k])]), REFCOL.obs, 2);
   // misfit panel: ±1σ and ±2σ bands, the misfit, rejected levels marked
   g.fillStyle = 'rgba(46,134,193,0.10)'; g.beginPath();
@@ -1027,7 +1033,8 @@ async function drawOneProfile(g, cv, pr, j, ref, unit) {
   for (const k of [lv[0], lv[lv.length - 1]]) { if (z[k] > zmax) continue; g.beginPath(); g.moveTo(L, Y(z[k])); g.lineTo(W - Rm, Y(z[k])); g.stroke(); } g.setLineDash([]);
   // legend
   g.textAlign = 'left'; g.textBaseline = 'middle'; g.font = '11px sans-serif';
-  const leg = [['observation', REFCOL.obs, []], ['climatology', REFCOL.clim, S.ref === 'clim' ? [] : [4, 3]], [refLabel('model') + ' (monthly mean)', REFCOL.model, detailRef() === 'model' ? [] : [4, 3]]];
+  const leg = [['observation', REFCOL.obs, []], ['climatology', REFCOL.clim, S.ref === 'clim' ? [] : [4, 3]], [refLabel('model') + ' (monthly mean)', REFCOL.model, detailRef() === 'model' ? [] : [4, 3]]]
+    .concat(M2NAME() ? [[M2NAME() + ' (monthly mean)', REFCOL.model2, detailRef() === 'model2' ? [] : [4, 3]]] : []);
   if (nbr.length) leg.push([`${nbr.length} neighbors (same bin, ±2 years, other platforms)`, 'rgba(150,150,150,0.8)', []]);
   let lx = L, ly = 8; leg.forEach(([t, c, d]) => { const wt = g.measureText(t).width + 34; if (lx + wt > W - Rm) { lx = L; ly += 14; }
     g.strokeStyle = c; g.lineWidth = 2; g.setLineDash(d); g.beginPath(); g.moveTo(lx, ly); g.lineTo(lx + 16, ly); g.stroke(); g.setLineDash([]);
@@ -1038,8 +1045,10 @@ async function drawOneProfile(g, cv, pr, j, ref, unit) {
     return `${z[r.k]} m: obs ${r.obs.toFixed(3)}, ${ref} ${Number.isFinite(refv(r)) ? refv(r).toFixed(3) : '–'}, ${ref} − obs ${Number.isFinite(m) ? (m >= 0 ? '+' : '') + m.toFixed(3) : '–'} ${unit}, ` +
       `σ ${Number.isFinite(r.sig) ? r.sig.toFixed(3) : '–'}, (Δ/σ)² ${Number.isFinite(c) ? c.toFixed(2) : '–'}${r.code ? '; <b style="color:#d35400">rejected: ' + qcText(r.code) + '</b>' : ''}`; });
   const ends = zOwn < zmax / 1.04 - 1e-6 ? `This profile ends at <b>${zOwn} m</b>; the plot goes deeper for ${zNb > zOwn ? 'its neighbors' : "the map's depth"}. ` : '';
-  const other = detailRef() !== S.ref ? `<b>The maps show ${refName()}; this panel shows ${refLabel('model')}</b> (the profile details hold one model's values so far). ` : '';
+  const other = detailRef() !== S.ref && !(detailRef() === 'model2' && M2NAME() === S.ref)
+    ? `<b>The maps show ${refName()}; this panel shows ${refLabel('model')}</b> (the profile details hold one model's values so far). ` : '';
   document.getElementById('ppfoot').innerHTML = other + (dv.length ? `<b>At the map's depth</b> (purple dashes): ${dv.join('<br>')}<br>` : '') + ends +
+    `The depth axis reaches the deepest value of this profile and of its neighbors, so every value is shown; a line ends where its profile (or the reference) has no deeper value on the 97 standard levels (6000 m at most). ` +
     `Blue bands: ±1σ and ±2σ, the assumed error of the observation (the cost is (Δ/σ)²). ` +
     (nrej ? `<span style="color:#d35400">×</span> marks the ${nrej} level${nrej > 1 ? 's' : ''} the processing chain rejected (weight 0; reason on hover in the table below is not shown here — see the levels above). ` : 'No level of this profile was rejected. ') +
     `The model line is the monthly-mean approximation (not the model's value at the profile's exact time). Values are the processed files', to 0.001.`;
@@ -1052,7 +1061,7 @@ async function drawFloat(g, cv, j, ref, unit, name) {
   busy(`Loading ${idx.length} profiles of ${name}…`); await paint();
   const prs = []; for (const i of idx) { const q = await profileOf(S.src, i); prs.push([i, q]); } busy(null);
   prs.sort((a, b) => a[1].date - b[1].date || a[1].time - b[1].time);
-  const z = INDEX.depth, W = cv.width, H = cv.height, L = 52, Rm = 70, T = 26, B = 40, refv = r => detailRef() === 'clim' ? r.clim : r.model;
+  const z = INDEX.depth, W = cv.width, H = cv.height, L = 52, Rm = 70, T = 26, B = 40, refv = r => detailRef() === 'clim' ? r.clim : detailRef() === 'model2' ? r.model2 : r.model;
   let zmax = 0, am = 0; for (const [, q] of prs) for (const r of q[S.V]) { zmax = Math.max(zmax, z[r.k]); const m = refv(r) - r.obs; if (Number.isFinite(m)) am = Math.max(am, Math.abs(m)); }
   if (!zmax) { g.fillText(`No ${S.V} in these profiles.`, 20, 40); return; }
   const vals = []; for (const [, q] of prs) for (const r of q[S.V]) { const m = refv(r) - r.obs; if (Number.isFinite(m)) vals.push(Math.abs(m)); }
@@ -1092,7 +1101,7 @@ async function listMisfits(j, ref, unit) {
   const y0 = S.all ? 0 : INDEX.years0 + S.t0, y1 = S.all ? 9999 : INDEX.years0 + S.t1;
   for (let i = 0; i < P.bin.length; i++) if (P.bin[i] === b && P.year[i] >= y0 && P.year[i] <= y1) idx.push(i);
   busy(`Loading the ${idx.length} profiles of bin ${b}…`); await paint();
-  const rows = [], refv = r => detailRef() === 'clim' ? r.clim : r.model, pl = CLASS[S.src].plat;
+  const rows = [], refv = r => detailRef() === 'clim' ? r.clim : detailRef() === 'model2' ? r.model2 : r.model, pl = CLASS[S.src].plat;
   for (const i of idx) { const q = await profileOf(S.src, i);
     for (const r of q[S.V]) if (lv.includes(r.k)) { const m = refv(r) - r.obs; if (!Number.isFinite(m)) continue;
       rows.push({i, z: INDEX.depth[r.k], m, s: r.sig, n: Number.isFinite(r.sig) && r.sig > 0 ? Math.abs(m) / r.sig : NaN, code: r.code, date: q.date,

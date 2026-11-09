@@ -561,7 +561,10 @@ def write_platforms(run_dir, out, sources=None):
 
 # ---- profile detail (for the viewer's profile panel) ----
 DETAIL_CHUNK = 2000            # profiles per detail file (consecutive in profiles.bin's order: by bin, then year)
-DETAIL_SCALE = {'obs': 1000, 'clim': 1000, 'model': 1000, 'sig': 10000}   # stored as integers: 0.001, sigma 0.0001
+DETAIL_SCALE = {'obs': 1000, 'clim': 1000, 'model': 1000, 'sig': 10000, 'model2': 1000}   # integers: 0.001, sigma 0.0001
+# the value columns of a detail chunk, in order: 3-model-free columns + the first model; 'model2' (a second model, mask
+# bit 8) when write_details gets estim_dir2. index.json detail[<class>].columns says which a folder has.
+DETAIL_COLUMNS = ('obs', 'clim', 'model', 'sig')
 # per value, a mask byte: bit 0 climatology present, bit 1 model present, bit 2 sigma present
 
 
@@ -586,7 +589,7 @@ def _ordered_rows(src, files, tree):
     return fi[order], ri[order], lon[order], lat[order]
 
 
-def write_details(run_dir, out, sources=None, estim_dir=None):
+def write_details(run_dir, out, sources=None, estim_dir=None, estim_dir2=None, name2=None):
     """``detail/<class>/c<NNNN>.bin``: everything about each profile, for the viewer's profile panel, in chunks of
     DETAIL_CHUNK profiles in profiles.bin's order (so profile j is in chunk j // DETAIL_CHUNK).
 
@@ -600,6 +603,8 @@ def write_details(run_dir, out, sources=None, estim_dir=None):
     run_dir, out = common.yearly_dir(run_dir), Path(out)
     tree, _ = _geodesic_tree()
     estim = EstimIndex(estim_dir, run_dir) if estim_dir else None
+    estim2 = EstimIndex(estim_dir2, run_dir) if estim_dir2 else None
+    columns = DETAIL_COLUMNS + (('model2',) if estim2 is not None else ())
     groups = {}
     for f in sorted(run_dir.rglob('*.nc')):
         src, _ = common.classify(f, run_dir)
@@ -622,6 +627,8 @@ def write_details(run_dir, out, sources=None, estim_dir=None):
                        'time': ds['prof_HHMMSS'][:].astype(np.uint32) if n and 'prof_HHMMSS' in ds.variables else np.zeros(n, np.uint32),
                        'descr': [b''.join(x).decode(errors='replace').strip() for x in ds['prof_descr'][:]] if n else []}
                 m = estim.get(f, n, ds.dimensions['iDEPTH'].size) if (estim is not None and n) else None
+                m2 = estim2.get(f, n, ds.dimensions['iDEPTH'].size) if (estim2 is not None and n) else None
+                lo_f, la_f = ds['prof_lon'][:].astype(np.float64), ds['prof_lat'][:].astype(np.float64)
                 for V in VARS:
                     if not n or f'prof_{V}' not in ds.variables:
                         rec[V] = None
@@ -643,12 +650,19 @@ def write_details(run_dir, out, sources=None, estim_dir=None):
                         mod = np.where(mok, np.round(np.nan_to_num(mv) * DETAIL_SCALE['model']), 0).astype(np.int32)
                     else:
                         mod, mok = np.zeros(len(obs), np.int32), np.zeros(len(obs), bool)
+                    mod2, mok2 = np.zeros(len(obs), np.int32), np.zeros(len(obs), bool)
+                    if m2 is not None and m2.get(V) is not None:
+                        mv2 = np.asarray(m2[V], np.float64)
+                        from ecco_insitu.diagnostics.profile_analyses.compute import _in_excluded_area
+                        mv2 = np.where(_in_excluded_area(lo_f, la_f)[:, None], np.nan, mv2)[have]   # as the costs
+                        mok2 = np.isfinite(mv2) & (mv2 != 0) & (np.abs(mv2) < 900)
+                        mod2 = np.where(mok2, np.round(np.nan_to_num(mv2) * DETAIL_SCALE['model2']), 0).astype(np.int32)
                     code = ds[f'prof_{V}weight_code'][:][have].astype(np.uint16) if f'prof_{V}weight_code' in ds.variables \
                         else np.zeros(len(obs), np.uint16)
                     cnt = have.sum(1)
                     rec[V] = {'cnt': cnt, 'off': np.r_[0, np.cumsum(cnt)], 'lev': np.nonzero(have)[1].astype(np.uint8),
-                              'mask': (cok * 1 + mok * 2 + sok * 4).astype(np.uint8), 'code': code,
-                              'obs': obs, 'clim': clim, 'model': mod, 'sig': sig}
+                              'mask': (cok * 1 + mok * 2 + sok * 4 + mok2 * 8).astype(np.uint8), 'code': code,
+                              'obs': obs, 'clim': clim, 'model': mod, 'sig': sig, 'model2': mod2}
                 per.append(rec)
         d = out / 'detail' / src
         d.mkdir(parents=True, exist_ok=True)
@@ -661,7 +675,7 @@ def write_details(run_dir, out, sources=None, estim_dir=None):
             tim = np.array([per[f]['time'][r] for f, r in zip(F, Rw)], '<u4')
             blob = [np.uint32(P).tobytes(), _planes(date), _planes(tim)]
             for V in VARS:
-                cnts, cols = np.zeros(P, np.uint8), {k: [] for k in ('lev', 'mask', 'code', 'obs', 'clim', 'model', 'sig')}
+                cnts, cols = np.zeros(P, np.uint8), {k: [] for k in ('lev', 'mask', 'code') + columns}
                 for q, (f, r) in enumerate(zip(F, Rw)):
                     rv = per[f][V]
                     if rv is None:
@@ -678,13 +692,14 @@ def write_details(run_dir, out, sources=None, estim_dir=None):
                     dd[first] = x[first]
                     return dd.astype('<i4')
                 blob += [cnts.tobytes(), cat['lev'].astype('u1').tobytes(), cat['mask'].astype('u1').tobytes(),
-                         _planes(cat['code'].astype('<u2'))] + [_planes(delta(cat[k])) for k in ('obs', 'clim', 'model', 'sig')]
+                         _planes(cat['code'].astype('<u2'))] + [_planes(delta(cat[k])) for k in columns]
             blob.append('\n'.join(per[f]['descr'][r] for f, r in zip(F, Rw)).encode())
             data = gzip.compress(b''.join(blob), 9)
             (d / f'c{c0 // DETAIL_CHUNK:04d}.bin').write_bytes(data)
             nch += 1
             size += len(data)
-        info[src] = {'chunk': DETAIL_CHUNK, 'n_chunks': nch, 'bytes': size}
+        info[src] = {'chunk': DETAIL_CHUNK, 'n_chunks': nch, 'bytes': size, 'columns': list(columns),
+                     **({'model2_name': name2} if name2 else {})}
         print(f'  {src}: {nch} detail chunks, {size / 1e6:.0f} MB, {time.time() - t0:.0f}s')
         del per
     ip = out / 'index.json'
@@ -693,8 +708,9 @@ def write_details(run_dir, out, sources=None, estim_dir=None):
     ip.write_text(json.dumps(index, indent=1))
 
 
-def decode_detail(blob):
-    """Inverse of one detail chunk: dict with date, time, descr and per variable the values per profile (floats)."""
+def decode_detail(blob, columns=DETAIL_COLUMNS):
+    """Inverse of one detail chunk: dict with date, time, descr and per variable the values per profile (floats).
+    ``columns``: the chunk's value columns (index.json detail[<class>].columns; the 4 of DETAIL_COLUMNS if absent)."""
     b = gzip.decompress(blob)
     P = int(np.frombuffer(b, '<u4', 1)[0])
     o = 4
@@ -708,7 +724,7 @@ def decode_detail(blob):
         code = _unplanes(b[o:o + 2 * n], n, '<u2'); o += 2 * n
         first = np.r_[0, np.cumsum(cnt)[:-1]]
         vals = {}
-        for k in ('obs', 'clim', 'model', 'sig'):
+        for k in columns:
             d = _unplanes(b[o:o + 4 * n], n, '<i4').astype(np.int64); o += 4 * n
             # undo the per-profile differences: cumulative sum restarted at each profile's first value
             cs = np.cumsum(d)
@@ -980,6 +996,8 @@ def cli(argv=None):
     p.add_argument('--page-only', action='store_true', help='only rewrite index.html (after editing viewer.html)')
     p.add_argument('--bathy', action='store_true', help='(re)write bathy.json only')
     p.add_argument('--platforms', action='store_true', help='(re)write <class>/platforms.bin only (needs --run)')
+    p.add_argument('--detail-model2', nargs=2, metavar=('NAME', 'DIR'),
+                   help='with --details: a second model\'s values in the profile details (the panel draws both models)')
     p.add_argument('--details', action='store_true', help='(re)write detail/<class>/ only (needs --run; '
                    'with --model-equivalents, also the model values)')
     p.add_argument('--polar', action='store_true', help='(re)build the polar maps\' bins and land only')
@@ -1014,7 +1032,8 @@ def cli(argv=None):
     if a.details:
         if not a.run:
             p.error('--details needs --run')
-        write_details(a.run, a.out, a.sources, a.model_equivalents)
+        write_details(a.run, a.out, a.sources, a.model_equivalents,
+                      *((a.detail_model2[1], a.detail_model2[0]) if a.detail_model2 else (None, None)))
     if a.polar:
         build_polar_bins(Path(a.out))
     if a.report:
