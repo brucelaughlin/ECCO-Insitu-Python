@@ -1,5 +1,5 @@
 """
-Step 11 — spatial density scaling, per observation type.
+Step 11 — spatial density scaling, per variable (T, S), counted over all obs classes together.
 
 Calculates a spatial scaling factor for every profile, separately for each
 observed variable (T, S), across all processed NC files in a run directory,
