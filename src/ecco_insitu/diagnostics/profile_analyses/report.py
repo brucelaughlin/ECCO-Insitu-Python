@@ -39,7 +39,7 @@ _CHROME = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'
 
 _ANALYSIS_TITLES = {
     '01': 'Global mean T and S vs depth',
-    '02': 'Cost per datum vs depth, three weight versions (final, nosf, true): unsplit and the two terms of the split',
+    '02': 'Cost vs depth, three weight versions (final, nosf, true): unsplit and the two terms of the split',
     '03': 'Global mean cost per datum vs time',
     '04': 'Total cost per month',
     '05': 'Vertically integrated (summed) cost per geodesic bin',
@@ -75,6 +75,7 @@ _ANALYSIS_DESC = {
         '<em>w&#772;</em>&nbsp;=&nbsp;1/max(<em>s</em>/<em>n</em>,&nbsp;<em>s</em>/9), <em>s</em>&nbsp;=&nbsp;mean(1/<em>w</em>) '
         '(as <code>cost_profiles.F</code>).'
         '<br>The bin means V&#772; are this obs class&rsquo;s own (see Terminology and Notes: our choice). '
+        'The mean term is a mean over bins, not data, so the three lines don&rsquo;t add up. '
         'Right panel: number of data at each level.'
     ),
     '03': (
@@ -249,7 +250,9 @@ weights, not because the fit is better; <code>true</code> is the one to read as 
 <tr><td><code>compare V4r6 and V5r1</code></td>
     <td>The two models side by side, for the analyses where that makes sense: line plots (02, 03, 09, 10) draw both
         models (V4r6 blue, V5r1 orange); maps (06) and zonal sections (07) show V5r1 &minus; V4r6 of the cost per datum
-        (red: V5r1 fits worse there, blue: better), on a scale centered on 0.</td></tr>
+        (red: V5r1 fits worse there, blue: better), on a scale centered on 0. The Cost map explorer has the same comparison
+        for any depth, years and region, and also the <em>model difference</em>: V5r1&rsquo;s value minus V4r6&rsquo;s in
+        &deg;C or psu, compared at the places and times of the observations (not a cost).</td></tr>
 </table>
 <p><strong>Axes:</strong> within each obs class, a given figure uses the same axis and color ranges in every cost type.
 Figure titles name the cost type. Controls that don&rsquo;t change the selected figure are grayed out (cost type for
@@ -1102,7 +1105,7 @@ var render = function () {{
   document.getElementById('map-hint').style.display =
     (HAS_EXPLORER && ['05', '06', '07'].includes(curAn)) ? '' : 'none';
   document.getElementById('map-hint-link').href = 'viewer.html?src=' + encodeURIComponent(curSource) +
-    '&ct=' + encodeURIComponent(curCost);
+    '&ct=' + encodeURIComponent(curCost) + (PART_ANALYSES.includes(curAn) && curPart && curPart !== 'unsplit' ? '&part=' + curPart : '');
   document.getElementById('peak-hint').style.display = (HAS_EXPLORER && curAn === '02') ? '' : 'none';
   updatePeakLink();
   // both header buttons open on the class shown here

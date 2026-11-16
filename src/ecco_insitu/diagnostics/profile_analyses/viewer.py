@@ -47,11 +47,18 @@ results as the report&rsquo;s figures.</p>
 <tr><td rowspan="1">Source</td><td>CTD_WOD, PFL, &hellip;</td><td>The obs class (instrument type): CTD and bottle casts,
   gliders (GLD), ice-tethered profilers (ITP), seal tags (MEOP), moorings (MRB), Argo floats (PFL), XBTs. Each is
   analyzed on its own.</td></tr>
-<tr><td rowspan="2">Cost type</td><td>vs_clim</td><td>Reference = the WOA23 climatology (1991&ndash;2020 average) at the profile&rsquo;s
+<tr><td rowspan="3">Cost type</td><td>vs_clim</td><td>Reference = the WOA23 climatology (1991&ndash;2020 average) at the profile&rsquo;s
   location, month and depths.</td></tr>
 <tr><td>vs V4r6, vs V5r1</td><td>Reference = an ECCO model (v4r6, or V5r1 on its finer grid), from its <em>monthly-mean</em> T and S
   sampled at the profile&rsquo;s grid cell, month and depths (approximate: not the model&rsquo;s value at the profile&rsquo;s exact time).
   No model values after 2025.</td></tr>
+<tr><td>compare V4r6 and V5r1</td><td>The two models side by side, V4r6 as the reference: every value is <strong>V5r1&rsquo;s minus
+  V4r6&rsquo;s</strong>, on a red&ndash;blue scale centered on 0. For the costs (unsplit, anomaly, mean term), red means V5r1 fits the
+  observations worse there, blue better. The <strong>model difference</strong> (in the misfit row) is V5r1&rsquo;s T or S minus
+  V4r6&rsquo;s, in &deg;C or psu: no observations and no &sigma; in it, but the models are compared only where and when there are
+  observations (it equals V5r1&rsquo;s misfit minus V4r6&rsquo;s). Only the cells (bin, depth level, year) that both models have are
+  compared; each model lacks values for a few observations, so the two counts differ in some cells (the note above the maps
+  gives the numbers). There is no peak tool and no platform table for a comparison; open one model&rsquo;s cost type for those.</td></tr>
 <tr><td>Variable</td><td>T, S</td><td>Temperature or salinity. S is grayed out for classes without salinity (XBT).</td></tr>
 <tr><td rowspan="4">Cost</td><td>unsplit</td><td>The <strong>cost per datum</strong>: (&Delta;V/&sigma;)&sup2;, where &Delta;V is observation
   minus reference and &sigma; the assumed error of the observation. 1 means &ldquo;one assumed error away&rdquo;; 4 means two.

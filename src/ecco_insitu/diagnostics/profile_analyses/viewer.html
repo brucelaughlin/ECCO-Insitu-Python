@@ -131,6 +131,9 @@ canvas.clickable { cursor: pointer; }
 #regp th { background: #f3f3f3; } #regp td:first-child, #regp th:first-child { text-align: left; }
 #regp tr.pick { cursor: pointer; } #regp tr.pick:hover { background: #eef4fc; }
 #regbox { position: fixed; border: 1.5px dashed #6c3483; background: rgba(108,52,131,0.08); pointer-events: none; display: none; z-index: 9; }
+.tab.cmp-tab { border-color: #6c3483; color: #6c3483; margin-left: 0.8em; }
+.tab.cmp-tab.active { background: #6c3483; color: #fff; }
+#cmpnote { margin: 0.4em 1em 0; padding: 0.4em 0.8em; background: #f4effa; border-left: 3px solid #6c3483; font-size: 0.86em; line-height: 1.5; max-width: 72em; }
 .tab.armed { background: #6c3483; color: #fff; border-color: #6c3483; }
 #hover { position: fixed; z-index: 9; pointer-events: none; background: rgba(255,255,255,0.95); border: 1px solid #aaa;
          padding: 2px 6px; font-size: 0.8em; display: none; }
@@ -150,8 +153,8 @@ single year, log scale, regions)"><button class="tab" data-m="simple">simple</bu
 <div class="row"><span class="lab">Cost type</span><span id="cts"></span></div>
 <div class="row"><span class="lab">Variable</span><span id="vars"></span></div>
 <div class="row"><span class="lab">Cost</span><span id="parts"></span></div>
-<div class="row diag"><span class="lab">Misfit, &sigma;</span><span id="diags"></span>
-  <span class="dnote">not cost terms: the signed misfits use a red–blue scale centered on 0</span></div>
+<div class="row diag"><span class="lab" id="diaglab">Misfit, &sigma;</span><span id="diags"></span>
+  <span class="dnote" id="diagnote">not cost terms: the signed misfits use a red–blue scale centered on 0</span></div>
 <div class="row"><span class="lab">Depth</span><span id="dmodes"></span><select id="dsel"></select>
   <span id="drange" style="display:none">from <select id="dr0"></select> to <select id="dr1"></select></span></div>
 <div class="row"><span class="lab">Time</span>
@@ -187,7 +190,7 @@ single year, log scale, regions)"><button class="tab" data-m="simple">simple</bu
         or drag across an empty part of the plot to draw a new one. Nothing happens until you use it:</div>
       <div class="rangeuse"><button class="tab primary" id="peakgo">Investigate the peak in this range</button>
         <label title="Draw a second (blue) curve averaged over one fixed list of places: only those with data at every depth of the range.
-Where the red curve (all places) jumps and the blue one doesn't, the jump comes from a change in which places are averaged, not from a worse fit"><input type="checkbox" id="samebins"> also draw the curve over the same bins at every depth of the range</label>
+Where the red curve (all places) jumps and the blue one doesn't, the places themselves fit about as well at that depth as above and below it: the jump comes from which places are averaged at each depth"><input type="checkbox" id="samebins"> also draw the curve over the same bins at every depth of the range</label>
         <button class="tab" id="sbupdate" style="display:none" title="The band moved since the blue curve was drawn">redraw the blue curve for this range</button></div>
       <span id="sbnote" class="dnote"></span></div>
     <canvas id="pcan" width="520" height="430"></canvas></div>
@@ -195,6 +198,7 @@ Where the red curve (all places) jumps and the blue one doesn't, the jump comes 
     <div id="peaktxt"></div></div>
   </div></details>
 <div id="peaknotice" style="display:none"></div>
+<div id="cmpnote" style="display:none"></div>
 <div id="mapwrap"><div id="maps"></div>
   <div id="busy"><div class="box"><div class="spin"></div><div><div id="busymsg">working…</div>
     <div class="bar" id="busybar"><div></div></div></div></div></div></div>
@@ -217,17 +221,53 @@ Where the red curve (all places) jumps and the blue one doesn't, the jump comes 
 const INDEX_URL = 'viewer/index.json', GRID_URL = 'viewer/grid.json';
 const DATA_FORMAT = 2;
 // the in situ data viewer's reference for a cost type: vs_clim -> clim, vs_<model> -> <model> (e.g. vs_V5r1 -> V5r1)
-const refOf = ct => ct === 'vs_clim' ? 'clim' : ct.slice(3);
-// the cost-type tabs' text: 'vs climatology', 'vs V4r6', ...
-const ctLabel = ct => ct === 'vs_clim' ? 'vs climatology' : 'vs ' + ct.slice(3);                  // the record layout this page reads (viewer.py DATA_FORMAT)
+// (a comparison compare_<A>_<B>: model B's, the one compared with A)
+const refOf = ct => ct === 'vs_clim' ? 'clim' : ct.startsWith('compare_') ? cmpModels(ct)[1] : ct.slice(3);
+// the cost-type tabs' text: 'vs climatology', 'vs V4r6', ..., 'compare V4r6 and V5r1'
+const ctLabel = ct => ct === 'vs_clim' ? 'vs climatology' : ct.startsWith('compare_') ? `compare ${cmpModels(ct)[0]} and ${cmpModels(ct)[1]}` : 'vs ' + ct.slice(3);
+// Comparing two models (cost type compare_<A>_<B>, A the reference): every value is model B's minus model A's, over
+// the (bin, level, year) cells where both have data. Made in the page from the two models' own files.
+const MODELS = () => Object.keys(INDEX.files).map(k => k.split('|')[1]).filter((c, i, a) => c !== 'vs_clim' && c.startsWith('vs_') && a.indexOf(c) === i).map(c => c.slice(3));
+function cmpModels(ct) {                // compare_V4r6_V5r1 -> ['V4r6', 'V5r1'] (names may hold '_')
+  const m = ct.slice(8), M = MODELS();
+  for (const a of M) if (m.startsWith(a + '_') && M.includes(m.slice(a.length + 1))) return [a, m.slice(a.length + 1)];
+  return [null, null];
+}
+const CMP = (ct = S.ct) => !!ct && ct.startsWith('compare_');                  // the record layout this page reads (viewer.py DATA_FORMAT)
 const vurl = u => u + '?v=' + ((INDEX && INDEX.version) || '');   // this build's files only (never a cached older one)
 const PARTS = {unsplit: 'cost per datum, unsplit', anomaly: 'cost per datum, split anomaly term',
                mean: 'split mean term (per bin; all years)', count: 'number of data',
                bias: 'mean misfit, reference − observation (not a cost)',
                nmis: 'mean normalized misfit, (reference − observation)/σ (not a cost)',
                sig: 'mean σ, the assumed error of the observations (not a cost)'};
+// the wording of a part; for a comparison, model B's value minus model A's
+function partText(p = S.part) {
+  if (!CMP()) return PARTS[p];
+  const [a, b] = cmpModels(S.ct);
+  return {unsplit: `cost per datum, unsplit: ${b} − ${a}`, anomaly: `cost per datum, split anomaly term: ${b} − ${a}`,
+          mean: `split mean term (per bin; all years): ${b} − ${a}`, count: 'number of data compared',
+          bias: `model difference, ${b} − ${a} (not a cost)`}[p] || PARTS[p];
+}
+// what a comparison compares, over which data, in plain words; short: one sentence (region panel)
+function cmpNote(short) {
+  const [a, b] = cmpModels(S.ct), d = CACHE[S.src + '|' + S.ct], st = d && d[S.V] && d[S.V].stat, pc = x => (100 * x).toFixed(1) + ' %';
+  const unit = S.V === 'T' ? '°C' : 'psu';
+  const what = S.part === 'bias' ? `the model difference: ${b}'s ${S.V} minus ${a}'s (${unit}), each model taken at the observations' places and times`
+    : S.part === 'count' ? `the number of observations that have a value from both ${a} and ${b}`
+    : `${b}'s ${partText().split(':')[0]} minus ${a}'s (positive, red: ${b} fits the observations worse there; negative, blue: better)`;
+  if (short) return `Every value here is ${b} minus ${a}: ${what}.`;
+  return `<b>Comparing two models, ${a} (the reference) and ${b}.</b> The maps show ${what}. ` +
+    `Only places and times where both models have values are compared: a bin, depth level and year counts when both have data there` +
+    (st ? ` (${st.cells.toLocaleString()} of ${a}'s ${st.cellsA.toLocaleString()} and of ${b}'s ${st.cellsB.toLocaleString()} cells; ` +
+      `${pc(st.nA / st.nAall)} of ${a}'s observations and ${pc(st.nB / st.nBall)} of ${b}'s). Even there the two do not use exactly the same observations: ` +
+      `each model lacks a value for some observations, so in ${pc(st.unequal / Math.max(1, st.cells))} of the compared cells the two counts differ. ` +
+      `Each cell's difference is ${b}'s value there minus ${a}'s; a bin's value is the average of its cells' differences, weighted by ${a}'s number of observations.` : '.') +
+    (S.part === 'mean' ? ` The mean term is one value per bin and level, over all years, so the time row doesn't apply.` : '');
+}
+const CMP_PARTS = ['unsplit', 'anomaly', 'mean', 'count', 'bias'];       // what a comparison can show
+const hasData = (src, ct) => CMP(ct) ? cmpModels(ct).every(m => m && INDEX.files[src + '|vs_' + m]) : !!INDEX.files[src + '|' + ct];
 // the diagnostics (not cost terms, so not additive over bins); the signed ones use the red–blue scale centered on 0
-const DIAG = p => p === 'bias' || p === 'nmis' || p === 'sig', SIGNED = p => p === 'bias' || p === 'nmis';
+const DIAG = p => p === 'bias' || p === 'nmis' || p === 'sig', SIGNED = p => (CMP() && p !== 'count') || p === 'bias' || p === 'nmis';
 // a record set's values for the current part (null for the count: weights only); the mean term has no per-year
 // values, so per-year charts show the mean misfit for it
 const valArr = (c, part = S.part) => part === 'anomaly' ? c.ma : part === 'bias' || part === 'mean' ? c.bias
@@ -286,8 +326,41 @@ function parse(buf, withMean) { // see viewer.py for the layout (little-endian c
   }
   return out;
 }
+// A comparison's records: one per (bin, level, year) cell that both models have, holding model B's value minus model
+// A's (costs per datum, misfits); the weight n is A's number of data there (the two counts agree in most cells: the
+// models lack values in slightly different places). So every panel below works on it as on one model's records.
+const COLS = ['bin', 'lev', 'blk', 'mu', 'ma', 'n', 'bias', 'nmis', 'sig'], DCOLS = ['mu', 'ma', 'bias', 'nmis', 'sig'];
+function diffRecs(a, b, cols = DCOLS) {  // both sorted by (year, bin, level): a merge; cols: the differenced columns
+  const ia = [], ib = []; let i = 0, j = 0;
+  const key = (c, k) => (c.blk[k] * 10243 + c.bin[k]) * 256 + c.lev[k];
+  while (i < a.bin.length && j < b.bin.length) { const x = key(a, i), y = key(b, j);
+    if (x === y) { ia.push(i); ib.push(j); i++; j++; } else if (x < y) i++; else j++; }
+  const n = ia.length, o = {};
+  for (const k of ['bin', 'lev', 'blk', 'n']) { const t = new a[k].constructor(n); for (let q = 0; q < n; q++) t[q] = a[k][ia[q]]; o[k] = t; }
+  for (const k of cols) { const t = new Float32Array(n); for (let q = 0; q < n; q++) t[q] = b[k][ib[q]] - a[k][ia[q]]; o[k] = t; }
+  let nA = 0, nB = 0, unequal = 0; for (let q = 0; q < n; q++) { nA += a.n[ia[q]]; nB += b.n[ib[q]]; if (a.n[ia[q]] !== b.n[ib[q]]) unequal++; }
+  const sum = c => { let t = 0; for (let q = 0; q < c.n.length; q++) t += c.n[q]; return t; };
+  o.stat = {cells: n, cellsA: a.bin.length, cellsB: b.bin.length, nA, nB, nAall: sum(a), nBall: sum(b), unequal};
+  return o;
+}
+function diffMean(a, b) {                // the mean term: the (bin, level) both have, sorted by bin then level
+  const ia = [], ib = []; let i = 0, j = 0;
+  while (i < a.bin.length && j < b.bin.length) { const x = a.bin[i] * 256 + a.lev[i], y = b.bin[j] * 256 + b.lev[j];
+    if (x === y) { if (Number.isFinite(a.v[i]) && Number.isFinite(b.v[j])) { ia.push(i); ib.push(j); } i++; j++; } else if (x < y) i++; else j++; }
+  return {bin: Uint16Array.from(ia, q => a.bin[q]), lev: Uint8Array.from(ia, q => a.lev[q]), v: Float32Array.from(ia.map((q, t) => b.v[ib[t]] - a.v[q]))};
+}
+function diffData(dA, dB) {
+  const out = {};
+  for (const V of ['T', 'S']) { out[V] = diffRecs(dA[V], dB[V]); if (dA[V].mt && dB[V].mt) out[V].mt = diffMean(dA[V].mt, dB[V].mt); }
+  return out;
+}
 async function data(src, ct) {          // the all-years summary (small): loaded first
   const key = src + '|' + ct;
+  if (CMP(ct)) {
+    if (!CACHE[key]) { const [a, b] = cmpModels(ct), dA = await data(src, 'vs_' + a), dB = await data(src, 'vs_' + b);
+      busy('Comparing ' + a + ' and ' + b + '…'); await paint(); CACHE[key] = diffData(dA, dB); }
+    return CACHE[key];
+  }
   if (!CACHE[key]) {
     const lab = 'Loading ' + src + ', ' + ct;
     busy(lab + '…'); await paint();
@@ -299,6 +372,26 @@ async function data(src, ct) {          // the all-years summary (small): loaded
 }
 const YCACHE = {};
 async function yearData(src, ct) {      // year-by-year data: only the pieces covering the selected years
+  if (CMP(ct)) {                         // a comparison: piece by piece, the difference of the two models' pieces
+    const [a, b] = cmpModels(ct), PA = INDEX.years_files[src + '|vs_' + a], PB = INDEX.years_files[src + '|vs_' + b];
+    const need = PA.map((p, i) => [p, PB[i]]).filter(([p]) => p.last >= S.t0 && p.first <= S.t1), todo = need.filter(([p]) => !YCACHE[ct + ':' + p.file]);
+    if (todo.length) {
+      const span = INDEX.blocks[todo[0][0].first] + '–' + INDEX.blocks[todo[todo.length - 1][0].last];
+      const lab = `Loading ${src} ${a} and ${b}, years ${span} (first time only)`;
+      let done = 0;
+      for (const [pa_, pb_] of todo) {   // one piece pair at a time: the models' own pieces are not kept (memory)
+        busy(`${lab}: ${++done} of ${todo.length}…`, (done - 1) / todo.length); await paint();
+        const get = async p => YCACHE[p.file] || parse(await getGz('viewer/' + p.file, null, () => {}), false);
+        const [A, B] = await Promise.all([get(pa_), get(pb_)]);
+        const YC = ['mu', 'ma', 'bias'];   // per year a comparison shows costs and the model difference only
+        YCACHE[ct + ':' + pa_.file] = {T: diffRecs(A.T, B.T, YC), S: diffRecs(A.S, B.S, YC)};
+      }
+    }
+    const out = {};
+    for (const V of ['T', 'S']) { const parts = need.map(([p]) => YCACHE[ct + ':' + p.file][V]); out[V] = {};
+      for (const k of COLS) { if (!parts[0][k]) continue; const n = parts.reduce((x, q) => x + q[k].length, 0), arr = new parts[0][k].constructor(n); let o = 0; for (const q of parts) { arr.set(q[k], o); o += q[k].length; } out[V][k] = arr; } }
+    return out;
+  }
   const key = src + '|' + ct, need = INDEX.years_files[key].filter(p => p.last >= S.t0 && p.first <= S.t1);
   const todo = need.filter(p => !YCACHE[p.file]);
   if (todo.length) {                     // download the missing pieces in parallel, with combined progress
@@ -427,7 +520,7 @@ function drawProfile() {
   for (let d = 0; d <= zmax; d += 1000) { g.fillText(d + ' m', L - 4, Y(d)); g.strokeStyle = '#eee'; g.beginPath(); g.moveTo(L, Y(d)); g.lineTo(W - R, Y(d)); g.stroke(); }
   g.textAlign = 'center'; g.textBaseline = 'top';
   for (const t of niceTicks(lo, hi, 5)) { g.fillText(fmt(t), X(t), H - B + 4); g.strokeStyle = '#eee'; g.beginPath(); g.moveTo(X(t), T); g.lineTo(X(t), H - B); g.stroke(); }
-  g.fillText(PARTS[S.part], (L + W - R) / 2, H - B + 18);
+  g.fillText(partText(), (L + W - R) / 2, H - B + 18);
   // the depth range: a shaded band from the first to the last selected level, with a handle at each edge
   { // drawn from the current selection (S.sb0 / S.sb1), so it follows a drag live; the curves are not recomputed
     const r0 = Math.min(+S.sb0, +S.sb1), r1 = Math.max(+S.sb0, +S.sb1);
@@ -498,6 +591,7 @@ function peakStale() {                // the selection changed: the peak results
   PEAKBAND = null; PEAKDONE = null;
 }
 async function investigatePeak(zA, zB) {
+  if (CMP()) return;                     // no peak tool for a comparison of two models
   document.getElementById('peaktool').open = true;          // the tool opens (e.g. from the report's "investigate" link)
   PEAKBAND = [Math.min(zA, zB), Math.max(zA, zB)];
   PEAKFOR = `${S.src}, ${ctLabel(S.ct)}, ${S.V}, ${PARTS[S.part]}`;
@@ -544,17 +638,20 @@ async function investigatePeak(zA, zB) {
   const big = cls[0], samp = Number.isFinite(fromSampling) ? Math.round(100 * fromSampling) : null;
   let h = `<div class="explain"><b>In short:</b> between ${Math.round(lo)} and ${Math.round(hi)} m the curve is highest at <b>${z[kp]} m</b>. ` +
     (samp === null ? '' : samp >= 50
-      ? `<b>${samp} % of the jump comes from averaging over a different set of places at ${z[kp]} m than at the depths above and below it</b>, ` +
-        `not from a worse fit at ${z[kp]} m. Over only the ${keep.size} places with data at all three depths, the jump nearly disappears ` +
-        `(${fmt(sp)} against ${fmt(sbase)}). `
-      : `<b>${100 - samp} % of the jump is a worse fit at ${z[kp]} m:</b> it is still there over only the ${keep.size} places with data at all ` +
-        `three depths (${fmt(sp)} against ${fmt(sbase)}). `) +
+      ? `Over the <b>${keep.size} places with data at ${z[kp]} m and at both depths around it</b>, the fit at ${z[kp]} m is about the same as just ` +
+        `above and below (${fmt(sp)} at ${z[kp]} m against ${fmt(sbase)} for the two depths around it). So <b>the bump comes from which places are ` +
+        `averaged at each depth</b>: many places have no data deeper down, and the ones that drop out or stay are not typical ` +
+        `(${samp} % of the jump; ${100 - samp} % is a worse fit at ${z[kp]} m in those same places). `
+      : `Over the <b>${keep.size} places with data at ${z[kp]} m and at both depths around it</b>, the fit really is worse at ${z[kp]} m than ` +
+        `just above and below (${fmt(sp)} against ${fmt(sbase)}): <b>${100 - samp} % of the jump is a worse fit at ${z[kp]} m</b> in those same ` +
+        `places, ${samp} % comes from which places are averaged at each depth. `) +
     (additive && big ? `The bins with the highest values are mostly in the <b>${where(big)}</b> (${pc(big.bins.length, bins.length)} of the bins, ${pc(big.s, tot)} of the total); that area is now outlined in purple on the maps, and the region panel shows its numbers and its platforms.` : '') +
     `</div><b>${S.src}, ${S.ct}, ${S.V}: ${PARTS[S.part]}; ${timeText()}.</b> The steps:<ol>` +
     `<li><b>Peak:</b> ${z[kp]} m, ${fmt(vp)} over ${np} bins` + (Number.isFinite(base) ? `; the levels around it (${ku !== undefined ? z[ku] + ' m: ' + fmt(vu) + ', ' + nu + ' bins' : ''}${ku !== undefined && kd !== undefined ? '; ' : ''}${kd !== undefined ? z[kd] + ' m: ' + fmt(vd) + ', ' + nd + ' bins' : ''}) average ${fmt(base)}.` : '.') + '</li>' +
     `<li><b>Same places:</b> over only the ${keep.size} places with data at the peak and at both depths around it, the peak is ${fmt(sp)} and the two depths around it average ${fmt(sbase)}` +
-      (Number.isFinite(fromSampling) ? `: <b>${(100 * fromSampling).toFixed(0)} %</b> of the jump comes from a different set of places being averaged at ${z[kp]} m, ` +
-        `${(100 * (1 - fromSampling)).toFixed(0)} % is a worse fit there (<a href="guide.html#samebins">what this means</a>).` : '.') + '</li>' +
+      (Number.isFinite(fromSampling) ? `. Over all places the jump is ${fmt(vp - base)}; over these same places it is ${fmt(sp - sbase)}. ` +
+        `So <b>${(100 * (1 - fromSampling)).toFixed(0)} %</b> of the jump is a worse fit at ${z[kp]} m in the same places, and ` +
+        `<b>${(100 * fromSampling).toFixed(0)} %</b> comes from which places are averaged at each depth (<a href="guide.html#samebins">what this means</a>).` : '.') + '</li>' +
     `<li><b>Where:</b> the top ${Math.round(100 * (1 - HIGH_Q))} % of bins at ${z[kp]} m (${high.length} bins, values ≥ ${fmt(thr)}) form ${cls.length} cluster${cls.length > 1 ? 's' : ''} (neighbors within ${CLUSTER_KM} km). ` +
       (additive ? `They hold ${pc(high.reduce((a, [, v]) => a + v, 0), tot)} of the summed value at this level.` : '') + '</li></ol>';
   h += `<table><tr><th>cluster</th><th>center</th><th>bins</th><th>share of bins</th>${additive ? '<th>share of the summed value</th>' : '<th>mean</th>'}</tr>`;
@@ -702,6 +799,8 @@ async function regionPlatformsExact(d, P) {
 async function regionPlatforms(d) {
   const el = document.getElementById('regplat'); el.innerHTML = '';
   if (!REGION || !REGION.size) return;
+  if (CMP()) { el.innerHTML = '<span class="dnote">(Platforms: open one model\'s cost type, e.g. "' + ctLabel('vs_' + cmpModels(S.ct)[1]) +
+    '", for the platforms in the region and their shares.)</span>'; return; }
   const P = await platformsOf(S.src);
   if (!P) { el.innerHTML = '<span class="dnote">(Platform table: needs the in situ data viewer\'s platform files.)</span>'; return; }
   if (!DIAG(S.part)) {
@@ -775,8 +874,8 @@ async function drawRegion(d) {
   for (const [b, [sv, pts, nl, wt]] of per) { const dv = perBin() ? nl : wt; tot.s += sv; tot.n += dv; tot.pts += pts; if (REGION.has(b)) { rg.s += sv; rg.n += dv; rg.pts += pts; } }
   const nbT = per.size, nbR = [...per.keys()].filter(b => REGION.has(b)).length;
   const pc = (a, b) => b ? (100 * a / b).toFixed(1) + ' %' : '–', mean = (s, n) => S.part === 'count' ? Math.round(s).toLocaleString() : n ? fmt(s / n) : '–';
-  const what = S.part === 'count' ? '# data' : DIAG(S.part) ? PARTS[S.part].split(',')[0].replace(/ \(.*/, '') : S.part === 'mean' ? 'mean term' : S.part + ' cost';
-  const additive = !DIAG(S.part);
+  const what = S.part === 'count' ? '# data' : CMP() ? partText().replace(/ \(.*?\)/, '') : DIAG(S.part) ? PARTS[S.part].split(',')[0].replace(/ \(.*/, '') : S.part === 'mean' ? 'mean term' : S.part + ' cost';
+  const additive = !DIAG(S.part) && !CMP();      // shares of a sum (a difference of two models has no shares)
   let h = `<table><tr><th></th><th>bins with data</th><th>data</th><th>${perBin() ? 'mean per bin and level' : S.part === 'count' ? 'data' : 'per datum'}</th>${additive ? '<th>share of the summed ' + what + '</th>' : ''}</tr>` +
     `<tr><td>region</td><td>${nbR} (${pc(nbR, nbT)})</td><td>${Math.round(rg.pts).toLocaleString()} (${pc(rg.pts, tot.pts)})</td><td>${mean(rg.s, rg.n)}</td>${additive ? '<td><b>' + pc(rg.s, tot.s) + '</b></td>' : ''}</tr>` +
     `<tr><td>rest of the world</td><td>${nbT - nbR}</td><td>${Math.round(tot.pts - rg.pts).toLocaleString()}</td><td>${mean(tot.s - rg.s, tot.n - rg.n)}</td>${additive ? '<td>' + pc(tot.s - rg.s, tot.s) + '</td>' : ''}</tr>` +
@@ -786,13 +885,15 @@ async function drawRegion(d) {
       `${ratio.toFixed(1)}× its share of bins. A region drawn around the darkest bins will always look important; ` +
       `compare its share of the term with its share of bins and data, and check the rest-of-the-world curve.</span>`; }
   if (nbR < MIN_BINS) h += `<br><span class="dnote" style="color:#b03a2e">Only ${nbR} bins with data here: noisy.</span>`;
+  if (CMP() && S.part !== 'count') h += `<span class="dnote">${cmpNote(true)}</span>`;
   document.getElementById('regsum').innerHTML = h;
-  // the region's top bins
-  const top = [...per].filter(([b]) => REGION.has(b)).sort((a, b) => b[1][0] - a[1][0]).slice(0, 10);
+  // the region's top bins (a comparison: the largest differences either way)
+  const binVal = ([, [sv, , nl, wt]]) => perBin() ? sv / nl : S.part === 'count' ? sv : sv / wt;
+  const top = [...per].filter(([b]) => REGION.has(b)).sort((a, b) => CMP() ? Math.abs(binVal(b)) - Math.abs(binVal(a)) : b[1][0] - a[1][0]).slice(0, 10);
   let t = `<table><tr><th>bin</th><th>center</th><th>data</th><th>${perBin() ? what + ' (mean over levels)' : S.part === 'count' ? 'data' : what + ' per datum'}</th>${additive ? '<th>share of all</th>' : ''}</tr>`;
   for (const [b, [sv, pts, nl, wt]] of top) { const lo = INDEX.bin_center ? INDEX.bin_center[2 * (b - 1)] : NaN, la = INDEX.bin_center ? INDEX.bin_center[2 * (b - 1) + 1] : NaN;
-    t += `<tr class="pick" data-b="${b}"><td>${b}</td><td>${la.toFixed(1)}°${la >= 0 ? 'N' : 'S'} ${Math.abs(lo).toFixed(1)}°${lo >= 0 ? 'E' : 'W'}</td><td>${Math.round(pts)}</td><td>${perBin() ? fmt(sv / nl) : S.part === 'count' ? Math.round(sv) : fmt(sv / wt)}</td>${additive ? '<td>' + pc(sv, tot.s) + '</td>' : ''}</tr>`; }
-  t += '</table><span class="dnote">The region\'s largest bins at the selected depths (click a row for its breakdown).</span>';
+    t += `<tr class="pick" data-b="${b}"><td>${b}</td><td>${Math.abs(la).toFixed(1)}°${la >= 0 ? 'N' : 'S'} ${Math.abs(lo).toFixed(1)}°${lo >= 0 ? 'E' : 'W'}</td><td>${Math.round(pts)}</td><td>${perBin() ? fmt(sv / nl) : S.part === 'count' ? Math.round(sv) : fmt(sv / wt)}</td>${additive ? '<td>' + pc(sv, tot.s) + '</td>' : ''}</tr>`; }
+  t += `</table><span class="dnote">The region's largest ${CMP() ? 'differences (either sign)' : 'bins'} at the selected depths (click a row for its breakdown).</span>`;
   document.getElementById('regtop').innerHTML = t;
   document.querySelectorAll('#regtop tr.pick').forEach(r => r.addEventListener('click', () => showBin(+r.dataset.b)));
   regionPlatforms(d);
@@ -826,9 +927,9 @@ async function drawRegion(d) {
   g.textAlign = 'center'; g.textBaseline = 'top'; g.fillStyle = '#444';
   for (let i = 0; i < nb; i += 5) g.fillText(INDEX.blocks[i], L + (i + 0.5) * bw, H - B + 4);
   // two short lines, so nothing runs past the chart's edge: what is plotted, then what bars and line are
-  g.textAlign = 'left'; g.fillText(`Per year at the selected depths: ${S.part === 'mean' ? 'ref − obs' : PARTS[S.part]} (no bar, or a gap in the line: no data that year)`, L, 2);
-  g.fillStyle = '#666'; g.fillText(`bars: the purple-outlined region (pale: under ${MIN_BINS} of its bins have data)` +
-    (cnt ? '' : '; line and dots: the rest of the world'), L, 14);
+  g.textAlign = 'left'; g.fillText(`Per year at the selected depths: ${S.part === 'mean' ? (CMP() ? partText('bias').replace(/ \(.*/, '') : 'ref − obs') : partText().replace(/ \(not a cost\)/, '')}`, L, 2);
+  g.fillStyle = '#666'; g.fillText(`bars: the outlined region (pale: under ${MIN_BINS} bins with data)` +
+    (cnt ? '' : '; line and dots: the rest of the world') + '; gaps: no data', L, 14);
 }
 
 // ---------- the clicked bin: its values at the selected depths, per level and per year, and links ----------
@@ -856,9 +957,19 @@ async function showBin(b) {
   const {perLev, mt, lset} = binBreakdown(d, yd, b), z = INDEX.depth, unit = S.V === 'T' ? '°C' : 'psu';
   const lon = INDEX.bin_center ? INDEX.bin_center[2 * (b - 1)] : null, lat = INDEX.bin_center ? INDEX.bin_center[2 * (b - 1) + 1] : null;
   const rows = [...perLev.keys()].sort((a, c) => a - c).filter(k => !lset || lset.has(k));
-  let html = `<b>Bin ${b}</b>` + (lon !== null ? ` (center ${lat.toFixed(1)}°${lat >= 0 ? 'N' : 'S'}, ${Math.abs(lon).toFixed(1)}°${lon >= 0 ? 'E' : 'W'})` : '') +
-    `; ${S.src}, ${S.ct}, ${S.V}; all years.<br>`;
-  if (!rows.length) html += 'No data at the selected depths.';
+  let html = `<b>Bin ${b}</b>` + (lon !== null ? ` (center ${Math.abs(lat).toFixed(1)}°${lat >= 0 ? 'N' : 'S'}, ${Math.abs(lon).toFixed(1)}°${lon >= 0 ? 'E' : 'W'})` : '') +
+    `; ${S.src}, ${ctLabel(S.ct)}, ${S.V}; all years.<br>`;
+  if (!rows.length) html += CMP() ? 'No data with values from both models at the selected depths.' : 'No data at the selected depths.';
+  else if (CMP()) {
+    const [ma, mb] = cmpModels(S.ct), sg = (x, d = 3) => Number.isFinite(x) ? (x >= 0 ? '+' : '') + x.toFixed(d) : '–';
+    html += `<table><tr><th>depth</th><th># data</th><th>unsplit</th><th>anomaly</th><th>mean term</th><th>model difference (${unit})</th></tr>`;
+    const shown = rows.length > 14 ? rows.filter((_, i) => i % Math.ceil(rows.length / 14) === 0 || i === rows.length - 1) : rows;
+    for (const k of shown) { const r = perLev.get(k);
+      html += `<tr><td>${z[k]} m</td><td>${r.n}</td><td>${sg(r.mu)}</td><td>${sg(r.ma)}</td><td>${mt.has(k) ? sg(mt.get(k)) : '–'}</td><td>${sg(r.bias)}</td></tr>`; }
+    html += '</table>' + (shown.length < rows.length ? `<span class="dnote">${shown.length} of ${rows.length} levels shown</span><br>` : '');
+    html += `<span class="dnote">Every column is ${mb} minus ${ma}. Costs: per datum, (ΔV/σ)², true weights, over all years (positive: ${mb} fits the ` +
+      `observations worse here). Model difference: ${mb}'s value minus ${ma}'s, averaged over the observations' places and times in this bin.</span>`;
+  }
   else {
     html += `<table><tr><th>depth</th><th># data</th><th>unsplit</th><th>anomaly</th><th>mean term</th><th>ref − obs (${unit})</th><th>(ref − obs)/σ</th><th>σ (${unit})</th></tr>`;
     const shown = rows.length > 14 ? rows.filter((_, i) => i % Math.ceil(rows.length / 14) === 0 || i === rows.length - 1) : rows;
@@ -894,7 +1005,7 @@ async function showBin(b) {
     const y0 = yv(Math.max(0, Math.min(v[i], hi))), y1 = yv(Math.min(0, Math.max(v[i], lo))); g.fillRect(L + i * bw + 1, Math.min(y0, y1), bw - 2, Math.max(1, Math.abs(y1 - y0))); }
   g.textAlign = 'center'; g.textBaseline = 'top'; g.fillStyle = '#444';
   for (let i = 0; i < nb; i += 5) g.fillText(INDEX.blocks[i], L + (i + 0.5) * bw, H - B + 4);
-  g.textAlign = 'left'; g.fillText(`per year at the selected depths: ${Y.what === 'bias' ? 'ref − obs (' + unit + ')' : PARTS[Y.what]}`, L, 2);
+  g.textAlign = 'left'; g.fillText(`per year at the selected depths: ${Y.what === 'bias' ? (CMP() ? partText('bias').replace(/ \(.*/, '') : 'ref − obs') + ' (' + unit + ')' : partText(Y.what)}`, L, 2);
 }
 
 function status(t) { const s = document.getElementById('status'); s.textContent = t || ''; s.className = ''; }
@@ -1042,10 +1153,14 @@ function drawBar(vmax) {
   }
   const unit = S.V === 'T' ? '°C' : 'psu';
   const ref = (S.ct === 'vs_clim' ? 'climatology' : S.ct.slice(3));
-  const txt = SIGNED(S.part)
+  const [ca, cb] = CMP() ? cmpModels(S.ct) : [];
+  const txt = CMP() && S.part !== 'count'
+    ? `${partText()}${S.part === 'bias' ? ', ' + unit : ', (ΔV/σ)², true weights'}: red = ${S.part === 'bias' ? cb + ' is warmer/saltier than ' + ca : cb + ' fits worse than ' + ca}, ` +
+      `blue = ${S.part === 'bias' ? 'colder/fresher' : 'better'}; the scale is centered on 0 (set ± with "max"); beyond ±${fmt(vmax)} the end colors`
+    : SIGNED(S.part)
     ? `${PARTS[S.part]}${S.part === 'bias' ? ', ' + unit : ''}: red = the ${ref} is warmer/saltier than the observations, blue = colder/fresher; ` +
       `the scale is centered on 0 (set ± with "max"); beyond ±${fmt(vmax)} the end colors`
-    : `${PARTS[S.part]}${S.part === 'count' ? '' : S.part === 'sig' ? ', ' + unit : ', (ΔV/σ)², true weights'}${S.log ? '; log scale' : ''}; ` +
+    : `${partText()}${S.part === 'count' ? (CMP() ? ` (observations with a value from both ${ca} and ${cb}; ${ca}'s counts)` : '') : S.part === 'sig' ? ', ' + unit : ', (ΔV/σ)², true weights'}${S.log ? '; log scale' : ''}; ` +
       `values above ${fmt(vmax)} use the top color`;
   document.getElementById('cbtxt').textContent = txt;
   // the same bar under the global map (on a laptop screen the one below the polar maps is out of sight)
@@ -1094,7 +1209,7 @@ function writeAddress() { const q = viewQuery(); history.replaceState(null, '', 
 
 async function render() {
   const id = ++RENDER_ID;
-  if (!INDEX.files[S.src + '|' + S.ct]) { status('no data for ' + S.src + ' ' + S.ct); return; }
+  if (!hasData(S.src, S.ct)) { status('no data for ' + S.src + ' ' + ctLabel(S.ct)); return; }
   syncControls();
   let d;
   try {
@@ -1122,6 +1237,9 @@ async function render() {
   document.getElementById('vmax').placeholder = fmt(SCALE[vk]);
   document.getElementById('scalenote').textContent = S.vmax ? 'scale: your max' :
     (S.part === 'mean' || S.part === 'count' ? 'scale: auto for this view' : 'scale: fixed for this view (from all years), so time changes show');
+  const cn = document.getElementById('cmpnote'); cn.style.display = CMP() ? '' : 'none'; if (CMP()) cn.innerHTML = cmpNote(false);
+  // the peak tool finds the largest value of a cost against depth; a difference of two models has no such peak
+  document.getElementById('peaktool').style.display = CMP() ? 'none' : '';
   for (const view of ['global', 'NH', 'SH']) drawMap(document.getElementById('c_' + view), view, VALS, vmax);
   document.getElementById('isobtxt').textContent = GRID.global.bathy ? '(' + isobathsFor().join(', ') + ' m)' : '(none in this build)';
   drawBar(vmax);
@@ -1134,8 +1252,11 @@ async function render() {
   const dtxt = lv ? (lv.length === 1 ? INDEX.depth[lv[0]] + ' m' : INDEX.depth[lv[0]] + '–' + INDEX.depth[lv[lv.length - 1]] + ' m') : 'all depths';
   const ttxt = S.part === 'mean' ? 'all years (the mean term is defined over the whole record)' : timeText();
   document.getElementById('info').innerHTML =
-    `<b>${S.src}</b>, ${S.ct}, ${S.V}: ${PARTS[S.part]}; ${dtxt}; ${ttxt}. ${nb} bins with data. ` +
-    (S.part === 'bias' ? 'Each bin: mean of (reference &minus; observation) over its data in the selected levels and years, in ' +
+    `<b>${S.src}</b>, ${ctLabel(S.ct)}, ${S.V}: ${partText()}; ${dtxt}; ${ttxt}. ${nb} bins with data. ` +
+    (CMP() ? (S.part === 'count' ? 'Each bin: the number of observations with a value from both models. '
+      : `Each bin: ${cmpModels(S.ct)[1]}'s value minus ${cmpModels(S.ct)[0]}'s, averaged over the bin's cells (depth level and year) at the selected depths and years ` +
+        `that both models have. `) :
+     S.part === 'bias' ? 'Each bin: mean of (reference &minus; observation) over its data in the selected levels and years, in ' +
        (S.V === 'T' ? '&deg;C' : 'psu') + '. A diagnostic of steady offsets and their change over time; it is not part of the cost. ' :
      S.part === 'nmis' ? 'Each bin: mean of (reference &minus; observation)/&sigma; over its data in the selected levels and years (true weights, ' +
        'so &sigma; is the assumed error alone). &plusmn;1 is one assumed error. Not part of the cost (the unsplit cost is the mean of its square). ' :
@@ -1148,7 +1269,7 @@ async function render() {
 }
 function foldSummary() {
   const lv = levelsSelected(), d = lv ? (lv.length === 1 ? INDEX.depth[lv[0]] + ' m' : INDEX.depth[lv[0]] + '–' + INDEX.depth[lv.at(-1)] + ' m') : 'all depths';
-  document.getElementById('foldsum').textContent = `${S.src} · ${S.ct} · ${S.V} · ${PARTS[S.part].split(/[,(]/)[0].trim()} · ${d} · ` +
+  document.getElementById('foldsum').textContent = `${S.src} · ${ctLabel(S.ct)} · ${S.V} · ${partText().split(/[,(:]/)[0].trim()} · ${d} · ` +
     (S.part === 'mean' ? 'whole record' : timeText());
 }
 function syncControls() {
@@ -1308,24 +1429,38 @@ async function init() {
   document.getElementById('sb0').addEventListener('change', e => { S.sb0 = +e.target.value; rangeChanged(); });
   document.getElementById('sb1').addEventListener('change', e => { S.sb1 = +e.target.value; rangeChanged(); });
   const keys = Object.keys(INDEX.files), srcs = [...new Set(keys.map(k => k.split('|')[0]))], cts = [...new Set(keys.map(k => k.split('|')[1]))];
+  { const M = MODELS(); if (M.length >= 2) cts.push(`compare_${M[0]}_${M[1]}`); }   // as the analyses: the first two models
   const q = new URLSearchParams(location.search);
   S.src = q.get('src') && srcs.includes(q.get('src')) ? q.get('src') : srcs[0];
-  S.ct = q.get('ct') && cts.includes(q.get('ct')) ? q.get('ct') : cts.find(c => c !== 'vs_clim') || cts[0];   // default: the (first) model
+  S.ct = q.get('ct') && cts.includes(q.get('ct')) ? q.get('ct') : cts.find(c => c !== 'vs_clim' && !CMP(c)) || cts[0];   // default: the (first) model
   if (q.get('V') === 'S') S.V = 'S';
   if (q.get('part') && PARTS[q.get('part')]) S.part = q.get('part');
+  if (CMP() && !CMP_PARTS.includes(S.part)) S.part = 'unsplit';      // a comparison has no normalized misfit or σ
   const re = () => { S.vmax = null; document.getElementById('vmax').value = ''; fillDepthSelect();
     // the peak tool's results belong to one class, cost type, variable and part: say they are out of date (the depth
     // and the outline stay as they are; redoing them here moved the depth without being asked)
     if (PEAKBAND) peakStale(); render(); };
   tabs('srcs', srcs.map(s => [s, s]), 'src', v => { S.src = v; if (!hasS()) S.V = 'T'; re(); });
-  tabs('cts', cts.map(s => [s, ctLabel(s)]), 'ct', v => { S.ct = v; re(); });
+  tabs('cts', cts.map(s => [s, ctLabel(s)]), 'ct', v => { S.ct = v; if (CMP() && !CMP_PARTS.includes(S.part)) S.part = 'bias'; setDiagTabs(); re(); });
+  document.querySelectorAll('#cts .tab').forEach(t => { if (CMP(t.dataset.v)) { t.classList.add('cmp-tab');
+    t.title = 'Model ' + cmpModels(t.dataset.v)[1] + ' minus model ' + cmpModels(t.dataset.v)[0] + ', at the places and times with observations'; } });
   tabs('vars', [['T', 'T'], ['S', 'S']], 'V', v => { S.V = v; re(); });
   const partTabs = [['unsplit', 'unsplit'], ['anomaly', 'anomaly (split)']];
   if (INDEX.core_split === 'own') partTabs.push(['mean', 'mean term (split)']);
   partTabs.push(['count', '# data']);
   tabs('parts', partTabs, 'part', v => { S.part = v; re(); });
-  tabs('diags', [['bias', 'misfit (ref − obs)'], ['nmis', 'normalized misfit (ref − obs)/σ'], ['sig', 'σ (assumed error)']], 'part', v => { S.part = v; S.log = false;
-    document.getElementById('logscale').checked = false; re(); });
+  // the misfit row; for a comparison: the model difference only (no observations or σ in it)
+  const setDiagTabs = () => {
+    const [a, b] = CMP() ? cmpModels(S.ct) : [];
+    tabs('diags', CMP() ? [['bias', `model difference (${b} − ${a})`]]
+      : [['bias', 'misfit (ref − obs)'], ['nmis', 'normalized misfit (ref − obs)/σ'], ['sig', 'σ (assumed error)']], 'part', v => { S.part = v; S.log = false;
+      document.getElementById('logscale').checked = false; re(); });
+    document.getElementById('diaglab').innerHTML = CMP() ? 'Model diff.' : 'Misfit, &sigma;';
+    document.getElementById('diagnote').textContent = CMP()
+      ? `not a cost: ${b} minus ${a}, the models' own values compared at the places and times of the observations; red–blue scale centered on 0`
+      : 'not cost terms: the signed misfits use a red–blue scale centered on 0';
+  };
+  setDiagTabs();
   tabs('dmodes', [['all', 'all depths'], ['level', 'single level'], ['range', 'from – to'], ['100m', '100 m bands'], ['15', '15 groups'], ['30', '30 groups'], ['spike', 'flagged spikes']], 'dmode',
        v => { S.dmode = v; S.dsel = 0; if (v === 'range' && S.r0 == null) { S.r0 = 0; S.r1 = INDEX.depth.findIndex(z => z >= 500); } re(); });
   for (const [id, key] of [['dr0', 'r0'], ['dr1', 'r1']]) document.getElementById(id).addEventListener('change', e => {

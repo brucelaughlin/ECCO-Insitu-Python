@@ -201,8 +201,10 @@ Then the list can&rsquo;t change from depth to depth.</p>
 <li>If the jump is still there over the same places, it is <b>A</b>: those places really fit worse at that depth.</li>
 <li>If the jump disappears over the same places, it is <b>B</b>: it came from averaging over a different set of places.</li>
 </ul>
-<p>Here the jump almost disappears (2.83 against 2.79), so the peak tool reports that <b>98&nbsp;%</b> of the jump comes from a different
-set of places being averaged at 2400&nbsp;m (B), and 2&nbsp;% from a worse fit at 2400&nbsp;m (A).</p>
+<p>Here the jump almost disappears (2.83 against 2.79). In words: <b>over the 410 places with data at 2400&nbsp;m and at both depths
+around it, the fit at 2400&nbsp;m is about the same as just above and below</b>. Nothing odd happens at 2400&nbsp;m in those places; the bump
+comes from which places are averaged at each depth (B). The peak tool puts a number on it: 98&nbsp;% of the jump comes from which places
+are averaged, 2&nbsp;% is a worse fit at 2400&nbsp;m in the same places (A).</p>
 <p><b>That doesn&rsquo;t make the peak wrong.</b> The North Atlantic places really do fit badly; the jump just tells you about those places,
 not about the ocean as a whole at 2400&nbsp;m.</p>
 <p><b>The exact numbers</b> (for checking): the jump is the peak&rsquo;s value minus the average of the two depths around it, over all
@@ -286,9 +288,9 @@ Zoom in and click one for the profile panel (section <a href="#viewer">The in si
 <p>PFL (Argo), vs V4r6, T, mean term, depth range 2000&ndash;2600&nbsp;m (run 20261027_142247):</p>
 <ol>
 <li><b>Peak:</b> 2400&nbsp;m, 5.57 over 1,046 bins; neighbors 2200&nbsp;m 4.90 (1,181 bins) and 2600&nbsp;m 2.62 (410 bins).</li>
-<li><b>Same bins:</b> over only the 410 places with data at all three depths, 2.83 against 2.79: the jump nearly disappears, so 98&nbsp;%
-  of it comes from a different set of places being averaged at 2400&nbsp;m. Most floats stop at 2000&nbsp;m; the few deeper ones are in a
-  few regions.</li>
+<li><b>Same places:</b> over the 410 places with data at 2400&nbsp;m and at both depths around it, the fit at 2400&nbsp;m is about the same
+  as just above and below (2.83 against 2.79). So the bump comes from which places are averaged at each depth (98&nbsp;% of it): most floats
+  stop at 2000&nbsp;m, and the few deeper ones are in a few regions.</li>
 <li><b>Clusters:</b> the largest is the subpolar North Atlantic (56&deg;N 38&deg;W): 4.1&nbsp;% of the bins, 33.8&nbsp;% of the term.</li>
 <li><b>Region vs the rest:</b> the region&rsquo;s mean term per bin is 45.9 against 3.84 for the rest of the world.</li>
 <li><b>Platforms:</b> four floats deployed there since 2021 (6903082, 6903871, 6903085, 1902621) carry about 40&nbsp;% of the region&rsquo;s term,

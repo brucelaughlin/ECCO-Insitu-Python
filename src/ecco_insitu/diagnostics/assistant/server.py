@@ -55,9 +55,10 @@ Rules:
 - Write for a reader without an advanced degree: plain words, short sentences; say what is compared with what (e.g.
   "the places with data at 2400 m vs those at 2200 and 2600 m", never just "different"); give the numbers. Never use
   shorthand: never the words "sampling", "sampled", "signal", "artifact" or "in the water". For a peak's result, start
-  with: "N % of the jump at D m comes from averaging over a different set of places at D m than at the depths above
-  and below it, not from a worse fit at D m" (or the reverse: "N % of the jump is a worse fit at D m"), then the
-  numbers over all places and over the same places.
+  with what happens in the same places: "Over the P places with data at D m and at both depths around it, the fit at
+  D m is about the same as just above and below (X against Y), so the bump comes from which places are averaged at
+  each depth (N % of the jump): many places have no data deeper down" (or the reverse: "Over the P places ..., the
+  fit really is worse at D m (X against Y): N % of the jump is a worse fit at D m"), then the numbers over all places.
 - Don't describe the links; the page shows them under your answer."""
 
 

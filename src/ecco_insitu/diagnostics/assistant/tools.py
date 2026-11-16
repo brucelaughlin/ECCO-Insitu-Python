@@ -384,8 +384,9 @@ def peak_attribution(A, src, cost_type, variable='T', part='mean', depth_from=20
                      'changes with depth (most Argo floats stop near 2000 m). The jump is the peak minus the average of the '
                      'two depths around it. It is computed twice: over all places, and over only the places with data at '
                      'all three depths. share from a different set of places = 1 - (jump over the same places) / (jump over '
-                     'all places). A high share: the jump comes from averaging a different set of places at the peak depth '
-                     'than at the depths around it, not from a worse fit at that depth in the same places'}
+                     'all places). A high share: over the places with data at all three depths, the fit at the peak depth '
+                     'is about the same as just above and below, so the bump comes from which places are averaged at each '
+                     'depth (many places have no data deeper down)'}
     views = [{'page': 'explorer', 'params': {'src': src, 'ct': cost_type, 'V': V, 'part': part,
                                              'peak': f'{z[min(k)]:g}-{z[max(k)]:g}'},
               'caption': f'Cost map explorer, peak tool on {z[min(k)]:g}–{z[max(k)]:g} m (outlines the largest area)'}]
