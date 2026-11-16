@@ -145,7 +145,8 @@ select { font-size: 0.85em; }
   <div id="ppmeta"></div>
   <div id="pptabs"><button class="btn on" data-t="profile">this profile</button><button class="btn" data-t="float">this platform over time</button>
     <button class="btn" data-t="list">largest misfits here</button></div>
-  <div id="ppopts"><label><input type="checkbox" id="ppnb" checked> neighbors in gray</label> <span id="ppnote"></span></div>
+  <div id="ppopts"><label><input type="checkbox" id="ppnb" checked> neighbors in gray</label> <span id="ppnote"></span>
+    <span id="ppzoom" style="margin-left:1em"><span class="dnote">scroll on the plot to zoom in depth, drag to move, double-click to reset</span> <button class="btn" id="ppzreset" style="display:none">reset zoom</button></span></div>
   <canvas id="ppc" width="560" height="560"></canvas>
   <div id="pplist"></div>
   <div id="ppfoot"></div>
@@ -838,6 +839,24 @@ function setupControls() {
   document.querySelectorAll('#pptabs .btn').forEach(b => b.onclick = () => { PPTAB = b.dataset.t;
     document.querySelectorAll('#pptabs .btn').forEach(x => x.classList.toggle('on', x === b)); showTab(); });
   document.getElementById('ppnb').onchange = () => showTab();
+  { // zoom in depth on "this profile": the wheel zooms around the depth under the mouse, dragging pans,
+    // double-click or "reset zoom" goes back to the whole profile
+    const cv = document.getElementById('ppc'); let drag = null, pend = null;
+    const fr = e => { const r = cv.getBoundingClientRect(), y = (e.clientY - r.top) * cv.height / r.height, G = PPGEOM;
+      return Math.max(0, Math.min(1, (y - G.T) / (G.H - G.T - G.B))); };
+    const set = (a, b) => { const full = PPGEOM.zfull, w = Math.max(5, Math.min(full, b - a));
+      a = Math.max(0, Math.min(full - w, a)); PPZOOM = w >= full - 1e-6 ? null : [a, a + w];
+      if (!pend) pend = requestAnimationFrame(() => { pend = null; showTab(); }); };
+    cv.addEventListener('wheel', e => { if (PPTAB !== 'profile' || !PPGEOM) return; e.preventDefault();
+      const G = PPGEOM, f = fr(e), zc = G.za + f * (G.zb - G.za), k = Math.exp(e.deltaY * 0.0015), w = (G.zb - G.za) * k;
+      set(zc - f * w, zc - f * w + w); }, {passive: false});
+    cv.addEventListener('mousedown', e => { if (PPTAB !== 'profile' || !PPGEOM || !PPZOOM) return; e.preventDefault();
+      drag = {f0: fr(e), za: PPGEOM.za, zb: PPGEOM.zb}; cv.style.cursor = 'grabbing'; });
+    window.addEventListener('mousemove', e => { if (!drag) return; const d = (fr(e) - drag.f0) * (drag.zb - drag.za); set(drag.za - d, drag.zb - d); });
+    window.addEventListener('mouseup', () => { if (drag) { drag = null; cv.style.cursor = ''; } });
+    cv.addEventListener('dblclick', () => { if (PPZOOM) { PPZOOM = null; showTab(); } });
+    document.getElementById('ppzreset').onclick = () => { PPZOOM = null; showTab(); };
+  }
   document.getElementById('copylink').onclick = async e => { clearTimeout(ADDR_T); writeAddress(); await new Promise(r => setTimeout(r, 450));
     try { await navigator.clipboard.writeText(location.href); e.target.textContent = 'copied'; } catch (err) { prompt('Copy this link:', location.href); }
     setTimeout(() => e.target.textContent = 'copy link', 1500); };
@@ -903,6 +922,7 @@ function resetZoom() { for (const M of MAPS) setView(M, M.home, true); if (STATS
 // Data: detail/<class>/c<NNNN>.bin (export.py write_details), DETAIL_CHUNK profiles each in profiles.bin's order,
 // loaded only when a profile is opened. Values are the yearly files', rounded to 0.001 (sigma 0.0001).
 let PICKED = null, PPTAB = 'profile';
+let PPZOOM = null, PPGEOM = null, NBCACHE = null;   // zoomed depth window [z0, z1] (m) of "this profile"; the plot's depth axis, for the mouse
 const paint = () => new Promise(r => requestAnimationFrame(() => setTimeout(r, 0)));   // let the busy overlay draw
 const DCACHE = new Map();
 const DSCALE = {obs: 1000, clim: 1000, model: 1000, sig: 10000, model2: 1000};
@@ -953,7 +973,7 @@ function neighborsOf(j) {                  // profiles in the same bin, within �
   return out.sort(() => Math.random() - 0.5).slice(0, 60);
 }
 async function openProfile(j) {
-  PICKED = j; PPTAB = 'profile'; document.getElementById('pp').style.display = '';
+  PICKED = j; PPTAB = 'profile'; PPZOOM = null; document.getElementById('pp').style.display = '';
   document.querySelectorAll('#pptabs .btn').forEach(b => b.classList.toggle('on', b.dataset.t === 'profile'));
   draw(); await showTab();
 }
@@ -983,30 +1003,40 @@ async function drawOneProfile(g, cv, pr, j, ref, unit) {
   if (!rows.length) { g.fillText(`No ${S.V} in this profile.`, 20, 40); return; }
   const refv = r => detailRef() === 'clim' ? r.clim : detailRef() === 'model2' ? r.model2 : r.model;
   // neighbors (gray): same bin, ±2 years, other platforms
-  const nb = document.getElementById('ppnb').checked ? neighborsOf(j) : [], nbr = [];
+  // the neighbors are drawn once per profile (zooming redraws the same ones)
+  if (!NBCACHE || NBCACHE.j !== j || NBCACHE.src !== S.src) NBCACHE = {j, src: S.src, nb: neighborsOf(j)};
+  const nb = document.getElementById('ppnb').checked ? NBCACHE.nb : [], nbr = [];
   for (const i of nb) { const q = await profileOf(S.src, i); nbr.push(q[S.V]); }
   // the depth axis reaches the deepest of this profile, its neighbors and the selected depth (so a short profile
   // doesn't cut the others off); where this profile ends is said under the plot
   const zOwn = Math.max(...rows.map(r => z[r.k])), lvSel = currentLevels();
   const zNb = nbr.reduce((m, q) => Math.max(m, ...q.map(r => z[r.k])), 0);
-  const zmax = Math.max(zOwn, zNb, ...lvSel.map(k => z[k])) * 1.04, Y = d => T + (H - T - B) * d / zmax;
-  const all = [...rows.map(r => r.obs), ...rows.map(refv), ...rows.map(r => r.model), ...rows.map(r => r.clim), ...(M2NAME() ? rows.map(r => r.model2) : [])].filter(Number.isFinite);
-  for (const q of nbr) for (const r of q) if (z[r.k] <= zmax) all.push(r.obs);
+  const zmax = Math.max(zOwn, zNb, ...lvSel.map(k => z[k])) * 1.04;
+  // zoom (drag on the plot): the depth window [za, zb]; the value axes fit the values inside it
+  const za = PPZOOM ? PPZOOM[0] : 0, zb = PPZOOM ? PPZOOM[1] : zmax, inZ = r => z[r.k] >= za && z[r.k] <= zb;
+  const Y = d => T + (H - T - B) * (d - za) / (zb - za);
+  PPGEOM = {T, B, H, za, zb, zfull: zmax};
+  document.getElementById('ppzreset').style.display = PPZOOM ? '' : 'none';
+  const rz = rows.filter(inZ);
+  const all = [...rz.map(r => r.obs), ...rz.map(refv), ...rz.map(r => r.model), ...rz.map(r => r.clim), ...(M2NAME() ? rz.map(r => r.model2) : [])].filter(Number.isFinite);
+  for (const q of nbr) for (const r of q) if (inZ(r)) all.push(r.obs);
+  if (!all.length) all.push(0, 1);
   let lo = Math.min(...all), hi = Math.max(...all); const pad = 0.05 * (hi - lo || 1); lo -= pad; hi += pad;
   const X = v => L + w1 * (v - lo) / (hi - lo);
-  const an = rows.map(r => refv(r) - r.obs), aa = an.filter(Number.isFinite), ss = rows.map(r => r.sig).filter(Number.isFinite);
+  const an = rz.map(r => refv(r) - r.obs), aa = an.filter(Number.isFinite), ss = rz.map(r => r.sig).filter(Number.isFinite);
   let am = Math.max(1e-6, ...aa.map(Math.abs), ...ss.map(x => 2 * x)) * 1.1;
   const X2 = v => L + w1 + gap + w2 * (v + am) / (2 * am);
   g.font = '10px sans-serif'; g.fillStyle = '#444'; g.strokeStyle = '#ddd'; g.lineWidth = 1;
   g.strokeRect(L, T, w1, H - T - B); g.strokeRect(L + w1 + gap, T, w2, H - T - B);
   g.textAlign = 'right'; g.textBaseline = 'middle';
-  for (const d of niceTicks(0, zmax, 6)) { g.fillText(d + ' m', L - 4, Y(d)); g.strokeStyle = '#f0f0f0'; g.beginPath(); g.moveTo(L, Y(d)); g.lineTo(L + w1, Y(d)); g.moveTo(L + w1 + gap, Y(d)); g.lineTo(W - Rm, Y(d)); g.stroke(); }
+  for (const d of niceTicks(za, zb, 6)) { if (d < za || d > zb) continue; g.fillText(d + ' m', L - 4, Y(d)); g.strokeStyle = '#f0f0f0'; g.beginPath(); g.moveTo(L, Y(d)); g.lineTo(L + w1, Y(d)); g.moveTo(L + w1 + gap, Y(d)); g.lineTo(W - Rm, Y(d)); g.stroke(); }
   g.textAlign = 'center'; g.textBaseline = 'top';
   for (const t of niceTicks(lo, hi, 4)) g.fillText(fmt(t), X(t), H - B + 4);
   for (const t of niceTicks(-am, am, 4)) g.fillText(fmt(t), X2(t), H - B + 4);
   g.fillText(`${S.V} (${unit})`, L + w1 / 2, H - B + 18); g.fillText(`${ref} − obs (${unit})`, L + w1 + gap + w2 / 2, H - B + 18);
   const path = (pts, col, w, dash) => { g.strokeStyle = col; g.lineWidth = w; g.setLineDash(dash || []); g.beginPath(); let on = false;
     for (const [x, y] of pts) { if (!Number.isFinite(x)) { on = false; continue; } if (on) g.lineTo(x, y); else { g.moveTo(x, y); on = true; } } g.stroke(); g.setLineDash([]); };
+  g.save(); g.beginPath(); g.rect(L, T, w1, H - T - B); g.rect(L + w1 + gap, T, w2, H - T - B); g.clip();
   for (const q of nbr) path(q.filter(r => z[r.k] <= zmax).map(r => [X(r.obs), Y(z[r.k])]), 'rgba(150,150,150,0.35)', 1);
   // each reference keeps its own style (climatology dashed blue, models solid: the first red, the second orange, as in
   // the comparison figures); the one the maps show is drawn thicker
@@ -1027,13 +1057,14 @@ async function drawOneProfile(g, cv, pr, j, ref, unit) {
   let nrej = 0;
   for (const r of rows) if (r.code) { nrej++; const x = X(r.obs), y = Y(z[r.k]); g.strokeStyle = '#d35400'; g.lineWidth = 1.5; g.beginPath(); g.moveTo(x - 3, y - 3); g.lineTo(x + 3, y + 3); g.moveTo(x + 3, y - 3); g.lineTo(x - 3, y + 3); g.stroke();
     const x2 = X2(Math.max(-am, Math.min(am, refv(r) - r.obs))); g.beginPath(); g.moveTo(x2 - 3, y - 3); g.lineTo(x2 + 3, y + 3); g.moveTo(x2 + 3, y - 3); g.lineTo(x2 - 3, y + 3); g.stroke(); }
+  g.restore();
   // where this profile ends, when the axis goes deeper: a faint gray line, labeled
-  if (zOwn < zmax / 1.04 - 1e-6) { const y = Y(zOwn); g.strokeStyle = 'rgba(0,0,0,0.25)'; g.lineWidth = 1; g.setLineDash([1, 3]);
+  if (zOwn < zmax / 1.04 - 1e-6 && zOwn >= za && zOwn <= zb) { const y = Y(zOwn); g.strokeStyle = 'rgba(0,0,0,0.25)'; g.lineWidth = 1; g.setLineDash([1, 3]);
     g.beginPath(); g.moveTo(L, y); g.lineTo(L + w1, y); g.stroke(); g.setLineDash([]);
     g.fillStyle = '#777'; g.font = '9px sans-serif'; g.textAlign = 'left'; g.textBaseline = 'top'; g.fillText(`this profile ends at ${zOwn} m`, L + 3, y + 2); g.font = '10px sans-serif'; }
   // the depth shown on the map
   const lv = lvSel; g.strokeStyle = 'rgba(108,52,131,0.7)'; g.setLineDash([3, 3]);
-  for (const k of [lv[0], lv[lv.length - 1]]) { if (z[k] > zmax) continue; g.beginPath(); g.moveTo(L, Y(z[k])); g.lineTo(W - Rm, Y(z[k])); g.stroke(); } g.setLineDash([]);
+  for (const k of [lv[0], lv[lv.length - 1]]) { if (z[k] < za || z[k] > zb) continue; g.beginPath(); g.moveTo(L, Y(z[k])); g.lineTo(W - Rm, Y(z[k])); g.stroke(); } g.setLineDash([]);
   // legend
   g.textAlign = 'left'; g.textBaseline = 'middle'; g.font = '11px sans-serif';
   const leg = [['observation', REFCOL.obs, []], ['climatology', REFCOL.clim, [4, 3]], [refLabel('model') + ' (monthly mean)', REFCOL.model, []]]

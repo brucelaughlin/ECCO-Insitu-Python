@@ -211,7 +211,7 @@ Where the red curve (all places) jumps and the blue one doesn't, the places them
 <div id="lower">
   <div id="regp" class="panel" style="display:none"><div class="ptitle">Region vs the rest <span class="dnote">(current class, cost type, variable, cost part, depths, years)</span></div>
     <div id="regsum"></div><canvas id="rcan" width="560" height="200"></canvas><div id="regtop"></div><div id="regplat"></div></div>
-  <div id="binp" class="panel"><div class="ptitle">Clicked bin</div><div id="bintxt" class="dnote">Click a bin on a map for its breakdown.</div>
+  <div id="binp" class="panel"><div class="ptitle">Clicked bin <button class="tab" id="binclear" style="display:none">clear</button></div><div id="bintxt" class="dnote">Click a bin on a map for its breakdown.</div>
     <canvas id="bcan" width="560" height="200" style="display:none"></canvas><div id="binlinks"></div></div>
 </div>
 <details id="guide"><summary>Guide: what every option means</summary>__GUIDE__</details>
@@ -951,8 +951,13 @@ async function binYears(b) {               // per-year values of the bin at the 
     const x = val ? val[i] : c.n[i]; if (!Number.isFinite(x)) continue; sum[c.blk[i]] += val ? x * c.n[i] : x; w[c.blk[i]] += val ? c.n[i] : 1; }
   return {sum, w, what: S.part === 'mean' ? 'bias' : S.part};
 }
+function clearBin() {           // back to the empty panel
+  PICK = null; document.getElementById('binclear').style.display = 'none';
+  const t = document.getElementById('bintxt'); t.className = 'dnote'; t.textContent = 'Click a bin on a map for its breakdown.';
+  document.getElementById('bcan').style.display = 'none'; document.getElementById('binlinks').innerHTML = '';
+}
 async function showBin(b) {
-  PICK = b;
+  PICK = b; document.getElementById('binclear').style.display = '';
   const d = await data(S.src, S.ct), yd = (!S.all && S.part !== 'mean') ? await yearData(S.src, S.ct) : null;
   const {perLev, mt, lset} = binBreakdown(d, yd, b), z = INDEX.depth, unit = S.V === 'T' ? '°C' : 'psu';
   const lon = INDEX.bin_center ? INDEX.bin_center[2 * (b - 1)] : null, lat = INDEX.bin_center ? INDEX.bin_center[2 * (b - 1) + 1] : null;
@@ -991,6 +996,7 @@ async function showBin(b) {
   // per-year chart
   busy('Loading the years of bin ' + b + '…'); await paint();
   const Y = await binYears(b); busy(null);
+  if (PICK !== b) return;            // cleared (or another bin clicked) while the years loaded
   const cv = document.getElementById('bcan'), g = cv.getContext('2d'), W = cv.width, H = cv.height; cv.style.display = '';
   g.clearRect(0, 0, W, H);
   const v = [...Y.sum].map((s, i) => Y.w[i] ? (Y.what === 'count' ? s : s / Y.w[i]) : NaN), ok = v.filter(Number.isFinite);
@@ -1406,6 +1412,7 @@ async function init() {
       await investigatePeak(z[Math.min(+S.sb0, +S.sb1)], z[Math.max(+S.sb0, +S.sb1)]); rangeChanged();
       document.getElementById('peakp').scrollIntoView({behavior: 'smooth', block: 'nearest'}); });
     pc.style.cursor = 'crosshair'; }
+  document.getElementById('binclear').addEventListener('click', clearBin);
   document.getElementById('regmode').addEventListener('click', e => { REGMODE = !REGMODE; e.target.classList.toggle('armed', REGMODE);
     e.target.textContent = REGMODE ? 'drawing: drag on a map (click here when done)' : 'draw a region';
     document.querySelectorAll('#maps canvas').forEach(c => c.style.cursor = REGMODE ? 'crosshair' : 'pointer'); });
