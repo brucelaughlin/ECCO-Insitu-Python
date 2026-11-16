@@ -4,6 +4,11 @@ Authors: Sweet Zhang, Ian Fenty, Bruce Laughlin
 Originally: Sweet Zhang, 2023-05-21  
 Updated: 2026-10
 
+Published sites:
+- Analyses (with the cost map explorer, questions page and guide): https://brucelaughlin.github.io/ECCO-Insitu-Python/profile_report_20261027_142247/index.html
+- In situ data viewer: https://brucelaughlin.github.io/ecco-bin-viewer/run_20261027_142247/
+- Documentation: https://brucelaughlin.github.io/ECCO-Insitu-Python/
+
 ---
 
 ## Overview
