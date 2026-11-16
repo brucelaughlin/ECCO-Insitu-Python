@@ -1244,15 +1244,17 @@ def _make_figures(res, source, fig_dir, lims=None, cost_type=None):
         for wv in wvs:
             for part, sp in (('unsplit', 'unsplit'), ('anomaly', core)):
                 m = np.where(c >= _MIN_DEPTH_COUNT, res[('a02', V, sp, wv)]['mean'], np.nan)
-                ax.plot(m, depth, ls=_part_ls[part], color=_WV_COLOR[wv], label=f'{wv} {part}', lw=1.2)
+                ax.plot(m, depth, ls=_part_ls[part], color=_WV_COLOR[wv],
+                        label=f'{wv} {part}' + (' (per datum)' if with_mean else ''), lw=1.2)
             if with_mean and CORE_SPLIT == 'own' and (V, wv) in res.get('meanterm', {}):
                 mt = res['meanterm'][(V, wv)]['per_depth']
-                ax.plot(mt, depth, ls=_part_ls['mean'], color=_WV_COLOR[wv], label=f'{wv} mean', lw=1.6)
+                ax.plot(mt, depth, ls=_part_ls['mean'], color=_WV_COLOR[wv], label=f'{wv} mean term (per bin and level)', lw=1.6)
 
     how = 'own bin means' if CORE_SPLIT == 'own' else 'bin means pooled over all obs classes'
-    for an, wvs, title_sfx in [
-        ('02', WEIGHT_VERS, 'cost per datum, three weight versions'),
-        ('09', ('true',),   '(ref − obs)²/σ², true weights (02\'s red lines)'),
+    for an, wvs, title_sfx, xlab in [
+        ('02', WEIGHT_VERS, 'cost, three weight versions',
+         'cost, (misfit/σ)²'),
+        ('09', ('true',),   '(ref − obs)²/σ², true weights (02\'s red lines)', None),
     ]:
         zoom = an == '02'          # 02: a second row, the same lines with the cost axis limited to 0-2
         fig = plt.figure(figsize=(5 * nv + 1.8, 11 if zoom else 6))
@@ -1268,7 +1270,7 @@ def _make_figures(res, source, fig_dir, lims=None, cost_type=None):
         for r, (axes, cax) in enumerate(rows):
             for ax, V in _panels(axes, active_vars):
                 _depth_lines(ax, V, wvs, an == '02')
-                ax.set_xlabel(f'{V} {title_sfx}' + (' (zoom: 0–2)' if r == 1 else ''))
+                ax.set_xlabel(f'{V} {xlab or title_sfx}' + (' (zoom: 0–2)' if r == 1 else ''))
                 ax.set_ylabel('Depth (m)') if ax is axes[0] else None
                 ax.set_title(V if r == 0 else f'{V}, cost axis 0–2')
                 if r == 0:
