@@ -482,8 +482,10 @@ def platform_of(src, descr):
     - ITP: the ITP number, e.g. 'ITP2_itp31grd0001_nk' -> 'itp31';
     - MEOP: the tag deployment, e.g. 'MEOP-D00050144-4/hd2bb-9340' -> 'D00050144 (hd2bb)';
     - MRB_WOD: the mooring number, e.g. 'WOD-MRB//15116734_23005_RESEAR' -> '23005' (99999 = unknown);
+    - GLD_WOD: the whole glider code after the cast number, e.g. 'WOD-GLD//21859974:gs_565-20151' -> 'gs_565-20151'
+      (one glider deployment; the part before '_' alone, 'gs', would join several gliders flying at once);
     - other WOD classes: the platform / ship code after the cast number, e.g. 'WOD-XBT//12284221:ONFC_2120234'
-      -> 'ONFC', 'WOD-GLD//10880467:CO_61859_200' -> 'CO' (coarse: a ship or program, not one instrument).
+      -> 'ONFC' (coarse: a ship or program, not one instrument).
     """
     d = descr.strip()
     if src == 'PFL':
@@ -498,6 +500,9 @@ def platform_of(src, descr):
     if src == 'MRB_WOD':
         m = re.search(r'//\d+_(\d+)_', d)
         return m.group(1) if m and m.group(1) != '99999' else ''
+    if src == 'GLD_WOD':
+        m = re.search(r'//\d+:(.+)$', d)
+        return m.group(1).strip() if m else ''
     m = re.search(r'//\d+:([^_]*)', d)
     return m.group(1).strip() if m and m.group(1).strip() else ''
 
