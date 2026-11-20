@@ -270,6 +270,10 @@ function trackKey(M) {            // the small key of map M (all maps if none): 
     (sp[0] > 0 || sp[1] < 1 ? `<div class="tknote">in view (whole track ${TRACK.first} – ${TRACK.last})</div>` : '');
   el.style.display = '';
 }          // HIBIN: the bin a link pointed at (?bin=), outlined in orange
+// the fastest a platform of each class can move between two profiles (km/day; ships: well above any cruising speed)
+const TRACK_MAX_KM_DAY = {PFL: 100, ITP: 100, MEOP: 300, GLD_WOD: 150, MRB_WOD: 50, CTD_WOD: 1500, XBT_WOD: 1500};
+function kmBetween(la1, lo1, la2, lo2) { const r = Math.PI / 180, a = Math.sin((la2 - la1) * r / 2) ** 2 +
+  Math.cos(la1 * r) * Math.cos(la2 * r) * Math.sin((lo2 - lo1) * r / 2) ** 2; return 12742 * Math.asin(Math.sqrt(Math.min(1, a))); }
 async function platformTrack(idx) {
   const P = CLASS[S.src].plat, pr = CLASS[S.src].p, js = [];
   for (let j = 0; j < P.pi.length; j++) if (P.pi[j] === idx) js.push(j);
@@ -287,7 +291,16 @@ async function platformTrack(idx) {
     return Date.UTC(y, Math.max(0, m - 1), Math.max(1, dd)) / 864e5; };
   const t = js.map(day), t0 = Math.min(...t), t1 = Math.max(...t), frac = t.map(x => t1 > t0 ? (x - t0) / (t1 - t0) : 0);
   const fmtDay = x => { const d = new Date(x * 864e5); return d.toISOString().slice(0, 7); };
-  return {idx, js, dated: dt.size === js.length, dt, frac, t0, t1, first: fmtDay(t0), last: fmtDay(t1)};
+  // a step between consecutive profiles is not drawn when its speed is impossible for the class (TRACK_MAX_KM_DAY):
+  // one platform name can cover several instruments (see the guide, "Platform tracks"), and a line joining them
+  // in time order would zig-zag between them
+  const hrs = j => { const v = dt.get(j); if (v === undefined) return day(j) * 24; const hh = Math.floor((v % 1e6) / 1e4), mm = Math.floor(v / 100) % 100;
+    return day(j) * 24 + hh + mm / 60; };
+  const vmax = TRACK_MAX_KM_DAY[S.src] ?? 1500, pr2 = CLASS[S.src].p;
+  const ok = js.map((j, i) => !i || kmBetween(pr2.lat[js[i - 1]], pr2.lon[js[i - 1]], pr2.lat[j], pr2.lon[j]) <=
+    vmax * Math.max(hrs(j) - hrs(js[i - 1]), 1) / 24);
+  const nbreak = ok.filter(x => !x).length;
+  return {idx, js, dated: dt.size === js.length, dt, frac, t0, t1, first: fmtDay(t0), last: fmtDay(t1), ok, nbreak, vmax};
 }
 function setPlatform(name) {
   const P = CLASS[S.src]?.plat, info = document.getElementById('platinfo');
@@ -306,7 +319,9 @@ function platformNote(nHere) {     // the platform's line under the menu: how ma
   if (!PLATFORM) return;
   const lev = S.dmode === 'level' ? INDEX.depth[S.k] + ' m' : 'these depths', yrs = S.all ? '' : ' in these years';
   document.getElementById('platinfo').textContent = `${PLATFORM.n.toLocaleString()} profiles, ${PLATFORM.y0}–${PLATFORM.y1}; ` +
-    `${nHere.toLocaleString()} with a value at ${lev}${yrs} (cyan rings); line: all of them in time order (key at the lower left), small circles: the others, click any to open it`;
+    `${nHere.toLocaleString()} with a value at ${lev}${yrs} (cyan rings); line: all of them in time order (key at the lower left), small circles: the others, click any to open it` +
+    (TRACK && TRACK.idx === PLATFORM.idx && TRACK.nbreak ? `; the line is broken at ${TRACK.nbreak} step${TRACK.nbreak > 1 ? 's' : ''} faster than ` +
+      `${TRACK.vmax} km/day (this name may cover more than one instrument; see the guide, "Platform tracks")` : '');
 }
 // The same navigation bar as the analyses site's pages (profile_analyses/nav.py), built from the address of the
 // page that opened this viewer (?back=) or the run's report (index.json report_url): every page is one click away.
@@ -563,13 +578,13 @@ function drawMap(M) {
     const tf = TRACK.frac.map(f => f1 > f0 ? (f - f0) / (f1 - f0) : 0);
     M.trackSpan = vis.length ? [f0, f1] : null;          // null: the track is not in this map's view (no key)
     // one segment per pair of consecutive profiles, colored by the time of its first profile (TRACKMAP: early -> late)
-    pts.forEach((q, i) => { if (!i || Math.hypot(q[0] - pts[i - 1][0], q[1] - pts[i - 1][1]) > wrap) return;
+    pts.forEach((q, i) => { if (!i || !TRACK.ok[i] || Math.hypot(q[0] - pts[i - 1][0], q[1] - pts[i - 1][1]) > wrap) return;
       trackPaths.push({path: [pts[i - 1], q], c: trackColor(tf[i - 1])}); });
     const ringed = new Set(platDots.map(d => d.j));
     TRACK.js.forEach((j, i) => { if (!ringed.has(j)) trackVerts.push({p: pts[i], j, c: trackColor(tf[i])}); });
     if (pts.length) { trackEnds.push({p: pts[0], first: true, c: trackColor(tf[0])}); trackEnds.push({p: pts.at(-1), first: false, c: trackColor(tf.at(-1))}); }
     const step = Math.max(1, Math.round(pts.length / 12));
-    for (let i = step; i < pts.length; i += step) { const a = pts[i - 1], b = pts[i]; if (Math.hypot(b[0] - a[0], b[1] - a[1]) > wrap) continue;
+    for (let i = step; i < pts.length; i += step) { const a = pts[i - 1], b = pts[i]; if (!TRACK.ok[i] || Math.hypot(b[0] - a[0], b[1] - a[1]) > wrap) continue;
       trackArrows.push({p: [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2], ang: Math.atan2(b[1] - a[1], b[0] - a[0]) * 180 / Math.PI, c: trackColor(tf[i - 1])}); }
   }
   const hl = HIBIN !== null && M.bins.get(HIBIN) ? [M.bins.get(HIBIN)] : [];

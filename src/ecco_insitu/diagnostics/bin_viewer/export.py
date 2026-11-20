@@ -778,6 +778,26 @@ zoom; the cost map explorer's platform table links here with it filled in. (13) 
 or a ring) for its panel: the full profile (observation, climatology, model, neighbors in gray; obs &minus; reference with &plusmn;1&sigma;
 and &plusmn;2&sigma;; levels the chain rejected marked &times;), its platform over time, and the bin's largest misfits. Values there are
 the processed files' to 0.001.</p>
+<p><b>Platform tracks.</b> The line joins a platform's profiles in time order. A platform is a name taken from each
+profile's description, and for some classes one name covers more than one instrument:</p>
+<table>
+<tr><th>Class</th><th>Platform name</th><th>One instrument?</th></tr>
+<tr><td>PFL</td><td>Argo float WMO number</td><td>yes</td></tr>
+<tr><td>ITP</td><td>ITP number</td><td>yes</td></tr>
+<tr><td>MEOP</td><td>tag deployment</td><td>yes</td></tr>
+<tr><td>GLD_WOD</td><td>the whole glider code after the cast number (e.g. <code>gs_565-20151</code>)</td><td>usually; the
+  codes are cut at 12 characters in the files, so two gliders whose codes differ only after that share a name</td></tr>
+<tr><td>MRB_WOD</td><td>mooring number</td><td>usually; an array's moorings can share one number (e.g. 53005: two
+  positions 443&nbsp;km apart)</td></tr>
+<tr><td>CTD_WOD, XBT_WOD</td><td>ship or program code</td><td>no: one code can cover several ships or a whole
+  program</td></tr>
+</table>
+<p>So a step between two consecutive profiles is not drawn when it is faster than the class could move:
+PFL and ITP 100&nbsp;km/day, MEOP 300, gliders 150, moorings 50, ships (CTD, XBT) 1500 (time between profiles at least
+one hour). The rings and dots are all still drawn; only the line breaks, and the line under the platform box says
+how many steps were left out. Measured on run 20261027_142247: no PFL, ITP or MEOP platform has such steps;
+17 of 1477 gliders, 2 of 290 moorings, 266 of 20,036 CTD codes and 103 of 8261 XBT codes have them in more than
+10&nbsp;% of their steps.</p>
 <p>Data: profiles.bin + one file per variable and depth level per class, written by
 <code>ecco_insitu.diagnostics.bin_viewer.export</code>; loaded on demand and cached for the session.</p>
 """

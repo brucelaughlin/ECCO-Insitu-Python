@@ -70,6 +70,25 @@ and ±2σ bands; rejected levels ×; the values at the map's depth), *this platf
 depth-time picture of obs − reference) and *largest misfits here* (the bin's profiles ranked by |Δ|/σ at the
 map's depth; click a row to open one).
 
+**Platforms and their tracks.** A platform is a name taken from each profile's `prof_descr`
+(`export.py`, `platform_of`); the track joins its profiles in time order. Not every name is one instrument:
+
+| class | platform name | one instrument? |
+|---|---|---|
+| PFL | Argo float WMO number | yes |
+| ITP | ITP number | yes |
+| MEOP | tag deployment | yes |
+| GLD_WOD | the whole glider code after the cast number (since 2026-11-20; before, only the part before `_`, so `gs` joined 8 gliders) | usually: the codes are cut at 12 characters in the files, so codes that differ only after that merge |
+| MRB_WOD | mooring number | usually: an array's moorings can share one (53005: two positions 443 km apart) |
+| CTD_WOD, XBT_WOD | ship or program code | no |
+
+So the page leaves out a track step whose speed is impossible for the class (`TRACK_MAX_KM_DAY` in `viewer.html`):
+PFL and ITP 100 km/day, MEOP 300, gliders 150, moorings 50, CTD and XBT 1500 (time between profiles at least 1 h).
+The rings and dots are all drawn; the line breaks, and the line under the platform box says how many steps were
+left out. Measured on run 20261027_142247 (steps faster than these limits in more than 10 % of a platform's steps):
+PFL, ITP, MEOP none; gliders 17 of 1477 (e.g. `urd_202107`: two gliders, 640 km apart within 12 h); moorings 2 of 290;
+CTD 266 of 20,036 codes; XBT 103 of 8261. The page's guide (section "Platform tracks") says the same for readers.
+
 ## What matches the original
 
 Everything that the original draws is drawn here in the same way:
