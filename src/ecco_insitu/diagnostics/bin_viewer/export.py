@@ -8,9 +8,11 @@ Two kinds of files, written to one folder that is published as is (GitHub Pages,
     (``geodesic_binning/binning/geodesic_binning_utilities_binning.py``): the nearest-vertex bins of the
     10242-vertex geodesic grid; each bin's polygon is the convex hull of the points of a 0.1 deg lon/lat grid
     that fall in it; bins spanning more than 100 deg of longitude are dropped (the original's dateline
-    "map_span_bug"); each polygon is clipped to the ocean with Natural Earth's 10 m land, dropped if less than
-    2 % of it is ocean, and reduced to its largest piece. Lon/lat degrees. Also each bin's representative
-    point (for the bin-mean labels). The polygons don't depend on the data: built once.
+    "map_span_bug"); each polygon is clipped to the ocean with Natural Earth's 10 m land and dropped if less than
+    2 % of it is ocean. Every ocean piece is kept (since 2026-11-20; the original kept only the largest, so the
+    profiles of a bin split by land, e.g. by Cape Cod, all got their cells in one piece), except pieces smaller
+    than MIN_PIECE_FRACTION of the bin's hull. Lon/lat degrees. Each piece has a representative point (for the
+    bin-mean labels). The polygons don't depend on the data: built once.
 
 ``bins_N.bin``, ``bins_S.bin``, ``land_N.json``, ``land_S.json`` (gzip)
     The polar maps: the bins and land of each cap, in polar stereographic map units (:func:`build_polar_bins`).
@@ -28,8 +30,9 @@ Two kinds of files, written to one folder that is published as is (GitHub Pages,
     fixed while the time window changes.
 
 Layouts (little endian):
-    bins.bin:      uint32 n_bins, then per bin: uint16 bin id, uint16 n_vertices, float32 rep lon, rep lat,
-                   n_vertices x (float32 lon, float32 lat)
+    bins.bin:      uint32 n_bins, then per bin: uint16 bin id, uint16 n_pieces, then per piece: uint32 n_vertices,
+                   float32 rep x, rep y, n_vertices x (float32 x, float32 y)   (since BIN_FORMAT 2;
+                   bins.json 'format'; lon/lat on the world map, map units on the polar ones)
     profiles.bin:  uint32 n, then byte planes of: float32 lon[n], float32 lat[n], uint16 year[n],
                    uint16 bin[n] as differences (sorted by bin, then year)
     <V>_<k>.bin:   uint32 m, then byte planes of: uint32 profile index[m] (into profiles.bin, ascending) as
@@ -61,6 +64,9 @@ import ecco_insitu.diagnostics.common as common
 VARS = ('T', 'S')
 ANGULAR_PRECISION = 0.1        # deg, the original's grid for the bin polygons
 MIN_OCEAN_FRACTION = 0.02      # the original's min_ocean_fraction
+MIN_PIECE_FRACTION = 0.005     # a split bin's ocean piece smaller than this share of the bin's hull is dropped
+                               # (slivers between islands); about 0.5 % of ~45,000 km², i.e. ~200 km²
+BIN_FORMAT = 2                 # bins.bin layout: 2 = every ocean piece of a bin (see the module description)
 LAND_RESOLUTION = '10m'
 QF_FACE = (0.05, 0.95)         # the original's quantiles for the face (mean) colors: all values, all levels
 QF_EDGE = (0.05, 0.25, 0.5, 0.75, 0.95, 0.99)   # ... and for the edge (std) colors: bin std, all levels
@@ -76,6 +82,24 @@ def _geodesic_tree():
     cfg = config_loader.load()
     ll = np.loadtxt(config_loader.get(cfg, 'paths.geodesic_bin_csv'), delimiter=',')
     return cKDTree(_sph2cart(ll[:, 0], ll[:, 1])), len(ll)
+
+
+def _bin_pieces(ocean, hull_area):
+    """The ocean pieces of a bin to keep: each Polygon of ``ocean`` at least MIN_PIECE_FRACTION of the hull, largest
+    first. (Interior holes, e.g. islands inside a piece, are not kept: the piece is drawn from its outer ring.)"""
+    geoms = list(ocean.geoms) if hasattr(ocean, 'geoms') else [ocean]
+    polys = [g for g in geoms if g.geom_type == 'Polygon' and g.area >= MIN_PIECE_FRACTION * hull_area]
+    return sorted(polys, key=lambda g: -g.area)
+
+
+def _pack_bin(bin_id, pieces):
+    """One bin in the bins.bin layout (BIN_FORMAT 2)."""
+    out = [np.array([bin_id, len(pieces)], '<u2').tobytes()]
+    for g in pieces:
+        xy = np.asarray(g.exterior.coords, np.float32)
+        rp = g.representative_point()
+        out += [np.uint32(len(xy)).tobytes(), np.array([rp.x, rp.y], '<f4').tobytes(), xy.astype('<f4').tobytes()]
+    return b''.join(out)
 
 
 def build_bins(out):
@@ -103,7 +127,7 @@ def build_bins(out):
     land_p = prep(land)
     print(f'  land polygon: {time.time() - t0:.0f}s')
 
-    chunks, kept, dropped = [], 0, {'span': 0, 'land': 0, 'small': 0, 'tiny': 0}
+    chunks, kept, multi, dropped = [], 0, 0, {'span': 0, 'land': 0, 'small': 0, 'tiny': 0}
     for b in range(nbins):
         lo, la = lon_s[starts[b]:starts[b + 1]], lat_s[starts[b]:starts[b + 1]]
         if len(lo) < 3:
@@ -129,23 +153,20 @@ def build_bins(out):
         if ocean.area / poly.area < MIN_OCEAN_FRACTION:
             dropped['small'] += 1
             continue
-        if ocean.geom_type == 'MultiPolygon':
-            ocean = max(ocean.geoms, key=lambda g: g.area)
-        if ocean.geom_type != 'Polygon':
+        pieces = _bin_pieces(ocean, poly.area)
+        if not pieces:
             dropped['small'] += 1
             continue
-        xy = np.asarray(ocean.exterior.coords, np.float32)
-        rp = ocean.representative_point()
-        chunks += [np.array([b + 1, len(xy)], '<u2').tobytes(), np.array([rp.x, rp.y], '<f4').tobytes(),
-                   xy.astype('<f4').tobytes()]
+        multi += len(pieces) > 1
+        chunks.append(_pack_bin(b + 1, pieces))
         kept += 1
     blob = np.uint32(kept).tobytes() + b''.join(chunks)
     (out / 'bins.bin').write_bytes(gzip.compress(blob, 9))
     (out / 'bins.json').write_text(json.dumps({
-        'n_bins_grid': int(nbins), 'n_bins_kept': kept, 'dropped': dropped,
+        'format': BIN_FORMAT, 'n_bins_grid': int(nbins), 'n_bins_kept': kept, 'n_bins_split': multi, 'dropped': dropped,
         'angular_precision': ANGULAR_PRECISION, 'min_ocean_fraction': MIN_OCEAN_FRACTION,
         'land': f'Natural Earth {LAND_RESOLUTION} land'}))
-    print(f'  bins: {kept} kept, dropped {dropped}; {len(blob) / 1e6:.1f} MB raw; {time.time() - t0:.0f}s')
+    print(f'  bins: {kept} kept ({multi} in more than one ocean piece), dropped {dropped}; {len(blob) / 1e6:.1f} MB raw; {time.time() - t0:.0f}s')
 
 
 # ---- file layout (FORMAT 2) ----
@@ -248,9 +269,11 @@ def _kept_bins(out):
     b = gzip.decompress((out / 'bins.bin').read_bytes())
     n, o, ids = int(np.frombuffer(b, '<u4', 1)[0]), 4, []
     for _ in range(n):
-        bid, nv = np.frombuffer(b, '<u2', 2, o)
-        ids.append(int(bid))
-        o += 4 + 8 + 8 * int(nv)
+        bid, npc = (int(x) for x in np.frombuffer(b, '<u2', 2, o))
+        ids.append(bid)
+        o += 4
+        for _ in range(npc):
+            o += 4 + 8 + 8 * int(np.frombuffer(b, '<u4', 1, o)[0])
     return np.array(ids)
 
 
@@ -277,7 +300,7 @@ def build_polar_bins(out):
     """The bins of both polar caps, built as the original builds bins but in polar stereographic space.
 
     Same steps as :func:`build_bins` (0.1 deg grid points of each bin, convex hull, clip to land, drop below
-    2 % ocean, largest piece), with the grid points projected first, so bins around the poles and across the
+    2 % ocean, every ocean piece), with the grid points projected first, so bins around the poles and across the
     dateline are whole (the lon/lat map drops those). Writes bins_N.bin, bins_S.bin (same layout as
     bins.bin, in map units) and land_N.json, land_S.json (projected land rings, for drawing).
     """
@@ -300,6 +323,7 @@ def build_polar_bins(out):
     globe = ccrs.Globe(ellipse=None, semimajor_axis=EARTH_KM * 1000, semiminor_axis=EARTH_KM * 1000)
     land_ll = list(shpreader.Reader(shpreader.natural_earth(resolution=LAND_RESOLUTION, category='physical',
                                                             name='land')).geometries())
+    split = {}
     for hemi, sign in (('N', 1), ('S', -1)):
         crs = ccrs.Stereographic(central_latitude=90 * sign, central_longitude=0, globe=globe)
         # land in map units: the part of the hemisphere poleward of 10 deg, projected by cartopy (handles the pole)
@@ -314,7 +338,7 @@ def build_polar_bins(out):
         order = np.argsort(idx, kind='stable')
         idx_s = idx[order]
         starts = np.searchsorted(idx_s, np.arange(nbins + 1))
-        chunks, kept = [], 0
+        chunks, kept, multi = [], 0, 0
         for b in ids:
             j = order[starts[b]:starts[b + 1]]
             if (LAT[j] * sign).max() < POLAR_MIN_LAT or len(j) < 3:
@@ -328,16 +352,15 @@ def build_polar_bins(out):
             ocean = poly.difference(land) if land_p.intersects(poly) else poly
             if ocean.is_empty or ocean.area / poly.area < MIN_OCEAN_FRACTION:
                 continue
-            if ocean.geom_type == 'MultiPolygon':
-                ocean = max(ocean.geoms, key=lambda g: g.area)
-            if ocean.geom_type != 'Polygon':
+            pieces = _bin_pieces(ocean, poly.area)
+            if not pieces:
                 continue
-            xy = np.asarray(ocean.exterior.coords, np.float32)
-            rp = ocean.representative_point()
-            chunks += [np.array([b + 1, len(xy)], '<u2').tobytes(), np.array([rp.x, rp.y], '<f4').tobytes(),
-                       xy.astype('<f4').tobytes()]
+            multi += len(pieces) > 1
+            chunks.append(_pack_bin(b + 1, pieces))
             kept += 1
         (out / f'bins_{hemi}.bin').write_bytes(gzip.compress(np.uint32(kept).tobytes() + b''.join(chunks), 9))
+        print(f'  polar {hemi}: {kept} bins ({multi} in more than one ocean piece)')
+        split[hemi] = multi
         rings = []
         for g in (land.geoms if land.geom_type == 'MultiPolygon' else [land]):
             g = g.simplify(0.02)
@@ -347,6 +370,11 @@ def build_polar_bins(out):
                 rings.append([np.round(np.asarray(r.coords), 3).tolist() for r in (q.exterior, *q.interiors)])
         (out / f'land_{hemi}.json').write_bytes(gzip.compress(json.dumps(rings, separators=(',', ':')).encode(), 9))
         print(f'  polar {hemi}: {kept} bins; {time.time() - t0:.0f}s')
+    bj = out / 'bins.json'
+    if bj.exists():
+        meta = json.loads(bj.read_text())
+        meta.update({'format': BIN_FORMAT, 'n_bins_split_polar': split})
+        bj.write_text(json.dumps(meta))
 
 
 def write_land(out):
@@ -764,7 +792,11 @@ GUIDE_HTML = """
 <p><b>Differences from the original.</b> (1) Only values the processing chain kept (weight &gt; 0) are shown; the original
 used every non-missing value. (2) The color limits are computed per class over the whole record, so they stay fixed
 while the time window changes. (3) The original showed one yearly file; this page shows any range of years, of all
-files of the class. (4) If more than CELL_BUDGET cells would be in view, bins stay whole until you zoom further
+files of the class. (4a) Land can split a bin's ocean part into separate pieces (e.g. by Cape Cod); the original kept only the largest,
+so profiles in the other pieces got their cells in it. Here every piece is kept (below 0.5&nbsp;% of the bin's area,
+slivers between islands are dropped): each profile's cell is in the piece it is in, each piece has its own outline,
+and the bin-mean label (the mean over all the bin's profiles) is shown on every piece that holds some.
+(4) If more than CELL_BUDGET cells would be in view, bins stay whole until you zoom further
 (the browser's limit, not the original's). (5) Plain lon/lat map (as the original), drawn with WebGL (deck.gl).
 (6) Faint isobaths (200, 1000, 2000, 3000, 4000, 5000 m; Natural Earth), not in the original; the 200 m line (the
 shelf edge) is a little darker; each is labeled with its depth in meters along the line. The "isobaths" button

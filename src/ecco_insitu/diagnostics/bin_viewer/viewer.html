@@ -216,19 +216,43 @@ function cols(buf, specs) {
   }
   return out;
 }
+// A bin is every ocean piece of its geodesic cell (land can split it, e.g. by Cape Cod): bins.bin format 2
+// (export.py BIN_FORMAT). Each piece has its ring, label point, box and its own cell cache; the bin's box covers
+// all its pieces (for "in view"), and pieces[0] is the largest.
+const BIN_FORMAT = 2;
 async function loadBins(name) {
   const b = await gz(DATA_URL + name), dv = new DataView(b.buffer, b.byteOffset);
   const n = dv.getUint32(0, true); let o = 4; const bins = new Map();
+  const box = ring => { let x0 = 1e9, x1 = -1e9, y0 = 1e9, y1 = -1e9;
+    for (const [x, y] of ring) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; } return [x0, y0, x1, y1]; };
   for (let i = 0; i < n; i++) {
-    const id = dv.getUint16(o, true), nv = dv.getUint16(o + 2, true); o += 4;
-    const rp = [dv.getFloat32(o, true), dv.getFloat32(o + 4, true)]; o += 8;
-    const ring = new Array(nv);
-    for (let j = 0; j < nv; j++) { ring[j] = [dv.getFloat32(o, true), dv.getFloat32(o + 4, true)]; o += 8; }
-    let x0 = 1e9, x1 = -1e9, y0 = 1e9, y1 = -1e9;
-    for (const [x, y] of ring) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
-    bins.set(id, {id, ring, rp, bbox: [x0, y0, x1, y1]});
+    const id = dv.getUint16(o, true), np = dv.getUint16(o + 2, true); o += 4;
+    const pieces = [];
+    for (let k = 0; k < np; k++) {
+      const nv = dv.getUint32(o, true); o += 4;
+      const rp = [dv.getFloat32(o, true), dv.getFloat32(o + 4, true)]; o += 8;
+      const ring = new Array(nv);
+      for (let j = 0; j < nv; j++) { ring[j] = [dv.getFloat32(o, true), dv.getFloat32(o + 4, true)]; o += 8; }
+      pieces.push({id: id * 64 + k, ring, rp, bbox: box(ring)});
+    }
+    const bb = pieces.map(p => p.bbox);
+    bins.set(id, {id, pieces, bbox: [Math.min(...bb.map(q => q[0])), Math.min(...bb.map(q => q[1])),
+      Math.max(...bb.map(q => q[2])), Math.max(...bb.map(q => q[3]))]});
   }
   return bins;
+}
+// which piece of bin B each of its profiles e.idx falls in (on map M): inside a piece, else the piece whose label
+// point is nearest; cached per bin until its list of profiles changes
+function piecesOf(M, B, e) {
+  if (B.pieces.length === 1) return [e.idx.map((_, i) => i)];
+  if (B.split && B.split.idx === e.idx) return B.split.groups;     // e.idx is rebuilt whenever the class, depth or years change
+  const P = CLASS[S.src].p, groups = B.pieces.map(() => []);
+  e.idx.forEach((j, i) => { const q = M.proj(P.lon[j], P.lat[j]);
+    let k = B.pieces.findIndex(pc => q[0] >= pc.bbox[0] && q[0] <= pc.bbox[2] && q[1] >= pc.bbox[1] && q[1] <= pc.bbox[3] && inside(q, pc.ring));
+    if (k < 0) { let best = Infinity; B.pieces.forEach((pc, kk) => { const d = Math.hypot(q[0] - pc.rp[0], q[1] - pc.rp[1]); if (d < best) { best = d; k = kk; } }); }
+    groups[k].push(i); });
+  B.split = {idx: e.idx, groups};
+  return groups;
 }
 // platforms (export.py write_platforms): per profile, its platform index; optional (older folders have none)
 async function loadPlatforms(src) {
@@ -534,7 +558,7 @@ function drawMap(M) {
   const alpha = n => Math.round(255 * Math.min(1, Math.max(0.4, Math.sqrt(n / maxN))));
   const pxPerUnit = Math.pow(2, vs.zoom), grow = Math.sqrt(sf);
   const edgeWidth = (B, n) => n <= 1 ? 0 : Math.min(EDGE_K * Math.sqrt(n) * grow,
-    EDGE_CAP * Math.min(B.bbox[2] - B.bbox[0], B.bbox[3] - B.bbox[1]) * pxPerUnit);
+    EDGE_CAP * Math.min(B.pieces[0].bbox[2] - B.pieces[0].bbox[0], B.pieces[0].bbox[3] - B.pieces[0].bbox[1]) * pxPerUnit);
   const thinLw = Math.min(1.5, Math.max(0.3, 0.6 * sf / ZOOM_THRESHOLD)) * PT;   // as borderLw below
   const binRows = [], cellRows = [], dots = [], labels = [], binIds = [], visible = [];
   for (const [b, e] of STATS) { const B = M.bins.get(b); if (B && inView(B)) visible.push([B, e, b]); }
@@ -546,20 +570,25 @@ function drawMap(M) {
     if (!micro || overBudget || e.n > S.cap || !inView(B)) {
       // zoomed out, the edge width shows the profile count; past the zoom threshold a whole bin is already known to be
       // crowded (it would split otherwise), so it gets the split bins' thin outline and its face stays visible
-      binRows.push({poly: B.ring, fill: [...fc, alpha(e.n)], line: ec, width: micro ? thinLw : edgeWidth(B, e.n)});
+      const w = micro ? thinLw : edgeWidth(B, e.n);
+      for (const pc of B.pieces) binRows.push({poly: pc.ring, fill: [...fc, alpha(e.n)], line: ec, width: w});
       continue;
     }
-    // one cell per profile; values sorted ascending, assigned south to north by the latitude of the cell's centroid
-    const cells = cellsFor(B, e.n), vals = [...e.vals].sort((x, y) => x - y);
-    const order = cells.map((r, i) => { const g = centroid(r); return [M.latOf(g[0], g[1]), i]; }).sort((p, q) => p[0] - q[0]);
+    // one cell per profile, in the piece of the bin the profile is in; within a piece, values sorted ascending and
+    // assigned south to north by the latitude of the cell's centroid
     const a = alpha(e.n);
-    order.forEach(([, ci], rank) => cellRows.push({poly: cells[ci], fill: [...faceColor(vals[rank], SC), a], n: e.n}));
+    piecesOf(M, B, e).forEach((g, k) => { if (!g.length) return;
+      const pc = B.pieces[k], cells = cellsFor(pc, g.length), vals = g.map(i => e.vals[i]).sort((x, y) => x - y);
+      const order = cells.map((r, i) => { const c = centroid(r); return [M.latOf(c[0], c[1]), i]; }).sort((p, q) => p[0] - q[0]);
+      order.forEach(([, ci], rank) => cellRows.push({poly: cells[ci], fill: [...faceColor(vals[rank], SC), a], n: g.length})); });
   }
   if (micro) {
     const P = CLASS[S.src].p;
     for (const [B, e, b] of visible) {
-      labels.push({pos: B.rp, text: e.mean.toFixed(2)});
-      binIds.push({pos: B.rp, text: String(b)});
+      // the bin mean (over all its profiles) and its number, on every piece that holds profiles
+      const groups = piecesOf(M, B, e);
+      B.pieces.forEach((pc, k) => { if (!groups[k].length) return;
+        labels.push({pos: pc.rp, text: e.mean.toFixed(2)}); binIds.push({pos: pc.rp, text: String(b)}); });
       for (const j of e.idx) dots.push({p: M.proj(P.lon[j], P.lat[j]), j});
     }
   }
@@ -590,7 +619,7 @@ function drawMap(M) {
     for (let i = step; i < pts.length; i += step) { const a = pts[i - 1], b = pts[i]; if (!TRACK.ok[i] || Math.hypot(b[0] - a[0], b[1] - a[1]) > wrap) continue;
       trackArrows.push({p: [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2], ang: Math.atan2(b[1] - a[1], b[0] - a[0]) * 180 / Math.PI, c: trackColor(tf[i - 1])}); }
   }
-  const hl = HIBIN !== null && M.bins.get(HIBIN) ? [M.bins.get(HIBIN)] : [];
+  const hl = HIBIN !== null && M.bins.get(HIBIN) ? M.bins.get(HIBIN).pieces : [];
   const hlDots = []; if (hl.length && STATS.get(HIBIN)) for (const j of STATS.get(HIBIN).idx) hlDots.push({p: M.proj(CLASS[S.src].p.lon[j], CLASS[S.src].p.lat[j]), j});
   const cellLw = MICRO_BASE_LW * (sf / ZOOM_THRESHOLD) * PT, borderLw = Math.min(1.5, Math.max(0.3, 0.6 * sf / ZOOM_THRESHOLD)) * PT;
   const G = M.id === 'll' ? grid(M, vs) : polarGrid(M, vs), [ex0, ey0, ex1, ey1] = M.extent;
@@ -606,7 +635,7 @@ function drawMap(M) {
       getAngle: d => d.ang, getSize: 9, getColor: d => d.shelf ? [60, 60, 60, 230] : [90, 90, 90, 200],
       outlineWidth: 3, outlineColor: [255, 255, 255, 220], fontFamily: 'Helvetica, Arial, sans-serif',
       fontSettings: {sdf: true, fontSize: 64, buffer: 10, radius: 16, cutoff: 0.2}, characterSet: '0123456789'}),
-    new deck.PathLayer({id: 'borders', data: micro && !overBudget ? visible : [],
+    new deck.PathLayer({id: 'borders', data: micro && !overBudget ? visible.flatMap(([B, e]) => B.pieces.map(pc => [pc, e])) : [],
       getPath: d => d[0].ring, getColor: d => edgeColor(d[1].std, SC), getWidth: borderLw, widthUnits: 'pixels'}),
     // land above the bins and cells, so a thick bin edge never covers it
     new deck.SolidPolygonLayer({id: 'land', data: M.land, getPolygon: d => d, getFillColor: [140, 115, 85]}),
@@ -1207,7 +1236,11 @@ async function init() {
   busy('Loading…');
   INDEX = await (await fetch('./index.json', {cache: 'no-store'})).json();
   if (INDEX.data_url) { DATA_URL = INDEX.data_url.replace(/\/$/, ''); INDEX = await (await fetch(DATA_URL + '/index.json')).json(); }
-  INDEX.n_bins_grid = (await (await fetch(DATA_URL + '/bins.json')).json()).n_bins_grid;
+  const BJ = await (await fetch(DATA_URL + '/bins.json')).json();
+  if ((BJ.format || 1) !== BIN_FORMAT) {               // this page and its bin files are from different builds
+    busy(null); document.body.insertAdjacentHTML('afterbegin', '<div style="padding:1em;background:#fde8e8;font:14px sans-serif">' +
+      'This page is out of date with its data: reload it (Cmd-Shift-R or Ctrl-Shift-R).</div>'); return; }
+  INDEX.n_bins_grid = BJ.n_bins_grid;
   const yrs = Object.values(INDEX.classes).map(c => c.years); INDEX.years0 = Math.min(...yrs.map(y => y[0])); INDEX.years1 = Math.max(...yrs.map(y => y[1]));
   const [bins, land, binsN, binsS, landN, landS] = await Promise.all([loadBins('/bins.bin'), unzip(DATA_URL + '/land.json'),
     loadBins('/bins_N.bin'), loadBins('/bins_S.bin'), unzip(DATA_URL + '/land_N.json'), unzip(DATA_URL + '/land_S.json'), loadBathy()]);

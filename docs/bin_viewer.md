@@ -93,7 +93,7 @@ CTD 266 of 20,036 codes; XBT 103 of 8261. The page's guide (section "Platform tr
 
 Everything that the original draws is drawn here in the same way:
 - the bin polygons (the same construction: 0.1° grid, convex hull, the >100° dateline drop, clipped to 10 m land,
-  dropped below 2 % ocean, largest piece);
+  dropped below 2 % ocean), except that every ocean piece is kept (below);
 - the colors (PRGn cut so white is 0, cividis for the std);
 - the color limits (5/95 % of all values; 25/95 % of the bins' std; both over all depth levels);
 - the face opacity sqrt(n/max) clipped to 0.4–1;
@@ -126,6 +126,30 @@ storage).
    above ~60 profiles look the same on the world map; now busy regions (e.g. XBT shipping lanes) stand out.
    Past the zoom threshold (2026-11-20) a bin that stays whole gets the thin outline of the split bins instead:
    its size alone shows it is crowded, and the thick edge hid its color.
+5a. **Every ocean piece of a bin** (2026-11-20). Land can cut a bin's ocean part into separate pieces (e.g. bin 8547,
+   centered inland at 42.26°N 72.03°W, is split by Cape Cod into Massachusetts Bay and Long Island Sound). The
+   original kept only the largest piece, so all the bin's profiles got their cells there: of bin 8547's CTD
+   profiles at 2 m, those in Massachusetts Bay had cells in Long Island Sound, their dots had no cell under them,
+   and they disappeared when the drawn piece was out of view. Now every piece is kept (pieces below 0.5 % of the
+   bin's hull, ~200 km², are dropped: slivers between islands), each profile gets its cell in the piece it is in
+   (the nearest piece if it falls on land in the simplified coastline), and each piece has its own outline and
+   label. The label is the bin's mean over all its profiles, on every piece that holds some. Zoomed out, the bin's
+   color fills every piece. Counts (run 20261027_142247): 201 of 7851 bins on the world map have more than one
+   piece (at most 6), 114 of 2173 on the Arctic map, 43 of 3031 on the Southern Ocean map. Profiles that were
+   outside their bin's largest piece (so previously drawn in the wrong place), all years and levels:
+
+   | class | profiles | in split bins | outside the largest piece |
+   |---|---|---|---|
+   | CTD_WOD | 882,340 | 113,661 | 28,492 (3.2 %) |
+   | XBT_WOD | 678,852 | 17,483 | 3,409 (0.5 %) |
+   | MEOP | 468,198 | 7,544 | 2,243 (0.5 %) |
+   | PFL | 2,570,088 | 10,478 | 1,099 (0.04 %) |
+   | MRB_WOD | 1,060,078 | 6,834 | 1,066 (0.1 %) |
+   | GLD_WOD | 250,961 | 7,646 | 669 (0.3 %) |
+   | ITP | 35,014 | 0 | 0 |
+
+   The bin files' layout changed with this (`bins.bin` format 2, `bins.json` `format`); a page and bin files of
+   different formats refuse to draw and ask for a reload.
 5b. **Land above the bins** (2026-11-20): the bin faces are clipped to the ocean, but their edges are drawn on the
    bin's boundary and could cover the coast; land and coastline are now drawn above bins and cells.
 6. **Polar maps** below the world map (Arctic, Southern Ocean; polar stereographic, the 40° circle at the
