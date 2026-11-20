@@ -42,6 +42,8 @@ intersphinx_mapping = {
 html_theme = 'sphinx_rtd_theme'
 html_title = f'ecco_insitu {release}'
 exclude_patterns = ['_build']
+# forwarding pages at the profile reports' old addresses (the reports moved to the site repository, site.url)
+html_extra_path = ['_extra']
 templates_path = ['_templates']
 
 # PDF (python -m sphinx -M latexpdf docs/sphinx docs/sphinx/_build): XeLaTeX handles the Unicode in
