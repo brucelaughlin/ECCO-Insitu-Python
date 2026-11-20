@@ -1023,7 +1023,9 @@ def publish_s3(out, bucket, url, profile=None, dry_run=False):
         index.setdefault('ref_urls', {})[name] = f'{url}/{name}/{out.name}'
     if not dry_run:
         ip.write_text(json.dumps(index, separators=(',', ':')))
-        aws('s3', 'cp', str(ip), f'{bucket}/{out.name}/index.json', '--content-type', 'application/json')
+        # index.json changes on every publish under the same name: no caching at CloudFront or in the browser
+        aws('s3', 'cp', str(ip), f'{bucket}/{out.name}/index.json', '--content-type', 'application/json',
+            '--cache-control', 'no-cache')
     print('data_url:', index.get('data_url')); print('ref_urls:', index.get('ref_urls'))
 
 

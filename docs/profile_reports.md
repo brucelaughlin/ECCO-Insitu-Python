@@ -22,13 +22,12 @@ ecco-insitu profile-analyze --replot --out <analysis dir>
 
 # 3. the web pages (--bin-viewer: the run's in situ data viewer, published as in docs/bin_viewer.md)
 ecco-insitu profile-report --site --inputs <analysis dir> --out docs/reports/<report name> \
-    --bin-viewer https://brucelaughlin.github.io/ecco-bin-viewer/<run name>/
+    --bin-viewer https://brucelaughlin.github.io/ecco-insitu/bin_viewer/<run name>/
 
-# 4. publish (section 4): pages and figures to gh-pages, the explorer data (~860 MB) to S3 + CloudFront
-ecco-insitu publish-reports docs/reports/<report name> \
-    --s3 s3://ecco-insitu-site/reports https://d1r1rp2b701s7u.cloudfront.net/reports --aws-profile ecco-site
-#    then on GitHub: Actions -> docs -> Run workflow (branch main), or push anything to main
-#    (needs the AWS CLI signed in: aws login --profile ecco-site; see docs/bin_viewer.md for the bucket)
+# 4. publish: every page to the site repository (site.repo, https://brucelaughlin.github.io/ecco-insitu/), the explorer
+#    data (~860 MB) to S3 + CloudFront (site.s3_bucket); give every report and data viewer to keep on the site
+ecco-insitu publish-reports docs/reports/<report name> --bin-viewer-folder ~/ecco/yip/bin_viewer_data/<run name>
+#    (needs the AWS CLI signed in: aws login --profile ecco-site; the data viewer's own data first, docs/bin_viewer.md)
 ```
 
 A full re-analysis (step 2) is needed only when a calculation changes. Everything else (titles, legends,

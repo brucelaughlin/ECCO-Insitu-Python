@@ -197,6 +197,21 @@ diagnostics:
   cost_report_dir: null
 
 # -------------------------------------------------------------------------------------
+# The published site (ecco-insitu publish-reports): one GitHub Pages repository for every page (the Analyses
+# sites and the in situ data viewer); the large data are on S3 + CloudFront (docs/profile_reports.md)
+# -------------------------------------------------------------------------------------
+site:
+  # the repository whose main branch GitHub Pages serves; replaced on every publish (no history)
+  repo: git@github.com:brucelaughlin/ecco-insitu.git
+  # its address
+  url: https://brucelaughlin.github.io/ecco-insitu/
+  # the explorer data and the data viewer data: S3 bucket and its CloudFront address (null: data kept on the site)
+  s3_bucket: s3://ecco-insitu-site
+  s3_url: https://d1r1rp2b701s7u.cloudfront.net
+  # the AWS CLI profile for the bucket
+  aws_profile: ecco-site
+
+# -------------------------------------------------------------------------------------
 # Ask-a-question assistant (prototype; ecco-insitu assistant; docs/planning/llm_assistant.md)
 # -------------------------------------------------------------------------------------
 assistant:

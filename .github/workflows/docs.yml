@@ -5,8 +5,9 @@ name: docs
 on:
   push:
     branches: [main]
-  workflow_dispatch:          # run by hand from the Actions tab; ecco-insitu publish-reports starts it
-                              # (on main) after pushing the gh-pages branch
+  workflow_dispatch:          # run by hand from the Actions tab
+# The published profile reports and the data viewer are on their own site (site.repo, ecco-insitu publish-reports);
+# this site holds only the documentation (and forwarding pages at the reports' old addresses: docs/sphinx/_extra).
 
 permissions:
   contents: read
@@ -32,16 +33,6 @@ jobs:
           pip install -e ".[diagnostics,docs]"
       - name: "Build (strict: warnings are errors)"
         run: python -m sphinx -b html -W --keep-going docs/sphinx docs/sphinx/_build/html
-      # The profile reports live on the gh-pages branch (ecco-insitu publish-reports), not on main:
-      # copy them into the site so a docs build keeps them and a report publish keeps the docs.
-      - name: Add the published profile reports (gh-pages branch)
-        run: |
-          if git ls-remote --exit-code --heads origin gh-pages > /dev/null; then
-            git fetch --depth 1 origin gh-pages
-            mkdir -p /tmp/reports && git --work-tree=/tmp/reports checkout origin/gh-pages -- .
-            rm -f /tmp/reports/README.md
-            cp -r /tmp/reports/. docs/sphinx/_build/html/
-          fi
       - uses: actions/upload-pages-artifact@v3
         with:
           path: docs/sphinx/_build/html
