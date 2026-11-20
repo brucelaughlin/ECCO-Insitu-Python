@@ -218,7 +218,10 @@ Where the red curve (all places) jumps and the blue one doesn't, the places them
 <div id="hover"></div><div id="regbox"></div>
 <script>
 'use strict';
-const INDEX_URL = 'viewer/index.json', GRID_URL = 'viewer/grid.json';
+// the data: next to this page (viewer/), or where index.json's data_url says (the published site keeps them on S3 +
+// CloudFront, under a folder per build, so a cached older file is never mixed with a newer one)
+const INDEX_URL = 'viewer/index.json';
+let DATA_BASE = 'viewer/';
 const DATA_FORMAT = 2;
 // the in situ data viewer's reference for a cost type: vs_clim -> clim, vs_<model> -> <model> (e.g. vs_V5r1 -> V5r1)
 // (a comparison compare_<A>_<B>: model B's, the one compared with A)
@@ -364,7 +367,7 @@ async function data(src, ct) {          // the all-years summary (small): loaded
   if (!CACHE[key]) {
     const lab = 'Loading ' + src + ', ' + ct;
     busy(lab + '…'); await paint();
-    const raw = await getGz('viewer/' + INDEX.files[key], lab);
+    const raw = await getGz(DATA_BASE + INDEX.files[key], lab);
     busy('Unpacking ' + src + ', ' + ct + '…'); await paint();
     CACHE[key] = parse(raw, true);
   }
@@ -381,7 +384,7 @@ async function yearData(src, ct) {      // year-by-year data: only the pieces co
       let done = 0;
       for (const [pa_, pb_] of todo) {   // one piece pair at a time: the models' own pieces are not kept (memory)
         busy(`${lab}: ${++done} of ${todo.length}…`, (done - 1) / todo.length); await paint();
-        const get = async p => YCACHE[p.file] || parse(await getGz('viewer/' + p.file, null, () => {}), false);
+        const get = async p => YCACHE[p.file] || parse(await getGz(DATA_BASE + p.file, null, () => {}), false);
         const [A, B] = await Promise.all([get(pa_), get(pb_)]);
         const YC = ['mu', 'ma', 'bias'];   // per year a comparison shows costs and the model difference only
         YCACHE[ct + ':' + pa_.file] = {T: diffRecs(A.T, B.T, YC), S: diffRecs(A.S, B.S, YC)};
@@ -401,7 +404,7 @@ async function yearData(src, ct) {      // year-by-year data: only the pieces co
     const got = {}, tot = {};
     const show = () => { const g = Object.values(got).reduce((a, b) => a + b, 0), t = Object.values(tot).reduce((a, b) => a + b, 0);
       busy(lab + ' — ' + (g / 1e6).toFixed(1) + (t ? ' of ' + (t / 1e6).toFixed(1) : '') + ' MB', t ? g / t : null); };
-    const raws = await Promise.all(todo.map(p => getGz('viewer/' + p.file, null, (g, t) => { got[p.file] = g; tot[p.file] = t; show(); })));
+    const raws = await Promise.all(todo.map(p => getGz(DATA_BASE + p.file, null, (g, t) => { got[p.file] = g; tot[p.file] = t; show(); })));
     busy('Unpacking years ' + span + '…'); await paint();
     todo.forEach((p, i) => { YCACHE[p.file] = parse(raws[i], false); });
   }
@@ -1344,9 +1347,10 @@ async function init() {
   INDEX = await (await fetch(INDEX_URL, {cache: 'no-store'})).json();
   if ((INDEX.format || 1) !== DATA_FORMAT) {           // this page and its data are from different builds
     busy(null); status('This page is out of date with its data: reload it (Cmd-Shift-R or Ctrl-Shift-R).'); return; }
-  GRID = await (await fetch(vurl(GRID_URL))).json();
+  if (INDEX.data_url) DATA_BASE = INDEX.data_url.replace(/\/?$/, '/');
+  GRID = await (await fetch(vurl(DATA_BASE + 'grid.json'))).json();
   for (const v of ['global', 'NH', 'SH']) {
-    const b = await getGz('viewer/grid_' + v + '.bin');
+    const b = await getGz(DATA_BASE + 'grid_' + v + '.bin');
     GRIDS[v] = new Int16Array(b.buffer, b.byteOffset, b.byteLength / 2);
   }
   const maps = document.getElementById('maps');

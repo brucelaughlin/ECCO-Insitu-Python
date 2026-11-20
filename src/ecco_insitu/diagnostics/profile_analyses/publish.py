@@ -22,6 +22,12 @@ Usage::
 Each site folder is published under its own name (the URL is
 ``https://<user>.github.io/<repo>/<folder name>/``). With ``--keep-others`` the reports already on
 ``gh-pages`` that aren't given are kept; by default only the given ones are published.
+
+With ``--s3 BUCKET URL`` the cost map explorer's data (``viewer/*.bin``, ``grid.json``; ~800 MB a site) go to an S3
+bucket served through CloudFront instead of ``gh-pages``: they are uploaded to
+``BUCKET/<site>/<build version>/`` and the published ``viewer/index.json`` gets ``data_url`` = the same place under
+URL. A folder per build means a page never mixes cached files of two builds. GitHub Pages then carries only the
+pages, the figures and ``viewer/index.json``.
 """
 import argparse
 import shutil
@@ -36,8 +42,27 @@ def _git(*args, cwd, check=True):
     return subprocess.run(['git', *args], cwd=cwd, check=check, text=True, capture_output=True)
 
 
-def publish(sites, repo='.', keep_others=False, dry_run=False):
-    """Replace the gh-pages branch with the given report folders (one commit, force-pushed)."""
+def _upload_explorer_data(site, work_site, bucket, url, profile, dry_run):
+    """Upload ``site``'s explorer data to S3 and leave in ``work_site`` (the copy for gh-pages) only an index.json
+    pointing at them (see the module description)."""
+    import json
+    import os
+    vdir = site / 'viewer'
+    index = json.loads((vdir / 'index.json').read_text())
+    dest = f'{bucket.rstrip("/")}/{site.name}/{index["version"]}'
+    env = dict(os.environ, **({'AWS_PROFILE': profile} if profile else {}))
+    subprocess.run(['aws', 's3', 'sync', str(vdir), dest, '--exclude', 'index.json', '--only-show-errors',
+                    *(['--dryrun'] if dry_run else [])], check=True, env=env)
+    index['data_url'] = f'{url.rstrip("/")}/{site.name}/{index["version"]}/'
+    shutil.rmtree(work_site / 'viewer')
+    (work_site / 'viewer').mkdir()
+    (work_site / 'viewer' / 'index.json').write_text(json.dumps(index, separators=(',', ':')))
+    print(f'{site.name}: explorer data -> {dest} ({sum(f.stat().st_size for f in vdir.iterdir()) / 1e6:.0f} MB)')
+
+
+def publish(sites, repo='.', keep_others=False, dry_run=False, s3=None, aws_profile=None):
+    """Replace the gh-pages branch with the given report folders (one commit, force-pushed). ``s3``: (bucket,
+    CloudFront address) for the explorer data (see the module description)."""
     repo = Path(repo).resolve()
     sites = [Path(s).resolve() for s in sites]
     for s in sites:
@@ -56,6 +81,8 @@ def publish(sites, repo='.', keep_others=False, dry_run=False):
             shutil.rmtree(work / 'old')
         for s in sites:
             shutil.copytree(s, work / s.name)
+            if s3:
+                _upload_explorer_data(s, work / s.name, *s3, aws_profile, dry_run)
         (work / '.nojekyll').write_text('')          # serve files as they are
         names = sorted(d.name for d in work.iterdir() if d.is_dir())
         (work / 'README.md').write_text(
@@ -86,7 +113,10 @@ def cli(argv=None):
     p = argparse.ArgumentParser(description=__doc__.split('\n\n')[0])
     p.add_argument('sites', nargs='+', help='report folders made with profile-report --site')
     p.add_argument('--keep-others', action='store_true', help='keep reports already published that are not given')
+    p.add_argument('--s3', nargs=2, metavar=('BUCKET', 'URL'), help='put the explorer data on S3 + CloudFront instead, '
+                   'e.g. s3://ecco-insitu-site/reports https://d1r1rp2b701s7u.cloudfront.net/reports')
+    p.add_argument('--aws-profile', metavar='NAME', help='with --s3: the AWS CLI profile (e.g. ecco-site)')
     p.add_argument('--dry-run', action='store_true', help='show what would be published; push nothing')
     p.add_argument('--repo', default='.', help='the repository (default: current folder)')
     a = p.parse_args(argv)
-    publish(a.sites, a.repo, a.keep_others, a.dry_run)
+    publish(a.sites, a.repo, a.keep_others, a.dry_run, a.s3, a.aws_profile)
