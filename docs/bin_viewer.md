@@ -3,34 +3,54 @@
 A web copy of the original `geodesic_binning` plotting app (`geodesic_binning/plotting/`), with time windows of
 any length. Code: `src/ecco_insitu/diagnostics/bin_viewer/` (`export.py` writes the data and the page,
 `viewer.html` is the page template, `vendor/` holds deck.gl 9.0.38 and d3-delaunay 6.0.4).
-Hosting: two GitHub Pages sites (each under GitHub's 1 GB site limit; github.io is reachable on the facility's
-secure network):
-- **`brucelaughlin/ecco-bin-viewer`**: the page, bins, maps, and the anomalies relative to the climatology.
+Hosting (since 2026-11-20): the page and its main data on GitHub Pages, everything bigger on S3 + CloudFront:
+- **`brucelaughlin/ecco-bin-viewer`** (GitHub Pages): the page, bins, maps, climatology anomalies and platforms.
   **Live:** https://brucelaughlin.github.io/ecco-bin-viewer/run_20261027_142247/
-- **`brucelaughlin/ecco-bin-viewer-model`**: the anomalies relative to the model (~740 MB); the page reads them
-  from there (`ref_urls` in `index.json`; GitHub Pages allows cross-site reads).
+- **S3 bucket `ecco-insitu-site`** (the user's own AWS account, us-east-2, private) behind the CloudFront
+  distribution **`d1r1rp2b701s7u.cloudfront.net`** (Origin Access Control: only CloudFront reads the bucket):
+  the profile details and the model anomalies (V4r6, V5r1), under `bin_viewer/`. The page reads them through
+  `detail_urls` and `ref_urls` in `index.json`. New `*.cloudfront.net` addresses get through the facility's
+  secure network (tested 2026-11-20); `*.r2.dev` and new domains don't.
 
-One run at a time: each publish replaces both sites. Older runs stay in their local folders.
+CORS: the distribution uses its own response-headers policy (`ecco-insitu-cors-any-header`: any origin, any
+request header, GET/HEAD/OPTIONS). AWS's managed SimpleCORS policy is not enough: it leaves out
+`Access-Control-Allow-Origin` whenever the request carries a header beyond the simple ones, and Chrome always
+sends `priority`.
 
-History: 2026-11-02 it was first put on Cloudflare R2 (custom domain `www.ecco-insitu-viewer.org`); the secure
-network blocks new domains and all `*.r2.dev` addresses, so it moved to GitHub Pages the same day and R2 was
-emptied and dropped.
+One run at a time: each publish replaces what is there. Older runs stay in their local folders.
 
-## Sites (since 2026-11-03)
+History: 2026-11-02 first on Cloudflare R2 (blocked on the secure network), then GitHub Pages only, split over
+seven repositories to stay under the 1 GB per-site limit; 2026-11-20 the details and the model levels moved to
+S3 + CloudFront, so only `ecco-bin-viewer` remains on GitHub Pages.
 
-| site | holds | about |
+## Where the data are (since 2026-11-20)
+
+| place | holds | about |
 |---|---|---|
-| `ecco-bin-viewer` | the page, bins, maps, climatology anomalies, platforms | 830 MB |
-| `ecco-bin-viewer-model` | anomalies vs the model | 740 MB |
-| `ecco-bin-viewer-detail-a` / `-b` | profile details, PFL (chunks 0–653 / 654–1285) | 540 / 510 MB |
-| `ecco-bin-viewer-detail-c` | profile details, all other classes | 450 MB |
+| GitHub Pages `ecco-bin-viewer` | the page, bins, maps, climatology anomalies, platforms | 830 MB |
+| S3/CloudFront `bin_viewer/run_<name>/detail/` | profile details, all classes | 1.85 GB |
+| S3/CloudFront `bin_viewer/model/run_<name>/` | anomalies vs V4r6 | 774 MB |
+| S3/CloudFront `bin_viewer/V5r1/run_<name>/` | anomalies vs V5r1 | 776 MB |
+
+The former sites `ecco-bin-viewer-model`, `-v5r1` and `-detail-a/b/c` are no longer read.
 
 Profile details (`export --details`): every profile's observation, climatology, model, σ and QC code (step 06's
 `prof_Vweight_code`), date, time and description, to 0.001 (σ 0.0001), in chunks of 2000 profiles, loaded only when a
 profile is opened. Checked against the yearly files for 400 random profiles per class (178,000 values; script
 `tests/tools/check_bin_viewer_detail.py`): all within rounding, QC codes, dates and descriptions exact.
 
-Publish all four in one go (the detail sites first, so the page knows where they are):
+**Publish (since 2026-11-20):** the details and model levels to S3, then the main site (the S3 step writes their
+addresses into `index.json`, which the main site carries). Needs the AWS CLI signed in to the bucket's account
+(`aws login --profile ecco-site`; that profile needs `region = us-east-2` in `~/.aws/config`).
+```
+python -m ecco_insitu.diagnostics.bin_viewer.export --out <folder> \
+    --s3 s3://ecco-insitu-site/bin_viewer https://d1r1rp2b701s7u.cloudfront.net/bin_viewer --aws-profile ecco-site \
+    --github git@github.com:brucelaughlin/ecco-bin-viewer.git
+```
+Add `--dry-run` to see what would be uploaded. A new model: `--add-model NAME DIR <folder>_NAME_site` writes its
+level files there, and the next `--s3` uploads them and adds it to `ref_urls`.
+
+Before 2026-11-20 the details went to three GitHub Pages sites (no longer used):
 ```
 python -m ecco_insitu.diagnostics.bin_viewer.export --out <folder> \
     --github-detail git@github.com:brucelaughlin/ecco-bin-viewer-detail-a.git=PFL:0-653 \

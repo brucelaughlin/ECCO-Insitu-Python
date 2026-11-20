@@ -980,6 +980,40 @@ def publish_details(out, remotes, dry_run=False):
     print('detail_urls:', urls)
 
 
+def publish_s3(out, bucket, url, profile=None, dry_run=False):
+    """Upload the data that don't fit on the GitHub Pages site to an S3 bucket served through CloudFront, and point the
+    page at them: the profile details (``<out>/detail/``) and every extra model's level files (``<out>_<name>_site/``,
+    made by ``--split-model`` or ``--add-model``). Writes ``detail_urls`` and ``ref_urls`` into index.json, then
+    uploads index.json too. Run before ``--github`` (the main site carries index.json).
+
+    ``bucket``: e.g. ``s3://ecco-insitu-site/bin_viewer``; ``url``: the same place through CloudFront, e.g.
+    ``https://d1r1rp2b701s7u.cloudfront.net/bin_viewer``. The distribution needs a CORS response-headers policy that
+    allows any request header (the managed SimpleCORS one drops its header when the browser sends ``priority``).
+    Files are uploaded as they are (gzip bytes, no Content-Encoding), as the page decompresses them itself.
+    """
+    import os
+    import subprocess
+    out = Path(out).resolve()
+    bucket, url = bucket.rstrip('/'), url.rstrip('/')
+    env = dict(os.environ, **({'AWS_PROFILE': profile} if profile else {}))   # this CLI takes no --profile before 's3'
+    aws = lambda *args: subprocess.run(['aws', *args, '--only-show-errors'], check=True, env=env)
+    sync = lambda src, dst: aws('s3', 'sync', str(src), dst, *(['--dryrun'] if dry_run else []))
+    ip = out / 'index.json'
+    index = json.loads(ip.read_text())
+    if (out / 'detail').is_dir():
+        sync(out / 'detail', f'{bucket}/{out.name}/detail')
+        n = {c.name: len(list(c.glob('c*.bin'))) for c in (out / 'detail').iterdir() if c.is_dir()}
+        index['detail_urls'] = {c: [[0, k - 1, f'{url}/{out.name}']] for c, k in n.items()}
+    for site in sorted(out.parent.glob(f'{out.name}_*_site')):
+        name = site.name[len(out.name) + 1:-len('_site')]
+        sync(site / out.name, f'{bucket}/{name}/{out.name}')
+        index.setdefault('ref_urls', {})[name] = f'{url}/{name}/{out.name}'
+    if not dry_run:
+        ip.write_text(json.dumps(index, separators=(',', ':')))
+        aws('s3', 'cp', str(ip), f'{bucket}/{out.name}/index.json', '--content-type', 'application/json')
+    print('detail_urls:', index.get('detail_urls')); print('ref_urls:', index.get('ref_urls'))
+
+
 def cli(argv=None):
     """``ecco-insitu bin-viewer``: build, convert, or publish (GitHub Pages) the viewer."""
     p = argparse.ArgumentParser(description='Write the geodesic bin viewer data.')
@@ -1012,6 +1046,10 @@ def cli(argv=None):
                    help='move the model files to <out>_NAME_site/, for a second GitHub Pages site at URL')
     p.add_argument('--github-detail', nargs='+', metavar='REMOTE=CLASS[:a-b],...', help='publish detail/ to these sites, '
                    'e.g. ...-detail-a.git=PFL:0-699 ...-detail-b.git=PFL:700- ...-detail-c.git=CTD_WOD,GLD_WOD,ITP,MEOP,MRB_WOD,XBT_WOD')
+    p.add_argument('--s3', nargs=2, metavar=('BUCKET', 'URL'), help='upload the profile details and the extra models\' level '
+                   'files to this S3 bucket and point the page at URL (its CloudFront address), e.g. '
+                   's3://ecco-insitu-site/bin_viewer https://d1r1rp2b701s7u.cloudfront.net/bin_viewer; run with or before --github')
+    p.add_argument('--aws-profile', metavar='NAME', help='with --s3: the AWS CLI profile (e.g. ecco-site)')
     p.add_argument('--dry-run', action='store_true', help='show what the publish would do')
     a = p.parse_args(argv)
     if a.convert:
@@ -1041,12 +1079,14 @@ def cli(argv=None):
         index = json.loads(ip.read_text())
         index['report_url'] = a.report
         ip.write_text(json.dumps(index, indent=1))
-    if a.page_only or a.platforms or a.details or a.github_detail or a.bathy or a.polar or a.report or a.convert or a.split_model or (a.github and not a.run):
+    if a.page_only or a.platforms or a.details or a.github_detail or a.bathy or a.polar or a.report or a.convert or a.split_model or a.s3 or (a.github and not a.run):
         write_page(Path(a.out))
     else:
         run(a.run, a.out, a.sources, a.rebuild_bins, a.model_equivalents)
     if a.github and not (a.page_only or a.platforms or a.bathy or a.polar or a.report or a.convert or a.split_model) and a.run:
         pass
+    if a.s3:
+        publish_s3(a.out, a.s3[0], a.s3[1], a.aws_profile, a.dry_run)
     if a.github_detail:
         publish_details(a.out, {r.split('=')[0]: r.split('=')[1].split(',') for r in a.github_detail}, a.dry_run)
     if a.github:
