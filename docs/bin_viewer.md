@@ -3,13 +3,14 @@
 A web copy of the original `geodesic_binning` plotting app (`geodesic_binning/plotting/`), with time windows of
 any length. Code: `src/ecco_insitu/diagnostics/bin_viewer/` (`export.py` writes the data and the page,
 `viewer.html` is the page template, `vendor/` holds deck.gl 9.0.38 and d3-delaunay 6.0.4).
-Hosting (since 2026-11-20): the page and its main data on GitHub Pages, everything bigger on S3 + CloudFront:
-- **`brucelaughlin/ecco-bin-viewer`** (GitHub Pages): the page, bins, maps, climatology anomalies and platforms.
-  **Live:** https://brucelaughlin.github.io/ecco-bin-viewer/run_20261027_142247/
+Hosting (since 2026-11-20): the page on GitHub Pages, all its data on S3 + CloudFront:
+- **`brucelaughlin/ecco-bin-viewer`** (GitHub Pages, ~1 MB): `index.html`, `vendor/` and a two-line `index.json`
+  holding `data_url`. **Live:** https://brucelaughlin.github.io/ecco-bin-viewer/run_20261027_142247/
 - **S3 bucket `ecco-insitu-site`** (the user's own AWS account, us-east-2, private) behind the CloudFront
   distribution **`d1r1rp2b701s7u.cloudfront.net`** (Origin Access Control: only CloudFront reads the bucket):
-  the profile details and the model anomalies (V4r6, V5r1), under `bin_viewer/`. The page reads them through
-  `detail_urls` and `ref_urls` in `index.json`. New `*.cloudfront.net` addresses get through the facility's
+  every data file under `bin_viewer/` (bins, maps, climatology anomalies, platforms, profile details, the model
+  anomalies). The page reads the full `index.json` from `data_url`, then the models and details through its
+  `ref_urls` and `detail_urls`. New `*.cloudfront.net` addresses get through the facility's
   secure network (tested 2026-11-20); `*.r2.dev` and new domains don't.
 
 CORS: the distribution uses its own response-headers policy (`ecco-insitu-cors-any-header`: any origin, any
@@ -27,7 +28,8 @@ S3 + CloudFront, so only `ecco-bin-viewer` remains on GitHub Pages.
 
 | place | holds | about |
 |---|---|---|
-| GitHub Pages `ecco-bin-viewer` | the page, bins, maps, climatology anomalies, platforms | 830 MB |
+| GitHub Pages `ecco-bin-viewer` | the page and a stub `index.json` (`data_url`) | 1 MB |
+| S3/CloudFront `bin_viewer/run_<name>/` | bins, maps, climatology anomalies, platforms, `index.json` | 830 MB |
 | S3/CloudFront `bin_viewer/run_<name>/detail/` | profile details, all classes | 1.85 GB |
 | S3/CloudFront `bin_viewer/model/run_<name>/` | anomalies vs V4r6 | 774 MB |
 | S3/CloudFront `bin_viewer/V5r1/run_<name>/` | anomalies vs V5r1 | 776 MB |
@@ -39,8 +41,9 @@ Profile details (`export --details`): every profile's observation, climatology, 
 profile is opened. Checked against the yearly files for 400 random profiles per class (178,000 values; script
 `tests/tools/check_bin_viewer_detail.py`): all within rounding, QC codes, dates and descriptions exact.
 
-**Publish (since 2026-11-20):** the details and model levels to S3, then the main site (the S3 step writes their
-addresses into `index.json`, which the main site carries). Needs the AWS CLI signed in to the bucket's account
+**Publish (since 2026-11-20):** all data to S3 (`--s3` writes `data_url`, `ref_urls` and `detail_urls` into
+`index.json` and uploads it), then the page to GitHub Pages (`--github`; with `data_url` set it publishes only the
+page, `vendor/` and a stub `index.json`). Needs the AWS CLI signed in to the bucket's account
 (`aws login --profile ecco-site`; that profile needs `region = us-east-2` in `~/.aws/config`).
 ```
 python -m ecco_insitu.diagnostics.bin_viewer.export --out <folder> \
