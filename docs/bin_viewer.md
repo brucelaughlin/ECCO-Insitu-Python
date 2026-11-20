@@ -116,10 +116,18 @@ storage).
    original computed them from the one file it showed.
 3. **Time windows.** "All years", or any range of whole years (the slider and the ◀ ▶ buttons).
 4. **Cell budget.** If more than 200,000 cells would be in view, bins stay whole until you zoom further (the
-   title says so). Also a "max cells/bin" selector (the original's 1000 is the default).
+   title says so). Also a "max cells/bin" selector: 250 to 20,000, default 5000 since 2026-11-20 (the
+   original: 1000). The limit is the browser's work: one Voronoi cell per profile, computed in the page. 5000
+   takes ~30 ms for one bin, and the 200,000-cell budget still guards the total in view. Bins above 5000
+   profiles at one level are few (CTD 12 of 4795, moorings 12, gliders 2, MEOP 1, PFL and XBT none, at 2 m);
+   the densest, a CTD bin in Japan's Inland Sea, holds 13,422.
 5. **Edge widths** (2026-11-02): 0.1 px × √(profile count), growing with √(zoom factor), at most 25 % of the
    bin's own size. The original's 0.01 pt per profile, capped by the smallest bin on the map, made every bin
    above ~60 profiles look the same on the world map; now busy regions (e.g. XBT shipping lanes) stand out.
+   Past the zoom threshold (2026-11-20) a bin that stays whole gets the thin outline of the split bins instead:
+   its size alone shows it is crowded, and the thick edge hid its color.
+5b. **Land above the bins** (2026-11-20): the bin faces are clipped to the ocean, but their edges are drawn on the
+   bin's boundary and could cover the coast; land and coastline are now drawn above bins and cells.
 6. **Polar maps** below the world map (Arctic, Southern Ocean; polar stereographic, the 40° circle at the
    edges), with their own bins built the original's way in polar coordinates, so bins at the poles and across
    the dateline are whole.

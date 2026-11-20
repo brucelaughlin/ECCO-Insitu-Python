@@ -118,7 +118,7 @@ select { font-size: 0.85em; }
     <button class="btn" id="platclear" title="no platform">×</button><span id="platinfo" style="font-size:0.75em;color:#345"></span></span>
   <span class="grp" title="The face colors' range, symmetric about 0 (empty: automatic)"><span class="lab">colors ±</span>
     <input id="fmax" type="number" step="any" size="5" style="width:5em"><button class="btn" id="fauto">auto</button></span>
-  <span class="grp"><span class="lab">max cells/bin</span><select id="cap"><option>250</option><option>500</option><option selected>1000</option><option>2000</option><option>5000</option></select></span>
+  <span class="grp"><span class="lab">max cells/bin</span><select id="cap"><option>250</option><option>500</option><option>1000</option><option>2000</option><option selected>5000</option><option>20000</option></select></span>
   <span class="grp" title="The settings stay at the top of the window; jump to a map"><span class="lab">go to</span>
     <a class="btn jump" href="#stage">global</a><a class="btn jump" href="#info-N">Arctic</a><a class="btn jump" href="#info-S">Southern Ocean</a></span>
 </div>
@@ -170,7 +170,7 @@ const EDGE_K = 0.1, EDGE_CAP = 0.25;
 const CELL_BUDGET = 200000;          // cells drawn at once (all bins in view); above it, bins in view stay whole
 const PT = 96 / 72;                  // matplotlib points -> CSS pixels
 
-const S = {src: null, ref: 'model', pref: 'model', V: 'T', k: 0, dmode: 'level', g: 0, all: true, t0: 0, t1: 0, cap: 1000};
+const S = {src: null, ref: 'model', pref: 'model', V: 'T', k: 0, dmode: 'level', g: 0, all: true, t0: 0, t1: 0, cap: 5000};
 // the levels and color limits of the current reference (climatology, or the model if exported)
 // Where a reference's level files are: next to this page, or (index.json ref_urls) another site, so the data of one
 // viewer can be spread over several GitHub Pages sites of about 1 GB each (they all allow cross-site reads).
@@ -535,6 +535,7 @@ function drawMap(M) {
   const pxPerUnit = Math.pow(2, vs.zoom), grow = Math.sqrt(sf);
   const edgeWidth = (B, n) => n <= 1 ? 0 : Math.min(EDGE_K * Math.sqrt(n) * grow,
     EDGE_CAP * Math.min(B.bbox[2] - B.bbox[0], B.bbox[3] - B.bbox[1]) * pxPerUnit);
+  const thinLw = Math.min(1.5, Math.max(0.3, 0.6 * sf / ZOOM_THRESHOLD)) * PT;   // as borderLw below
   const binRows = [], cellRows = [], dots = [], labels = [], binIds = [], visible = [];
   for (const [b, e] of STATS) { const B = M.bins.get(b); if (B && inView(B)) visible.push([B, e, b]); }
   let overBudget = false;
@@ -543,7 +544,9 @@ function drawMap(M) {
     const B = M.bins.get(b); if (!B) continue;
     const fc = faceColor(e.mean, SC), ec = edgeColor(e.std, SC);
     if (!micro || overBudget || e.n > S.cap || !inView(B)) {
-      binRows.push({poly: B.ring, fill: [...fc, alpha(e.n)], line: ec, width: edgeWidth(B, e.n)});
+      // zoomed out, the edge width shows the profile count; past the zoom threshold a whole bin is already known to be
+      // crowded (it would split otherwise), so it gets the split bins' thin outline and its face stays visible
+      binRows.push({poly: B.ring, fill: [...fc, alpha(e.n)], line: ec, width: micro ? thinLw : edgeWidth(B, e.n)});
       continue;
     }
     // one cell per profile; values sorted ascending, assigned south to north by the latitude of the cell's centroid
@@ -593,7 +596,6 @@ function drawMap(M) {
   const G = M.id === 'll' ? grid(M, vs) : polarGrid(M, vs), [ex0, ey0, ex1, ey1] = M.extent;
   M.deck.setProps({layers: [
     new deck.SolidPolygonLayer({id: 'ocean', data: [[[ex0, ey0], [ex1, ey0], [ex1, ey1], [ex0, ey1]]], getPolygon: d => d, getFillColor: [255, 255, 255]}),
-    new deck.SolidPolygonLayer({id: 'land', data: M.land, getPolygon: d => d, getFillColor: [140, 115, 85]}),
     new deck.PolygonLayer({id: 'bins', data: binRows, getPolygon: d => d.poly, getFillColor: d => d.fill, getLineColor: d => d.line,
       getLineWidth: d => d.width, lineWidthUnits: 'pixels', stroked: true, filled: true, updateTriggers: {getLineWidth: [vs.zoom]}}),
     new deck.PolygonLayer({id: 'cells', data: cellRows, getPolygon: d => d.poly, getFillColor: d => d.fill,
@@ -606,6 +608,8 @@ function drawMap(M) {
       fontSettings: {sdf: true, fontSize: 64, buffer: 10, radius: 16, cutoff: 0.2}, characterSet: '0123456789'}),
     new deck.PathLayer({id: 'borders', data: micro && !overBudget ? visible : [],
       getPath: d => d[0].ring, getColor: d => edgeColor(d[1].std, SC), getWidth: borderLw, widthUnits: 'pixels'}),
+    // land above the bins and cells, so a thick bin edge never covers it
+    new deck.SolidPolygonLayer({id: 'land', data: M.land, getPolygon: d => d, getFillColor: [140, 115, 85]}),
     new deck.PathLayer({id: 'coast', data: M.coast, getPath: d => d, _pathType: 'loop', getColor: [0, 0, 0], getWidth: 0.5 * PT, widthUnits: 'pixels'}),
     new deck.PathLayer({id: 'grid', data: G.lines, getPath: d => d, getColor: [128, 128, 128, 128], getWidth: 0.5, widthUnits: 'pixels'}),
     new deck.TextLayer({id: 'gridlab', data: G.labs, getPosition: d => d.pos, getText: d => d.text, getSize: 10, getColor: [30, 30, 30],

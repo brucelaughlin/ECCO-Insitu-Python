@@ -753,9 +753,12 @@ GUIDE_HTML = """
 <tr><td>bin edge width</td><td>0.1 px &times; sqrt(profile count) (none for one profile), growing with the square root
   of the zoom factor; at most 25 % of the bin's own size (the original: 0.01 pt per profile, capped by the smallest bin;
   changed 2026-11-02 so busy regions, e.g. XBT shipping lanes, stand out zoomed out)</td></tr>
-<tr><td>zoom level</td><td>sqrt(global area / view area); above 10 each bin with at most <i>max cells/bin</i> profiles splits into
-  one cell per profile (Voronoi, 2 Lloyd steps), values sorted low to high from south to north; red dots are the true
-  profile locations; numbers are the bin means</td></tr>
+<tr><td>zoom level</td><td>sqrt(global area / view area); above 10 each bin with at most <i>max cells/bin</i> profiles
+  (default 5000; the original: 1000) splits into one cell per profile (Voronoi, 2 Lloyd steps), values sorted low to high
+  from south to north; red dots are the true profile locations; numbers are the bin means. A bin with more profiles
+  stays whole, with a thin outline (past the threshold its size alone shows it is crowded, so the zoomed-out
+  count-scaled edge would only hide its color). If more than CELL_BUDGET cells would be in view, every bin stays
+  whole until you zoom further. Land is drawn above the bins, so no bin edge covers it.</td></tr>
 <tr><td>time</td><td>new: any window of whole years; "all years" is the whole record of the class</td></tr>
 </table>
 <p><b>Differences from the original.</b> (1) Only values the processing chain kept (weight &gt; 0) are shown; the original
