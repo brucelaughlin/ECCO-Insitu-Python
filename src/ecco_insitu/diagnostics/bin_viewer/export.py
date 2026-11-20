@@ -908,7 +908,11 @@ def publish_github(out, remote, dry_run=False, landing=None, skip_detail=True):
     import subprocess
     import tempfile
     out = Path(out).resolve()
-    files = [f for f in out.rglob('*') if f.is_file() and not (skip_detail and f.relative_to(out).parts[:1] == ('detail',))]
+    index = json.loads((out / 'index.json').read_text()) if (out / 'index.json').exists() else {}
+    page_only = bool(index.get('data_url'))        # the data are on S3 (publish_s3): only the page goes here
+    keep = lambda f: (f.relative_to(out).parts[:1] in (('index.html',), ('vendor',), ('index.json',))) if page_only else \
+        not (skip_detail and f.relative_to(out).parts[:1] == ('detail',))
+    files = [f for f in out.rglob('*') if f.is_file() and keep(f)]
     big = [f for f in files if f.stat().st_size >= 95e6]
     size = sum(f.stat().st_size for f in files) / 1e6
     if big:
@@ -920,8 +924,14 @@ def publish_github(out, remote, dry_run=False, landing=None, skip_detail=True):
     with tempfile.TemporaryDirectory() as tmp:
         work = Path(tmp) / 'site'
         work.mkdir()
-        # the main site leaves out detail/ (published to its own sites by publish_details, which passes skip_detail=False)
-        shutil.copytree(out, work / out.name, ignore=(lambda d, names: ['detail'] if skip_detail and Path(d) == out else []))
+        if page_only:
+            (work / out.name).mkdir()
+            shutil.copy2(out / 'index.html', work / out.name / 'index.html')
+            shutil.copytree(out / 'vendor', work / out.name / 'vendor')
+            (work / out.name / 'index.json').write_text(json.dumps({'data_url': index['data_url']}))
+        else:
+            # the main site leaves out detail/ (published to its own sites by publish_details, which passes skip_detail=False)
+            shutil.copytree(out, work / out.name, ignore=(lambda d, names: ['detail'] if skip_detail and Path(d) == out else []))
         (work / '.nojekyll').write_text('')
         if not (work / out.name / 'index.html').exists():
             target = landing or f'{out.name}/'
@@ -981,10 +991,11 @@ def publish_details(out, remotes, dry_run=False):
 
 
 def publish_s3(out, bucket, url, profile=None, dry_run=False):
-    """Upload the data that don't fit on the GitHub Pages site to an S3 bucket served through CloudFront, and point the
-    page at them: the profile details (``<out>/detail/``) and every extra model's level files (``<out>_<name>_site/``,
-    made by ``--split-model`` or ``--add-model``). Writes ``detail_urls`` and ``ref_urls`` into index.json, then
-    uploads index.json too. Run before ``--github`` (the main site carries index.json).
+    """Upload all the viewer's data to an S3 bucket served through CloudFront: the folder ``out`` except the page
+    (``index.html``, ``vendor/``), and every extra model's level files (``<out>_<name>_site/``, made by
+    ``--split-model`` or ``--add-model``). Writes ``detail_urls``, ``ref_urls`` and ``data_url`` into index.json and
+    uploads it. Then ``--github`` publishes only the page, its libraries and a small index.json holding
+    ``data_url`` (the page reads the rest from there), so the address stays on GitHub Pages.
 
     ``bucket``: e.g. ``s3://ecco-insitu-site/bin_viewer``; ``url``: the same place through CloudFront, e.g.
     ``https://d1r1rp2b701s7u.cloudfront.net/bin_viewer``. The distribution needs a CORS response-headers policy that
@@ -1000,8 +1011,10 @@ def publish_s3(out, bucket, url, profile=None, dry_run=False):
     sync = lambda src, dst: aws('s3', 'sync', str(src), dst, *(['--dryrun'] if dry_run else []))
     ip = out / 'index.json'
     index = json.loads(ip.read_text())
+    aws('s3', 'sync', str(out), f'{bucket}/{out.name}', '--exclude', 'index.html', '--exclude', 'vendor/*',
+        '--exclude', 'index.json', *(['--dryrun'] if dry_run else []))
+    index['data_url'] = f'{url}/{out.name}'
     if (out / 'detail').is_dir():
-        sync(out / 'detail', f'{bucket}/{out.name}/detail')
         n = {c.name: len(list(c.glob('c*.bin'))) for c in (out / 'detail').iterdir() if c.is_dir()}
         index['detail_urls'] = {c: [[0, k - 1, f'{url}/{out.name}']] for c, k in n.items()}
     for site in sorted(out.parent.glob(f'{out.name}_*_site')):
@@ -1011,7 +1024,7 @@ def publish_s3(out, bucket, url, profile=None, dry_run=False):
     if not dry_run:
         ip.write_text(json.dumps(index, separators=(',', ':')))
         aws('s3', 'cp', str(ip), f'{bucket}/{out.name}/index.json', '--content-type', 'application/json')
-    print('detail_urls:', index.get('detail_urls')); print('ref_urls:', index.get('ref_urls'))
+    print('data_url:', index.get('data_url')); print('ref_urls:', index.get('ref_urls'))
 
 
 def cli(argv=None):

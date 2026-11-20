@@ -154,7 +154,9 @@ select { font-size: 0.85em; }
 <details id="guide"><summary>Guide: how this page works, and how it relates to the original app</summary>__GUIDE__</details>
 <script>
 'use strict';
-const DATA_URL = '.';   // the data sit next to this page
+// the data: next to this page, or where index.json's data_url says (the published viewer keeps them on S3 +
+// CloudFront; only index.html, vendor/ and a small index.json are on GitHub Pages)
+let DATA_URL = '.';
 // --- the original app's settings (geodesic_binning_utilities_plotting.generate_new_plot_state_dict) ---
 const ZOOM_THRESHOLD = 10;           // scale factor above which bins split into one cell per profile
 const MICRO_BASE_LW = 0.04;          // cell edge width at the threshold (pt)
@@ -1184,7 +1186,8 @@ function addMap(id, elId, legendId, bins, land, extent, proj, latOf, bathy) {
 }
 async function init() {
   busy('Loading…');
-  INDEX = await (await fetch(DATA_URL + '/index.json')).json();
+  INDEX = await (await fetch('./index.json', {cache: 'no-store'})).json();
+  if (INDEX.data_url) { DATA_URL = INDEX.data_url.replace(/\/$/, ''); INDEX = await (await fetch(DATA_URL + '/index.json')).json(); }
   INDEX.n_bins_grid = (await (await fetch(DATA_URL + '/bins.json')).json()).n_bins_grid;
   const yrs = Object.values(INDEX.classes).map(c => c.years); INDEX.years0 = Math.min(...yrs.map(y => y[0])); INDEX.years1 = Math.max(...yrs.map(y => y[1]));
   const [bins, land, binsN, binsS, landN, landS] = await Promise.all([loadBins('/bins.bin'), unzip(DATA_URL + '/land.json'),

@@ -690,22 +690,25 @@ async function platformsOf(src) {
   if (!INDEX.bin_viewer) return (PLATS[src] = null);
   try {
     busy('Loading the platforms of ' + src + ' (from the in situ data viewer)…'); await paint();
-    const base = INDEX.bin_viewer + src + '/';
+    // the data viewer's index.json may point at its data elsewhere (data_url: S3 + CloudFront)
+    let vi = await fetch(INDEX.bin_viewer + 'index.json', {cache: 'no-store'}).then(r => r.json());
+    const vbase = vi.data_url ? vi.data_url.replace(/\/?$/, '/') : INDEX.bin_viewer;
+    if (vi.data_url) vi = await fetch(vbase + 'index.json').then(r => r.json());
+    vi.base = vbase;
+    const base = vbase + src + '/';
     const [pb, pf, pj] = await Promise.all([getGz(base + 'platforms.bin'), getGz(base + 'profiles.bin'),
       fetch(base + 'platforms.json').then(r => r.body.pipeThrough(new DecompressionStream('gzip'))).then(b => new Response(b).json())]);
     const n = new DataView(pb.buffer, pb.byteOffset).getUint32(0, true), planes = (buf, o, n, bytes, T) => { const a = new T(n), u = new Uint8Array(a.buffer);
       for (let b = 0; b < bytes; b++) { const src2 = buf.subarray(o + b * n, o + (b + 1) * n); for (let i = 0; i < n; i++) u[i * bytes + b] = src2[i]; } return a; };
     const cb = planes(pb, 4, n, 2, Uint16Array), pi = planes(pb, 4 + 2 * n, n, 4, Uint32Array), year = planes(pf, 4 + 8 * n, n, 2, Uint16Array);
     busy(null);
-    // which profiles have a value at a level: the data viewer's level files (climatology or model anomaly)
-    const vi = await fetch(INDEX.bin_viewer + 'index.json').then(r => r.json());
     return (PLATS[src] = {cb, pi, year, names: pj.names, kind: pj.kind, vi, has: {}});
   } catch (e) { busy(null); return (PLATS[src] = null); }
 }
 async function profilesWithData(P, src, lv) {   // Set of profile indices with a value at any of these levels
   const ref = refOf(S.ct), V = S.V, key = ref + V + (lv ? lv.join(',') : 'all');
   if (P.has[key]) return P.has[key];
-  const base = ref === 'clim' ? INDEX.bin_viewer + src + '/' : ((P.vi.ref_urls || {})[ref] ? P.vi.ref_urls[ref] + '/' + src + '/model/' : INDEX.bin_viewer + src + '/model/');
+  const base = ref === 'clim' ? P.vi.base + src + '/' : ((P.vi.ref_urls || {})[ref] ? P.vi.ref_urls[ref] + '/' + src + '/model/' : P.vi.base + src + '/model/');
   const info = ref === 'clim' ? P.vi.classes[src] : P.vi.classes[src].refs?.[ref];
   const levels = (lv || info.levels[V]).filter(k => info.levels[V].includes(k)), out = new Uint8Array(P.cb.length);
   busy(`Loading which ${src} profiles have ${V} at the selected depths…`); await paint();
@@ -728,7 +731,7 @@ async function profilesWithData(P, src, lv) {   // Set of profile indices with a
 async function detailRows(src, js) {        // per profile index: rows [{k, m: obs − ref, s2: σ², kept}] for S.V
   const vi = (await platformsOf(src)).vi, info = vi.detail && vi.detail[src]; if (!info) return null;
   const C = info.chunk, urls = (vi.detail_urls || {})[src] || [], scale = info.scale || {obs: 1000, clim: 1000, model: 1000, sig: 10000};
-  const base = c => { for (const [a, b, u] of urls) if (c >= a && c <= b) return u; return INDEX.bin_viewer.replace(/\/$/, ''); };
+  const base = c => { for (const [a, b, u] of urls) if (c >= a && c <= b) return u; return vi.base.replace(/\/$/, ''); };
   const byChunk = new Map(); for (const j of js) { const c = Math.floor(j / C); if (!byChunk.has(c)) byChunk.set(c, []); byChunk.get(c).push(j); }
   const out = new Map(), useModel = S.ct !== 'vs_clim';
   let done = 0; const tot = byChunk.size;
