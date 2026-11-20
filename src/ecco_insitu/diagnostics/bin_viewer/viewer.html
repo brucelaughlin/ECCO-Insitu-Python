@@ -98,7 +98,7 @@ select { font-size: 0.85em; }
   <span class="grp"><span class="lab">variable</span><button class="btn" id="vprev" title="previous variable">&#9664;</button>
     <b id="vlab">T</b><button class="btn" id="vnext" title="next variable">&#9654;</button></span>
   <span class="grp"><span class="lab">depth</span><select id="dmode" title="single levels, or ranges of levels (each profile: the mean of its values in the range)">
-      <option value="level">single level</option><option value="bands">standard bands</option><option value="100m">100 m bands</option>
+      <option value="level">single level</option><option value="all">all depths</option><option value="bands">standard bands</option><option value="100m">100 m bands</option>
       <option value="15">15 groups</option><option value="30">30 groups</option></select>
     <button class="btn" id="dprev" title="shallower">&#9664;</button>
     <select id="dsel"></select><button class="btn" id="dnext" title="deeper">&#9654;</button></span>
@@ -390,6 +390,7 @@ async function loadLevel(src, V, k) {
 const BAND_EDGES = [0, 50, 100, 250, 500, 1000, 2000, 4000, Infinity];
 function depthGroups(mode) {
   const d = INDEX.depth, out = [];
+  if (mode === 'all') return [{levels: d.map((z, k) => k), label: 'all depths'}];   // one group: the whole profile
   if (mode === 'bands' || mode === '100m') {
     const edges = mode === 'bands' ? BAND_EDGES : [...Array(Math.ceil(Math.max(...d) / 100) + 2).keys()].map(i => i * 100);
     for (let i = 0; i + 1 < edges.length; i++) {
@@ -689,7 +690,7 @@ function legend(M, visible) {
   if (!n.length) { el.style.display = 'none'; return; }
   el.style.display = '';
   const u = [...new Set(n)];
-  el.innerHTML = 'profiles per visible patch:<br>' + (u.length === 1 ? n[0] : u.length === 2 ? `min ${n[0]}<br>max ${n.at(-1)}` :
+  el.innerHTML = 'profiles per bin:<br>' + (u.length === 1 ? n[0] : u.length === 2 ? `min ${n[0]}<br>max ${n.at(-1)}` :
     `min ${n[0]}<br>med ${Math.round(quantile(n, 0.5))}<br>max ${n.at(-1)}`);
 }
 // ---------- the address holds the whole view (class, reference, variable, depth, years, platform, map position) ----------
@@ -1285,7 +1286,7 @@ async function init() {
     setView(M, {...M.home, target: [x, y, 0], zoom: MAIN_Z0 + Math.log2(ZOOM_THRESHOLD * 1.6)}, true);
     if (M !== MAPS[0]) setTimeout(() => M.el.scrollIntoView({block: 'center'}), 300);
   }
-  if (q.get('dmode') && q.get('g') !== null && ['bands', '100m', '15', '30'].includes(q.get('dmode'))) {
+  if (q.get('dmode') && q.get('g') !== null && ['all', 'bands', '100m', '15', '30'].includes(q.get('dmode'))) {
     S.dmode = q.get('dmode'); S.g = +q.get('g'); document.getElementById('dmode').value = S.dmode; fillDepth(); }
   if (q.get('view')) { const [id, x, y, f] = q.get('view').split(','), M = MAPS.find(m => m.id === id);
     if (M && Number.isFinite(+x) && Number.isFinite(+y) && +f > 0) { setView(M, {...M.home, target: [+x, +y, 0], zoom: MAIN_Z0 + Math.log2(+f)}, true);

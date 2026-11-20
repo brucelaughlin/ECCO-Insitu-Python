@@ -155,7 +155,7 @@ storage).
 6. **Polar maps** below the world map (Arctic, Southern Ocean; polar stereographic, the 40° circle at the
    edges), with their own bins built the original's way in polar coordinates, so bins at the poles and across
    the dateline are whole.
-7. **Depth ranges** (standard bands, 100 m bands, 15 or 30 groups), as in the cost map explorer: each profile
+7. **All depths** (since 2026-11-20) **and depth ranges** (standard bands, 100 m bands, 15 or 30 groups), as in the cost map explorer: each profile
    counts once, with the mean of its values at the range's levels. Checked against Python (ITP, 250–500 m band:
    0 count differences, mean differences < 10⁻⁷).
 8. **Anomaly vs the model** as well as the climatology, from the model equivalents the cost analyses use; model

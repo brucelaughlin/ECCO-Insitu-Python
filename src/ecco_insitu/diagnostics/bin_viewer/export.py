@@ -804,7 +804,7 @@ turns them off. (7) The view stays on the map: you can't pan past its edges or z
 returns to the whole map. (8) Below the world map, an Arctic and a Southern Ocean map (polar stereographic, the 40&deg;
 circle at the edges), with their own bins built the same way in polar coordinates, so bins around the poles and across
 the dateline are whole; each zooms and pans on its own, with the same zoom threshold. (9) No keyboard shortcuts:
-every control is a button. (10) Depth ranges as in the cost map explorer (standard bands, 100 m bands, 15 or 30
+every control is a button. (10) All depths, and depth ranges as in the cost map explorer (standard bands, 100 m bands, 15 or 30
 groups of levels), besides single levels: in a range each profile counts once, with the mean of its values at the
 range's levels. (11) With model values exported (<code>--model-equivalents</code>), the anomaly can be relative to the
 model (V &minus; V<sub>model</sub>) instead of the climatology; colors then use the model anomaly's own limits.
