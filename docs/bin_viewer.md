@@ -183,10 +183,12 @@ storage).
 9. **Isobaths** (Natural Earth, 200–5000 m) with depth labels; a "← report" button; a home button. No keyboard
    shortcuts.
 9a. **Endless east-west panning** on the world map (2026-11-20): its layers are drawn in copies 360° apart (deck.gl
-   `modelMatrix`; at most two in view, three at the home view), and the view's center is kept in −180..180, so the
-   Pacific is whole across the dateline. Tracks are unwrapped, so a float crossing 180° is one line. North-south
-   and zoom stay within the map; the address stores the center's longitude in −180..180. Drawing time is unchanged
-   (~4 ms for the world map; 8 pans in 11 ms).
+   `modelMatrix`), and the view's center is kept in −180..180, so the Pacific is whole across the dateline. The map
+   is redrawn only once a pan pauses (60 ms), so the copies drawn are those within one view width of the view on
+   each side, plus those needed after the center jumps by 360° at the dateline; with only the copies in view
+   (before 2026-11-20 evening), a fast drag showed half the map blank until it paused. Tracks are unwrapped, so a
+   float crossing 180° is one line. North-south and zoom stay within the map; the address stores the center's
+   longitude in −180..180. A world-map draw takes ~10–25 ms.
 10. Small: land is drawn from Natural Earth 10 m simplified to 0.02°; gridline labels are simpler than cartopy's.
 
 The zoom threshold for cells, dots and labels is the original's: zoom factor √(world area / view area) above 10

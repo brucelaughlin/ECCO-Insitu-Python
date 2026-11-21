@@ -559,8 +559,13 @@ function draw() {
 // overlaps; a polar map has one copy
 function copiesInView(M, vs) {
   if (!M.wrap) return [0];
-  const [x0, , x1] = viewBounds(M, vs);
-  return [-360, 0, 360].filter(o => x1 > -180 + o + 1e-3 && x0 < 180 + o - 1e-3);
+  // the copies that reach the view widened by one view width on each side: a pan moves the view at once but the
+  // map is redrawn only after it pauses, so the copy it pans into must already be drawn (else half the map is blank)
+  // also the copies the same picture needs after the center jumps by 360 degrees at the dateline (clampView)
+  const [x0, , x1] = viewBounds(M, vs), w = x1 - x0, cx = vs.target[0];
+  const shifts = Math.abs(cx) + w * 1.5 > 180 ? [0, -360, 360] : [0];
+  return [-720, -360, 0, 360, 720].filter(o => shifts.some(sh =>
+    x1 + sh + w > -180 + o + 1e-3 && x0 + sh - w < 180 + o - 1e-3));
 }
 function drawMap(M) {
   const vs = M.view, sf = scaleFactor(M, vs), micro = sf > ZOOM_THRESHOLD, [bx0, by0, bx1, by1] = viewBounds(M, vs);
