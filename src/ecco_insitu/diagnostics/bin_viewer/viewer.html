@@ -191,6 +191,7 @@ function fixRef() {                    // the chosen reference (default: the mod
     b.disabled = b.dataset.ref !== 'clim' && !INDEX.classes[S.src].refs?.[b.dataset.ref]; });
 }
 let INDEX, CLASS = {};
+const INSET = new deck.PathStyleExtension({offset: true});   // lines offset sideways: bin edges drawn inside their bin
 
 // ---------- data ----------
 async function gz(url) {
@@ -233,7 +234,8 @@ async function loadBins(name) {
       const rp = [dv.getFloat32(o, true), dv.getFloat32(o + 4, true)]; o += 8;
       const ring = new Array(nv);
       for (let j = 0; j < nv; j++) { ring[j] = [dv.getFloat32(o, true), dv.getFloat32(o + 4, true)]; o += 8; }
-      pieces.push({id: id * 64 + k, ring, rp, bbox: box(ring)});
+      let a2 = 0; for (let j = 0, m = nv - 1; j < nv; m = j++) a2 += (ring[m][0] - ring[j][0]) * (ring[m][1] + ring[j][1]);
+      pieces.push({id: id * 64 + k, ring, rp, bbox: box(ring), ccw: a2 > 0});
     }
     const bb = pieces.map(p => p.bbox);
     bins.set(id, {id, pieces, bbox: [Math.min(...bb.map(q => q[0])), Math.min(...bb.map(q => q[1])),
@@ -582,7 +584,7 @@ function drawMap(M) {
       // zoomed out, the edge width shows the profile count; past the zoom threshold a whole bin is already known to be
       // crowded (it would split otherwise), so it gets the split bins' thin outline and its face stays visible
       const w = micro ? thinLw : edgeWidth(B, e.n);
-      for (const pc of B.pieces) binRows.push({poly: pc.ring, fill: [...fc, alpha(e.n)], line: ec, width: w});
+      for (const pc of B.pieces) binRows.push({poly: pc.ring, pc, fill: [...fc, alpha(e.n)], line: ec, width: w});
       continue;
     }
     // one cell per profile, in the piece of the bin the profile is in; within a piece, values sorted ascending and
@@ -647,8 +649,7 @@ function drawMap(M) {
   const G = M.id === 'll' ? grid(M, vs) : polarGrid(M, vs), [ex0, ey0, ex1, ey1] = M.extent;
   const layers = [
     new deck.SolidPolygonLayer({id: 'ocean', data: [[[ex0, ey0], [ex1, ey0], [ex1, ey1], [ex0, ey1]]], getPolygon: d => d, getFillColor: [255, 255, 255]}),
-    new deck.PolygonLayer({id: 'bins', data: binRows, getPolygon: d => d.poly, getFillColor: d => d.fill, getLineColor: d => d.line,
-      getLineWidth: d => d.width, lineWidthUnits: 'pixels', stroked: true, filled: true, updateTriggers: {getLineWidth: [vs.zoom]}}),
+    new deck.SolidPolygonLayer({id: 'bins', data: binRows, getPolygon: d => d.poly, getFillColor: d => d.fill}),
     new deck.PolygonLayer({id: 'cells', data: cellRows, getPolygon: d => d.poly, getFillColor: d => d.fill,
       getLineColor: [38, 38, 38, 217], getLineWidth: d => d.n === 1 ? 0 : cellLw, lineWidthUnits: 'pixels', stroked: true}),
     new deck.PathLayer({id: 'bathy', data: SHOW_BATHY ? M.bathy : [], getPath: d => d.p,
@@ -657,8 +658,14 @@ function drawMap(M) {
       getAngle: d => d.ang, getSize: 9, getColor: d => d.shelf ? [60, 60, 60, 230] : [90, 90, 90, 200],
       outlineWidth: 3, outlineColor: [255, 255, 255, 220], fontFamily: 'Helvetica, Arial, sans-serif',
       fontSettings: {sdf: true, fontSize: 64, buffer: 10, radius: 16, cutoff: 0.2}, characterSet: '0123456789'}),
+    // every bin edge is drawn inside its own piece (the line shifted inward by half its width), so neighbors' edges meet
+    // along the shared boundary and never overlap, at any zoom
+    new deck.PathLayer({id: 'binedges', data: binRows.filter(d => d.width > 0), getPath: d => d.pc.ring,
+      getColor: d => d.line, getWidth: d => d.width, widthUnits: 'pixels', getOffset: d => d.pc.ccw ? -0.5 : 0.5,
+      extensions: [INSET], updateTriggers: {getWidth: [vs.zoom]}}),
     new deck.PathLayer({id: 'borders', data: micro && !overBudget ? visible.flatMap(([B, e]) => B.pieces.map(pc => [pc, e])) : [],
-      getPath: d => d[0].ring, getColor: d => edgeColor(d[1].std, SC), getWidth: borderLw, widthUnits: 'pixels'}),
+      getPath: d => d[0].ring, getColor: d => edgeColor(d[1].std, SC), getWidth: borderLw, widthUnits: 'pixels',
+      getOffset: d => d[0].ccw ? -0.5 : 0.5, extensions: [INSET]}),
     // land above the bins and cells, so a thick bin edge never covers it
     new deck.SolidPolygonLayer({id: 'land', data: M.land, getPolygon: d => d, getFillColor: [140, 115, 85]}),
     new deck.PathLayer({id: 'coast', data: M.coast, getPath: d => d, _pathType: 'loop', getColor: [0, 0, 0], getWidth: 0.5 * PT, widthUnits: 'pixels'}),

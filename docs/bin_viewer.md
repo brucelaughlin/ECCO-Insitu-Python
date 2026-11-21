@@ -168,6 +168,9 @@ storage).
 
    The bin files' layout changed with this (`bins.bin` format 2, `bins.json` `format`); a page and bin files of
    different formats refuse to draw and ask for a reload.
+5c. **Edges inside their bin** (2026-11-20): each bin's edge is drawn as a line shifted inward by half its width
+   (deck.gl PathStyleExtension offset), so adjacent bins' edges meet on the shared boundary instead of overlapping
+   (with the exact cells, neighbors share edges, and centered lines drew one over the other).
 5b. **Land above the bins** (2026-11-20): the bin faces are clipped to the ocean, but their edges are drawn on the
    bin's boundary and could cover the coast; land and coastline are now drawn above bins and cells.
 6. **Polar maps** below the world map (Arctic, Southern Ocean; polar stereographic, the 40° circle at the

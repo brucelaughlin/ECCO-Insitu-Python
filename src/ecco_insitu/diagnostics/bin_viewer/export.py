@@ -812,6 +812,8 @@ GUIDE_HTML = """
 <tr><td>bin face color</td><td>mean anomaly (V &minus; V<sub>clim</sub>) of the profiles in the bin, at this depth level and in the
   time window; PRGn, cut so white is 0; limits = 5 % / 95 % quantiles of all values of the variable (all depth levels)</td></tr>
 <tr><td>bin face opacity</td><td>sqrt(count / largest count), between 0.4 and 1</td></tr>
+<tr><td>bin edges</td><td>drawn inside their own bin (each line shifted inward by half its width), so neighbors' edges
+  meet along the shared boundary and never overlap, at any zoom</td></tr>
 <tr><td>bin edge color</td><td>standard deviation (ddof 0) of the anomalies in the bin; cividis, 25 % to 95 % quantiles of the bins' std</td></tr>
 <tr><td>bin edge width</td><td>0.1 px &times; sqrt(profile count) (none for one profile), growing with the square root
   of the zoom factor; at most 25 % of the bin's own size (the original: 0.01 pt per profile, capped by the smallest bin;
