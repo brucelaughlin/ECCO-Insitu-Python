@@ -400,6 +400,17 @@ def _mean_term(p, wv='final', indsamples=PROFILES_MEAN_INDSAMPLES):
     return {'cost': cost, 'count': n, 'per_depth': per_depth, 'nbins': has.sum(axis=0)}
 
 
+def mean_term_per_datum(mt, count):
+    """The ECCO mean term on the per-datum scale of a depth level: the summed mean term of the level's bin sets
+    divided by the level's number of data, sum_B J_m(B) / |D_k| (not the mean over bin sets, which is larger by the
+    mean number of data per bin set). On this scale, anomaly term + mean term = ECCO's cost per datum of the level."""
+    cost = np.asarray(mt['cost'], float)
+    with np.errstate(invalid='ignore', divide='ignore'):
+        tot = np.nansum(cost, axis=0)
+        c = np.asarray(count, float)
+        return np.where((c > 0) & np.isfinite(cost).any(axis=0), tot / np.where(c > 0, c, 1), np.nan)
+
+
 def _layer_thickness(depth):
     """Thickness (m) of the layer around each depth level: edges at the surface, the midpoints between
     levels, and half a spacing below the deepest level."""
@@ -975,6 +986,9 @@ def _write_nc(res, source, run_ts, path, cost_types_used, pooled_sources=None):
 
 _V_COLOR = {'T': 'tab:red', 'S': 'tab:blue'}
 _SP_LS   = {'unsplit': '--', 'split': '-', 'split_own': ':'}
+# What the figures call the cost parts (ECCO's cost is the anomaly term plus the mean term, V4r6's published settings;
+# the unsplit is our comparison and isn't part of ECCO's fit). Legends list ECCO's terms first.
+NAME_MEAN, NAME_ANOM, NAME_TOTAL = 'ECCO mean term', 'ECCO anomaly term', 'total misfit (not in ECCO)'
 _WV_COLOR = {'final': 'tab:blue', 'nosf': 'tab:orange', 'true': 'tab:red'}
 # Time-series split/unsplit: slightly darker shade + circle markers for split
 _TS_SP_COLOR = {
@@ -1055,8 +1069,10 @@ def _shared_limits(results):
             lims[(f'a{an}', V)] = _pad(_span(
                 [np.where(r[('a02', V, sp, wv)]['count'] >= _MIN_DEPTH_COUNT, r[('a02', V, sp, wv)]['mean'], np.nan)
                  for r in rs for sp in SPLIT_MODES for wv in wvs]
-                + ([r['meanterm'][(V, wv)]['per_depth'] for r in rs for wv in wvs
-                    if (V, wv) in r.get('meanterm', {})] if an == '02' else [])), zero=True)
+                + ([np.where(r[('a02', V, 'unsplit', wv)]['count'] >= _MIN_DEPTH_COUNT,
+                             mean_term_per_datum(r['meanterm'][(V, wv)], r[('a02', V, 'unsplit', wv)]['count'])
+                             + r[('a02', V, 'split_own', wv)]['mean'], np.nan)
+                    for r in rs for wv in wvs if (V, wv) in r.get('meanterm', {})] if an == '02' else [])), zero=True)
         lims[('a03', V)] = _pad(_span([r[('a03', V, sp, 'true')]['mean_per_datum']
                                        for r in rs for sp in SPLIT_MODES]), zero=True)
         s4 = _span([r[('a04', V, 'unsplit', wv)]['total'] for r in rs for wv in WEIGHT_VERS], positive=True)
@@ -1242,18 +1258,20 @@ def _make_figures(res, source, fig_dir, lims=None, cost_type=None):
     def _depth_lines(ax, V, wvs, with_mean):
         c = res[('a02', V, 'unsplit', 'final')]['count']  # count is same across sp/wv
         for wv in wvs:
-            for part, sp in (('unsplit', 'unsplit'), ('anomaly', core)):
-                m = np.where(c >= _MIN_DEPTH_COUNT, res[('a02', V, sp, wv)]['mean'], np.nan)
-                ax.plot(m, depth, ls=_part_ls[part], color=_WV_COLOR[wv],
-                        label=f'{wv} {part}' + (' (per datum)' if with_mean else ''), lw=1.2)
+            # every line per datum of the level (divided by its number of data), so anomaly + mean = ECCO's cost
+            an_ = np.where(c >= _MIN_DEPTH_COUNT, res[('a02', V, core, wv)]['mean'], np.nan)
             if with_mean and CORE_SPLIT == 'own' and (V, wv) in res.get('meanterm', {}):
-                mt = res['meanterm'][(V, wv)]['per_depth']
-                ax.plot(mt, depth, ls=_part_ls['mean'], color=_WV_COLOR[wv], label=f'{wv} mean term (per bin and level)', lw=1.6)
+                mt = np.where(c >= _MIN_DEPTH_COUNT, mean_term_per_datum(res['meanterm'][(V, wv)], c), np.nan)
+                ax.plot(an_ + mt, depth, ls='-', color=_WV_COLOR[wv], label=f'{wv} ECCO cost (mean + anomaly)', lw=2.0)
+                ax.plot(mt, depth, ls=_part_ls['mean'], color=_WV_COLOR[wv], label=f'{wv} {NAME_MEAN}', lw=1.4)
+            ax.plot(an_, depth, ls=(0, (6, 2)) if with_mean else '-', color=_WV_COLOR[wv], label=f'{wv} {NAME_ANOM}', lw=1.1)
+            tot = np.where(c >= _MIN_DEPTH_COUNT, res[('a02', V, 'unsplit', wv)]['mean'], np.nan)
+            ax.plot(tot, depth, ls='--', color=_WV_COLOR[wv], alpha=0.6, label=f'{wv} {NAME_TOTAL}', lw=1.0)
 
     how = 'own bin means' if CORE_SPLIT == 'own' else 'bin means pooled over all obs classes'
     for an, wvs, title_sfx, xlab in [
-        ('02', WEIGHT_VERS, 'cost, three weight versions',
-         'cost, (misfit/σ)²'),
+        ('02', WEIGHT_VERS, 'cost per datum, three weight versions',
+         'cost per datum, (misfit/σ)²'),
         ('09', ('true',),   '(ref − obs)²/σ², true weights (02\'s red lines)', None),
     ]:
         zoom = an == '02'          # 02: a second row, the same lines with the cost axis limited to 0-2
@@ -1281,7 +1299,7 @@ def _make_figures(res, source, fig_dir, lims=None, cost_type=None):
             _count_panel(cax, {V: res[('a02', V, 'unsplit', 'final')]['count'] for V in active_vars},
                          depth, lims[('a02', 'n')])
         rows[0][0][0].set_ylim(_dmax, 0)
-        fig.suptitle(f'{source}: Analysis {an} — {title_sfx} vs depth: unsplit and split ({how}){ctl}',
+        fig.suptitle(f'{source}: Analysis {an} — {title_sfx} vs depth: ECCO\'s terms and the total misfit ({how}){ctl}',
                      fontsize=11)
         _savefig(fig, fig_dir / f'{an}_cost_depth_{source}.png',
                  margins=dict(left=0.09, right=0.97, bottom=0.06, top=0.93) if zoom else True)
@@ -1290,8 +1308,8 @@ def _make_figures(res, source, fig_dir, lims=None, cost_type=None):
     fig, axes, cax = _depth_figure(nv, 5)
     for ax, V in _panels(axes, active_vars):
         c = res[('a02', V, 'unsplit', 'true')]['count']
-        for sp, lab, col in (('unsplit', 'unsplit', 'k'), ('split_own', 'anomaly, own bin means', 'tab:blue'),
-                             ('split', 'anomaly, pooled bin means (cost_profiles.F)', 'tab:red')):
+        for sp, lab, col in (('split_own', f'{NAME_ANOM}, own bin means', 'tab:blue'),
+                             ('split', f'{NAME_ANOM}, pooled bin means (cost_profiles.F)', 'tab:red'), ('unsplit', NAME_TOTAL, 'k')):
             m = np.where(c >= _MIN_DEPTH_COUNT, res[('a02', V, sp, 'true')]['mean'], np.nan)
             ax.plot(m, depth, color=col, ls='--' if sp == 'unsplit' else '-', lw=1.2, label=lab)
         ax.set_xlabel(f'{V} mean cost per datum (true)')
@@ -1302,7 +1320,7 @@ def _make_figures(res, source, fig_dir, lims=None, cost_type=None):
     _count_panel(cax, {V: res[('a02', V, 'unsplit', 'true')]['count'] for V in active_vars}, depth,
                  lims[('a02', 'n')])
     axes[0].set_ylim(_dmax, 0)
-    fig.suptitle(f'{source}: Analysis 12 — split anomaly term with own vs pooled bin means{ctl}', fontsize=11)
+    fig.suptitle(f'{source}: Analysis 12 — ECCO anomaly term with own vs pooled bin means{ctl}', fontsize=11)
     _savefig(fig, fig_dir / f'12_split_bin_means_{source}.png')
 
     # ---- Analysis 3: mean cost per datum vs time ----
@@ -1310,7 +1328,7 @@ def _make_figures(res, source, fig_dir, lims=None, cost_type=None):
     axes = axes.flatten()
     for ax, V in _panels(axes, active_vars):
         any_data = False
-        for sp, lab in (('unsplit', 'unsplit'), (core, 'split (anomaly term)')):
+        for sp, lab in ((core, NAME_ANOM), ('unsplit', NAME_TOTAL)):
             r = res[('a03', V, sp, 'true')]
             if len(r['yyyymm']) == 0:
                 continue
@@ -1361,7 +1379,7 @@ def _make_figures(res, source, fig_dir, lims=None, cost_type=None):
         _apply(ax.set_ylim, lims[('a04', V)])
         _apply(ax.set_xlim, lims['year'])
     axes[-1].set_xlabel('Year')
-    fig.suptitle(f'{source}: Analysis 4 — Total cost per month (sum over all data), unsplit{ctl}')
+    fig.suptitle(f'{source}: Analysis 4 — Total cost per month (sum over all data), total misfit (not in ECCO){ctl}')
     _savefig(fig, fig_dir / f'04_total_cost_time_{source}.png')
 
     # ---- Analysis 5/6: spatial map ----
@@ -1422,7 +1440,7 @@ def _make_figures(res, source, fig_dir, lims=None, cost_type=None):
     fig, axes = plt.subplots(1, nv, figsize=(5*nv + 1, 5), squeeze=False)
     axes = axes.flatten()
     x = np.arange(N_DEPTH_RANGES)
-    bars = (('unsplit', 'unsplit'), (core, 'split (anomaly term)'))
+    bars = ((core, NAME_ANOM), ('unsplit', NAME_TOTAL))
     width = 0.8 / len(bars)
     for ax, V in _panels(axes, active_vars):
         for i, (sp, lab) in enumerate(bars):
@@ -1448,7 +1466,7 @@ def _make_figures(res, source, fig_dir, lims=None, cost_type=None):
         fig, axes, cax = _depth_figure(nv, 5)
         for ax, V in _panels(axes, active_vars):
             for pe, (col, lab) in pe_style.items():
-                for sp, sl in (('unsplit', 'unsplit'), (core, 'split')):
+                for sp, sl in ((core, 'ECCO anomaly term'), ('unsplit', 'total misfit')):
                     r = res[('a11', V, sp, 'true', pe)]
                     m = np.where(r['count'] > 0, r['mean'], np.nan)
                     ax.plot(m, depth, color=col, ls='--' if sp == 'unsplit' else '-', lw=1.2,
@@ -1456,7 +1474,7 @@ def _make_figures(res, source, fig_dir, lims=None, cost_type=None):
             ax.set_xlabel(f'{V} mean cost per datum (true)')
             ax.set_ylabel('Depth (m)') if ax is axes[0] else None
             ax.set_title(V)
-            ax.legend(fontsize=7, title='period, split mode: 0–2000 m mean', title_fontsize=7)
+            ax.legend(fontsize=7, title='period, cost part: 0–2000 m mean', title_fontsize=7)
             _apply(ax.set_xlim, lims[('a11', V)])
         for pe, (col, lab) in pe_style.items():
             c = res[('a11', active_vars[0], 'unsplit', 'true', pe)]['count']
@@ -1542,8 +1560,8 @@ def _count_grid_figure(res, source, fig_dir, active_vars, ctl):
 
 # The three cost parts the report can show for maps (06) and zonal sections (07); file-name suffix
 _PARTS = (('unsplit', ''), ('anomaly', '__anomaly'), ('mean', '__mean'))
-_PART_TITLE = {'unsplit': 'cost per datum (unsplit)', 'anomaly': 'cost per datum, split anomaly term',
-               'mean': 'split mean term per bin'}
+_PART_TITLE = {'unsplit': 'total misfit per datum (not in ECCO\'s cost)', 'anomaly': 'ECCO anomaly term, per datum',
+               'mean': 'ECCO mean term per bin'}
 _BIN_LAT = None
 
 
@@ -1768,12 +1786,15 @@ def _make_compare_figures(ra, rb, na, nb, source, fig_dir):
         for ax, V in _panels(axes, active):
             for r, name, col in names:
                 c = r[('a02', V, 'unsplit', 'true')]['count']
-                for sp, ls, lab in (('unsplit', '--', 'unsplit'), (core, '-', 'anomaly')):
-                    m = np.where(c >= _MIN_DEPTH_COUNT, r[('a02', V, sp, 'true')]['mean'], np.nan)
-                    ax.plot(m, depth, ls=ls, color=col, lw=1.3, label=f'{name} {lab}')
-                if with_mean and (V, 'true') in r.get('meanterm', {}):
-                    ax.plot(r['meanterm'][(V, 'true')]['per_depth'], depth, ls=':', color=col, lw=1.6, label=f'{name} mean term')
-            ax.set_xlabel(f'{V} cost per datum (true weights)' + (' / mean term' if with_mean else ''))
+                an_ = np.where(c >= _MIN_DEPTH_COUNT, r[('a02', V, core, 'true')]['mean'], np.nan)
+                if with_mean and (V, 'true') in r.get('meanterm', {}):     # per datum of the level, as analysis 02
+                    mt = np.where(c >= _MIN_DEPTH_COUNT, mean_term_per_datum(r['meanterm'][(V, 'true')], c), np.nan)
+                    ax.plot(an_ + mt, depth, ls='-', color=col, lw=2.0, label=f'{name} ECCO cost (mean + anomaly)')
+                    ax.plot(mt, depth, ls=':', color=col, lw=1.4, label=f'{name} {NAME_MEAN}')
+                ax.plot(an_, depth, ls=(0, (6, 2)) if with_mean else '-', color=col, lw=1.1, label=f'{name} {NAME_ANOM}')
+                tot = np.where(c >= _MIN_DEPTH_COUNT, r[('a02', V, 'unsplit', 'true')]['mean'], np.nan)
+                ax.plot(tot, depth, ls='--', color=col, alpha=0.6, lw=1.0, label=f'{name} {NAME_TOTAL}')
+            ax.set_xlabel(f'{V} cost per datum, (misfit/σ)², true weights')
             ax.set_ylabel('Depth (m)') if ax is axes[0] else None
             ax.set_title(V); ax.legend(fontsize=7); ax.set_xlim(left=0)
         _count_panel(cax, {V: ra[('a02', V, 'unsplit', 'true')]['count'] for V in active}, depth, None)
@@ -1786,7 +1807,7 @@ def _make_compare_figures(ra, rb, na, nb, source, fig_dir):
     axes = axes.flatten()
     for ax, V in _panels(axes, active):
         for r, name, col in names:
-            for sp, ls, lab in (('unsplit', '--', 'unsplit'), (core, '-', 'anomaly')):
+            for sp, ls, lab in ((core, '-', NAME_ANOM), ('unsplit', '--', NAME_TOTAL)):
                 t = r[('a03', V, sp, 'true')]
                 if len(t['yyyymm']):
                     ax.plot(_decimal_year(t['yyyymm']), t['mean_per_datum'], ls=ls, color=col, lw=1.0, label=f'{name} {lab}')
@@ -1795,12 +1816,12 @@ def _make_compare_figures(ra, rb, na, nb, source, fig_dir):
     fig.suptitle(f'{source}: Analysis 3 compared — cost per datum vs time (true weights){tag}')
     _savefig(fig, fig_dir / f'03_cost_per_datum_time_{source}.png')
 
-    # 10: by depth range, both models side by side (unsplit)
+    # 10: by depth range, both models side by side (the total misfit)
     fig, axes = plt.subplots(1, nv, figsize=(5 * nv + 1, 5), squeeze=False)
     axes = axes.flatten(); x = np.arange(N_DEPTH_RANGES)
     for ax, V in _panels(axes, active):
         for i, (r, name, col) in enumerate(names):
-            ax.bar(x + (i - 0.5) * 0.38, r[('a10', V, 'unsplit', 'true')], 0.38, color=col, label=f'{name} unsplit', alpha=0.85)
+            ax.bar(x + (i - 0.5) * 0.38, r[('a10', V, 'unsplit', 'true')], 0.38, color=col, label=f'{name} {NAME_TOTAL}', alpha=0.85)
         ax.set_xticks(x); ax.set_xticklabels(DEPTH_RANGE_LABELS, rotation=30, ha='right', fontsize=8)
         ax.set_ylabel(f'{V} cost per datum (true weights)'); ax.set_title(V); ax.legend(fontsize=7)
     fig.suptitle(f'{source}: Analysis 10 compared — cost per datum by depth range{tag}')

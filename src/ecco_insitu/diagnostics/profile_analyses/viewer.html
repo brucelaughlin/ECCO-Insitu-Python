@@ -238,8 +238,10 @@ function cmpModels(ct) {                // compare_V4r6_V5r1 -> ['V4r6', 'V5r1']
 }
 const CMP = (ct = S.ct) => !!ct && ct.startsWith('compare_');                  // the record layout this page reads (viewer.py DATA_FORMAT)
 const vurl = u => u + '?v=' + ((INDEX && INDEX.version) || '');   // this build's files only (never a cached older one)
-const PARTS = {unsplit: 'cost per datum, unsplit', anomaly: 'cost per datum, split anomaly term',
-               mean: 'split mean term (per bin; all years)', count: 'number of data',
+// ECCO's cost is the anomaly term plus the mean term (V4r6's published settings); the total misfit (unsplit) is
+// our comparison and isn't part of ECCO's fit
+const PARTS = {unsplit: 'total misfit per datum (not in ECCO\'s cost)', anomaly: 'ECCO anomaly term, per datum',
+               mean: 'ECCO mean term (per bin and level; all years)', count: 'number of data',
                bias: 'mean misfit, reference − observation (not a cost)',
                nmis: 'mean normalized misfit, (reference − observation)/σ (not a cost)',
                sig: 'mean σ, the assumed error of the observations (not a cost)'};
@@ -247,8 +249,8 @@ const PARTS = {unsplit: 'cost per datum, unsplit', anomaly: 'cost per datum, spl
 function partText(p = S.part) {
   if (!CMP()) return PARTS[p];
   const [a, b] = cmpModels(S.ct);
-  return {unsplit: `cost per datum, unsplit: ${b} − ${a}`, anomaly: `cost per datum, split anomaly term: ${b} − ${a}`,
-          mean: `split mean term (per bin; all years): ${b} − ${a}`, count: 'number of data compared',
+  return {unsplit: `total misfit per datum (not in ECCO's cost): ${b} − ${a}`, anomaly: `ECCO anomaly term, per datum: ${b} − ${a}`,
+          mean: `ECCO mean term (per bin and level; all years): ${b} − ${a}`, count: 'number of data compared',
           bias: `model difference, ${b} − ${a} (not a cost)`}[p] || PARTS[p];
 }
 // what a comparison compares, over which data, in plain words; short: one sentence (region panel)
@@ -275,7 +277,7 @@ const DIAG = p => p === 'bias' || p === 'nmis' || p === 'sig', SIGNED = p => (CM
 // values, so per-year charts show the mean misfit for it
 const valArr = (c, part = S.part) => part === 'anomaly' ? c.ma : part === 'bias' || part === 'mean' ? c.bias
   : part === 'nmis' ? c.nmis : part === 'sig' ? c.sig : part === 'count' ? null : c.mu;
-const S = {isobaths: true, src: null, ct: null, V: 'T', part: 'unsplit', dmode: 'level', dsel: 0, t0: 0, t1: 0, all: true,
+const S = {isobaths: true, src: null, ct: null, V: 'T', part: 'mean', dmode: 'level', dsel: 0, t0: 0, t1: 0, all: true,
            vmax: null, log: false, same: false, sb0: 0, sb1: 0};
 let INDEX, GRID, GRIDS = {}, CACHE = {};
 
@@ -761,7 +763,7 @@ async function detailRows(src, js) {        // per profile index: rows [{k, m: o
 function renderPlatformTable(el, P, X) {
   const unit = S.V === 'T' ? '°C' : 'psu', ref = (S.ct === 'vs_clim' ? 'climatology' : S.ct.slice(3));
   const rows = [...X.share].filter(([pi]) => pi !== 0xFFFFFFFF).sort((a, b) => b[1] - a[1]).slice(0, 12);
-  const nPlat = [...X.nprof.keys()].filter(k => k !== 0xFFFFFFFF).length, what = S.part === 'mean' ? 'mean term' : S.part === 'anomaly' ? 'anomaly cost' : S.part === 'count' ? 'data' : 'unsplit cost';
+  const nPlat = [...X.nprof.keys()].filter(k => k !== 0xFFFFFFFF).length, what = S.part === 'mean' ? 'ECCO mean term' : S.part === 'anomaly' ? 'ECCO anomaly term' : S.part === 'count' ? 'data' : 'total misfit';
   let h = `<div class="ptitle" style="margin-top:0.6em">Platforms in the region <span class="dnote">(${P.kind}; ${nPlat} with kept data at the selected depths; computed profile by profile)</span></div>` +
     `<table><tr><th>${P.kind}</th><th>profiles</th><th>years</th><th>share of the region's ${what}</th><th>mean ${ref} − obs (${unit})</th><th></th></tr>`;
   for (const [pi, x] of rows) { const nm = P.names[pi], ys = X.yrs.get(pi) || ['–', '–'], mb = X.mw.get(pi) ? -X.mis.get(pi) / X.mw.get(pi) : NaN;   // ref − obs
@@ -973,21 +975,22 @@ async function showBin(b) {
   if (!rows.length) html += CMP() ? 'No data with values from both models at the selected depths.' : 'No data at the selected depths.';
   else if (CMP()) {
     const [ma, mb] = cmpModels(S.ct), sg = (x, d = 3) => Number.isFinite(x) ? (x >= 0 ? '+' : '') + x.toFixed(d) : '–';
-    html += `<table><tr><th>depth</th><th># data</th><th>unsplit</th><th>anomaly</th><th>mean term</th><th>model difference (${unit})</th></tr>`;
+    html += `<table><tr><th>depth</th><th># data</th><th>ECCO mean term</th><th>ECCO anomaly term</th><th>total misfit</th><th>model difference (${unit})</th></tr>`;
     const shown = rows.length > 14 ? rows.filter((_, i) => i % Math.ceil(rows.length / 14) === 0 || i === rows.length - 1) : rows;
     for (const k of shown) { const r = perLev.get(k);
-      html += `<tr><td>${z[k]} m</td><td>${r.n}</td><td>${sg(r.mu)}</td><td>${sg(r.ma)}</td><td>${mt.has(k) ? sg(mt.get(k)) : '–'}</td><td>${sg(r.bias)}</td></tr>`; }
+      html += `<tr><td>${z[k]} m</td><td>${r.n}</td><td>${mt.has(k) ? sg(mt.get(k)) : '–'}</td><td>${sg(r.ma)}</td><td>${sg(r.mu)}</td><td>${sg(r.bias)}</td></tr>`; }
     html += '</table>' + (shown.length < rows.length ? `<span class="dnote">${shown.length} of ${rows.length} levels shown</span><br>` : '');
-    html += `<span class="dnote">Every column is ${mb} minus ${ma}. Costs: per datum, (ΔV/σ)², true weights, over all years (positive: ${mb} fits the ` +
+    html += `<span class="dnote">Every column is ${mb} minus ${ma}. Costs: (ΔV/σ)², true weights, over all years; the mean term per bin and level, the others per datum (positive: ${mb} fits the ` +
       `observations worse here). Model difference: ${mb}'s value minus ${ma}'s, averaged over the observations' places and times in this bin.</span>`;
   }
   else {
-    html += `<table><tr><th>depth</th><th># data</th><th>unsplit</th><th>anomaly</th><th>mean term</th><th>ref − obs (${unit})</th><th>(ref − obs)/σ</th><th>σ (${unit})</th></tr>`;
+    html += `<table><tr><th>depth</th><th># data</th><th>ECCO mean term</th><th>ECCO anomaly term</th><th>total misfit</th><th>ref − obs (${unit})</th><th>(ref − obs)/σ</th><th>σ (${unit})</th></tr>`;
     const shown = rows.length > 14 ? rows.filter((_, i) => i % Math.ceil(rows.length / 14) === 0 || i === rows.length - 1) : rows;
     for (const k of shown) { const r = perLev.get(k);
-      html += `<tr><td>${z[k]} m</td><td>${r.n}</td><td>${fmt(r.mu)}</td><td>${Number.isFinite(r.ma) ? fmt(r.ma) : '–'}</td><td>${mt.has(k) && Number.isFinite(mt.get(k)) ? fmt(mt.get(k)) : '–'}</td><td>${Number.isFinite(r.bias) ? (r.bias >= 0 ? '+' : '') + r.bias.toFixed(3) : '–'}</td><td>${Number.isFinite(r.nmis) ? (r.nmis >= 0 ? '+' : '') + r.nmis.toFixed(2) : '–'}</td><td>${Number.isFinite(r.sig) ? fmt(r.sig) : '–'}</td></tr>`; }
+      html += `<tr><td>${z[k]} m</td><td>${r.n}</td><td>${mt.has(k) && Number.isFinite(mt.get(k)) ? fmt(mt.get(k)) : '–'}</td><td>${Number.isFinite(r.ma) ? fmt(r.ma) : '–'}</td><td>${fmt(r.mu)}</td><td>${Number.isFinite(r.bias) ? (r.bias >= 0 ? '+' : '') + r.bias.toFixed(3) : '–'}</td><td>${Number.isFinite(r.nmis) ? (r.nmis >= 0 ? '+' : '') + r.nmis.toFixed(2) : '–'}</td><td>${Number.isFinite(r.sig) ? fmt(r.sig) : '–'}</td></tr>`; }
     html += '</table>' + (shown.length < rows.length ? `<span class="dnote">${shown.length} of ${rows.length} levels shown</span><br>` : '');
-    html += '<span class="dnote">Costs: (ΔV/σ)², true weights, over all years. Mean term: per bin and level, as the map&rsquo;s mean term.</span>';
+    html += '<span class="dnote">Costs: (ΔV/σ)², true weights, over all years. ECCO mean term: per bin and level, as the map&rsquo;s. ' +
+      'ECCO&rsquo;s cost is the mean term plus the anomaly term; the total misfit is shown for comparison.</span>';
   }
   document.getElementById('bintxt').innerHTML = html; document.getElementById('bintxt').className = '';
   // links: the in situ data viewer at this bin, depth, years and reference
@@ -1271,12 +1274,15 @@ async function render() {
      S.part === 'bias' ? 'Each bin: mean of (reference &minus; observation) over its data in the selected levels and years, in ' +
        (S.V === 'T' ? '&deg;C' : 'psu') + '. A diagnostic of steady offsets and their change over time; it is not part of the cost. ' :
      S.part === 'nmis' ? 'Each bin: mean of (reference &minus; observation)/&sigma; over its data in the selected levels and years (true weights, ' +
-       'so &sigma; is the assumed error alone). &plusmn;1 is one assumed error. Not part of the cost (the unsplit cost is the mean of its square). ' :
+       'so &sigma; is the assumed error alone). &plusmn;1 is one assumed error. Not part of the cost (the total misfit is the mean of its square). ' :
      S.part === 'sig' ? 'Each bin: mean of &sigma;, the assumed error of the observations (true weights 1/&sigma;&sup2;), over its data in the selected levels and years, in ' +
        (S.V === 'T' ? '&deg;C' : 'psu') + '. The errors the costs are measured against. ' :
-     S.part === 'mean' ? 'Mean term: w&#772;&middot;(V&#772;&minus;V&#772;<sub>ref</sub>)&sup2; per bin and level (own bin means, all years), averaged over the selected levels. ' :
-     'Each bin: mean of (&Delta;V/&sigma;)&sup2; over its data in the selected levels and years. ') +
-    'The color scale is fixed for this view across years; unsplit and anomaly share it. ' +
+     S.part === 'mean' ? 'ECCO mean term: w&#772;&middot;(V&#772;&minus;V&#772;<sub>ref</sub>)&sup2; per bin and level (own bin means, all years), averaged over the selected levels. ' +
+       'Per bin and level here, to compare bins (analysis 02 shows it per datum of each level, so it adds to the anomaly term). ' :
+     S.part === 'anomaly' ? 'ECCO anomaly term: each bin, mean over its data in the selected levels and years of (&Delta;V/&sigma;)&sup2; with the bin&rsquo;s long-term offset removed. ' :
+     'Total misfit (not in ECCO&rsquo;s cost): each bin, mean of (&Delta;V/&sigma;)&sup2; over its data in the selected levels and years, offset included. ') +
+    'ECCO&rsquo;s cost is the mean term plus the anomaly term (V4r6&rsquo;s published settings); the total misfit is shown for comparison. ' +
+    'The color scale is fixed for this view across years; the anomaly term and the total misfit share it. ' +
     'Hover a bin for its value.';
 }
 function foldSummary() {
@@ -1448,6 +1454,7 @@ async function init() {
   S.src = q.get('src') && srcs.includes(q.get('src')) ? q.get('src') : srcs[0];
   S.ct = q.get('ct') && cts.includes(q.get('ct')) ? q.get('ct') : cts.find(c => c !== 'vs_clim' && !CMP(c)) || cts[0];   // default: the (first) model
   if (q.get('V') === 'S') S.V = 'S';
+  if (INDEX.core_split !== 'own' && S.part === 'mean') S.part = 'anomaly';    // no per-class mean term in this build
   if (q.get('part') && PARTS[q.get('part')]) S.part = q.get('part');
   if (CMP() && !CMP_PARTS.includes(S.part)) S.part = 'unsplit';      // a comparison has no normalized misfit or σ
   const re = () => { S.vmax = null; document.getElementById('vmax').value = ''; fillDepthSelect();
@@ -1459,9 +1466,10 @@ async function init() {
   document.querySelectorAll('#cts .tab').forEach(t => { if (CMP(t.dataset.v)) { t.classList.add('cmp-tab');
     t.title = 'Model ' + cmpModels(t.dataset.v)[1] + ' minus model ' + cmpModels(t.dataset.v)[0] + ', at the places and times with observations'; } });
   tabs('vars', [['T', 'T'], ['S', 'S']], 'V', v => { S.V = v; re(); });
-  const partTabs = [['unsplit', 'unsplit'], ['anomaly', 'anomaly (split)']];
-  if (INDEX.core_split === 'own') partTabs.push(['mean', 'mean term (split)']);
-  partTabs.push(['count', '# data']);
+  // ECCO's two terms first; the total misfit is our comparison (not in ECCO's cost)
+  const partTabs = [];
+  if (INDEX.core_split === 'own') partTabs.push(['mean', 'ECCO mean term']);
+  partTabs.push(['anomaly', 'ECCO anomaly term'], ['unsplit', 'total misfit (not in ECCO)'], ['count', '# data']);
   tabs('parts', partTabs, 'part', v => { S.part = v; re(); });
   // the misfit row; for a comparison: the model difference only (no observations or σ in it)
   const setDiagTabs = () => {

@@ -53,25 +53,30 @@ results as the report&rsquo;s figures.</p>
   sampled at the profile&rsquo;s grid cell, month and depths (approximate: not the model&rsquo;s value at the profile&rsquo;s exact time).
   No model values after 2025.</td></tr>
 <tr><td>compare V4r6 and V5r1</td><td>The two models side by side, V4r6 as the reference: every value is <strong>V5r1&rsquo;s minus
-  V4r6&rsquo;s</strong>, on a red&ndash;blue scale centered on 0. For the costs (unsplit, anomaly, mean term), red means V5r1 fits the
+  V4r6&rsquo;s</strong>, on a red&ndash;blue scale centered on 0. For the costs (ECCO mean term, ECCO anomaly term, total misfit), red means V5r1 fits the
   observations worse there, blue better. The <strong>model difference</strong> (in the misfit row) is V5r1&rsquo;s T or S minus
   V4r6&rsquo;s, in &deg;C or psu: no observations and no &sigma; in it, but the models are compared only where and when there are
   observations (it equals V5r1&rsquo;s misfit minus V4r6&rsquo;s). Only the cells (bin, depth level, year) that both models have are
   compared; each model lacks values for a few observations, so the two counts differ in some cells (the note above the maps
   gives the numbers). There is no peak tool and no platform table for a comparison; open one model&rsquo;s cost type for those.</td></tr>
 <tr><td>Variable</td><td>T, S</td><td>Temperature or salinity. S is grayed out for classes without salinity (XBT).</td></tr>
-<tr><td rowspan="4">Cost</td><td>unsplit</td><td>The <strong>cost per datum</strong>: (&Delta;V/&sigma;)&sup2;, where &Delta;V is observation
-  minus reference and &sigma; the assumed error of the observation. 1 means &ldquo;one assumed error away&rdquo;; 4 means two.
-  Averaged over the bin&rsquo;s data in the selected depths and years. &ldquo;True weights&rdquo;: the area factor &gamma; and the spatial
-  scaling factor sf are left out, so this is purely misfit relative to &sigma;.</td></tr>
-<tr><td>anomaly (split)</td><td>The same, after removing the bin&rsquo;s <em>long-term mean misfit</em> at each depth level: it measures how well
-  the <em>variations in time</em> are fit, ignoring a steady offset. This is the first term of ECCO&rsquo;s split cost
-  (<code>cost_profiles.F</code>). The long-term mean is computed from this obs class&rsquo;s own data, all years.</td></tr>
-<tr><td>mean term (split)</td><td>The second term of the split cost: the steady offset itself, (mean observation &minus; mean reference)&sup2;,
-  weighted by the bin&rsquo;s combined error w&#772; = 1/max(s/n, s/9), s the mean of &sigma;&sup2; over the bin&rsquo;s n data (as
-  <code>cost_profiles.F</code>). One value per bin and level; averaged over the selected levels. Defined over the whole record, so
-  the time selection is off. Its values are typically much larger than the per-datum cost, since it doesn&rsquo;t shrink with
-  the number of data: compare maps of the mean term with each other, not with the other parts.</td></tr>
+<tr><td rowspan="4">Cost</td><td>ECCO mean term</td><td>One of the two terms of <strong>ECCO&rsquo;s cost</strong>: the steady
+  offset itself, (mean observation &minus; mean reference)&sup2;, weighted by the bin&rsquo;s combined error w&#772; = 1/max(s/n, s/9),
+  s the mean of &sigma;&sup2; over the bin&rsquo;s n data (as <code>cost_profiles.F</code>). One value per bin and level; averaged over
+  the selected levels. Defined over the whole record, so the time selection is off. Its values are typically much larger than
+  the per-datum terms, since a bin&rsquo;s offset counts as up to 9 data: compare maps of the mean term with each other, not with the
+  other parts. Here it is per bin and level, to compare bins; analysis&nbsp;02 shows it per datum of each level, where it adds to the
+  anomaly term to give ECCO&rsquo;s cost. The explorer opens on it.</td></tr>
+<tr><td>ECCO anomaly term</td><td>The other term of ECCO&rsquo;s cost: the <strong>cost per datum</strong>, (&Delta;V/&sigma;)&sup2;, after
+  removing the bin&rsquo;s <em>long-term mean misfit</em> at each depth level, so it measures how well the <em>variations in time</em>
+  are fit, ignoring a steady offset. &Delta;V is observation minus reference and &sigma; the assumed error of the observation; 1 means
+  &ldquo;one assumed error away&rdquo;. The long-term mean is computed from this obs class&rsquo;s own data, all years. &ldquo;True
+  weights&rdquo;: the area factor &gamma; and the spatial scaling factor sf are left out.</td></tr>
+<tr><td>total misfit (not in ECCO)</td><td>The cost per datum <em>with</em> the offset: (&Delta;V/&sigma;)&sup2; of the misfit as it is,
+  averaged over the bin&rsquo;s data in the selected depths and years. <strong>Not part of ECCO&rsquo;s cost</strong>: ECCO&rsquo;s cost is the
+  mean term plus the anomaly term (V4r6&rsquo;s published settings: <code>ALLOW_PROFILES_SAMPLESPLIT_COST</code> in
+  <code>PROFILES_OPTIONS.h</code>; <code>cost_profiles.F</code> computes only those two). Shown for comparison; V5r1&rsquo;s settings are
+  not known and assumed the same.</td></tr>
 <tr><td># data</td><td>The number of observations (profile values) in each bin for the selected depths and years: the
   &ldquo;n&rdquo; behind the averages. Bins with very few data give noisy averages.</td></tr>
 <tr><td rowspan="3">Misfit, &sigma;</td><td>misfit (ref &minus; obs)</td><td><strong>Not a cost term.</strong> The
@@ -81,7 +86,7 @@ results as the report&rsquo;s figures.</p>
   to see whether a steady offset is constant or <em>drifting</em>. It is related to the split&rsquo;s mean term (this offset over
   the whole record, squared and weighted), but here it keeps its sign, has units, and can be limited to any years.</td></tr>
 <tr><td>normalized misfit (ref &minus; obs)/&sigma;</td><td>The same, with each value divided by its assumed error &sigma;
-  first (true weights, no &gamma; or scaling factor): &plusmn;1 means one assumed error. Its square, averaged, is the unsplit cost.
+  first (true weights, no &gamma; or scaling factor): &plusmn;1 means one assumed error. Its square, averaged, is the total misfit.
   Same red&ndash;blue scale centered on zero.</td></tr>
 <tr><td>&sigma; (assumed error)</td><td>The mean assumed error of the observations, &sigma; = 1/&radic;w with the true weights, in
   &deg;C or psu: the errors the costs are measured against. Where the cost is high, check whether &sigma; is small there.</td></tr>
@@ -93,7 +98,7 @@ results as the report&rsquo;s figures.</p>
 <tr><td>15 groups / 30 groups</td><td>The 97 levels split into 15 or 30 consecutive groups of about equal numbers of levels.</td></tr>
 <tr><td>flagged spikes</td><td>Levels where the mean cost per datum of this class stands out: above 0.5 and at least 1.4 times the
   median of the levels 300&ndash;1000&nbsp;m above and below it (levels with at least 30 data). The list gives the level&rsquo;s
-  value and that median, and whether it was flagged in the unsplit or anomaly cost. Use it to find <em>where</em> a peak in
+  value and that median, and whether it was flagged in the total misfit or the ECCO anomaly term. Use it to find <em>where</em> a peak in
   the report&rsquo;s cost-vs-depth plots (analyses 2 and 9) comes from.</td></tr>
 <tr><td>(list)</td><td>The level, band, group or spike to show.</td></tr>
 <tr><td rowspan="5">Time</td><td>all years</td><td>Every year of the record. Fast: uses a small all-years summary.</td></tr>
@@ -139,7 +144,7 @@ A jump in the red curve that the blue one does not show comes from <em>which bin
 water. (Example: PFL vs V4r6 mean term at 2200&ndash;2400&nbsp;m: red 4.9&ndash;5.6, blue 2.3&ndash;2.4; most floats stop at 2000&nbsp;m,
 so those levels hold far fewer bins, mostly subpolar North Atlantic ones.)</p>
 <p><b>Clicked bin</b>: click any bin on a map. The panel shows its center, and per depth level (the selected levels) the number of
-data, the unsplit and anomaly costs, the mean term, and the mean reference &minus; observation, the normalized misfit and &sigma; (all years); a bar chart of the
+data, the ECCO mean term, the ECCO anomaly term, the total misfit, and the mean reference &minus; observation, the normalized misfit and &sigma; (all years); a bar chart of the
 selected cost part per year (for the mean term: reference &minus; observation per year, since the mean term itself has no years); and a link
 that opens the <b>in situ data viewer</b> on that bin, zoomed in to the individual profiles, at the same class, reference
 (climatology or model), variable, depth and years.</p>
@@ -191,7 +196,7 @@ ringed in cyan.</p>
 <ul>
 <li>Values near 1 mean the misfit is about what the assumed errors &sigma; allow; much larger values point to a poor fit, a
 too-small &sigma;, or bad data. With few data (# data) a single bad profile can dominate a bin.</li>
-<li>If unsplit is high but anomaly is low in a region, the misfit there is mostly a steady offset (see the mean term).
+<li>If the total misfit is high but the anomaly term is low in a region, the misfit there is mostly a steady offset (see the mean term).
   The misfit (ref &minus; obs) shows that offset&rsquo;s sign and size; compare early and late year ranges to see if it changes.</li>
 <li>The time range shows whether a high cost is persistent or limited to some years (e.g. one cruise or float).</li>
 <li>Data notes, open decisions and corrections are on the report&rsquo;s <em>Notes &amp; errata</em> page.</li>

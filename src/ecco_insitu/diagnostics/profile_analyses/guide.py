@@ -51,13 +51,15 @@ data viewer on one platform &rarr; click a profile to see it whole. Section&nbsp
 <tr><td>geodesic bin</td><td>One of 10,242 cells of roughly equal area (about 220&nbsp;km across) covering the globe.</td></tr>
 <tr><td>depth level</td><td>One of the 97 standard depths (2&nbsp;m to 6000&nbsp;m): 2&ndash;5&nbsp;m apart in the top 100&nbsp;m (23 levels), wider below
   (50&nbsp;m around 1000&nbsp;m, 100&nbsp;m from 1100 to 2000&nbsp;m), 200&nbsp;m apart below 2000&nbsp;m.</td></tr>
-<tr><td>unsplit cost</td><td>w&middot;(&Delta;V)&sup2; per value: the whole misfit.</td></tr>
-<tr><td>split: anomaly and mean term</td><td>ECCO&rsquo;s split of the cost per geodesic bin <i>i</i> and level <i>k</i>:
-  <b>anomaly term</b> per value w&middot;(&Delta;V &minus; &Delta;V&#772;<sub>i,k</sub>)&sup2;, the misfit after removing the bin&rsquo;s
-  long-term mean misfit &Delta;V&#772;<sub>i,k</sub>; and <b>mean term</b> per bin and level
-  J<sub>i,k</sub> = w&#772;&middot;(&Delta;V&#772;<sub>i,k</sub>)&sup2;, the steady offset itself, with
-  w&#772; = 1/max(s/n, s/9), s = mean(1/w) over the bin&rsquo;s n values. (The &ldquo;9&rdquo; caps how much n independent values can
-  sharpen the bin mean.)</td></tr>
+<tr><td>ECCO mean term and ECCO anomaly term</td><td><b>ECCO&rsquo;s cost</b>, per geodesic bin <i>i</i> and level <i>k</i>, is
+  the sum of two terms: the <b>mean term</b> per bin and level J<sub>i,k</sub> = w&#772;&middot;(&Delta;V&#772;<sub>i,k</sub>)&sup2;, the steady
+  offset itself (&Delta;V&#772;<sub>i,k</sub> the bin&rsquo;s long-term mean misfit), with w&#772; = 1/max(s/n, s/9), s = mean(1/w) over the bin&rsquo;s
+  n values (the &ldquo;9&rdquo; caps how much n independent values can sharpen the bin mean); and the <b>anomaly term</b> per value
+  w&middot;(&Delta;V &minus; &Delta;V&#772;<sub>i,k</sub>)&sup2;, the misfit after removing that offset. This is V4r6&rsquo;s published setting
+  (<code>ALLOW_PROFILES_SAMPLESPLIT_COST</code> in <code>PROFILES_OPTIONS.h</code>; <code>cost_profiles.F</code> computes only these two,
+  and <code>profiles_cost_final</code> adds them to the total); V5r1&rsquo;s settings are not known, assumed the same.</td></tr>
+<tr><td>total misfit (not in ECCO)</td><td>w&middot;(&Delta;V)&sup2; per value: the whole misfit, offset included (the
+  &ldquo;unsplit&rdquo; cost; <code>unsplit</code> in links). Shown for comparison; <b>not part of ECCO&rsquo;s fit</b>.</td></tr>
 <tr><td>weights final / nosf / true</td><td>w = &gamma;&middot;sf/&sigma;&sup2; as ECCO uses it (final); without the spatial scaling sf (nosf);
   without &gamma; and sf, i.e. 1/&sigma;&sup2; (true). The explorer and the attribution use <b>true</b> weights.</td></tr>
 <tr><td>kept / rejected</td><td>The processing chain&rsquo;s quality control (step 06) sets a value&rsquo;s weight to 0 when it fails a test; such a
@@ -112,7 +114,7 @@ and depth range, and runs the peak tool there (section <a href="#peak">The peak 
 <p><b>Simple / expert</b> (top right): simple shows the everyday choices; expert adds the mean-bias diagnostic, depth bands and groups,
 flagged spikes, single year, the log color scale and regions. A link that uses an expert option opens in expert mode; your choice is
 remembered in this browser.</p>
-<p><b>Rows of buttons</b> (top): class, cost type, variable, cost part (unsplit, anomaly, mean term, number of data), the misfit,
+<p><b>Rows of buttons</b> (top): class, cost type, variable, cost part (ECCO mean term, ECCO anomaly term, total misfit, number of data; the explorer opens on the mean term), the misfit,
 normalized misfit and &sigma; (ref &minus; obs, (ref &minus; obs)/&sigma;, the assumed error; not costs), depth (all, one level, 100&nbsp;m bands, groups of levels, flagged spikes) and time
 (all years, or any range; the mean term has no years).</p>
 <p><b>Maps:</b> the global map (equal area) and the two polar maps; each bin colored by the selection. Hover a bin for its value;
@@ -258,12 +260,12 @@ of bins and values, and by the rest-of-the-world curve, not by the share alone.<
 value</b>. The shares are computed profile by profile from every profile&rsquo;s own values (the data viewer&rsquo;s profile details), kept
 values at the selected levels only, true weights (w = 1/&sigma;&sup2;):</p>
 <ul>
-<li><b>unsplit cost</b>: each value&rsquo;s own (&Delta;V/&sigma;)&sup2;, summed per platform;</li>
-<li><b>anomaly term</b>: each value&rsquo;s (&Delta;V &minus; &Delta;V&#772;<sub>i,k</sub>)&sup2;/&sigma;&sup2;, with &Delta;V&#772;<sub>i,k</sub> the bin&rsquo;s mean
+<li><b>ECCO anomaly term</b>: each value&rsquo;s (&Delta;V &minus; &Delta;V&#772;<sub>i,k</sub>)&sup2;/&sigma;&sup2;, with &Delta;V&#772;<sub>i,k</sub> the bin&rsquo;s mean
   misfit over all years;</li>
-<li><b>mean term</b>: J<sub>i,k</sub> = w&#772;&middot;(&Delta;V&#772;)&sup2; is shared among the bin&rsquo;s n values as
+<li><b>ECCO mean term</b>: J<sub>i,k</sub> = w&#772;&middot;(&Delta;V&#772;)&sup2; is shared among the bin&rsquo;s n values as
   w&#772;&middot;&Delta;V&#772;&middot;&Delta;V<sub>v</sub>/n for value v. The parts add up to J exactly (since &Sigma;<sub>v</sub>&Delta;V<sub>v</sub> =
-  n&middot;&Delta;V&#772;); a value pulling against its bin&rsquo;s mean gets a negative part.</li>
+  n&middot;&Delta;V&#772;); a value pulling against its bin&rsquo;s mean gets a negative part;</li>
+<li><b>total misfit</b> (not in ECCO): each value&rsquo;s own (&Delta;V/&sigma;)&sup2;, summed per platform.</li>
 </ul>
 <p>Shares are of the region&rsquo;s total over its platforms. With a time window, values outside it are left out of the shares, but the
 bin means of the split use all years, as the analysis does.</p>

@@ -39,7 +39,7 @@ _CHROME = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'
 
 _ANALYSIS_TITLES = {
     '01': 'Global mean T and S vs depth',
-    '02': 'Cost vs depth, three weight versions (final, nosf, true): unsplit and the two terms of the split',
+    '02': 'Cost vs depth, three weight versions (final, nosf, true): ECCO\'s two terms (mean, anomaly) and the total misfit',
     '03': 'Global mean cost per datum vs time',
     '04': 'Total cost per month',
     '05': 'Vertically integrated (summed) cost per geodesic bin',
@@ -49,7 +49,7 @@ _ANALYSIS_TITLES = {
     '09': 'Normalized misfit squared, (ref − obs)²/σ², vs depth: analysis 02’s true-weight lines on their own axis',
     '10': 'Global mean cost per datum by depth range',
     '11': 'Supplemental: cost vs depth, data inside vs after the climatology\'s years',
-    '12': 'Supplemental: split anomaly term with own vs pooled (cost_profiles.F) bin means',
+    '12': 'Supplemental: ECCO anomaly term with own vs pooled (cost_profiles.F) bin means',
     '13': 'Supplemental: number of observations per month and depth band',
 }
 
@@ -61,39 +61,40 @@ _ANALYSIS_DESC = {
         'Right panel: number of data at each level.'
     ),
     '02': (
-        'Three lines per weight version (colors), each a mean at every depth level <em>k</em>:'
-        '<br>&bull; <strong>unsplit</strong> (dashed): mean over all data at the level of '
-        '<em>w</em>&nbsp;&middot;&nbsp;(V&nbsp;&minus;&nbsp;V<sub>ref</sub>)&sup2;.'
-        '<br>&bull; <strong>anomaly</strong> (solid), the split&rsquo;s first term: mean over the data of '
+        'Per weight version (colors), at every depth level <em>k</em>, four lines, <strong>all per datum of the level</strong> '
+        '(divided by the level&rsquo;s number of data |D<sub>k</sub>|), so they add up:'
+        '<br>&bull; <strong>ECCO cost</strong> (thick solid): the ECCO mean term plus the ECCO anomaly term, the cost ECCO fits.'
+        '<br>&bull; <strong>ECCO mean term</strong> (dotted): &Sigma;<sub>i</sub>&nbsp;<em>w&#772;</em><sub>i,k</sub>&nbsp;&middot;&nbsp;(V&#772;<sub>i,k</sub>&nbsp;&minus;&nbsp;'
+        'V&#772;<sub>ref,i,k</sub>)&sup2;&nbsp;/&nbsp;|D<sub>k</sub>|, one term per geodesic bin <em>i</em>, with the bin weight '
+        '<em>w&#772;</em>&nbsp;=&nbsp;1/max(<em>s</em>/<em>n</em>,&nbsp;<em>s</em>/9), <em>s</em>&nbsp;=&nbsp;mean(1/<em>w</em>) '
+        '(as <code>cost_profiles.F</code>; V&#772;: time mean of the bin&rsquo;s data).'
+        '<br>&bull; <strong>ECCO anomaly term</strong> (long dashes): mean over the data of '
         '<em>w</em>&nbsp;&middot;&nbsp;(V&prime;&nbsp;&minus;&nbsp;V&prime;<sub>ref</sub>)&sup2;, with '
         'V&prime;&nbsp;=&nbsp;V&nbsp;&minus;&nbsp;V&#772;<sub>i,k</sub> and '
-        'V&prime;<sub>ref</sub>&nbsp;=&nbsp;V<sub>ref</sub>&nbsp;&minus;&nbsp;V&#772;<sub>ref,i,k</sub> '
-        '(V&#772;: time mean of the bin&rsquo;s data, geodesic bin <em>i</em>).'
-        '<br>&bull; <strong>mean</strong> (dotted), the split&rsquo;s second term: mean over the geodesic bins '
-        'with data of <em>w&#772;</em><sub>i,k</sub>&nbsp;&middot;&nbsp;(V&#772;<sub>i,k</sub>&nbsp;&minus;&nbsp;'
-        'V&#772;<sub>ref,i,k</sub>)&sup2;, one term per bin, with the bin weight '
-        '<em>w&#772;</em>&nbsp;=&nbsp;1/max(<em>s</em>/<em>n</em>,&nbsp;<em>s</em>/9), <em>s</em>&nbsp;=&nbsp;mean(1/<em>w</em>) '
-        '(as <code>cost_profiles.F</code>).'
+        'V&prime;<sub>ref</sub>&nbsp;=&nbsp;V<sub>ref</sub>&nbsp;&minus;&nbsp;V&#772;<sub>ref,i,k</sub>.'
+        '<br>&bull; <strong>total misfit</strong> (faint dashed), <strong>not part of ECCO&rsquo;s cost</strong>: mean over all data at the level of '
+        '<em>w</em>&nbsp;&middot;&nbsp;(V&nbsp;&minus;&nbsp;V<sub>ref</sub>)&sup2;, the offset counted once per datum; for comparison. '
+        'It is larger than ECCO&rsquo;s cost where bins hold many data, since ECCO counts a bin&rsquo;s offset as at most 9 data.'
         '<br>The bin means V&#772; are this obs class&rsquo;s own (see Terminology and Notes: our choice). '
-        'The mean term is a mean over bins, not data, so the three lines don&rsquo;t add up. '
+
         'Right panel: number of data at each level.'
     ),
     '03': (
         'Cost per datum, (&Delta;V/&sigma;)&sup2; with &gamma; and sf removed (<code>true</code> '
-        'weights), averaged over all data in each month of the record: unsplit (dashed) and the split&rsquo;s '
-        'anomaly term (solid; own bin means).'
+        'weights), averaged over all data in each month of the record: the ECCO anomaly term (solid; own bin '
+        'means) and the total misfit (dashed; not part of ECCO&rsquo;s cost). The ECCO mean term has no months.'
     ),
     '04': (
         'For each month of the record, the cost summed over every datum (all profiles and depth levels) '
-        'of this obs class in that month, unsplit, one line per weight version (<code>final</code>, '
+        'of this obs class in that month, as the total misfit (not part of ECCO&rsquo;s cost), one line per weight version (<code>final</code>, '
         '<code>nosf</code>, <code>true</code>), log scale. Not an average: not divided by the number of '
         'data. Top panel: number of data per month. Dividing the <code>true</code> line by it gives '
-        'analysis&nbsp;3 (unsplit).'
+        'analysis&nbsp;3 (total misfit).'
     ),
     '05': (
         'For each geodesic bin (10,242 bins of roughly equal area): the sum of <em>w</em>&nbsp;&middot;&nbsp;'
         '(V&nbsp;&minus;&nbsp;V<sub>ref</sub>)&sup2; over every profile in the bin and every depth level of '
-        'those profiles, all years, <code>final</code> weights, unsplit. Each datum counts with its own '
+        'those profiles, all years, <code>final</code> weights, total misfit. Each datum counts with its own '
         'weight <em>w</em> only: depth levels are not weighted by layer thickness. '
         '<strong>Second figure, thickness weighted:</strong> for each profile, '
         '&Sigma;<sub>k</sub>&nbsp;<em>c<sub>k</sub></em>&nbsp;&Delta;z<sub>k</sub>&nbsp;/&nbsp;&Sigma;<sub>k</sub>&nbsp;&Delta;z<sub>k</sub> '
@@ -107,44 +108,44 @@ _ANALYSIS_DESC = {
     ),
     '06': (
         'For each geodesic bin: the cost summed over all depth levels and data, divided by the number '
-        'of data (cost per datum), <code>true</code> weights, unsplit. Bottom row: the number of profiles in '
+        'of data (cost per datum), <code>true</code> weights, total misfit. Bottom row: the number of profiles in '
         'each bin (the &ldquo;n&rdquo; behind the per-datum values; for a depth band, profiles with at least one '
-        'datum in it). <strong>Cost</strong> row: unsplit, the split&rsquo;s anomaly term, or its mean term '
-        '(per bin, averaged over the bin&rsquo;s levels). <strong>Depth</strong> row: per depth band (unsplit); for any '
+        'datum in it). <strong>Cost</strong> row: the ECCO mean term (per bin, averaged over the bin&rsquo;s levels), '
+        'the ECCO anomaly term, or the total misfit. <strong>Depth</strong> row: per depth band (total misfit); for any '
         'depth, cost part or 5-year period use the <strong>Cost map explorer</strong> (top right). Bins with no data are blank. The color '
         'scale ends at the 98th percentile; higher values use the top color. Click a figure to see it full width.'
     ),
     '07': (
         'Mean cost per datum (<code>true</code> weights) in 5&deg; latitude bands at each depth level. '
-        '<strong>Cost</strong> row: unsplit, the split&rsquo;s anomaly term, or its mean term (one value per '
-        'geodesic bin and level, averaged over the bins whose centers are in the band). The mean term has its '
+        '<strong>Cost</strong> row: the ECCO mean term (one value per geodesic bin and level, averaged over the bins '
+        'whose centers are in the band), the ECCO anomaly term, or the total misfit. The mean term has its '
         'own color scale. The color scale ends at the 98th percentile; higher values use the top color. '
         'Right panel: number of data at each level.'
     ),
     '08': (
-        'Distribution of log&#x2081;&#x2080; of each datum&rsquo;s cost, unsplit, one line per weight '
+        'Distribution of log&#x2081;&#x2080; of each datum&rsquo;s cost (total misfit), one line per weight '
         'version, normalized to sum to 1. For <code>true</code>, 0 means the datum is 1&sigma; from the '
         'reference and 2 means 10&sigma;. Dotted line: cost&nbsp;=&nbsp;100, step&nbsp;06&rsquo;s '
         'single-datum QC limit against climatology.'
     ),
     '09': (
         '<strong>The same numbers as analysis&nbsp;2&rsquo;s red lines</strong> (the <code>true</code> weights), on an axis of '
-        'their own: at each depth level, the mean over its data of (&Delta;V/&sigma;)&sup2;, unsplit (dashed) and the '
-        'split&rsquo;s anomaly term (solid; own bin means). With the true weight 1/&sigma;&sup2;, the value is the '
+        'their own: at each depth level, the mean over its data of (&Delta;V/&sigma;)&sup2;, the ECCO anomaly term '
+        '(solid; own bin means) and the total misfit (dashed; not part of ECCO&rsquo;s cost). With the true weight 1/&sigma;&sup2;, the value is the '
         'squared misfit in units of the assumed error: 1 means the observations are, on average, one &sigma; from '
-        'the reference. The mean term isn&rsquo;t a mean over data (one value per bin), so it is only in '
-        'analysis&nbsp;2. Right panel: number of data at each level.'
+        'the reference. The ECCO mean term and ECCO&rsquo;s cost (their sum) are in analysis&nbsp;2, on the same per-datum scale. '
+        'Right panel: number of data at each level.'
     ),
     '10': (
         'Mean (&Delta;V/&sigma;)&sup2; (<code>true</code> weights) over all data in each depth range: '
         '0&ndash;100, 0&ndash;250, 0&ndash;500, 0&ndash;700 and 0&ndash;2000&nbsp;m (each range starts at '
-        'the surface): unsplit and the split&rsquo;s anomaly term (own bin means).'
+        'the surface): the ECCO anomaly term (own bin means) and the total misfit (not part of ECCO&rsquo;s cost).'
     ),
     '11': (
         '<strong>Supplemental; not one of the ten core analyses.</strong> As analysis&nbsp;9 '
         '(cost per datum vs depth, <code>true</code> weights), but with the data split by year: data '
         'from the years the climatology covers (blue; WOA23 here averages 1991&ndash;2020) and data from '
-        'after them (red, labeled with the class&rsquo;s own last year), unsplit (dashed) and split (solid). '
+        'after them (red, labeled with the class&rsquo;s own last year), the ECCO anomaly term (solid) and the total misfit (dashed). '
         'The legend gives each line&rsquo;s '
         '0&ndash;2000&nbsp;m mean. Data from after the climatology&rsquo;s years can&rsquo;t be in it, so '
         'comparing the two shows how much of the fit to climatology is because the climatology was built '
@@ -153,11 +154,11 @@ _ANALYSIS_DESC = {
         'by period.'
     ),
     '12': (
-        '<strong>Supplemental.</strong> The split&rsquo;s anomaly term (cost per datum, <code>true</code> '
+        '<strong>Supplemental.</strong> The ECCO anomaly term (cost per datum, <code>true</code> '
         'weights) computed two ways: with this obs class&rsquo;s own bin means (blue; what the core analyses '
         'show) and with bin means pooled over all obs classes (red; what ECCO v4r6&rsquo;s '
         '<code>cost_profiles.F</code> does, and equal to <code>ecco-insitu model-cost</code> for vs V4r6). '
-        'Unsplit for reference (dashed). The pooled version&rsquo;s mean term covers all classes together, so '
+        'The total misfit for reference (dashed). The pooled version&rsquo;s mean term covers all classes together, so '
         'it can&rsquo;t be shown per class; its total is under Metadata.'
     ),
     '13': (
@@ -179,9 +180,9 @@ _ANALYSIS_SHORT = {
 
 _GLOSSARY_HTML = """
 <p><strong>Weights and &sigma;.</strong> Every observation (one value of T or S at one depth level) has its own weight
-<em>w</em>, and its cost is <em>w</em>&nbsp;&middot;&nbsp;(&Delta;V)&sup2;. ECCO&rsquo;s cost is the sum over all observations. Every
-cost in this report is a mean of that per-observation cost (over the data at a depth, in a month, in a bin), except the
-split&rsquo;s mean term, which is one value per bin. The processing chain builds <em>w</em> = &gamma;&nbsp;&middot;&nbsp;sf&nbsp;/&nbsp;&sigma;&sup2;
+<em>w</em>, and its cost is <em>w</em>&nbsp;&middot;&nbsp;(&Delta;V)&sup2;. ECCO splits that into an anomaly term and a mean term
+(see Cost parts below) and sums them. Every cost in this report is a mean of a per-observation cost (over the data at a depth,
+in a month, in a bin), except the ECCO mean term, which is one value per bin and level. The processing chain builds <em>w</em> = &gamma;&nbsp;&middot;&nbsp;sf&nbsp;/&nbsp;&sigma;&sup2;
 in three steps:</p>
 <table class="gloss-table">
 <tr><th>Step</th><th>Factor</th><th>What it is</th></tr>
@@ -215,25 +216,30 @@ its <code>true</code> lines alone.</p>
 the model at 240&nbsp;m: 0.19 (final), 0.68 (nosf), 1.04 (true). <code>final</code> is small because sf and &gamma; shrink the
 weights, not because the fit is better; <code>true</code> is the one to read as &ldquo;how many &sigma; off&rdquo;.</p>
 
-<p><strong>Split modes</strong></p>
+<p><strong>Cost parts</strong>. ECCO&rsquo;s cost is the anomaly term plus the mean term (V4r6&rsquo;s published settings:
+<code>ALLOW_PROFILES_SAMPLESPLIT_COST</code> in <code>PROFILES_OPTIONS.h</code>; <code>cost_profiles.F</code> computes only these two,
+and <code>profiles_cost_final</code> adds them to the total); the total misfit is shown for comparison and isn&rsquo;t part of ECCO&rsquo;s
+fit. V5r1&rsquo;s settings are not known; assumed the same.</p>
 <table class="gloss-table">
 <tr><th>Label</th><th>Meaning</th></tr>
-<tr><td><code>unsplit</code></td>
-    <td><em>J</em> = <em>w</em>&nbsp;&middot;&nbsp;(V&nbsp;&minus;&nbsp;V<sub>ref</sub>)&sup2;. The mean misfit is not removed.</td></tr>
-<tr><td><code>split</code></td>
-    <td>The cost split into two terms, as in ECCO v4r6&rsquo;s <code>cost_profiles.F</code>. With V&#772;<sub>i,k</sub>
-        and V&#772;<sub>ref,i,k</sub> the time means over the data in geodesic bin <em>i</em> at level <em>k</em>
-        (all years and months pooled):
-        <br><strong>anomaly term</strong>, per datum:
-        <em>w</em>&nbsp;&middot;&nbsp;((V&nbsp;&minus;&nbsp;V&#772;)&nbsp;&minus;&nbsp;(V<sub>ref</sub>&nbsp;&minus;&nbsp;V&#772;<sub>ref</sub>))&sup2;;
-        <br><strong>mean term</strong>, per bin and level:
+<tr><td>ECCO mean term</td>
+    <td>Per geodesic bin <em>i</em> and level <em>k</em>, with V&#772;<sub>i,k</sub> and V&#772;<sub>ref,i,k</sub> the time means over
+        the bin&rsquo;s data (all years and months pooled):
         <em>w&#772;</em>&nbsp;&middot;&nbsp;(V&#772;&nbsp;&minus;&nbsp;V&#772;<sub>ref</sub>)&sup2;, with
         <em>w&#772;</em>&nbsp;=&nbsp;1&nbsp;/&nbsp;max(<em>s</em>/<em>n</em>,&nbsp;<em>s</em>/9), <em>s</em>&nbsp;=&nbsp;mean(1/<em>w</em>),
-        <em>n</em>&nbsp;=&nbsp;number of data.
-        <br><strong>Which data make the bin means:</strong> in this report, this obs class&rsquo;s own data
-        (our choice, 2026-10-29; see Notes). <code>cost_profiles.F</code> pools all obs classes instead: that
-        version is supplemental analysis&nbsp;12, and it equals <code>ecco-insitu model-cost</code> for vs V4r6.</td></tr>
+        <em>n</em>&nbsp;=&nbsp;number of data. One value per bin and level. On a depth plot (analysis&nbsp;2) it is shown per datum
+        of the level, &Sigma;<sub>i</sub>&nbsp;J<sub>i,k</sub>&nbsp;/&nbsp;|D<sub>k</sub>|, so it adds to the anomaly term; the explorer&rsquo;s
+        maps show it per bin and level, to compare bins.</td></tr>
+<tr><td>ECCO anomaly term</td>
+    <td>Per datum: <em>w</em>&nbsp;&middot;&nbsp;((V&nbsp;&minus;&nbsp;V&#772;)&nbsp;&minus;&nbsp;(V<sub>ref</sub>&nbsp;&minus;&nbsp;V&#772;<sub>ref</sub>))&sup2;,
+        the misfit with its bin&rsquo;s long-term offset removed.</td></tr>
+<tr><td>total misfit (not in ECCO)</td>
+    <td>Per datum: <em>J</em> = <em>w</em>&nbsp;&middot;&nbsp;(V&nbsp;&minus;&nbsp;V<sub>ref</sub>)&sup2;, the offset included (the
+        &ldquo;unsplit&rdquo; cost; in links and files <code>unsplit</code>). Not part of ECCO&rsquo;s cost.</td></tr>
 </table>
+<p><strong>Which data make the bin means:</strong> in this report, this obs class&rsquo;s own data
+(our choice, 2026-10-29; see Notes). <code>cost_profiles.F</code> pools all obs classes instead: that
+version is supplemental analysis&nbsp;12, and it equals <code>ecco-insitu model-cost</code> for vs V4r6.</p>
 
 <p><strong>Cost types</strong>: what V<sub>ref</sub> is.</p>
 <table class="gloss-table">
@@ -314,7 +320,7 @@ def _split_comparison_html(metas):
             f'<td>{sp - own:+.3f}</td><td>{(sp - own) / own * 100:+.0f}%</td></tr>'
             for ct, src, V, u, sp, own in rows)
         parts.append(f'<p><em>{_html.escape(name)}</em></p><table class="gloss-table notes-table">'
-                     '<tr><th>cost type</th><th>obs class</th><th>var</th><th>unsplit</th><th>pooled</th>'
+                     '<tr><th>cost type</th><th>obs class</th><th>var</th><th>total misfit</th><th>pooled</th>'
                      '<th>own</th><th>pooled &minus; own</th><th>relative</th></tr>' + body + '</table>')
     if not parts:
         return ''
@@ -381,8 +387,8 @@ def _year_split_html(metas):
             for ct, src, V, ui, ua, si, sa, ni, na in rows)
         parts.append(f'<p><em>{_html.escape(name)}</em> (climatology years {y0}&ndash;{y1})</p>'
                      '<table class="gloss-table notes-table"><tr><th>cost type</th><th>obs class</th><th>var</th>'
-                     f'<th>unsplit {y0}&ndash;{y1}</th><th>unsplit after</th><th>change</th>'
-                     f'<th>split {y0}&ndash;{y1}</th><th>split after</th><th>data in / after</th></tr>'
+                     f'<th>total misfit {y0}&ndash;{y1}</th><th>total misfit after</th><th>change</th>'
+                     f'<th>ECCO anomaly term {y0}&ndash;{y1}</th><th>anomaly term after</th><th>data in / after</th></tr>'
                      + body + '</table>')
     if not parts:
         return ''
@@ -392,7 +398,7 @@ def _year_split_html(metas):
 climatology&rsquo;s years and from after them.</p>
 {''.join(parts)}
 <p><strong>Reading it</strong> (run 20261027_142247): for almost every class the cost is higher after 2020, and it
-rises by a similar amount <em>against the model as against climatology</em> (e.g. Argo T unsplit +17% vs climatology,
+rises by a similar amount <em>against the model as against climatology</em> (e.g. Argo T total misfit +17% vs climatology,
 +13% vs model; Argo S +15% and +19%). So the higher post-2020 cost against climatology is mostly not because the
 climatology lacks those years: data after 2020 are harder to fit for both references (inferred causes: ocean change
 since 2020, and a different mix of floats and regions; not checked). Exceptions: XBT and MEOP T split are slightly
@@ -431,9 +437,10 @@ attribution tools work: the <a href="guide.html">Guide</a>.</p>
 <ul>
 <li><strong>Analysis 1</strong> is a sanity check on the data itself, e.g. it would show a double
 potential-temperature conversion.</li>
-<li><strong>Split vs unsplit:</strong> where split is much lower than unsplit, most of the misfit is a
-steady offset at that location (bias) rather than variation over time. Split can exceed unsplit in
-individual months where the anomaly runs against the long-term bias.</li>
+<li><strong>ECCO anomaly term vs total misfit:</strong> where the anomaly term is much lower than the total misfit, most
+of the misfit is a steady offset at that location (bias) rather than variation over time; ECCO counts that offset in its
+mean term. The anomaly term can exceed the total misfit in individual months where the anomaly runs against the long-term
+bias.</li>
 <li><strong>Analyses 2 and 9:</strong> a level with large cost means persistent disagreement there, from the
 ocean or from data problems. With <code>true</code> weights, values near 1 match the assumed errors &sigma;;
 values well above 1 suggest &sigma; is too small at those depths (or bad data).</li>
@@ -475,7 +482,7 @@ casts have only coarse levels with T to 0.1&nbsp;&deg;C, and one is listed as a 
 which removes these 10 values and nothing else. {_xbt_cap_status(metas)}</p>
 
 <p><strong>Argo (PFL) cost below 2000&nbsp;m, vs V4r6</strong> (run 20261027_142247, <code>true</code> weights,
-unsplit). Below 2000&nbsp;m only Deep Argo floats remain: 1.25&nbsp;million data at 2000&nbsp;m, 29&nbsp;thousand
+total misfit). Below 2000&nbsp;m only Deep Argo floats remain: 1.25&nbsp;million data at 2000&nbsp;m, 29&nbsp;thousand
 at 2200&nbsp;m, 10&nbsp;thousand at 2600&nbsp;m, in a few regions. So the mean there describes those regions, not the
 globe.</p>
 <ul>
@@ -564,7 +571,7 @@ plus all depths (<code>MAP_DEPTH_BANDS</code> in <code>compute.py</code>; changi
 100&nbsp;m band, 15 or 30 groups of levels, flagged cost spikes, 5-year period, and cost part, from the saved
 per-bin data, so the images only cover the standard bands.</li>
 <li><strong>Cost map explorer: flagged spikes.</strong> A level is flagged when its mean cost per datum (<code>true</code>
-weights, unsplit or anomaly, levels with at least 30 data) is above 0.5 and at least 1.4 times the median of the
+weights, total misfit or ECCO anomaly term, levels with at least 30 data) is above 0.5 and at least 1.4 times the median of the
 levels 300&ndash;1000&nbsp;m above and below it. Broad bumps are flagged at each of their levels. These thresholds are
 our choice (<code>_spikes</code> in <code>diagnostics/profile_analyses/viewer.py</code>).</li>
 <li><strong>Cost map explorer: the mean-bias diagnostic</strong> (since 2026-10-31). The signed misfit, observation minus
@@ -972,7 +979,7 @@ def _build_interactive_html(data, metas, title, bin_viewer=None):
                     )
                     panels.append(f'<div class="panel" id="{_html.escape(pid)}">{figs_html}</div>')
     part_tabs = ''.join(f'<button class="tab part-tab" data-part="{p}">{lab}</button>' for p, lab in
-                        (('unsplit', 'unsplit'), ('anomaly', 'split: anomaly term'), ('mean', 'split: mean term')))
+                        (('mean', 'ECCO mean term'), ('anomaly', 'ECCO anomaly term'), ('unsplit', 'total misfit (not in ECCO)')))
     band_labels = _map_band_labels(metas)
     band_tabs = '<button class="tab band-tab" data-band="all">all depths</button>' + ''.join(
         f'<button class="tab band-tab" data-band="{b}">{_html.escape(band_labels.get(b, "band " + b))}</button>'
@@ -1089,7 +1096,7 @@ var render = function () {{
     t.toggleAttribute('disabled', !ok);
     t.classList.toggle('active', t.dataset.an === curAn);
   }});
-  // cost-part row (06, 07) and depth-band row (05, 06; per-band maps are unsplit only)
+  // cost-part row (06, 07) and depth-band row (05, 06; per-band maps are the total misfit only)
   const usePart = PART_ANALYSES.includes(curAn);
   document.getElementById('part-row').style.display = usePart ? '' : 'none';
   document.querySelectorAll('.part-tab').forEach(t => t.classList.toggle('active', t.dataset.part === curPart));
@@ -1105,7 +1112,7 @@ var render = function () {{
   document.getElementById('map-hint').style.display =
     (HAS_EXPLORER && ['05', '06', '07'].includes(curAn)) ? '' : 'none';
   document.getElementById('map-hint-link').href = 'viewer.html?src=' + encodeURIComponent(curSource) +
-    '&ct=' + encodeURIComponent(curCost) + (PART_ANALYSES.includes(curAn) && curPart && curPart !== 'unsplit' ? '&part=' + curPart : '');
+    '&ct=' + encodeURIComponent(curCost) + (PART_ANALYSES.includes(curAn) && curPart ? '&part=' + curPart : '');   // the explorer opens on the mean term otherwise
   document.getElementById('peak-hint').style.display = (HAS_EXPLORER && curAn === '02') ? '' : 'none';
   updatePeakLink();
   // both header buttons open on the class shown here
@@ -1304,7 +1311,7 @@ render();
       <a href="viewer.html" id="map-hint-link">Cost map explorer &rarr;</a></div>
     <div class="map-hint" id="peak-hint" style="display:none">A peak in these curves? <b>Investigate it:</b> the explorer finds the
       largest value in a depth range, tells whether it is a worse fit at that depth or a different set of places averaged there, and shows where it comes from.
-      <select id="peak-part"><option value="unsplit">unsplit</option><option value="anomaly">anomaly term</option><option value="mean" selected>mean term</option></select>
+      <select id="peak-part"><option value="mean" selected>ECCO mean term</option><option value="anomaly">ECCO anomaly term</option><option value="unsplit">total misfit</option></select>
       <select id="peak-v"><option>T</option><option>S</option></select>
       from <input id="peak-a" type="number" value="2000" step="100" style="width:5em"> to <input id="peak-b" type="number" value="2600" step="100" style="width:5em"> m
       <a href="viewer.html" id="peak-link">investigate &rarr;</a> <a href="guide.html#attribution" style="font-weight:normal">(how it works)</a></div>

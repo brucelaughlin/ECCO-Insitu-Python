@@ -7,6 +7,20 @@ It is not part of the documentation website.
 Code: `src/ecco_insitu/diagnostics/profile_analyses/` (`compute.py`, `report.py`, `viewer.py`,
 `viewer.html`, `publish.py`, `compare.py`).
 
+**Cost parts, named ECCO-first (since 2026-11-20):** ECCO's cost is the **ECCO anomaly term** plus the **ECCO mean term**
+(V4r6's published settings: `ALLOW_PROFILES_SAMPLESPLIT_COST` in `PROFILES_OPTIONS.h`; `cost_profiles.F` computes only
+those two, and `profiles_cost_final` adds them to the total). The **total misfit** (the "unsplit" cost; `unsplit` in
+data keys and links) is shown for comparison and is not part of ECCO's fit. V5r1's settings are not known; assumed the
+same. The figures, explorer, guide and chatbot use these names, ECCO's terms first; the explorer opens on the mean term.
+
+**Analysis 02 on one denominator (since 2026-11-20):** every line is per datum of the level, divided by its number of
+data |D_k|: the ECCO anomaly term Σ_j J^a_j / |D_k|, the ECCO mean term Σ_B J^m_B / |D_k| (before: the mean over bin
+sets, larger by the mean number of data per bin set), their sum **ECCO cost** (a new line, so the lines add up), and the
+total misfit Σ_j J_j / |D_k| dashed for comparison (`mean_term_per_datum` in `compute.py`; computed from the saved
+per-bin mean term, so a replot is enough). Check (PFL T vs V4r6, true weights): the mean term's share of ECCO's cost
+is 1.0 % at 100 m, 1.3 % at 1000 m, 6.6 % at 2000 m and 49.8 % at 2400 m, as in the cost chapter's table. The
+explorer's mean-term map stays per bin and level, which is the right scale for comparing bins.
+
 ## 1. From a chain run to a published report
 
 ```bash
@@ -67,7 +81,7 @@ on synthetic data. Not yet checked against a model run's own cost output.
 ## 3. The report and the choices made
 
 The report page (`index.html`): tabs for obs class, cost type, and analysis (01–10 the team's core list;
-11 and 12 supplemental), with extra rows where they apply (**Cost**: unsplit / anomaly / mean term for 06
+11 and 12 supplemental), with extra rows where they apply (**Cost**: ECCO mean term / ECCO anomaly term / total misfit for 06
 and 07; **Depth**: standard depth bands for 05 and 06). Figures share axis and color ranges across cost
 types, and have the same layout in every class. Click a figure to see it full width. The side panel has
 the description and Terminology. Top right, from left: **Guide** (`guide.html`, the user manual: every page, and how the attribution tools work, with the formulas; written from `diagnostics/profile_analyses/guide.py`), **Notes & errata** (outlined button: interpretation,
@@ -85,13 +99,13 @@ Choices made, all reversible:
 | Depth bands for the map images (2026-10-29) | 0–50, 50–100, 100–250, 250–500, 500–1000, 1000–2000, 2000–4000 m and deeper, plus all depths | `MAP_DEPTH_BANDS` in `compute.py` (re-analysis) |
 | Map explorer time resolution (2026-10-31) | 1-year blocks, 1992–2026 (was 5-year until 2026-10-31); stored sparsely | `VIEWER_YEAR0`, `VIEWER_BLOCK_YEARS`, `VIEWER_N_BLOCKS` in `compute.py` (re-analysis) |
 | Mean-bias diagnostic (2026-10-31) | signed misfit per bin, any years; shown separately from the costs | `_add_viewer` in `compute.py`, `viewer.html` |
-| Flagged spikes (2026-10-30) | a level whose mean cost per datum (true; unsplit or anomaly; ≥ 30 points) is > 0.5 and ≥ 1.4× the median of the levels 300–1000 m above and below | `_spikes` in `viewer.py` (rebuild the site only) |
+| Flagged spikes (2026-10-30) | a level whose mean cost per datum (true; total misfit or ECCO anomaly term; ≥ 30 points) is > 0.5 and ≥ 1.4× the median of the levels 300–1000 m above and below | `_spikes` in `viewer.py` (rebuild the site only) |
 | Analysis 1 (2026-10-28) | every weighted observation, the same in every cost-type tab | see Notes & errata in the report for the old behavior and how to revert |
 
 ## 4. The cost map explorer
 
 `viewer.html` draws the maps in the browser instead of loading images, so any combination is available:
-obs class, cost type, variable; cost (unsplit, split anomaly, split mean term, number of points); depth
+obs class, cost type, variable; cost (ECCO mean term, ECCO anomaly term, total misfit, number of points; opens on the mean term); depth
 (all, any single level, 100 m bands, the 97 levels in 15 or 30 groups, or the automatically flagged spike
 levels); time (all years, or any range of years with the two-handled slider, or one year at a time; not
 for the mean term, which is defined over the whole record). Hover a bin for its value; the color bar has

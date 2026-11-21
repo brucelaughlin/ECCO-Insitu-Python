@@ -15,7 +15,7 @@ import numpy as np
 
 from ecco_insitu.diagnostics.profile_analyses import compute as pa
 
-PARTS = ('unsplit', 'anomaly', 'mean')     # unsplit; the split's two terms
+PARTS = ('unsplit', 'anomaly', 'mean')     # the total misfit (not in ECCO's cost); ECCO's anomaly and mean terms
 VARS = pa.VARS
 PEAK_CLUSTER_KM = 600                       # as the explorer's peak tool
 HIGH_Q = 0.9
@@ -152,7 +152,7 @@ def cost_vs_time(A, src, cost_type, variable='T', part='unsplit'):
     """Cost per datum per month (analysis 03): yearly means, the highest and lowest years, the trend."""
     V, part = _var(variable), _part(part)
     if part == 'mean':
-        raise ToolError('the mean term has no time dependence (it is defined over the whole record); use unsplit or anomaly')
+        raise ToolError('the ECCO mean term has no time dependence (it is defined over the whole record); use the anomaly term (anomaly) or the total misfit (unsplit)')
     p = _pfx(V, part)
     m = A.get(src, cost_type, f'a03__{p}__mean_per_datum_time').astype(float)
     c = A.get(src, cost_type, f'a03__{p}__count_time').astype(float)
@@ -314,7 +314,7 @@ def _group_param(A, k):
 
 
 def offset_vs_variability(A, src, cost_type, variable='T', depth_from=0, depth_to=2000):
-    """Is the misfit a steady offset or variability in time? Compares the split's mean term with its anomaly term,
+    """Is the misfit a steady offset or variability in time? Compares the ECCO mean term with the ECCO anomaly term,
     and gives the mean misfit (reference - obs) over the range."""
     V = _var(variable)
     k = _levels(A.depth, depth_from, depth_to)
@@ -322,7 +322,7 @@ def offset_vs_variability(A, src, cost_type, variable='T', depth_from=0, depth_t
     a, na = _cost_depth(A, src, cost_type, V, 'anomaly')
     m, nb = _cost_depth(A, src, cost_type, V, 'mean')
     res = {'obs_class': src, 'cost_type': cost_type, 'variable': V, 'depth_range_m': [depth_from, depth_to],
-           'unsplit_per_datum': _r(np.nansum(u[k] * nu[k]) / np.nansum(nu[k])),
+           'total_misfit_per_datum_not_in_ECCO_cost': _r(np.nansum(u[k] * nu[k]) / np.nansum(nu[k])),
            'anomaly_term_per_datum': _r(np.nansum(a[k] * na[k]) / np.nansum(na[k])),
            'mean_term_mean_over_bins': _r(np.nanmean(m[k])),
            'note': 'the anomaly term measures variability in time (offsets removed); the mean term the steady offset '
@@ -336,7 +336,7 @@ def offset_vs_variability(A, src, cost_type, variable='T', depth_from=0, depth_t
         res['mean_misfit_ref_minus_obs'] = _r(np.sum(np.where(ok, bias * cnt, 0)) / np.sum(np.where(ok, cnt, 0)))
         res['mean_misfit_units'] = 'degC' if V == 'T' else 'psu'
     return {'result': res, 'views': [
-        {'page': 'report', 'params': {'src': src, 'ct': cost_type, 'an': '02'}, 'caption': 'Analysis 02: unsplit and the two split terms'},
+        {'page': 'report', 'params': {'src': src, 'ct': cost_type, 'an': '02'}, 'caption': 'Analysis 02: ECCO\'s mean and anomaly terms, and the total misfit'},
         {'page': 'explorer', 'params': {'src': src, 'ct': cost_type, 'V': V, 'part': 'bias', 'depth': f'k{k[len(k) // 2]}', 'years': 'all'},
          'caption': 'Cost map explorer: the mean misfit (ref − obs) per bin, red–blue'}]}
 
@@ -582,7 +582,7 @@ _SRC = {'type': 'string', 'description': 'obs class, e.g. PFL (Argo floats), CTD
 _CT = {'type': 'string', 'description': 'reference: vs_clim (the WOA23 climatology) or vs_<model> for a model, e.g. vs_V4r6, '
        'vs_V5r1 (the analysis lists them: list_contents)'}
 _V = {'type': 'string', 'enum': ['T', 'S']}
-_PART = {'type': 'string', 'enum': list(PARTS), 'description': 'unsplit cost; or the split\'s anomaly term (variability in time) or mean term (steady offset per bin)'}
+_PART = {'type': 'string', 'enum': list(PARTS), 'description': 'mean = the ECCO mean term (steady offset per bin and level); anomaly = the ECCO anomaly term (variability in time); unsplit = the total misfit, offset included (not part of ECCO\'s cost). ECCO\'s cost is mean + anomaly.'}
 _Z = {'type': 'number', 'description': 'meters'}
 
 
