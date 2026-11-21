@@ -61,8 +61,9 @@ _ANALYSIS_DESC = {
         'Right panel: number of data at each level.'
     ),
     '02': (
-        'Per weight version (colors), at every depth level <em>k</em>, four lines, <strong>all per datum of the level</strong> '
-        '(divided by the level&rsquo;s number of data |D<sub>k</sub>|), so they add up:'
+        'Per weight version (colors), at every depth level <em>k</em>, four lines, <strong>all per datum of the level</strong>. '
+        'The three ECCO lines are divided by |D<sub>k</sub>|, the level&rsquo;s data that are in a bin set (a geodesic bin '
+        'and its offset; the data the anomaly term is defined for), so they add up exactly:'
         '<br>&bull; <strong>ECCO cost</strong> (thick solid): the ECCO mean term plus the ECCO anomaly term, the cost ECCO fits.'
         '<br>&bull; <strong>ECCO mean term</strong> (dotted): &Sigma;<sub>i</sub>&nbsp;<em>w&#772;</em><sub>i,k</sub>&nbsp;&middot;&nbsp;(V&#772;<sub>i,k</sub>&nbsp;&minus;&nbsp;'
         'V&#772;<sub>ref,i,k</sub>)&sup2;&nbsp;/&nbsp;|D<sub>k</sub>|, one term per geodesic bin <em>i</em>, with the bin weight '
@@ -72,7 +73,8 @@ _ANALYSIS_DESC = {
         '<em>w</em>&nbsp;&middot;&nbsp;(V&prime;&nbsp;&minus;&nbsp;V&prime;<sub>ref</sub>)&sup2;, with '
         'V&prime;&nbsp;=&nbsp;V&nbsp;&minus;&nbsp;V&#772;<sub>i,k</sub> and '
         'V&prime;<sub>ref</sub>&nbsp;=&nbsp;V<sub>ref</sub>&nbsp;&minus;&nbsp;V&#772;<sub>ref,i,k</sub>.'
-        '<br>&bull; <strong>total misfit</strong> (faint dashed), <strong>not part of ECCO&rsquo;s cost</strong>: mean over all data at the level of '
+        '<br>&bull; <strong>total misfit</strong> (faint dashed), <strong>not part of ECCO&rsquo;s cost</strong>: mean over all data at the level '
+        '(including the few with no geodesic bin, e.g. 1.4&times;10<sup>4</sup> of 4.4&times;10<sup>8</sup> in this run) of '
         '<em>w</em>&nbsp;&middot;&nbsp;(V&nbsp;&minus;&nbsp;V<sub>ref</sub>)&sup2;, the offset counted once per datum; for comparison. '
         'It is larger than ECCO&rsquo;s cost where bins hold many data, since ECCO counts a bin&rsquo;s offset as at most 9 data.'
         '<br>The bin means V&#772; are this obs class&rsquo;s own (see Terminology and Notes: our choice). '
@@ -116,17 +118,20 @@ _ANALYSIS_DESC = {
         'scale ends at the 98th percentile; higher values use the top color. Click a figure to see it full width.'
     ),
     '07': (
-        'Mean cost per datum (<code>true</code> weights) in 5&deg; latitude bands at each depth level. '
-        '<strong>Cost</strong> row: the ECCO mean term (one value per geodesic bin and level, averaged over the bins '
-        'whose centers are in the band), the ECCO anomaly term, or the total misfit. The mean term has its '
-        'own color scale. The color scale ends at the 98th percentile; higher values use the top color. '
+        'Cost per datum (<code>true</code> weights) in 5&deg; latitude bands at each depth level, all three parts on the '
+        'same footing, as analysis&nbsp;2: each part summed over the geodesic bins whose centers are in the band and divided '
+        'by the band&rsquo;s data at the level (the ECCO terms by the data in a bin set, the total misfit by all), so in a band '
+        'the ECCO mean term plus the ECCO anomaly term is ECCO&rsquo;s cost per datum. A datum is in the band of its bin&rsquo;s '
+        'center, as its bin&rsquo;s mean term is. <strong>Cost</strong> row: which part. One color scale for the three, ending '
+        'at the 98th percentile; higher values use the top color. '
         'Right panel: number of data at each level.'
     ),
     '08': (
         'Distribution of log&#x2081;&#x2080; of each datum&rsquo;s cost (total misfit), one line per weight '
         'version, normalized to sum to 1. For <code>true</code>, 0 means the datum is 1&sigma; from the '
         'reference and 2 means 10&sigma;. Dotted line: cost&nbsp;=&nbsp;100, step&nbsp;06&rsquo;s '
-        'single-datum QC limit against climatology.'
+        'single-datum QC limit against climatology. The histogram covers costs from 10<sup>&minus;4</sup> to 10<sup>5</sup>; '
+        'the legend gives the number of data outside that range or with cost 0, which are not shown.'
     ),
     '09': (
         '<strong>The same numbers as analysis&nbsp;2&rsquo;s red lines</strong> (the <code>true</code> weights), on an axis of '
@@ -151,7 +156,9 @@ _ANALYSIS_DESC = {
         'comparing the two shows how much of the fit to climatology is because the climatology was built '
         'from the same data. Shown for every cost type; for the models the split is just by year. Only made '
         'for obs classes with data after the climatology&rsquo;s years. Right panel: number of data, '
-        'by period.'
+        'by period. Both periods use the same bin offsets (time means over all years): the anomaly term of a datum in '
+        'one period is still <em>w</em>(<em>r</em>&nbsp;&minus;&nbsp;<em>b</em>)&sup2; with <em>b</em> the all-years mean misfit of its bin set, '
+        'so a period whose mean misfit differs from <em>b</em> has a larger anomaly term.'
     ),
     '12': (
         '<strong>Supplemental.</strong> The ECCO anomaly term (cost per datum, <code>true</code> '
@@ -932,7 +939,9 @@ def _ct_title(ct):
     if ct.startswith('compare_'):
         a, b = ct[8:].split('_', 1)
         return (f'{a} and {b} side by side: line plots show both models (blue {a}, orange {b}); maps show {b} − {a} '
-                f'(red: {b} fits worse). Only the analyses where a comparison makes sense.')
+                f'(red: {b} fits worse). Only the analyses where a comparison makes sense. Each model\'s lines use the data '
+                f'that have a value from that model, so the two sides can cover slightly different data '
+                f'(e.g. {a} has no value in some places {b} has).')
     return f'Costs against the {ct[3:]} model (its monthly means at each profile)'
 
 

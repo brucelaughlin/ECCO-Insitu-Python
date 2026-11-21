@@ -425,7 +425,17 @@ async function yearData(src, ct) {      // year-by-year data: only the pieces co
 function levelBinValues(d, yd) {          // Map level -> {bin -> [sum, weight]} for the current part and years
   const useYears = !S.all && S.part !== 'mean', c = useYears ? yd[S.V] : d[S.V], out = new Map();
   const add = (lev, bin, x, w) => { let m = out.get(lev); if (!m) out.set(lev, m = new Map()); const e = m.get(bin); if (e) { e[0] += x * w; e[1] += w; } else m.set(bin, [x * w, w]); };
-  if (S.part === 'mean') { const m = d[S.V].mt; for (let i = 0; i < m.bin.length; i++) if (Number.isFinite(m.v[i])) add(m.lev[i], m.bin[i], m.v[i], 1); }
+  if (S.part === 'mean') {
+    // [J_m(B), n_B]: the bin set's mean term and its data (all years; the data the anomaly term uses), so a sum of
+    // e[0] over bins divided by a sum of e[1] is the mean term per datum, as analysis 02
+    const nb = new Map(), cc = d[S.V];
+    for (let i = 0; i < cc.bin.length; i++) if (Number.isFinite(cc.ma[i])) nb.set(cc.lev[i] * 65536 + cc.bin[i], (nb.get(cc.lev[i] * 65536 + cc.bin[i]) || 0) + cc.n[i]);
+    const m = d[S.V].mt;
+    for (let i = 0; i < m.bin.length; i++) { if (!Number.isFinite(m.v[i])) continue;
+      const n = nb.get(m.lev[i] * 65536 + m.bin[i]) || 0; if (!n) continue;
+      let mm = out.get(m.lev[i]); if (!mm) out.set(m.lev[i], mm = new Map());
+      const e = mm.get(m.bin[i]); if (e) { e[0] += m.v[i]; e[1] += n; } else mm.set(m.bin[i], [m.v[i], n]); }
+  }
   else {
     const val = valArr(c),
           t0 = useYears ? S.t0 : 0, t1 = useYears ? S.t1 : 255;
@@ -473,10 +483,10 @@ const perBin = () => S.part === 'mean';
 function agg(m, keep) {                    // [value, number of bins, summed contributions] of one level
   let sx = 0, sw = 0, n = 0;
   for (const [b, [x, w]] of m) { if (keep && !keep.has(b)) continue; n++;
-    if (perBin()) { sx += x / w; sw += 1; } else if (S.part === 'count') { sx += x; sw = 1; } else { sx += x; sw += w; } }
+    if (S.part === 'count') { sx += x; sw = 1; } else { sx += x; sw += w; } }      // every cost part per datum
   return [n ? sx / sw : NaN, n, sx];
 }
-const contrib = e => perBin() ? e[0] / e[1] : e[0];     // a bin's additive contribution at one level
+const contrib = e => e[0];     // a bin's additive contribution at one level (the mean term: J_m(B) itself)
 
 let PROF = null;
 function profileCurves(d, yd) {
@@ -574,8 +584,9 @@ function drawProfile() {
   g.fillStyle = 'rgba(255,255,255,0.92)'; g.fillRect(W - R - lw - 6, ly - 4, lw, 15 * leg.length + 6);
   leg.forEach(([t, col], i) => { g.strokeStyle = col; g.lineWidth = 2; g.beginPath(); g.moveTo(W - R - lw, ly + 6 + 15 * i); g.lineTo(W - R - lw + 18, ly + 6 + 15 * i); g.stroke();
     g.fillStyle = '#333'; g.textBaseline = 'middle'; g.fillText(t, W - R - lw + 22, ly + 6 + 15 * i); });
-  document.getElementById('profnote').textContent = perBin() ? '(each level: the mean over bins, as analysis 02)'
-    : S.part === 'count' ? '(each level: the number of data)' : '(each level: the mean over all data, i.e. per datum, as analysis 02)';
+  document.getElementById('profnote').textContent = S.part === 'count' ? '(each level: the number of data)'
+    : perBin() ? "(each level: the bins' summed mean term over their data, i.e. per datum, as analysis 02)"
+    : '(each level: the mean over all data, i.e. per datum, as analysis 02)';
   document.getElementById('sbnote').textContent = S.same ? `${PROF.nkeep} bins have data at every level from ${z[k0]} to ${z[k1]} m` : '';
 }
 
@@ -876,15 +887,15 @@ async function drawRegion(d) {
   for (let i = 0; i < cc.bin.length; i++) { if (lset && !lset.has(cc.lev[i])) continue; if (!S.all && S.part !== 'mean' && (cc.blk[i] < S.t0 || cc.blk[i] > S.t1)) continue;
     pts.set(cc.bin[i], (pts.get(cc.bin[i]) || 0) + cc.n[i]); }
   for (const [k, m] of lb) { if (lset && !lset.has(k)) continue;      // per bin: summed contribution, -, levels, weight (data)
-    for (const [b, xw] of m) { const e = per.get(b) || [0, 0, 0, 0]; e[0] += contrib(xw); e[2] += 1; e[3] += perBin() ? 1 : xw[1]; per.set(b, e); } }
+    for (const [b, xw] of m) { const e = per.get(b) || [0, 0, 0, 0]; e[0] += contrib(xw); e[2] += 1; e[3] += xw[1]; per.set(b, e); } }
   for (const [b, e] of per) e[1] = pts.get(b) || 0;
-  const tot = {s: 0, n: 0, pts: 0}, rg = {s: 0, n: 0, pts: 0};   // n: bin-levels (mean term) or data (costs): the divisor of the mean
-  for (const [b, [sv, pts, nl, wt]] of per) { const dv = perBin() ? nl : wt; tot.s += sv; tot.n += dv; tot.pts += pts; if (REGION.has(b)) { rg.s += sv; rg.n += dv; rg.pts += pts; } }
+  const tot = {s: 0, n: 0, pts: 0}, rg = {s: 0, n: 0, pts: 0};   // n: data (every part): the divisor of the mean
+  for (const [b, [sv, pts, nl, wt]] of per) { const dv = wt; tot.s += sv; tot.n += dv; tot.pts += pts; if (REGION.has(b)) { rg.s += sv; rg.n += dv; rg.pts += pts; } }
   const nbT = per.size, nbR = [...per.keys()].filter(b => REGION.has(b)).length;
   const pc = (a, b) => b ? (100 * a / b).toFixed(1) + ' %' : '–', mean = (s, n) => S.part === 'count' ? Math.round(s).toLocaleString() : n ? fmt(s / n) : '–';
   const what = S.part === 'count' ? '# data' : CMP() ? partText().replace(/ \(.*?\)/, '') : DIAG(S.part) ? PARTS[S.part].split(',')[0].replace(/ \(.*/, '') : S.part === 'mean' ? 'mean term' : S.part + ' cost';
   const additive = !DIAG(S.part) && !CMP();      // shares of a sum (a difference of two models has no shares)
-  let h = `<table><tr><th></th><th>bins with data</th><th>data</th><th>${perBin() ? 'mean per bin and level' : S.part === 'count' ? 'data' : 'per datum'}</th>${additive ? '<th>share of the summed ' + what + '</th>' : ''}</tr>` +
+  let h = `<table><tr><th></th><th>bins with data</th><th>data</th><th>${S.part === 'count' ? 'data' : 'per datum'}</th>${additive ? '<th>share of the summed ' + what + '</th>' : ''}</tr>` +
     `<tr><td>region</td><td>${nbR} (${pc(nbR, nbT)})</td><td>${Math.round(rg.pts).toLocaleString()} (${pc(rg.pts, tot.pts)})</td><td>${mean(rg.s, rg.n)}</td>${additive ? '<td><b>' + pc(rg.s, tot.s) + '</b></td>' : ''}</tr>` +
     `<tr><td>rest of the world</td><td>${nbT - nbR}</td><td>${Math.round(tot.pts - rg.pts).toLocaleString()}</td><td>${mean(tot.s - rg.s, tot.n - rg.n)}</td>${additive ? '<td>' + pc(tot.s - rg.s, tot.s) + '</td>' : ''}</tr>` +
     `<tr><td>all</td><td>${nbT}</td><td>${Math.round(tot.pts).toLocaleString()}</td><td>${mean(tot.s, tot.n)}</td>${additive ? '<td>100 %</td>' : ''}</tr></table>`;
@@ -896,11 +907,11 @@ async function drawRegion(d) {
   if (CMP() && S.part !== 'count') h += `<span class="dnote">${cmpNote(true)}</span>`;
   document.getElementById('regsum').innerHTML = h;
   // the region's top bins (a comparison: the largest differences either way)
-  const binVal = ([, [sv, , nl, wt]]) => perBin() ? sv / nl : S.part === 'count' ? sv : sv / wt;
+  const binVal = ([, [sv, , nl, wt]]) => S.part === 'count' ? sv : sv / wt;   // per datum for every part (the mean term too, as analysis 02)
   const top = [...per].filter(([b]) => REGION.has(b)).sort((a, b) => CMP() ? Math.abs(binVal(b)) - Math.abs(binVal(a)) : b[1][0] - a[1][0]).slice(0, 10);
-  let t = `<table><tr><th>bin</th><th>center</th><th>data</th><th>${perBin() ? what + ' (mean over levels)' : S.part === 'count' ? 'data' : what + ' per datum'}</th>${additive ? '<th>share of all</th>' : ''}</tr>`;
+  let t = `<table><tr><th>bin</th><th>center</th><th>data</th><th>${S.part === 'count' ? 'data' : what + ' per datum'}</th>${additive ? '<th>share of all</th>' : ''}</tr>`;
   for (const [b, [sv, pts, nl, wt]] of top) { const lo = INDEX.bin_center ? INDEX.bin_center[2 * (b - 1)] : NaN, la = INDEX.bin_center ? INDEX.bin_center[2 * (b - 1) + 1] : NaN;
-    t += `<tr class="pick" data-b="${b}"><td>${b}</td><td>${Math.abs(la).toFixed(1)}°${la >= 0 ? 'N' : 'S'} ${Math.abs(lo).toFixed(1)}°${lo >= 0 ? 'E' : 'W'}</td><td>${Math.round(pts)}</td><td>${perBin() ? fmt(sv / nl) : S.part === 'count' ? Math.round(sv) : fmt(sv / wt)}</td>${additive ? '<td>' + pc(sv, tot.s) + '</td>' : ''}</tr>`; }
+    t += `<tr class="pick" data-b="${b}"><td>${b}</td><td>${Math.abs(la).toFixed(1)}°${la >= 0 ? 'N' : 'S'} ${Math.abs(lo).toFixed(1)}°${lo >= 0 ? 'E' : 'W'}</td><td>${Math.round(pts)}</td><td>${S.part === 'count' ? Math.round(sv) : fmt(sv / wt)}</td>${additive ? '<td>' + pc(sv, tot.s) + '</td>' : ''}</tr>`; }
   t += `</table><span class="dnote">The region's largest ${CMP() ? 'differences (either sign)' : 'bins'} at the selected depths (click a row for its breakdown).</span>`;
   document.getElementById('regtop').innerHTML = t;
   document.querySelectorAll('#regtop tr.pick').forEach(r => r.addEventListener('click', () => showBin(+r.dataset.b)));

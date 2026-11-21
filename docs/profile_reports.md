@@ -21,6 +21,15 @@ per-bin mean term, so a replot is enough). Check (PFL T vs V4r6, true weights): 
 is 1.0 % at 100 m, 1.3 % at 1000 m, 6.6 % at 2000 m and 49.8 % at 2400 m, as in the cost chapter's table. The
 explorer's mean-term map stays per bin and level, which is the right scale for comparing bins.
 
+**Everything on one footing (since 2026-11-20, evening; revert: git tag `before-consistent-mean-term-2026-11-20`):**
+analysis 02's three ECCO lines divide by the level's split data (in a bin set), so anomaly + mean = ECCO cost exactly
+(checked to 2e-16); the total misfit stays over all data (incl. ~1.4×10⁴ of 4.4×10⁸ without a bin). Analysis 07: every
+part per datum of (5° band, level), data and mean term both in their bin center's band, one color scale (per-(bin,
+level) counts from the saved viewer sums, `_binlev` in `compute.py`). The explorer's depth profile, region table and
+top-bins table: the mean term per datum, Σ_B J^m_B / Σ_B n_B (equals analysis 02 over all bins). Analysis 08's legend
+counts the data outside 10⁻⁴–10⁵ or 0. Analysis 11 and the comparison tab state which offsets/data they use. The
+math: Section 8 and Appendix B of the cost chapter (`~/ecco/yip/docs_exports/cost_terms/`).
+
 ## 1. From a chain run to a published report
 
 ```bash

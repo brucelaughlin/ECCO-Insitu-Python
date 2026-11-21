@@ -55,26 +55,20 @@ index.json; the cause is not found.
   "Platform tracks" section.
 - **Cost map explorer:** a clear button on the clicked-bin panel.
 
-**In progress when this was written (background jobs; may have been interrupted by sleep):**
-1. **Renaming the cost terms ECCO-first, everywhere** (figures, explorer, glossary, guide, questions, chatbot):
-   - "ECCO anomaly term" (per datum);
-   - "ECCO mean term" (per bin and level);
-   - "total misfit, not used by ECCO" (shown last).
-
-   **Analysis 2 on one denominator:** anomaly Σ J^a/|D_k|, mean term Σ_B J^m_B/|D_k| (was the mean over bin sets,
-   which overstated it by the mean data per bin), a new "ECCO cost" line = their sum, and the total misfit dashed.
-   Check: the mean term's share is 1.0, 1.3, 6.6 and 50 % at 100/1000/2000/2400 m (Argo T vs V4r6, true weights).
-   **The explorer opens on the ECCO mean term** (the user's choice). Plan: replot
-   (`profile-analyze --replot --out ~/ecco/yip/insitu_reports/profile_analyses_20261108b_142247`), rebuild into
-   `docs/reports/profile_report_20261027_142247_new`, check, swap, test, commit, publish (as above).
-   **To check if resuming:** `git log`, whether `_new` or `_old` exists under docs/reports, and the live legend of
-   analysis 2.
-   Why: with SAMPLESPLIT on, V4r6's cost_profiles.F computes only the anomaly and mean terms, and
-   profiles_cost_final adds them. The unsplit is our diagnostic. V5r1 is assumed the same.
-2. **The cost chapter** (`~/ecco/yip/docs_exports/cost_terms/cost_terms.tex`, `./build.sh`, not in the repo):
-   - rewrite Section 8 for the new analysis 2;
-   - a new appendix, "What every analysis and the cost map explorer show": exact formulas, read from the code, for
-     analyses 01–13, compare_A_B and every explorer view.
+**Done 2026-11-20, evening (published):**
+1. **ECCO-first names** everywhere; the explorer opens on the ECCO mean term (commit 456a060).
+2. **Everything on one footing** (bookmark before it: git tag `before-consistent-mean-term-2026-11-20` = 456a060,
+   pushed; chapter copy in `~/ecco/yip/docs_exports/cost_terms/bookmark_20261120/`; the previous explorer data stay
+   in S3 under `reports/profile_report_20261027_142247/20261120184928/`):
+   - analysis 02: the ECCO lines over the split data |D_k|, so anomaly + mean = ECCO cost exactly;
+   - analysis 07: per datum of (band, level), bin-center bands for all parts, one color scale;
+   - the explorer's depth profile / region table / top bins: the mean term per datum (= analysis 02);
+   - analysis 08 legend counts excluded data; analysis 11 and the comparisons documented.
+   Check (PFL T vs V4r6, true): mean-term share 1.0/1.3/6.6/49.8 % at 100/1000/2000/2400 m; the explorer gives the
+   same per-datum mean term (0.006906, 0.007127, 0.0187, 0.2147).
+3. **The cost chapter** (`~/ecco/yip/docs_exports/cost_terms/cost_terms.tex`, `./build.sh`; not in the repo): Section 8
+   and Appendix B ("What every analysis and the cost map explorer show") match the code; no "Flagged." paragraphs left.
+   `HANDOFF_explorer.md` there says how to keep Appendix B in step with the code.
 
 **Also uncommitted, waiting for the user's OK:** `src/ecco_insitu/model_comparison/cf_estim.py` (`ecco-insitu
 cf-estim`, sampling CF NetCDF model output at the profiles) with its test and small cli.py and

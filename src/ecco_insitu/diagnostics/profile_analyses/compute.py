@@ -402,8 +402,10 @@ def _mean_term(p, wv='final', indsamples=PROFILES_MEAN_INDSAMPLES):
 
 def mean_term_per_datum(mt, count):
     """The ECCO mean term on the per-datum scale of a depth level: the summed mean term of the level's bin sets
-    divided by the level's number of data, sum_B J_m(B) / |D_k| (not the mean over bin sets, which is larger by the
-    mean number of data per bin set). On this scale, anomaly term + mean term = ECCO's cost per datum of the level."""
+    divided by the level's number of split data (``count``: the data in a bin set, i.e. with a geodesic bin and an
+    offset; the same data the anomaly term is averaged over), sum_B J_m(B) / |D_k| (not the mean over bin sets,
+    which is larger by the mean number of data per bin set). On this scale, anomaly term + mean term = ECCO's cost
+    per datum of the level, exactly."""
     cost = np.asarray(mt['cost'], float)
     with np.errstate(invalid='ignore', divide='ignore'):
         tot = np.nansum(cost, axis=0)
@@ -1069,8 +1071,8 @@ def _shared_limits(results):
             lims[(f'a{an}', V)] = _pad(_span(
                 [np.where(r[('a02', V, sp, wv)]['count'] >= _MIN_DEPTH_COUNT, r[('a02', V, sp, wv)]['mean'], np.nan)
                  for r in rs for sp in SPLIT_MODES for wv in wvs]
-                + ([np.where(r[('a02', V, 'unsplit', wv)]['count'] >= _MIN_DEPTH_COUNT,
-                             mean_term_per_datum(r['meanterm'][(V, wv)], r[('a02', V, 'unsplit', wv)]['count'])
+                + ([np.where(r[('a02', V, 'split_own', wv)]['count'] >= _MIN_DEPTH_COUNT,
+                             mean_term_per_datum(r['meanterm'][(V, wv)], r[('a02', V, 'split_own', wv)]['count'])
                              + r[('a02', V, 'split_own', wv)]['mean'], np.nan)
                     for r in rs for wv in wvs if (V, wv) in r.get('meanterm', {})] if an == '02' else [])), zero=True)
         lims[('a03', V)] = _pad(_span([r[('a03', V, sp, 'true')]['mean_per_datum']
@@ -1086,9 +1088,9 @@ def _shared_limits(results):
                 return np.full(N_BINS, np.nan) if rb is None else np.where(rb['count'][j] > 0, rb[field][j], np.nan)
             lims[('a05', V, j)] = _p98([band_vals(r, 'final', 'total') for r in rs])
             lims[('a06', V, j)] = _p98([band_vals(r, 'true', 'per_datum') for r in rs])
-        lims[('a07', V)] = _p98([r[('a07', V, 'unsplit', 'true')]['mean'] for r in rs])
-        lims[('a07mean', V)] = _p98([z for r in rs for z in [_zonal(r, V, 'mean', 'split_own')] if z is not None]
-                                    or [np.full(1, np.nan)])
+        # analysis 7: one color scale for the three parts (all per datum of the band and level now)
+        lims[('a07', V)] = _p98([z for r in rs for part in ('unsplit', 'anomaly', 'mean')
+                                 for z in [_zonal(r, V, part, 'split_own')] if z is not None] or [np.full(1, np.nan)])
         lims[('a06mean', V)] = _p98([v for r in rs for v in [_bin_part(r, V, 'mean', 'split_own')] if v is not None]
                                     or [np.full(N_BINS, np.nan)])
         for j in range(len(MAP_DEPTH_BANDS)):
@@ -1256,12 +1258,14 @@ def _make_figures(res, source, fig_dir, lims=None, cost_type=None):
     core = 'split_own' if CORE_SPLIT == 'own' else 'split'
     _part_ls = {'unsplit': '--', 'anomaly': '-', 'mean': ':'}
     def _depth_lines(ax, V, wvs, with_mean):
-        c = res[('a02', V, 'unsplit', 'final')]['count']  # count is same across sp/wv
+        c = res[('a02', V, 'unsplit', 'final')]['count']  # all data at the level (the total misfit's)
+        cs = res[('a02', V, core, 'final')]['count']        # the split data: in a bin set (bin and offset)
         for wv in wvs:
-            # every line per datum of the level (divided by its number of data), so anomaly + mean = ECCO's cost
-            an_ = np.where(c >= _MIN_DEPTH_COUNT, res[('a02', V, core, wv)]['mean'], np.nan)
+            # every ECCO line per split datum of the level, so anomaly + mean = ECCO's cost exactly; the total
+            # misfit per datum of all the level's data (they differ by the few data without a bin or offset)
+            an_ = np.where(cs >= _MIN_DEPTH_COUNT, res[('a02', V, core, wv)]['mean'], np.nan)
             if with_mean and CORE_SPLIT == 'own' and (V, wv) in res.get('meanterm', {}):
-                mt = np.where(c >= _MIN_DEPTH_COUNT, mean_term_per_datum(res['meanterm'][(V, wv)], c), np.nan)
+                mt = np.where(cs >= _MIN_DEPTH_COUNT, mean_term_per_datum(res['meanterm'][(V, wv)], cs), np.nan)
                 ax.plot(an_ + mt, depth, ls='-', color=_WV_COLOR[wv], label=f'{wv} ECCO cost (mean + anomaly)', lw=2.0)
                 ax.plot(mt, depth, ls=_part_ls['mean'], color=_WV_COLOR[wv], label=f'{wv} {NAME_MEAN}', lw=1.4)
             ax.plot(an_, depth, ls=(0, (6, 2)) if with_mean else '-', color=_WV_COLOR[wv], label=f'{wv} {NAME_ANOM}', lw=1.1)
@@ -1406,7 +1410,7 @@ def _make_figures(res, source, fig_dir, lims=None, cost_type=None):
             ax = fig.add_subplot(gs[0])
             cax = fig.add_subplot(gs[1], sharey=ax)
             _count_panel(cax, {V: res[('a02', V, 'unsplit', 'true')]['count']}, depth, lims[('a02', 'n')])
-            vmax = lims[('a07mean' if part == 'mean' else 'a07', V)]
+            vmax = lims[('a07', V)]
             im = ax.contourf(lat_centers, depth, r.T, levels=np.linspace(0, vmax, 21),
                              cmap='YlOrRd', extend='max')
             ax.set_ylim(_dmax, 0)
@@ -1422,10 +1426,13 @@ def _make_figures(res, source, fig_dir, lims=None, cost_type=None):
     axes = axes.flatten()
     bin_centers = (HIST_EDGES[:-1] + HIST_EDGES[1:]) / 2
     for ax, V in _panels(axes, active_vars):
+        ntot = int(np.sum(res[('a02', V, 'unsplit', 'true')]['count']))   # all data with a cost (any level)
         for wv in WEIGHT_VERS:
             h = res[('a08', V, 'unsplit', wv)]
             if h.sum() > 0:
-                ax.plot(bin_centers, h / h.sum(), color=_WV_COLOR[wv], label=wv, lw=1.2)
+                out = ntot - int(h.sum())     # cost 0, or outside 10^-4 .. 10^5 (not in the histogram)
+                ax.plot(bin_centers, h / h.sum(), color=_WV_COLOR[wv], lw=1.2,
+                        label=f'{wv} ({out:,} of {ntot:,} data outside 10⁻⁴–10⁵ or 0, not shown)')
         ax.axvline(np.log10(100), color='k', ls=':', lw=1, label='QC limit=100')
         ax.set_xlabel(f'log₁₀({V} cost per datum)')
         ax.set_ylabel('Density')
@@ -1561,7 +1568,7 @@ def _count_grid_figure(res, source, fig_dir, active_vars, ctl):
 # The three cost parts the report can show for maps (06) and zonal sections (07); file-name suffix
 _PARTS = (('unsplit', ''), ('anomaly', '__anomaly'), ('mean', '__mean'))
 _PART_TITLE = {'unsplit': 'total misfit per datum (not in ECCO\'s cost)', 'anomaly': 'ECCO anomaly term, per datum',
-               'mean': 'ECCO mean term per bin'}
+               'mean': 'ECCO mean term, per datum'}
 _BIN_LAT = None
 
 
@@ -1577,29 +1584,56 @@ def _bin_lat():
     return _BIN_LAT
 
 
+def _binlev_from_cells(cell, csum, n, nd):
+    """Sum over the year blocks of per-cell sums: (N_BINS + 1, nd) arrays of the summed cost and the data count
+    per (bin, level); ``cell`` = (block * (N_BINS + 1) + bin) * nd + level."""
+    bl = np.asarray(cell, np.int64) % ((N_BINS + 1) * nd)
+    size = (N_BINS + 1) * nd
+    return {'sum': np.bincount(bl, weights=np.asarray(csum, float), minlength=size).reshape(N_BINS + 1, nd),
+            'n': np.bincount(bl, weights=np.asarray(n, float), minlength=size).reshape(N_BINS + 1, nd)}
+
+
+def _binlev(res, V, part):
+    """Per (bin, level), all years, true weights: summed cost and data count of ``part`` ('unsplit' or a split),
+    from the per-cell viewer sums (in memory after an analysis, or read back by load_results)."""
+    bl = res.setdefault('binlev', {})
+    if (V, part) not in bl:
+        v = res.get('viewer', {}).get((V, part))
+        if not v or not v.get('keys'):
+            return None
+        bl[(V, part)] = _binlev_from_cells(v['keys'][0], v['sum'][0], v['n'][0], len(res['depth']))
+    return bl[(V, part)]
+
+
 def _zonal(res, V, part, core):
-    """(N_LAT_BANDS, n_depths) zonal mean for one cost part. The mean term (one value per bin and level)
-    is averaged over the bins whose centers fall in each 5-degree band."""
-    if part == 'unsplit':
-        return res[('a07', V, 'unsplit', 'true')]['mean']
-    if part == 'anomaly':
-        return res[('a07', V, core, 'true')]['mean']
-    if CORE_SPLIT != 'own' or (V, 'true') not in res.get('meanterm', {}):
-        return None
-    cost = res['meanterm'][(V, 'true')].get('cost')
-    if cost is None:
-        return None
-    c = cost[1:] if cost.shape[0] == N_BINS + 1 else cost          # (N_BINS, nd)
+    """(N_LAT_BANDS, n_depths) zonal section, true weights, per datum of each (5-degree band, level), every part on
+    the same footing: data and bin sets are put in a band by the latitude of their geodesic bin's center (so a bin
+    set's mean term and its data are in the same band), and every part is summed over the band's bins and divided by
+    the band's data at the level: the total misfit by all its data, the ECCO anomaly term and mean term by its split
+    data (in a bin set), so anomaly + mean = ECCO's cost per datum of the band."""
     lat = _bin_lat()
     if lat is None:
         return None
-    lb = _lat_band_idx(lat)
-    have = np.isfinite(c)
-    s = np.zeros((N_LAT_BANDS, c.shape[1])); n = np.zeros_like(s)
-    np.add.at(s, lb, np.where(have, c, 0.0))
-    np.add.at(n, lb, have)
-    with np.errstate(invalid='ignore'):
-        return np.where(n > 0, s / n, np.nan)
+    lb = _lat_band_idx(lat)                                         # band of bins 1..N_BINS
+    bl = _binlev(res, V, 'unsplit' if part == 'unsplit' else core)
+    if bl is None:
+        return None
+    n = np.zeros((N_LAT_BANDS, bl['n'].shape[1]))
+    np.add.at(n, lb, bl['n'][1:])
+    if part == 'mean':
+        if CORE_SPLIT != 'own' or (V, 'true') not in res.get('meanterm', {}):
+            return None
+        cost = res['meanterm'][(V, 'true')].get('cost')
+        if cost is None:
+            return None
+        c = cost[1:] if cost.shape[0] == N_BINS + 1 else cost       # (N_BINS, nd)
+        num = np.zeros_like(n)
+        np.add.at(num, lb, np.where(np.isfinite(c), c, 0.0))
+    else:
+        num = np.zeros_like(n)
+        np.add.at(num, lb, bl['sum'][1:])
+    with np.errstate(invalid='ignore', divide='ignore'):
+        return np.where(n > 0, num / n, np.nan)
 
 
 def _bin_part(res, V, part, core, j=None):
@@ -1786,9 +1820,10 @@ def _make_compare_figures(ra, rb, na, nb, source, fig_dir):
         for ax, V in _panels(axes, active):
             for r, name, col in names:
                 c = r[('a02', V, 'unsplit', 'true')]['count']
-                an_ = np.where(c >= _MIN_DEPTH_COUNT, r[('a02', V, core, 'true')]['mean'], np.nan)
-                if with_mean and (V, 'true') in r.get('meanterm', {}):     # per datum of the level, as analysis 02
-                    mt = np.where(c >= _MIN_DEPTH_COUNT, mean_term_per_datum(r['meanterm'][(V, 'true')], c), np.nan)
+                cs = r[('a02', V, core, 'true')]['count']                    # the split data (bin and offset)
+                an_ = np.where(cs >= _MIN_DEPTH_COUNT, r[('a02', V, core, 'true')]['mean'], np.nan)
+                if with_mean and (V, 'true') in r.get('meanterm', {}):     # per split datum of the level, as analysis 02
+                    mt = np.where(cs >= _MIN_DEPTH_COUNT, mean_term_per_datum(r['meanterm'][(V, 'true')], cs), np.nan)
                     ax.plot(an_ + mt, depth, ls='-', color=col, lw=2.0, label=f'{name} ECCO cost (mean + anomaly)')
                     ax.plot(mt, depth, ls=':', color=col, lw=1.4, label=f'{name} {NAME_MEAN}')
                 ax.plot(an_, depth, ls=(0, (6, 2)) if with_mean else '-', color=col, lw=1.1, label=f'{name} {NAME_ANOM}')
@@ -2089,6 +2124,13 @@ def load_results(path):
         top = depth <= DEPTH_RANGE_BOUNDS[-1]
         res['tdc'] = {V: {'yyyymm': g(f'tdc_{V}_yyyymm').astype(np.int32), 'count': g(f'tdc_{V}_count')}
                       for V in VARS if f'tdc_{V}_count' in nc.variables}
+        res['binlev'] = {}
+        for V in VARS:
+            for part in SPLIT_MODES:
+                if f'viewer__{V}__{part}__cell' in nc.variables:
+                    res['binlev'][(V, part)] = _binlev_from_cells(
+                        g(f'viewer__{V}__{part}__cell'), g(f'viewer__{V}__{part}__sum'), g(f'viewer__{V}__{part}__n'),
+                        len(depth))
         res['meanterm'] = {}
         for V in VARS:
             for wv in WEIGHT_VERS:
