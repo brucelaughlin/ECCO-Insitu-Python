@@ -92,8 +92,8 @@ CTD 266 of 20,036 codes; XBT 103 of 8261. The page's guide (section "Platform tr
 ## What matches the original
 
 Everything that the original draws is drawn here in the same way:
-- the bin polygons (the same construction: 0.1° grid, convex hull, the >100° dateline drop, clipped to 10 m land,
-  dropped below 2 % ocean), except that every ocean piece is kept (below);
+- the bins themselves: the 10,242 geodesic bins, each profile in the bin of its nearest center (the shapes
+  differ, below);
 - the colors (PRGn cut so white is 0, cividis for the std);
 - the color limits (5/95 % of all values; 25/95 % of the bins' std; both over all depth levels);
 - the face opacity sqrt(n/max) clipped to 0.4–1;
@@ -126,17 +126,35 @@ storage).
    above ~60 profiles look the same on the world map; now busy regions (e.g. XBT shipping lanes) stand out.
    Past the zoom threshold (2026-11-20) a bin that stays whole gets the thin outline of the split bins instead:
    its size alone shows it is crowded, and the thick edge hid its color.
-5a. **Every ocean piece of a bin** (2026-11-20). Land can cut a bin's ocean part into separate pieces (e.g. bin 8547,
-   centered inland at 42.26°N 72.03°W, is split by Cape Cod into Massachusetts Bay and Long Island Sound). The
-   original kept only the largest piece, so all the bin's profiles got their cells there: of bin 8547's CTD
-   profiles at 2 m, those in Massachusetts Bay had cells in Long Island Sound, their dots had no cell under them,
-   and they disappeared when the drawn piece was out of view. Now every piece is kept (pieces below 0.5 % of the
-   bin's hull, ~200 km², are dropped: slivers between islands), each profile gets its cell in the piece it is in
-   (the nearest piece if it falls on land in the simplified coastline), and each piece has its own outline and
-   label. The label is the bin's mean over all its profiles, on every piece that holds some. Zoomed out, the bin's
-   color fills every piece. Counts (run 20261027_142247): 201 of 7851 bins on the world map have more than one
-   piece (at most 6), 114 of 2173 on the Arctic map, 43 of 3031 on the Southern Ocean map. Profiles that were
-   outside their bin's largest piece (so previously drawn in the wrong place), all years and levels:
+5a. **The bin shapes** (2026-11-20): the exact geodesic bins. A profile's bin is its nearest bin center, so the
+   bin is the spherical Voronoi cell of that center (`geodesic_cells` in `export.py`, scipy's `SphericalVoronoi`);
+   its edges are great-circle arcs, drawn with a point every 0.25°. The cells tile the sphere with no gaps or
+   overlaps, so every profile's dot lies in its own bin. Clipped to Natural Earth 10 m land; every ocean piece of at
+   least 0.5 % of the cell is kept (land can split a cell: bin 8547, centered inland at 42.26°N 72.03°W, is split by
+   Cape Cod into Massachusetts Bay and Long Island Sound); each profile's cell is in the piece it is in (the nearest
+   piece if it falls on land in the simplified coastline), each piece has its own outline and label (the bin's mean
+   over all its profiles). Cells across the dateline are one ring with longitudes past 180, shown by the world map's
+   copies (item 9a); the two cells around the poles are cut at 89.9° on the world map and whole on the polar maps.
+
+   Before, the bins were drawn as the original app draws them, which was only an early exploration (the team had
+   been given the bin centers only): each bin was the convex hull of the points of a 0.1° lon/lat grid nearest its
+   center, and bins whose points spanned more than 100° of longitude (across the dateline) were dropped. The hulls
+   left gaps between neighbors, so near coasts some profiles had no shape under them, and 65 bins along the dateline
+   were never drawn (e.g. the TAO moorings near 180°: 46,310 mooring profiles, 15,053 Argo, 2,265 CTD).
+
+   | | before (hulls) | now (Voronoi cells) |
+   |---|---|---|
+   | world bins drawn | 7851 | 7956 (2219 all land, 67 only slivers, none dropped at the dateline) |
+   | across the dateline | dropped | 74 drawn |
+   | split into pieces (world / Arctic / Southern Ocean) | 201 / 114 / 43 | 205 / 116 / 42 |
+   | Arctic / Southern Ocean bins | 2173 / 3031 | 2207 / 3042 |
+
+   Profiles whose dot lies in their own bin's drawn shape (20,000 sampled per class): PFL 100.00 %, CTD 98.84 %,
+   XBT 99.90 %, gliders 99.99 %, moorings 99.44 %, ITP 99.93 %, MEOP 98.64 %. The rest sit on land in the 10 m
+   coastline (CTD 175 of 223, MEOP 252 of 256), in a dropped sliver, or exactly on an edge between two bins
+   (moorings on the equator at 137°E and 180°, equally far from two centers); their cells still go to the nearest
+   piece. Before the switch to every piece (earlier on 2026-11-20), profiles outside their bin's largest hull piece,
+   so drawn in the wrong place, were:
 
    | class | profiles | in split bins | outside the largest piece |
    |---|---|---|---|
@@ -153,15 +171,19 @@ storage).
 5b. **Land above the bins** (2026-11-20): the bin faces are clipped to the ocean, but their edges are drawn on the
    bin's boundary and could cover the coast; land and coastline are now drawn above bins and cells.
 6. **Polar maps** below the world map (Arctic, Southern Ocean; polar stereographic, the 40° circle at the
-   edges), with their own bins built the original's way in polar coordinates, so bins at the poles and across
-   the dateline are whole.
+   edges), with the same Voronoi cells projected to polar coordinates, so bins at the poles are whole.
 7. **All depths** (since 2026-11-20) **and depth ranges** (standard bands, 100 m bands, 15 or 30 groups), as in the cost map explorer: each profile
    counts once, with the mean of its values at the range's levels. Checked against Python (ITP, 250–500 m band:
    0 count differences, mean differences < 10⁻⁷).
 8. **Anomaly vs the model** as well as the climatology, from the model equivalents the cost analyses use; model
    values of 0 or missing are left out (as in the costs).
-9. **Isobaths** (Natural Earth, 200–5000 m) with depth labels; a "← report" button; a home button; the view
-   cannot be panned off the map. No keyboard shortcuts.
+9. **Isobaths** (Natural Earth, 200–5000 m) with depth labels; a "← report" button; a home button. No keyboard
+   shortcuts.
+9a. **Endless east-west panning** on the world map (2026-11-20): its layers are drawn in copies 360° apart (deck.gl
+   `modelMatrix`; at most two in view, three at the home view), and the view's center is kept in −180..180, so the
+   Pacific is whole across the dateline. Tracks are unwrapped, so a float crossing 180° is one line. North-south
+   and zoom stay within the map; the address stores the center's longitude in −180..180. Drawing time is unchanged
+   (~4 ms for the world map; 8 pans in 11 ms).
 10. Small: land is drawn from Natural Earth 10 m simplified to 0.02°; gridline labels are simpler than cartopy's.
 
 The zoom threshold for cells, dots and labels is the original's: zoom factor √(world area / view area) above 10

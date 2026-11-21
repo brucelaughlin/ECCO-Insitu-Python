@@ -4,15 +4,17 @@ Data for the geodesic bin viewer, a web copy of the original ``geodesic_binning`
 Two kinds of files, written to one folder that is published as is (GitHub Pages, or any static host):
 
 ``bins.bin`` (gzip) + ``bins.json``
-    The geodesic bin polygons, built exactly as the original binning step builds them
-    (``geodesic_binning/binning/geodesic_binning_utilities_binning.py``): the nearest-vertex bins of the
-    10242-vertex geodesic grid; each bin's polygon is the convex hull of the points of a 0.1 deg lon/lat grid
-    that fall in it; bins spanning more than 100 deg of longitude are dropped (the original's dateline
-    "map_span_bug"); each polygon is clipped to the ocean with Natural Earth's 10 m land and dropped if less than
-    2 % of it is ocean. Every ocean piece is kept (since 2026-11-20; the original kept only the largest, so the
-    profiles of a bin split by land, e.g. by Cape Cod, all got their cells in one piece), except pieces smaller
-    than MIN_PIECE_FRACTION of the bin's hull. Lon/lat degrees. Each piece has a representative point (for the
-    bin-mean labels). The polygons don't depend on the data: built once.
+    The geodesic bins as polygons: the spherical Voronoi cells of the 10242 bin centers (:func:`geodesic_cells`),
+    so a profile's bin (its nearest center) is exactly the cell containing it, and the cells tile the sphere with no
+    gaps or overlaps. Each edge is a great-circle arc, drawn with a point every ARC_STEP_DEG. A cell across the
+    dateline is one ring with longitudes past 180 (the page draws the world map in copies 360 deg apart); the two
+    cells around the poles are cut at POLE_CUT_LAT on the world map (the polar maps show them whole). Clipped to the
+    ocean with Natural Earth's 10 m land; every ocean piece of at least MIN_PIECE_FRACTION of the cell is kept (land
+    can cut a cell into pieces, e.g. Cape Cod); a cell with no ocean is dropped. Lon/lat degrees. Each piece has a
+    representative point (for the bin-mean labels). The polygons don't depend on the data: built once.
+    (Before 2026-11-20 each bin was drawn as the original geodesic_binning app draws it: the convex hull of the
+    points of a 0.1 deg lon/lat grid nearest its center, dropped across the dateline; the hulls left gaps between
+    bins, so near coasts some profiles had no shape under them.)
 
 ``bins_N.bin``, ``bins_S.bin``, ``land_N.json``, ``land_S.json`` (gzip)
     The polar maps: the bins and land of each cap, in polar stereographic map units (:func:`build_polar_bins`).
@@ -62,9 +64,8 @@ import ecco_insitu.config as config_loader
 import ecco_insitu.diagnostics.common as common
 
 VARS = ('T', 'S')
-ANGULAR_PRECISION = 0.1        # deg, the original's grid for the bin polygons
-MIN_OCEAN_FRACTION = 0.02      # the original's min_ocean_fraction
-MIN_PIECE_FRACTION = 0.005     # a split bin's ocean piece smaller than this share of the bin's hull is dropped
+POLE_CUT_LAT = 89.9           # the world map's polar cells stop here (a pole is not a point of a lon/lat map)
+MIN_PIECE_FRACTION = 0.005     # a bin's ocean piece smaller than this share of its cell is dropped (slivers)
                                # (slivers between islands); about 0.5 % of ~45,000 km², i.e. ~200 km²
 BIN_FORMAT = 2                 # bins.bin layout: 2 = every ocean piece of a bin (see the module description)
 LAND_RESOLUTION = '10m'
@@ -82,6 +83,51 @@ def _geodesic_tree():
     cfg = config_loader.load()
     ll = np.loadtxt(config_loader.get(cfg, 'paths.geodesic_bin_csv'), delimiter=',')
     return cKDTree(_sph2cart(ll[:, 0], ll[:, 1])), len(ll)
+
+
+ARC_STEP_DEG = 0.25          # a bin edge (great-circle arc) is drawn with a point every ~0.25 deg of arc
+
+
+def geodesic_cells():
+    """The exact geodesic bins: the spherical Voronoi cells of the bin centers (``paths.geodesic_bin_csv``).
+
+    A profile's bin is its nearest center, so the cell containing it is exactly its bin; the cells tile the sphere
+    with no gaps or overlaps. Returns, per bin (index 0 = bin 1), its cell's corners as unit vectors in order
+    (``scipy.spatial.SphericalVoronoi``, ``sort_vertices_of_regions``), and the centers as unit vectors.
+    """
+    from scipy.spatial import SphericalVoronoi
+    cfg = config_loader.load()
+    ll = np.loadtxt(config_loader.get(cfg, 'paths.geodesic_bin_csv'), delimiter=',')
+    centers = _sph2cart(ll[:, 0], ll[:, 1])
+    sv = SphericalVoronoi(centers, radius=1.0, center=np.zeros(3))
+    sv.sort_vertices_of_regions()
+    return [sv.vertices[r] for r in sv.regions], centers
+
+
+def _densify_arcs(corners):
+    """The cell outline as unit vectors, each edge (a great-circle arc between two corners) cut into steps of at
+    most ARC_STEP_DEG (spherical linear interpolation)."""
+    out = []
+    for a, b in zip(corners, np.roll(corners, -1, axis=0)):
+        ang = np.arccos(np.clip(a @ b, -1, 1))
+        k = max(1, int(np.ceil(np.degrees(ang) / ARC_STEP_DEG)))
+        t = np.arange(k)[:, None] / k
+        if ang < 1e-12:
+            out.append(a[None]); continue
+        out.append((np.sin((1 - t) * ang) * a + np.sin(t * ang) * b) / np.sin(ang))
+    return np.vstack(out)
+
+
+def _lonlat_ring(xyz, center):
+    """Lon/lat degrees of a cell's outline, unwrapped around the cell's center longitude (so a cell across the
+    dateline is one ring with longitudes past 180 or -180). None for a cell containing a pole."""
+    lon = np.degrees(np.arctan2(xyz[:, 1], xyz[:, 0]))
+    lat = np.degrees(np.arcsin(np.clip(xyz[:, 2], -1, 1)))
+    c = np.degrees(np.arctan2(center[1], center[0]))
+    lon = c + (lon - c + 180) % 360 - 180          # each point the short way from the center
+    if np.abs(np.diff(np.r_[lon, lon[0]])).max() > 90:   # the ring winds round a pole: not a simple lon/lat ring
+        return None
+    return np.c_[lon, lat]
 
 
 def _bin_pieces(ocean, hull_area):
@@ -103,55 +149,51 @@ def _pack_bin(bin_id, pieces):
 
 
 def build_bins(out):
-    """Bin polygons as the original builds them; writes bins.bin and bins.json."""
+    """The world map's bins: the exact geodesic cells (:func:`geodesic_cells`) in lon/lat, clipped to the ocean;
+    writes bins.bin and bins.json.
+
+    Each cell's edges are densified great-circle arcs; a cell across the dateline is one ring with longitudes past
+    180 (the page draws the world map in copies 360 deg apart, so it shows on both sides); the two cells around the
+    poles (not simple lon/lat rings) are cut at POLE_CUT_LAT (the polar maps show them whole). Clipped with Natural
+    Earth 10 m land (and the land shifted by 360 deg for rings past 180); every ocean piece of at least
+    MIN_PIECE_FRACTION of the cell is kept; a cell with no ocean is dropped.
+    """
     import cartopy.io.shapereader as shpreader
-    from scipy.spatial import ConvexHull
-    from shapely.geometry import Polygon
+    from shapely import affinity
+    from shapely.geometry import Polygon, box
     from shapely.ops import unary_union
     from shapely.prepared import prep
 
     t0 = time.time()
-    tree, nbins = _geodesic_tree()
-    lons = np.arange(-180, 180, ANGULAR_PRECISION)
-    lats = np.arange(-90, 90, ANGULAR_PRECISION)
-    LON, LAT = np.meshgrid(lons, lats)
-    _, idx = tree.query(_sph2cart(LON.ravel(), LAT.ravel()))      # 0-based bin of each grid point
-    LON, LAT = LON.ravel(), LAT.ravel()
-    order = np.argsort(idx, kind='stable')
-    idx_s, lon_s, lat_s = idx[order], LON[order], LAT[order]
-    starts = np.searchsorted(idx_s, np.arange(nbins + 1))
-    print(f'  bin grid: {time.time() - t0:.0f}s')
-
+    cells, centers = geodesic_cells()
+    nbins = len(cells)
     land = unary_union(list(shpreader.Reader(
         shpreader.natural_earth(resolution=LAND_RESOLUTION, category='physical', name='land')).geometries()))
-    land_p = prep(land)
-    print(f'  land polygon: {time.time() - t0:.0f}s')
+    lands = [land, affinity.translate(land, 360, 0), affinity.translate(land, -360, 0)]
+    landp = [prep(g) for g in lands]
+    print(f'  cells and land: {time.time() - t0:.0f}s')
 
-    chunks, kept, multi, dropped = [], 0, 0, {'span': 0, 'land': 0, 'small': 0, 'tiny': 0}
+    chunks, kept, multi, across, polar, dropped = [], 0, 0, 0, 0, {'land': 0, 'small': 0}
     for b in range(nbins):
-        lo, la = lon_s[starts[b]:starts[b + 1]], lat_s[starts[b]:starts[b + 1]]
-        if len(lo) < 3:
-            dropped['tiny'] += 1
-            continue
-        if lo.max() - lo.min() > 100:
-            dropped['span'] += 1
-            continue
-        pts = np.c_[lo, la]
-        try:
-            hull = pts[ConvexHull(pts).vertices]
-        except Exception:
-            dropped['tiny'] += 1
-            continue
-        poly = Polygon(hull)
-        if land_p.intersects(poly):
-            ocean = poly.difference(land)
+        xyz = _densify_arcs(cells[b])
+        ring = _lonlat_ring(xyz, centers[b])
+        if ring is None:                        # a cell around a pole: the cap poleward of the cell's edge
+            polar += 1
+            lat = np.degrees(np.arcsin(np.clip(xyz[:, 2], -1, 1)))
+            north = centers[b][2] > 0
+            edge = lat.min() if north else lat.max()
+            poly = box(-180, edge, 180, POLE_CUT_LAT) if north else box(-180, -POLE_CUT_LAT, 180, edge)
         else:
-            ocean = poly
+            poly = Polygon(ring)
+            across += ring[:, 0].max() > 180 or ring[:, 0].min() < -180
+        if not poly.is_valid:
+            poly = poly.buffer(0)
+        ocean = poly
+        for g, gp in zip(lands, landp):
+            if gp.intersects(ocean):
+                ocean = ocean.difference(g)
         if ocean.is_empty:
             dropped['land'] += 1
-            continue
-        if ocean.area / poly.area < MIN_OCEAN_FRACTION:
-            dropped['small'] += 1
             continue
         pieces = _bin_pieces(ocean, poly.area)
         if not pieces:
@@ -162,11 +204,16 @@ def build_bins(out):
         kept += 1
     blob = np.uint32(kept).tobytes() + b''.join(chunks)
     (out / 'bins.bin').write_bytes(gzip.compress(blob, 9))
-    (out / 'bins.json').write_text(json.dumps({
-        'format': BIN_FORMAT, 'n_bins_grid': int(nbins), 'n_bins_kept': kept, 'n_bins_split': multi, 'dropped': dropped,
-        'angular_precision': ANGULAR_PRECISION, 'min_ocean_fraction': MIN_OCEAN_FRACTION,
-        'land': f'Natural Earth {LAND_RESOLUTION} land'}))
-    print(f'  bins: {kept} kept ({multi} in more than one ocean piece), dropped {dropped}; {len(blob) / 1e6:.1f} MB raw; {time.time() - t0:.0f}s')
+    meta = {'format': BIN_FORMAT, 'construction': 'spherical Voronoi cells of the bin centers', 'arc_step_deg': ARC_STEP_DEG,
+            'n_bins_grid': int(nbins), 'n_bins_kept': kept, 'n_bins_split': multi, 'n_bins_across_dateline': int(across),
+            'n_bins_polar_cut': polar, 'dropped': dropped, 'min_piece_fraction': MIN_PIECE_FRACTION,
+            'land': f'Natural Earth {LAND_RESOLUTION} land'}
+    bj = out / 'bins.json'
+    if bj.exists() and 'n_bins_split_polar' in json.loads(bj.read_text()):
+        meta['n_bins_split_polar'] = json.loads(bj.read_text())['n_bins_split_polar']
+    bj.write_text(json.dumps(meta))
+    print(f'  bins: {kept} kept ({multi} in more than one ocean piece, {across} across the dateline, {polar} polar), '
+          f'dropped {dropped}; {len(blob) / 1e6:.1f} MB raw; {time.time() - t0:.0f}s')
 
 
 # ---- file layout (FORMAT 2) ----
@@ -297,16 +344,13 @@ def polar_xy(lon, lat, hemi):
 
 
 def build_polar_bins(out):
-    """The bins of both polar caps, built as the original builds bins but in polar stereographic space.
-
-    Same steps as :func:`build_bins` (0.1 deg grid points of each bin, convex hull, clip to land, drop below
-    2 % ocean, every ocean piece), with the grid points projected first, so bins around the poles and across the
-    dateline are whole (the lon/lat map drops those). Writes bins_N.bin, bins_S.bin (same layout as
-    bins.bin, in map units) and land_N.json, land_S.json (projected land rings, for drawing).
+    """The bins of both polar caps: the exact geodesic cells (:func:`geodesic_cells`), their densified edges
+    projected to polar stereographic, so cells around the poles and across the dateline are whole; clipped to the
+    ocean and kept by the same rules as :func:`build_bins`. Writes bins_N.bin, bins_S.bin (same layout as bins.bin,
+    in map units) and land_N.json, land_S.json (projected land rings, for drawing).
     """
     import cartopy.crs as ccrs
     import cartopy.io.shapereader as shpreader
-    from scipy.spatial import ConvexHull
     import shapely
     from shapely import affinity
     from shapely.geometry import Polygon, box
@@ -314,12 +358,9 @@ def build_polar_bins(out):
     from shapely.prepared import prep
 
     t0 = time.time()
-    tree, nbins = _geodesic_tree()
-    lons = np.arange(-180, 180, ANGULAR_PRECISION)
-    lats = np.arange(-90, 90 + ANGULAR_PRECISION / 2, ANGULAR_PRECISION)
-    LON, LAT = np.meshgrid(lons, lats)
-    LON, LAT = LON.ravel(), LAT.ravel()
-    _, idx = tree.query(_sph2cart(LON, LAT))
+    cells, centers = geodesic_cells()
+    rings = [_densify_arcs(c) for c in cells]
+    ring_ll = [(np.degrees(np.arctan2(r[:, 1], r[:, 0])), np.degrees(np.arcsin(np.clip(r[:, 2], -1, 1)))) for r in rings]
     globe = ccrs.Globe(ellipse=None, semimajor_axis=EARTH_KM * 1000, semiminor_axis=EARTH_KM * 1000)
     land_ll = list(shpreader.Reader(shpreader.natural_earth(resolution=LAND_RESOLUTION, category='physical',
                                                             name='land')).geometries())
@@ -333,24 +374,18 @@ def build_polar_bins(out):
         land = unary_union([shapely.make_valid(g).buffer(0) for g in proj if not g.is_empty])
         land = affinity.scale(land, 1 / (KM_PER_UNIT * 1000), 1 / (KM_PER_UNIT * 1000), origin=(0, 0))
         land_p = prep(land)
-        sel = (LAT * sign) >= POLAR_MIN_LAT - 2
-        ids = np.unique(idx[sel])
-        order = np.argsort(idx, kind='stable')
-        idx_s = idx[order]
-        starts = np.searchsorted(idx_s, np.arange(nbins + 1))
         chunks, kept, multi = [], 0, 0
-        for b in ids:
-            j = order[starts[b]:starts[b + 1]]
-            if (LAT[j] * sign).max() < POLAR_MIN_LAT or len(j) < 3:
+        for b, (lo, la) in enumerate(ring_ll):
+            # the cap's cells: any point poleward of POLAR_MIN_LAT, and none in the other hemisphere's far side
+            # (stereographic blows up toward the opposite pole)
+            if (la * sign).max() < POLAR_MIN_LAT or (la * sign).min() < -60:
                 continue
-            x, y = polar_xy(LON[j], LAT[j], hemi)
-            pts = np.c_[x, y]
-            try:
-                poly = Polygon(pts[ConvexHull(pts).vertices])
-            except Exception:
-                continue
+            x, y = polar_xy(lo, la, hemi)
+            poly = Polygon(np.c_[x, y])
+            if not poly.is_valid:
+                poly = poly.buffer(0)
             ocean = poly.difference(land) if land_p.intersects(poly) else poly
-            if ocean.is_empty or ocean.area / poly.area < MIN_OCEAN_FRACTION:
+            if ocean.is_empty:
                 continue
             pieces = _bin_pieces(ocean, poly.area)
             if not pieces:
@@ -792,18 +827,20 @@ GUIDE_HTML = """
 <p><b>Differences from the original.</b> (1) Only values the processing chain kept (weight &gt; 0) are shown; the original
 used every non-missing value. (2) The color limits are computed per class over the whole record, so they stay fixed
 while the time window changes. (3) The original showed one yearly file; this page shows any range of years, of all
-files of the class. (4a) Land can split a bin's ocean part into separate pieces (e.g. by Cape Cod); the original kept only the largest,
-so profiles in the other pieces got their cells in it. Here every piece is kept (below 0.5&nbsp;% of the bin's area,
-slivers between islands are dropped): each profile's cell is in the piece it is in, each piece has its own outline,
-and the bin-mean label (the mean over all the bin's profiles) is shown on every piece that holds some.
+files of the class. (4a) The bins are drawn as the exact geodesic bins: the cells of all points nearest each bin
+center (spherical Voronoi cells, with great-circle edges), so they tile the ocean with no gaps and every profile's
+dot lies in its own bin. The original drew each bin as the convex hull of a 0.1&deg; grid's points in it and dropped
+the bins across the dateline, which left gaps near coasts. Land can split a bin into separate ocean pieces (e.g.
+Cape Cod); every piece is kept (below 0.5&nbsp;% of the cell, slivers between islands are dropped): each profile's
+cell is in the piece it is in, each piece has its own outline, and the bin-mean label (the mean over all the bin's
+profiles) is shown on every piece that holds some.
 (4) If more than CELL_BUDGET cells would be in view, bins stay whole until you zoom further
 (the browser's limit, not the original's). (5) Plain lon/lat map (as the original), drawn with WebGL (deck.gl).
 (6) Faint isobaths (200, 1000, 2000, 3000, 4000, 5000 m; Natural Earth), not in the original; the 200 m line (the
 shelf edge) is a little darker; each is labeled with its depth in meters along the line. The "isobaths" button
-turns them off. (7) The view stays on the map: you can't pan past its edges or zoom out past it; "home" (or 9)
-returns to the whole map. (8) Below the world map, an Arctic and a Southern Ocean map (polar stereographic, the 40&deg;
-circle at the edges), with their own bins built the same way in polar coordinates, so bins around the poles and across
-the dateline are whole; each zooms and pans on its own, with the same zoom threshold. (9) No keyboard shortcuts:
+turns them off. (7) The world map pans without end east and west (it repeats every 360&deg;, so the Pacific can be
+seen whole across the dateline); north-south and zoom stay within the map; "home" returns to the whole map. (8) Below the world map, an Arctic and a Southern Ocean map (polar stereographic, the 40&deg;
+circle at the edges), with the same bins in polar coordinates, so bins around the poles are whole; each zooms and pans on its own, with the same zoom threshold. (9) No keyboard shortcuts:
 every control is a button. (10) All depths, and depth ranges as in the cost map explorer (standard bands, 100 m bands, 15 or 30
 groups of levels), besides single levels: in a range each profile counts once, with the mean of its values at the
 range's levels. (11) With model values exported (<code>--model-equivalents</code>), the anomaly can be relative to the

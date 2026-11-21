@@ -247,7 +247,8 @@ function piecesOf(M, B, e) {
   if (B.pieces.length === 1) return [e.idx.map((_, i) => i)];
   if (B.split && B.split.idx === e.idx) return B.split.groups;     // e.idx is rebuilt whenever the class, depth or years change
   const P = CLASS[S.src].p, groups = B.pieces.map(() => []);
-  e.idx.forEach((j, i) => { const q = M.proj(P.lon[j], P.lat[j]);
+  e.idx.forEach((j, i) => { let q = M.proj(P.lon[j], P.lat[j]);
+    if (M.wrap && q[0] < B.bbox[0]) q = [q[0] + 360, q[1]];     // a bin built across the dateline (longitudes past 180)
     let k = B.pieces.findIndex(pc => q[0] >= pc.bbox[0] && q[0] <= pc.bbox[2] && q[1] >= pc.bbox[1] && q[1] <= pc.bbox[3] && inside(q, pc.ring));
     if (k < 0) { let best = Infinity; B.pieces.forEach((pc, kk) => { const d = Math.hypot(q[0] - pc.rp[0], q[1] - pc.rp[1]); if (d < best) { best = d; k = kk; } }); }
     groups[k].push(i); });
@@ -552,9 +553,18 @@ function draw() {
   for (const M of MAPS) drawMap(M);
   titles(); colorbars(); trackKey(); foldSummary();
 }
+// the world map wraps east-west: its layers are drawn in the copies (offsets of 0 and +-360 degrees) the view
+// overlaps; a polar map has one copy
+function copiesInView(M, vs) {
+  if (!M.wrap) return [0];
+  const [x0, , x1] = viewBounds(M, vs);
+  return [-360, 0, 360].filter(o => x1 > -180 + o + 1e-3 && x0 < 180 + o - 1e-3);
+}
 function drawMap(M) {
   const vs = M.view, sf = scaleFactor(M, vs), micro = sf > ZOOM_THRESHOLD, [bx0, by0, bx1, by1] = viewBounds(M, vs);
-  const inView = b => b.bbox[2] >= bx0 && b.bbox[0] <= bx1 && b.bbox[3] >= by0 && b.bbox[1] <= by1;
+  const OFFS = copiesInView(M, vs);
+  // a bin (or anything with a bbox) is in view in some copy; bins built across the dateline reach past 180
+  const inView = b => OFFS.some(o => b.bbox[2] + o >= bx0 && b.bbox[0] + o <= bx1) && b.bbox[3] >= by0 && b.bbox[1] <= by1;
   let maxN = 1; for (const e of STATS.values()) if (e.n > maxN) maxN = e.n;
   const alpha = n => Math.round(255 * Math.min(1, Math.max(0.4, Math.sqrt(n / maxN))));
   const pxPerUnit = Math.pow(2, vs.zoom), grow = Math.sqrt(sf);
@@ -605,8 +615,13 @@ function drawMap(M) {
   if (TRACK && PLATFORM && TRACK.idx === PLATFORM.idx) {
     const pr = CLASS[S.src].p, [ex0, , ex1] = M.extent, wrap = (ex1 - ex0) / 3; let cur = [];
     const pts = TRACK.js.map(j => M.proj(pr.lon[j], pr.lat[j]));
+    // on the world map, unwrap the longitudes along the track (each step the short way round), so a track crossing
+    // the dateline is drawn across it; the copies show it on both sides
+    if (M.wrap) for (let i = 1; i < pts.length; i++) { let x = pts[i][0]; while (x - pts[i - 1][0] > 180) x -= 360;
+      while (x - pts[i - 1][0] < -180) x += 360; pts[i] = [x, pts[i][1]]; }
     // the colors span the times of the track's profiles in view (zoomed in, the visible part still runs early -> late)
-    const vis = TRACK.frac.filter((f, i) => pts[i][0] >= bx0 && pts[i][0] <= bx1 && pts[i][1] >= by0 && pts[i][1] <= by1);
+    const seen = q => q[1] >= by0 && q[1] <= by1 && (M.wrap ? [-720, -360, 0, 360, 720].some(o => q[0] + o >= bx0 && q[0] + o <= bx1) : q[0] >= bx0 && q[0] <= bx1);
+    const vis = TRACK.frac.filter((f, i) => seen(pts[i]));
     const f0 = vis.length > 1 ? Math.min(...vis) : 0, f1 = vis.length > 1 ? Math.max(...vis) : 1;
     const tf = TRACK.frac.map(f => f1 > f0 ? (f - f0) / (f1 - f0) : 0);
     M.trackSpan = vis.length ? [f0, f1] : null;          // null: the track is not in this map's view (no key)
@@ -616,15 +631,21 @@ function drawMap(M) {
     const ringed = new Set(platDots.map(d => d.j));
     TRACK.js.forEach((j, i) => { if (!ringed.has(j)) trackVerts.push({p: pts[i], j, c: trackColor(tf[i])}); });
     if (pts.length) { trackEnds.push({p: pts[0], first: true, c: trackColor(tf[0])}); trackEnds.push({p: pts.at(-1), first: false, c: trackColor(tf.at(-1))}); }
+    if (M.wrap) {        // put each segment, arrow and marker in the base turn (a segment stays whole)
+      const base = x => ((x + 180) % 360 + 360) % 360 - 180;
+      for (const t of trackPaths) { const d = base(t.path[0][0]) - t.path[0][0]; t.path = t.path.map(q => [q[0] + d, q[1]]); }
+      for (const t of [...trackVerts, ...trackEnds]) t.p = [base(t.p[0]), t.p[1]];
+    }
     const step = Math.max(1, Math.round(pts.length / 12));
     for (let i = step; i < pts.length; i += step) { const a = pts[i - 1], b = pts[i]; if (!TRACK.ok[i] || Math.hypot(b[0] - a[0], b[1] - a[1]) > wrap) continue;
-      trackArrows.push({p: [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2], ang: Math.atan2(b[1] - a[1], b[0] - a[0]) * 180 / Math.PI, c: trackColor(tf[i - 1])}); }
+      const mx = (a[0] + b[0]) / 2;
+      trackArrows.push({p: [M.wrap ? ((mx + 180) % 360 + 360) % 360 - 180 : mx, (a[1] + b[1]) / 2], ang: Math.atan2(b[1] - a[1], b[0] - a[0]) * 180 / Math.PI, c: trackColor(tf[i - 1])}); }
   }
   const hl = HIBIN !== null && M.bins.get(HIBIN) ? M.bins.get(HIBIN).pieces : [];
   const hlDots = []; if (hl.length && STATS.get(HIBIN)) for (const j of STATS.get(HIBIN).idx) hlDots.push({p: M.proj(CLASS[S.src].p.lon[j], CLASS[S.src].p.lat[j]), j});
   const cellLw = MICRO_BASE_LW * (sf / ZOOM_THRESHOLD) * PT, borderLw = Math.min(1.5, Math.max(0.3, 0.6 * sf / ZOOM_THRESHOLD)) * PT;
   const G = M.id === 'll' ? grid(M, vs) : polarGrid(M, vs), [ex0, ey0, ex1, ey1] = M.extent;
-  M.deck.setProps({layers: [
+  const layers = [
     new deck.SolidPolygonLayer({id: 'ocean', data: [[[ex0, ey0], [ex1, ey0], [ex1, ey1], [ex0, ey1]]], getPolygon: d => d, getFillColor: [255, 255, 255]}),
     new deck.PolygonLayer({id: 'bins', data: binRows, getPolygon: d => d.poly, getFillColor: d => d.fill, getLineColor: d => d.line,
       getLineWidth: d => d.width, lineWidthUnits: 'pixels', stroked: true, filled: true, updateTriggers: {getLineWidth: [vs.zoom]}}),
@@ -673,7 +694,13 @@ function drawMap(M) {
       getPixelOffset: [0, -9 * PT], getColor: [40, 40, 40, 200], outlineWidth: 2, outlineColor: [255, 255, 255, 170],
       fontFamily: 'Helvetica, Arial, sans-serif', fontSettings: {sdf: true, fontSize: 64, buffer: 8, radius: 16, cutoff: 0.2},
       characterSet: '0123456789'}),
-  ]});
+  ];
+  // the world map: every layer in each copy in view (offset by 360 degrees); the isobath labels are placed for each
+  // copy's part of the view; the grid is drawn once, in view coordinates, with its labels wrapped to -180..180
+  const once = new Set(['grid', 'gridlab']);
+  M.deck.setProps({layers: OFFS.length === 1 && OFFS[0] === 0 ? layers : layers.flatMap(L => once.has(L.id) ? [L] :
+    OFFS.map(o => L.clone({id: `${L.id}@${o}`, modelMatrix: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, o, 0, 0, 1],
+      ...(L.id === 'bathylab' ? {data: bathyLabels(M, {...vs, target: [vs.target[0] - o, vs.target[1], 0]})} : {})})))});
   legend(M, visible);
   if (M === MAPS[0]) platformNote(platDots.length);
   M.state = {sf, overBudget, nBins: [...STATS.keys()].filter(b => M.bins.has(b)).length};
@@ -825,10 +852,12 @@ function grid(M, vs) {                 // cartopy-like gridlines and labels, ste
   const [x0, y0, x1, y1] = viewBounds(M, vs), span = Math.min(x1 - x0, (y1 - y0) * 2);
   const st = [60, 30, 20, 10, 5, 2, 1, 0.5, 0.25, 0.1].find(d => span / d >= 4) || 0.1;
   const lines = [], labs = [];
-  for (let x = Math.ceil(Math.max(-180, x0) / st) * st; x <= Math.min(180, x1); x += st) {
-    lines.push([[x, -90], [x, 90]]); labs.push({pos: [x, y0], text: degLab(x, 'E', 'W'), a: 'bottom'}); }
+  const xa = M.wrap ? x0 : Math.max(-180, x0), xb = M.wrap ? x1 : Math.min(180, x1), wl = x => M.wrap ? ((x + 180) % 360 + 360) % 360 - 180 : x;
+  for (let x = Math.ceil(xa / st) * st; x <= xb; x += st) {
+    const lab = +wl(x).toFixed(6);
+    lines.push([[x, -90], [x, 90]]); labs.push({pos: [x, y0], text: Math.abs(lab) === 180 ? '180°' : degLab(lab, 'E', 'W'), a: 'bottom'}); }
   for (let y = Math.ceil(Math.max(-90, y0) / st) * st; y <= Math.min(90, y1); y += st) {
-    lines.push([[-180, y], [180, y]]); labs.push({pos: [x0, y], text: degLab(y, 'N', 'S'), a: 'left'}); }
+    lines.push([[M.wrap ? x0 : -180, y], [M.wrap ? x1 : 180, y]]); labs.push({pos: [x0, y], text: degLab(y, 'N', 'S'), a: 'left'}); }
   return {lines, labs};
 }
 function polarGrid(M, vs) {            // circles of latitude and meridians; one row of labels each, through the view's center
@@ -957,7 +986,9 @@ function syncTime() {
 function clampView(M, v) {
   const zoom = Math.max(M.home.zoom, Math.min(M.home.zoom + 9, v.zoom)), d = 1 / Math.pow(2, zoom);
   const hw = M.el.clientWidth / 2 * d, hh = M.el.clientHeight / 2 * d, [ex0, ey0, ex1, ey1] = M.extent;
-  const cx = 2 * hw >= ex1 - ex0 ? (ex0 + ex1) / 2 : Math.max(ex0 + hw, Math.min(ex1 - hw, v.target[0]));
+  // the world map wraps east-west (drawn in copies 360 degrees apart): no east-west limit, the center kept in -180..180
+  const cx = M.wrap ? ((v.target[0] + 180) % 360 + 360) % 360 - 180
+    : 2 * hw >= ex1 - ex0 ? (ex0 + ex1) / 2 : Math.max(ex0 + hw, Math.min(ex1 - hw, v.target[0]));
   const cy = 2 * hh >= ey1 - ey0 ? (ey0 + ey1) / 2 : Math.max(ey0 + hh, Math.min(ey1 - hh, v.target[1]));
   return {...M.home, target: [cx, cy, 0], zoom};
 }
@@ -1252,7 +1283,7 @@ async function init() {
   if (back && /^https?:\/\//.test(back)) siteNav(back);
   sizeBoxes();
   const r40 = Math.hypot(...polarXY(0, POLAR_EDGE_LAT, 'N'));
-  addMap('ll', 'map', 'legend', bins, land, [-180, -90, 180, 90], (lon, lat) => [lon, lat], (x, y) => y, BATHY);
+  addMap('ll', 'map', 'legend', bins, land, [-180, -90, 180, 90], (lon, lat) => [lon, lat], (x, y) => y, BATHY).wrap = true;
   MAIN_Z0 = MAPS[0].home.zoom;
   addMap('N', 'map-N', 'legend-N', binsN, landN, [-r40, -r40, r40, r40], (lon, lat) => polarXY(lon, lat, 'N'), (x, y) => polarLat(x, y, 'N'), polarBathy('N'));
   addMap('S', 'map-S', 'legend-S', binsS, landS, [-r40, -r40, r40, r40], (lon, lat) => polarXY(lon, lat, 'S'), (x, y) => polarLat(x, y, 'S'), polarBathy('S'));
