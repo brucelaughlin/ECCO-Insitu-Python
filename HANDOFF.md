@@ -1,6 +1,93 @@
 # Handoff Context — ECCO-Insitu-Python
 
-## ⟶ RESUME HERE (2026-11-08) — the latest state; the sections below are older
+## ⟶ RESUME HERE (2026-11-20, evening) — the latest state; the sections below are older
+
+**Hosting (changed 2026-11-20):**
+- **All pages:** the site repository **`brucelaughlin/ecco-insitu`** (GitHub Pages, `main`),
+  https://brucelaughlin.github.io/ecco-insitu/:
+  - a landing page;
+  - the Analyses site at `/profile_report_20261027_142247/`;
+  - the data viewer page at `/bin_viewer/run_20261027_142247/`.
+- **All data files:** the user's own AWS account (978555180405, free plan until 2027-05-18 or until the $100
+  credits run out), S3 bucket **`ecco-insitu-site`** (us-east-2, private) behind CloudFront
+  **`d1r1rp2b701s7u.cloudfront.net`** (distribution EJS2IABBDATL, Origin Access Control):
+  - the explorer's data under `reports/<site>/<build version>/`;
+  - the data viewer's data under `bin_viewer/` (`run_…`, `model/`, `V5r1/`).
+
+  Pages find them through `data_url` in their `index.json`. CORS: custom policy `ecco-insitu-cors-any-header`;
+  AWS's managed SimpleCORS drops its header when Chrome sends `priority`.
+- **New CloudFront addresses get through the secure network** (tested 2026-11-20).
+- **AWS CLI:** profile `ecco-site` (sign in with `aws login --profile ecco-site`; `region = us-east-2` set). This CLI
+  build rejects `--profile` before the command: use `AWS_PROFILE=ecco-site`. For CloudFront commands, add
+  `AWS_REGION=us-east-1`.
+- **Old addresses forward:**
+  - `brucelaughlin.github.io/ECCO-Insitu-Python/profile_report_…/*` (docs site, `docs/sphinx/_extra/`);
+  - `brucelaughlin.github.io/ecco-bin-viewer/…` (that repo now holds only a forwarding page).
+- **The docs site** (`brucelaughlin.github.io/ECCO-Insitu-Python/`, GitHub Actions `docs.yml`) holds only the docs.
+- **Unused repos, for the user to delete by hand:** `ecco-bin-viewer-model`, `-v5r1`, `-detail-a/b/c`. There is no
+  gh CLI here.
+
+**Publish:**
+1. The data viewer's data: `python -m ecco_insitu.diagnostics.bin_viewer.export --out
+   ~/ecco/yip/bin_viewer_data/run_20261027_142247 --s3 s3://ecco-insitu-site/bin_viewer
+   https://d1r1rp2b701s7u.cloudfront.net/bin_viewer --aws-profile ecco-site`. This writes `data_url`.
+   After changing bin/land files, clear CloudFront's cache (`create-invalidation`).
+2. All pages: `ecco-insitu publish-reports docs/reports/profile_report_20261027_142247 --bin-viewer-folder
+   ~/ecco/yip/bin_viewer_data/run_20261027_142247`. This pushes `ecco-insitu` and uploads the explorer data;
+   `site:` settings in defaults.yaml.
+3. Check the Pages run of `ecco-insitu`:
+   `curl https://api.github.com/repos/brucelaughlin/ecco-insitu/actions/runs?per_page=1`.
+
+If publish-reports says "index.json has no data_url", rerun step 1. Once, a step lost it from the local
+index.json; the cause is not found.
+
+**Data viewer changes 2026-11-20 (all live; docs/bin_viewer.md has the details):**
+- **Exact geodesic bins:** spherical Voronoi cells of the 10,242 centers, so no gaps; dateline bins are drawn.
+- **Every ocean piece** of a land-split bin is kept.
+- **Endless east-west panning:** copies 360° apart, drawn a view width ahead.
+- **Bin edges** are drawn inside their bin (deck.gl PathStyleExtension offset), so they never overlap.
+- **Land** is drawn above the bins.
+- **Past the split threshold,** a thin outline instead of the count-scaled edge.
+- **Max cells/bin:** default 5000.
+- **"All depths"** choice; the legend reads "profiles per bin".
+- **Glider platform** = the whole WOD code (`gs` had joined 8 gliders).
+- **Platform tracks** leave out steps faster than the class can move (`TRACK_MAX_KM_DAY`); the guide has a
+  "Platform tracks" section.
+- **Cost map explorer:** a clear button on the clicked-bin panel.
+
+**In progress when this was written (background jobs; may have been interrupted by sleep):**
+1. **Renaming the cost terms ECCO-first, everywhere** (figures, explorer, glossary, guide, questions, chatbot):
+   - "ECCO anomaly term" (per datum);
+   - "ECCO mean term" (per bin and level);
+   - "total misfit, not used by ECCO" (shown last).
+
+   **Analysis 2 on one denominator:** anomaly Σ J^a/|D_k|, mean term Σ_B J^m_B/|D_k| (was the mean over bin sets,
+   which overstated it by the mean data per bin), a new "ECCO cost" line = their sum, and the total misfit dashed.
+   Check: the mean term's share is 1.0, 1.3, 6.6 and 50 % at 100/1000/2000/2400 m (Argo T vs V4r6, true weights).
+   **The explorer opens on the ECCO mean term** (the user's choice). Plan: replot
+   (`profile-analyze --replot --out ~/ecco/yip/insitu_reports/profile_analyses_20261108b_142247`), rebuild into
+   `docs/reports/profile_report_20261027_142247_new`, check, swap, test, commit, publish (as above).
+   **To check if resuming:** `git log`, whether `_new` or `_old` exists under docs/reports, and the live legend of
+   analysis 2.
+   Why: with SAMPLESPLIT on, V4r6's cost_profiles.F computes only the anomaly and mean terms, and
+   profiles_cost_final adds them. The unsplit is our diagnostic. V5r1 is assumed the same.
+2. **The cost chapter** (`~/ecco/yip/docs_exports/cost_terms/cost_terms.tex`, `./build.sh`, not in the repo):
+   - rewrite Section 8 for the new analysis 2;
+   - a new appendix, "What every analysis and the cost map explorer show": exact formulas, read from the code, for
+     analyses 01–13, compare_A_B and every explorer view.
+
+**Also uncommitted, waiting for the user's OK:** `src/ecco_insitu/model_comparison/cf_estim.py` (`ecco-insitu
+cf-estim`, sampling CF NetCDF model output at the profiles) with its test and small cli.py and
+model_comparison/__init__.py edits. Trial in `~/ecco/yip/model_submission_test/`.
+
+**User preferences that matter here** (see memory): math, not prose, with no skipped steps; replies short and
+plain-text math (no LaTeX in chat); make only the edit asked for; US spelling; verify claims; don't restart the
+user's apps; ask before deleting or publishing new kinds of things.
+
+**Waiting on the team:** author order; publishing the processed profiles; which data ECCO assimilated; how the CTD σ
+file was made; V5r1's SIZE.h and data.exch2 (for the grid-flexible chain).
+
+## ⟶ PREVIOUS (2026-11-08)
 
 **Later on 2026-11-08: ECCO V5r1 added and PUBLISHED** (the analyses site, the data viewer, and the new V5r1 data site
 `brucelaughlin/ecco-bin-viewer-v5r1`; all three deploys succeeded; live pages checked).**
